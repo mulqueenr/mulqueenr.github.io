@@ -1022,67 +1022,8 @@ saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
 
 
 ```
+# TO BE ADDED scRNA PREPROCESSING SECTION
 
-# WIP
-```python
-#Generate counts matrix per bulk cell types
-#data from http://data.nemoarchive.org/5923ca16c51011e99da31f7757ebac1c/
-#described in https://www.nature.com/articles/s41586-020-2825-4?WT.ec_id=NATURE-202010&sap-outbound-id=60313C942AEB24BFE1AF8DD74FB2E05B7385E720#data-availability
-#Bulk ATAC Peaks for marker sorted cell types located in /home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/Song_2020
-cd /home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/Song_2020
-
-#Generate separate bed files from narrowPeaks
-#generate feature bed files merged and sorted
-awk 'OFS="\t"{print $1,$2,$3,"eN"}' eN.ATAC-seq.narrowPeak | sort -T . --parallel=10 -k1,1 -k2,2n - > eN.bed
-awk 'OFS="\t"{print $1,$2,$3,"iN"}' iN.ATAC-seq.narrowPeak | sort -T . --parallel=10 -k1,1 -k2,2n - > iN.bed
-awk 'OFS="\t"{print $1,$2,$3,"IPC"}' IPC.ATAC-seq.narrowPeak | sort -T . --parallel=10 -k1,1 -k2,2n - > IPC.bed
-awk 'OFS="\t"{print $1,$2,$3,"RG"}' RG.ATAC-seq.narrowPeak | sort -T . --parallel=10 -k1,1 -k2,2n - > RG.bed
-
-#generate feature bed files merged and sorted for atac-counts
-cat eN.bed iN.bed IPC.bed RG.bed | sort -T . --parallel=10 -k1,1 -k2,2n - > celltype_peaks.bed
-
-bam_file="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis/orgo.ID.bam"
-peaks_file="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/Song_2020/celltype_peaks.bed"
-scitools atac-count -O bulk_atac_peaks $bam_file $peaks_file &  #generate an atac counts matrix of cell X cell type narrow peaks
-
-#Now generate a feature value per cell summarize peak overlap
-
-R
-library(Matrix)
-setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-
-# make counts matrix from sparse matrix
-IN<-as.matrix(read.table("bulk_atac_peaks.counts.sparseMatrix.values.gz"))
-IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
-COLS<-read.table("bulk_atac_peaks.counts.sparseMatrix.cols.gz")
-colnames(IN)<-COLS$V1
-ROWS<-read.table("bulk_atac_peaks.counts.sparseMatrix.rows.gz")
-row.names(IN)<-ROWS$V1
-
-peak_sets<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/Song_2020/celltype_peaks.bed",header=F)
-peak_sets$peaks<-paste(peak_sets$V1,peak_sets$V2,peak_sets$V3,sep="_")
-peak_sets<-split(peak_sets,peak_sets$V4)
-
-peak_counts<-lapply(peak_sets,function(x) {
-    return(colSums(IN[row.names(IN) %in% x$peaks,]))
-})
-names(peak_counts)<-names(peak_sets)
-
-library(Signac)
-orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-
-orgo_cirm43$eN_signature<-scale(peak_counts$eN[match(orgo_cirm43$cellID,names(peak_counts$eN),nomatch=0)]/orgo_cirm43@meta.data$uniq_reads)
-orgo_cirm43$iN_signature<-scale(peak_counts$iN[match(orgo_cirm43$cellID,names(peak_counts$iN),nomatch=0)]/orgo_cirm43@meta.data$uniq_reads)
-orgo_cirm43$RG_signature<-scale(peak_counts$RG[match(orgo_cirm43$cellID,names(peak_counts$RG),nomatch=0)]/orgo_cirm43@meta.data$uniq_reads)
-orgo_cirm43$IPC_signature<-scale(peak_counts$IPC[match(orgo_cirm43$cellID,names(peak_counts$IPC),nomatch=0)]/orgo_cirm43@meta.data$uniq_reads)
-
-plt<-FeaturePlot(orgo_cirm43,features=c("eN_signature","iN_signature","RG_signature","IPC_signature"),max.cutoff="q90",min.cutoff="q10",
-                                    pt.size=0.1)
-ggsave(plt,file="cirm43_signatures_atac.umap.png",width=20)
-ggsave(plt,file="cirm43_signatures_atac.umap.pdf",width=20)
-system("slack -F cirm43_signatures_atac.umap.pdf ryan_todo")
-#also cicero is done with unnormalized GA score, append to seurat object and check marker genes
-```
 
 ## Celltype Assignment of Clusters
 
@@ -1093,8 +1034,7 @@ Doing this in three parts.
 3. Using single-cell Primary Cortex RG, IPC, eN and iN annotated cells to define signatures and perform CCA for label transfer
 
 
-
-```python
+```R
 #https://satijalab.org/seurat/v3.1/atacseq_integration_vignette.html://satijalab.org/seurat/v3.1/atacseq_integration_vignette.html
 library(Signac)
 library(Seurat)
@@ -1140,138 +1080,138 @@ orgo_cirm43<-readRDS(file="orgo_cirm43.SeuratObject.Rds")
 #Bulk ATAC Peaks for marker sorted cell types located in /home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/Song_2020
 #For overlapping these narrowPeak features do:
 
-	markers<-c("CTCF","EMX1","EMX2","LHX2","PAX6","RFX4","SOX2",
-	           "TBR1","EOMES","NEUROD1","NEUROD2","NEUROG1","TGIF1","TGIF2",
-	           "DLX1","DLX2","DLX6","GSX2","LHX6",
-	           "POU3F3","POU3F2","TFAP4")
-	#Setting up chromvar matrix from CIRM43
-	tfList <- getMatrixByID(JASPAR2020, ID=row.names(orgo_cirm43@assays$chromvar@data)) 
-	tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
-	dat_tf<-orgo_cirm43@assays$chromvar@data
-	row.names(dat_tf)<-tfList
-	dat_tf<-data.frame(t(dat_tf))
-	dat_tf$cellID<-row.names(dat_tf)
+  markers<-c("CTCF","EMX1","EMX2","LHX2","PAX6","RFX4","SOX2",
+             "TBR1","EOMES","NEUROD1","NEUROD2","NEUROG1","TGIF1","TGIF2",
+             "DLX1","DLX2","DLX6","GSX2","LHX6",
+             "POU3F3","POU3F2","TFAP4")
+  #Setting up chromvar matrix from CIRM43
+  tfList <- getMatrixByID(JASPAR2020, ID=row.names(orgo_cirm43@assays$chromvar@data)) 
+  tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
+  dat_tf<-orgo_cirm43@assays$chromvar@data
+  row.names(dat_tf)<-tfList
+  dat_tf<-data.frame(t(dat_tf))
+  dat_tf$cellID<-row.names(dat_tf)
 
-	#append cluster ID to column
-	dat_tf$seurat_clusters<-orgo_cirm43@meta.data[match(orgo_cirm43@meta.data$cellID,dat_tf$cellID),]$seurat_clusters
-	#subset to markers
-	dat_tf<-dat_tf[colnames(dat_tf) %in% c("seurat_clusters",markers)]
-	#reshape to long format
-	dat_tf<-melt(dat_tf)
-	#group by to summarize markers by column
-	dat_tf<-as.data.frame(dat_tf %>% group_by(seurat_clusters,variable) %>% summarize(mean_chromvar=mean(value)))
-	#plot as heatmap
-	dat_tf<-dcast(dat_tf,seurat_clusters~variable)
-	row.names(dat_tf)<-dat_tf$seurat_clusters
-	dat_tf<-dat_tf[colnames(dat_tf) %in% markers]
-	#set na values to 0 for clustering
-	dat_tf[which(is.na(dat_tf),arr.ind=T)]<-0
-	dat_tf<-as.data.frame(t(dat_tf))
-	clus_order<-c("12","4","1","0","5","3","9","2","8","6","7","10","11","13")
-	dat_tf<-dat_tf[colnames(dat_tf) %in% clus_order]
-	plt<-Heatmap(dat_tf,
-	            row_order=match(markers,row.names(dat_tf))[!is.na(match(markers,row.names(dat_tf)))],
-	            column_order=clus_order
-	                           )
-	pdf("cirm43_celltype_tfHeatmap.pdf")
-	plt
-	dev.off()
-	system("slack -F cirm43_celltype_tfHeatmap.pdf ryan_todo")
+  #append cluster ID to column
+  dat_tf$seurat_clusters<-orgo_cirm43@meta.data[match(orgo_cirm43@meta.data$cellID,dat_tf$cellID),]$seurat_clusters
+  #subset to markers
+  dat_tf<-dat_tf[colnames(dat_tf) %in% c("seurat_clusters",markers)]
+  #reshape to long format
+  dat_tf<-melt(dat_tf)
+  #group by to summarize markers by column
+  dat_tf<-as.data.frame(dat_tf %>% group_by(seurat_clusters,variable) %>% summarize(mean_chromvar=mean(value)))
+  #plot as heatmap
+  dat_tf<-dcast(dat_tf,seurat_clusters~variable)
+  row.names(dat_tf)<-dat_tf$seurat_clusters
+  dat_tf<-dat_tf[colnames(dat_tf) %in% markers]
+  #set na values to 0 for clustering
+  dat_tf[which(is.na(dat_tf),arr.ind=T)]<-0
+  dat_tf<-as.data.frame(t(dat_tf))
+  clus_order<-c("12","4","1","0","5","3","9","2","8","6","7","10","11","13")
+  dat_tf<-dat_tf[colnames(dat_tf) %in% clus_order]
+  plt<-Heatmap(dat_tf,
+              row_order=match(markers,row.names(dat_tf))[!is.na(match(markers,row.names(dat_tf)))],
+              column_order=clus_order
+                             )
+  pdf("cirm43_celltype_tfHeatmap.pdf")
+  plt
+  dev.off()
+  system("slack -F cirm43_celltype_tfHeatmap.pdf ryan_todo")
 
 #2. Using bulk sorted RG, IPC, eN and iN ATAC motifs compared to our ATAC cluster motifs
-	#Setting up gene activity matrix
-	markers<-c("SOX2","PAX6","HES1","HOPX","VIM","GFAP","TNC","GPX3",
-	           "NEUROG1","SSTR2","EOMES","PPP1R17","NEUROD4",
-	           "SLC17A7","NEUROD6","SATB2","TBR1","SLA",
-	           "DLX2","DLX1","LHX6","GAD1")
-	dat_ga<-orgo_cirm43@assays$GeneActivity@data
-	dat_ga<-data.frame(t(dat_ga))
-	dat_ga$cellID<-row.names(dat_ga)
-	#append cluster ID to column
-	dat_ga$seurat_clusters<-orgo_cirm43@meta.data[match(orgo_cirm43@meta.data$cellID,dat_ga$cellID),]$seurat_clusters
-	#subset to markers
-	dat_ga<-dat_ga[colnames(dat_ga) %in% c("seurat_clusters",markers)]
-	#reshape to long format
-	dat_ga<-melt(dat_ga)
-	#group by to summarize markers by column
-	dat_ga<-as.data.frame(dat_ga %>% group_by(seurat_clusters,variable) %>% summarize(mean_ga=mean(value)))
-	#plot as heatmap
-	dat_ga<-dcast(dat_ga,seurat_clusters~variable)
-	row.names(dat_ga)<-dat_ga$seurat_clusters
-	dat_ga<-dat_ga[colnames(dat_ga) %in% markers]
-	#zscore values
-	dat_ga<-scale(dat_ga)
-	#set na values to 0 for clustering
-	dat_ga<-data.frame(t(dat_ga))
-	colnames(dat_ga)<-as.character(0:(ncol(dat_ga)-1))
-	clus_order<-c("12","4","1","0","5","3","9","2","8","6","7","10","11","13")
-	dat_ga<-dat_ga[colnames(dat_ga) %in% clus_order]
-	plt<-Heatmap(dat_ga,
-	row_order=match(markers,row.names(dat_ga))[!is.na(match(markers,row.names(dat_ga)))],
-	column_order=clus_order
-	            )
-	pdf("cirm43_celltype_gaHeatmap.pdf")
-	plt
-	dev.off()
-	system("slack -F cirm43_celltype_gaHeatmap.pdf ryan_todo")
+  #Setting up gene activity matrix
+  markers<-c("SOX2","PAX6","HES1","HOPX","VIM","GFAP","TNC","GPX3",
+             "NEUROG1","SSTR2","EOMES","PPP1R17","NEUROD4",
+             "SLC17A7","NEUROD6","SATB2","TBR1","SLA",
+             "DLX2","DLX1","LHX6","GAD1")
+  dat_ga<-orgo_cirm43@assays$GeneActivity@data
+  dat_ga<-data.frame(t(dat_ga))
+  dat_ga$cellID<-row.names(dat_ga)
+  #append cluster ID to column
+  dat_ga$seurat_clusters<-orgo_cirm43@meta.data[match(orgo_cirm43@meta.data$cellID,dat_ga$cellID),]$seurat_clusters
+  #subset to markers
+  dat_ga<-dat_ga[colnames(dat_ga) %in% c("seurat_clusters",markers)]
+  #reshape to long format
+  dat_ga<-melt(dat_ga)
+  #group by to summarize markers by column
+  dat_ga<-as.data.frame(dat_ga %>% group_by(seurat_clusters,variable) %>% summarize(mean_ga=mean(value)))
+  #plot as heatmap
+  dat_ga<-dcast(dat_ga,seurat_clusters~variable)
+  row.names(dat_ga)<-dat_ga$seurat_clusters
+  dat_ga<-dat_ga[colnames(dat_ga) %in% markers]
+  #zscore values
+  dat_ga<-scale(dat_ga)
+  #set na values to 0 for clustering
+  dat_ga<-data.frame(t(dat_ga))
+  colnames(dat_ga)<-as.character(0:(ncol(dat_ga)-1))
+  clus_order<-c("12","4","1","0","5","3","9","2","8","6","7","10","11","13")
+  dat_ga<-dat_ga[colnames(dat_ga) %in% clus_order]
+  plt<-Heatmap(dat_ga,
+  row_order=match(markers,row.names(dat_ga))[!is.na(match(markers,row.names(dat_ga)))],
+  column_order=clus_order
+              )
+  pdf("cirm43_celltype_gaHeatmap.pdf")
+  plt
+  dev.off()
+  system("slack -F cirm43_celltype_gaHeatmap.pdf ryan_todo")
 
 #3. Using single-cell Primary Cortex RG, IPC, eN and iN annotated cells to define signatures and perform CCA for label transfer
-	markers<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/pubprimary.markers.txt",header=T,sep="\t")
+  markers<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/pubprimary.markers.txt",header=T,sep="\t")
 
-	transfer.anchors <- FindTransferAnchors(
-	  reference = pubprimary,
-	  reference.assay="RNA",
-	  query = orgo_cirm43,
-	  query.assay="GeneActivity",
-	  reduction   = 'cca',
-	  features=markers$gene,
-	  verbose=T
-	)
-	saveRDS(transfer.anchors,"orgo_cirm43.PublicPrimary.transferanchors.rds")
+  transfer.anchors <- FindTransferAnchors(
+    reference = pubprimary,
+    reference.assay="RNA",
+    query = orgo_cirm43,
+    query.assay="GeneActivity",
+    reduction   = 'cca',
+    features=markers$gene,
+    verbose=T
+  )
+  saveRDS(transfer.anchors,"orgo_cirm43.PublicPrimary.transferanchors.rds")
 
-	predicted.labels <- TransferData(
-	  anchorset = transfer.anchors,
-	  refdata = pubprimary$Type,
-	  weight.reduction = "cca",
-	  dims = 1:10
-	)
+  predicted.labels <- TransferData(
+    anchorset = transfer.anchors,
+    refdata = pubprimary$Type,
+    weight.reduction = "cca",
+    dims = 1:10
+  )
 
-	orgo_cirm43 <- AddMetaData(object = orgo_cirm43, metadata = predicted.labels)
-	saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
+  orgo_cirm43 <- AddMetaData(object = orgo_cirm43, metadata = predicted.labels)
+  saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 
-	plt1<-DimPlot(orgo_cirm43,group.by=c('predicted.id'),size=0.1)
-	plt2<-FeaturePlot(orgo_cirm43,features=c('prediction.score.Radial.Glia'),pt.size=0.1)
-	plt3<-FeaturePlot(orgo_cirm43,features=c('prediction.score.Excitatory.Neuron'),pt.size=0.1)
-	plt4<-FeaturePlot(orgo_cirm43,features=c('prediction.score.Inhibitory.Neuron'),pt.size=0.1)
-	plt5<-FeaturePlot(orgo_cirm43,features=c('prediction.score.IPC'),pt.size=0.1)
+  plt1<-DimPlot(orgo_cirm43,group.by=c('predicted.id'),size=0.1)
+  plt2<-FeaturePlot(orgo_cirm43,features=c('prediction.score.Radial.Glia'),pt.size=0.1)
+  plt3<-FeaturePlot(orgo_cirm43,features=c('prediction.score.Excitatory.Neuron'),pt.size=0.1)
+  plt4<-FeaturePlot(orgo_cirm43,features=c('prediction.score.Inhibitory.Neuron'),pt.size=0.1)
+  plt5<-FeaturePlot(orgo_cirm43,features=c('prediction.score.IPC'),pt.size=0.1)
 
-	plt<-plt1/plt2/plt3/plt4/plt5
-	ggsave(plt,file="cirm43.predictedid.umap.png",width=10,height=30,limitsize=F)
-	ggsave(plt,file="cirm43.predictedid.umap.pdf",width=10,height=30,limitsize=F)
-	system("slack -F cirm43.predictedid.umap.png ryan_todo")
+  plt<-plt1/plt2/plt3/plt4/plt5
+  ggsave(plt,file="cirm43.predictedid.umap.png",width=10,height=30,limitsize=F)
+  ggsave(plt,file="cirm43.predictedid.umap.pdf",width=10,height=30,limitsize=F)
+  system("slack -F cirm43.predictedid.umap.png ryan_todo")
 
-	predictdat<-orgo_cirm43@meta.data
-	predictdat<-predictdat[startsWith(colnames(predictdat),"prediction.score")| colnames(predictdat) %in% c("seurat_clusters")]
-	predictdat<-predictdat[!(colnames(predictdat) %in% c("prediction.score.max","predicted.id"))]
+  predictdat<-orgo_cirm43@meta.data
+  predictdat<-predictdat[startsWith(colnames(predictdat),"prediction.score")| colnames(predictdat) %in% c("seurat_clusters")]
+  predictdat<-predictdat[!(colnames(predictdat) %in% c("prediction.score.max","predicted.id"))]
 
-	predictdat<-melt(predictdat)
-	predictdat<-as.data.frame(predictdat %>% group_by(seurat_clusters,variable) %>% summarize(average=mean(value)))
+  predictdat<-melt(predictdat)
+  predictdat<-as.data.frame(predictdat %>% group_by(seurat_clusters,variable) %>% summarize(average=mean(value)))
 
-	predictdat$variable<-substr(predictdat$variable,18,length(predictdat$variable))
-	predictdat<-predictdat[predictdat$variable %in% c("Excitatory.Neuron","Inhibitory.Neuron","IPC","Radial.Glia"),]
-	predictdat<-dcast(predictdat,seurat_clusters~variable)
-	row.names(predictdat)<-predictdat$seurat_clusters
-	predictdat<-predictdat[!(colnames(predictdat) %in% c("seurat_clusters"))]
-	predictdat<-as.data.frame(t(scale(predictdat,scale=F)))
-	clus_order<-c("12","4","1","0","5","3","9","2","8","6","7","10","11","13")
-	predictdat<-predictdat[colnames(predictdat) %in% clus_order]
-	plt<-Heatmap(predictdat,
-	row_order=c("Radial.Glia","IPC","Excitatory.Neuron","Inhibitory.Neuron"),
-	column_order=clus_order)
-	pdf("predictedid.heatmap.pdf")
-	plt
-	dev.off()
-	system("slack -F predictedid.heatmap.pdf ryan_todo")
+  predictdat$variable<-substr(predictdat$variable,18,length(predictdat$variable))
+  predictdat<-predictdat[predictdat$variable %in% c("Excitatory.Neuron","Inhibitory.Neuron","IPC","Radial.Glia"),]
+  predictdat<-dcast(predictdat,seurat_clusters~variable)
+  row.names(predictdat)<-predictdat$seurat_clusters
+  predictdat<-predictdat[!(colnames(predictdat) %in% c("seurat_clusters"))]
+  predictdat<-as.data.frame(t(scale(predictdat,scale=F)))
+  clus_order<-c("12","4","1","0","5","3","9","2","8","6","7","10","11","13")
+  predictdat<-predictdat[colnames(predictdat) %in% clus_order]
+  plt<-Heatmap(predictdat,
+  row_order=c("Radial.Glia","IPC","Excitatory.Neuron","Inhibitory.Neuron"),
+  column_order=clus_order)
+  pdf("predictedid.heatmap.pdf")
+  plt
+  dev.off()
+  system("slack -F predictedid.heatmap.pdf ryan_todo")
 
 #Based on the three separate measures assigning the following cell type ids.
 setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
@@ -1289,7 +1229,7 @@ saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ## Monocle
 
 
-```python
+```R
 setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 library(Seurat)
 library(Signac)
@@ -1300,11 +1240,14 @@ library(EnsDb.Hsapiens.v86)
 library(Matrix)
 library(cicero)
 library(SeuratWrappers)
+library(ComplexHeatmap)
+library(JASPAR2020)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
 library(patchwork)
 
-orgo_cirm87<-readRDS("orgo_cirm87.SeuratObject.Rds")
 orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-orgo_atac<-readRDS("orgo_SeuratObject.Rds")
+cirm43_subset<-subset(orgo_cirm43,cells=which(orgo_cirm43$celltype %in% c("radial_glia","intermediate_progenitor","excitatory_neuron")))
 
 monocle_processing<-function(prefix, seurat_input){
     atac.cds <- as.cell_data_set(seurat_input)
@@ -1344,19 +1287,10 @@ monocle_processing<-function(prefix, seurat_input){
     return(atac.cds)
 }
 
-
-orgo_cirm87.cicero<-monocle_processing(seurat_input=orgo_cirm87,prefix="cirm87")
-orgo_cirm43.cicero<-monocle_processing(seurat_input=orgo_cirm43,prefix="cirm43")
-orgo_atac.cicero<-monocle_processing(seurat_input=orgo_atac,prefix="orgo_atac")
+cirm43_subset.cicero<-monocle_processing(seurat_input=cirm43_subset,prefix="cirm43")
 
 #Then determine root nodes via plots and assign by order cells function.
-cirm43.cds <- order_cells(orgo_cirm43.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_118")) #Chose youngest cells as root
-cirm87.cds <- order_cells(orgo_cirm87.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_43")) #Chose oldest cells as root (pseudotime reversed)
-
-#variance over pseudotime
-###pr_graph_test <- principalGraphTest(cds, k=3, cores=1)
-#dplyr::add_rownames(pr_graph_test) %>%
-#    dplyr::arrange(plyr::desc(morans_test_statistic), plyr::desc(-qval)) %>% head(3)
+cirm43.cds <- order_cells(cirm43_subset.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_253")) #Chose youngest cells as root
 
 #Now replotting with pseudotime
 pdf("orgo_cirm43_trajectory.pseudotime.pdf")
@@ -1366,46 +1300,31 @@ plot_cells(
 color_cells_by = "pseudotime"
 )
 dev.off()
+system("slack -F orgo_cirm43_trajectory.pseudotime.pdf ryan_todo")
 
-
-pdf("orgo_cirm87_trajectory.pseudotime.pdf")
-plot_cells(
-  cds = cirm87.cds,
-  show_trajectory_graph = TRUE,
-color_cells_by = "pseudotime"
-)
-dev.off()
-
-saveRDS(cirm43.cds,"cirm43.monocle.cds.Rds")
-saveRDS(cirm87.cds,"cirm87.monocle.cds.Rds")
 
 #Append pseudotime to meta data of seurat object
 cirm43_pseudotime<-as.data.frame(cirm43.cds@principal_graph_aux@listData$UMAP$pseudotime)
 colnames(cirm43_pseudotime)<-c("pseudotime")
 cirm43_pseudotime$cellID<-row.names(cirm43_pseudotime)
-
-cirm87_pseudotime<-as.data.frame(cirm87.cds@principal_graph_aux@listData$UMAP$pseudotime)
-colnames(cirm87_pseudotime)<-c("pseudotime")
-cirm87_pseudotime$cellID<-row.names(cirm87_pseudotime)
-
-orgo_cirm43$pseudotime<-cirm43_pseudotime[match(cirm43_pseudotime$cellID,orgo_cirm43$cellID),]$pseudotime
-orgo_cirm87$pseudotime<-cirm87_pseudotime[match(cirm87_pseudotime$cellID,orgo_cirm87$cellID),]$pseudotime
-
+pseudotime<-cirm43_pseudotime$pseudotime
+names(pseudotime)<-cirm43_pseudotime$cellID
+orgo_cirm43 <- AddMetaData(object = orgo_cirm43, metadata = pseudotime,col.name="pseudotime")
 saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
-saveRDS(orgo_cirm87,"orgo_cirm87.SeuratObject.Rds")
 
 ```
 
 ## Plotting ChromVAR motifs through pseudotime
+### The following code is exploratory but in the end wasn't included in analysis for the manuscript.
+I mainly just wanted to play around with network analysis a bit.
 
-
-```python
+```R
 setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-
-library(Signac)
 library(Seurat)
+library(Signac)
 library(GenomeInfoDb)
 library(ggplot2)
+set.seed(1234)
 library(EnsDb.Hsapiens.v86)
 library(Matrix)
 library(cicero)
@@ -1415,191 +1334,401 @@ library(JASPAR2020)
 library(TFBSTools)
 library(BSgenome.Hsapiens.UCSC.hg38)
 library(patchwork)
-set.seed(1234)
-
-orgo_atac<-readRDS(file="orgo_atac.SeuratObject.GeneActivity.RDS")
-
+orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
 
 #Setting up chromvar matrix
-tfList <- getMatrixByID(JASPAR2020, ID=row.names(orgo_atac@assays$chromvar@data)) 
+tfList <- getMatrixByID(JASPAR2020, ID=row.names(orgo_cirm43@assays$chromvar@data)) 
 tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
-dat_tf<-orgo_atac@assays$chromvar@data
+dat_tf<-orgo_cirm43@assays$chromvar@data
 row.names(dat_tf)<-tfList
 dat_tf<-data.frame(t(dat_tf))
 dat_tf$cellID<-row.names(dat_tf)
+cirm43_tf<-dat_tf
 
-#Splitting into the two cell lines
-cirm43_tf<-dat_tf[dat_tf$cellID %in% orgo_atac@meta.data[orgo_atac@meta.data$cell_line=="CIRM43",]$cellID,]
-cirm87_tf<-dat_tf[dat_tf$cellID %in% orgo_atac@meta.data[orgo_atac@meta.data$cell_line=="CIRM87",]$cellID,]
-
-cirm43_pseudotime<-orgo_atac@meta.data[orgo_atac@meta.data$cell_line=="CIRM43",c("cellID","pseudotime")]
+cirm43_pseudotime<-orgo_cirm43@meta.data[orgo_cirm43@meta.data$cell_line=="CIRM43",c("cellID","pseudotime")]
 cirm43_tf<-merge(cirm43_tf,cirm43_pseudotime,by="cellID")
-
-cirm87_pseudotime<-orgo_atac@meta.data[orgo_atac@meta.data$cell_line=="CIRM87",c("cellID","pseudotime")]
-cirm87_tf<-merge(cirm87_tf,cirm87_pseudotime,by="cellID")
-
-library(ComplexHeatmap)
 cirm43_tf<-cirm43_tf[complete.cases(cirm43_tf),]
-cirm87_tf<-cirm87_tf[complete.cases(cirm87_tf),]
-
 cirm43_cell_row_order=order(cirm43_tf$pseudotime,decreasing=T)
-cirm87_cell_row_order=order(cirm87_tf$pseudotime,decreasing=T)
 
 
 cirm43_row_ha = rowAnnotation(
-    cluster_id=as.factor(orgo_atac@meta.data[match(cirm43_tf$cellID,orgo_atac@meta.data$cellID),]$seurat_clusters),
-    organoid=as.factor(orgo_atac@meta.data[match(cirm43_tf$cellID,orgo_atac@meta.data$cellID),]$orgID),
-    DIV=as.factor(orgo_atac@meta.data[match(cirm43_tf$cellID,orgo_atac@meta.data$cellID),]$DIV),
-    experiment=as.factor(orgo_atac@meta.data[match(cirm43_tf$cellID,orgo_atac@meta.data$cellID),]$differentiation_exp)
+    cluster_id=as.factor(orgo_cirm43@meta.data[match(cirm43_tf$cellID,orgo_cirm43@meta.data$cellID),]$seurat_clusters),
+    organoid=as.factor(orgo_cirm43@meta.data[match(cirm43_tf$cellID,orgo_cirm43@meta.data$cellID),]$orgID),
+    DIV=as.factor(orgo_cirm43@meta.data[match(cirm43_tf$cellID,orgo_cirm43@meta.data$cellID),]$DIV),
+    experiment=as.factor(orgo_cirm43@meta.data[match(cirm43_tf$cellID,orgo_cirm43@meta.data$cellID),]$differentiation_exp)
 )
 
-cirm87_row_ha = rowAnnotation(
-    cluster_id=as.factor(orgo_atac@meta.data[match(cirm87_tf$cellID,orgo_atac@meta.data$cellID),]$seurat_clusters),
-    organoid=as.factor(orgo_atac@meta.data[match(cirm87_tf$cellID,orgo_atac@meta.data$cellID),]$orgID),
-    DIV=as.factor(orgo_atac@meta.data[match(cirm87_tf$cellID,orgo_atac@meta.data$cellID),]$DIV),
-    experiment=as.factor(orgo_atac@meta.data[match(cirm87_tf$cellID,orgo_atac@meta.data$cellID),]$differentiation_exp)
-)
+#what is the distribution of pseudotime?
+plt<-ggplot()+geom_density(aes(x=cirm43_tf$pseudotime))+theme_bw()
+ggsave(plt,file="pseudotime_distribution.pdf")
+system("slack -F pseudotime_distribution.pdf ryan_todo")
+#divide pseudotime into equally sized (by cell count) bins
 
 cirm43_tf<-cirm43_tf[!(colnames(cirm43_tf) %in% c("cellID","pseudotime"))]
-cirm87_tf<-cirm87_tf[!(colnames(cirm87_tf) %in% c("cellID","pseudotime"))]
 
 vars <- apply(cirm43_tf, 2, var)
-cirm43_tf<-cirm43_tf[vars > quantile(vars, 0.9)]
-
-vars <- apply(cirm87_tf, 2, var)
-cirm87_tf<-cirm87_tf[vars > quantile(vars, 0.9)]
+cirm43_tf<-cirm43_tf[vars > quantile(vars, 0.7)]
 
 pdf("cirm43_tfmotif_pseudotimeordering.pdf")
-Heatmap(as.matrix(cirm43_tf),column_km=4,left_annotation = cirm43_row_ha,
+Heatmap(as.matrix(cirm43_tf),column_km=7,left_annotation = cirm43_row_ha,
         row_order=cirm43_cell_row_order,
         show_row_names=F,
+        clustering_distance_columns="maximum",
         column_names_gp = gpar(fontsize = 5)
 )
 dev.off()
+system("slack -F cirm43_tfmotif_pseudotimeordering.pdf ryan_todo")
 
-pdf("cirm87_tfmotif_pseudotimeordering.pdf")
-Heatmap(as.matrix(cirm87_tf),column_km=6,left_annotation = cirm87_row_ha,
-        row_order=cirm87_cell_row_order,
-        show_row_names=F,
-        column_names_gp = gpar(fontsize = 5),
-)
+library(igraph)
+cor_mat<-cor(cirm43_tf,method="pearson")
+cor_mat[which(cor_mat<0.3,arr.ind=T)]<-0
+graph<-graph.adjacency(cor_mat,weighted=TRUE,"directed",diag=F)
+pdf("tf_motif.igraph.pdf")
+plot.igraph(graph,edge.size=E(graph)$weight,vertex.size=3,vertex.label.cex=0.8)
 dev.off()
-
-
-###Plot gene activity and TF on same loess plot
-feat<-row.names(orgo_atac@assays$GeneActivity)[row.names(orgo_atac@assays$GeneActivity) %in% colnames(cirm43_tf)]
-
-DefaultAssay(orgo_atac) <- 'GeneActivity'
-
-plt<-FeaturePlot(
-  object = orgo_atac,
-  features = feat,
-  pt.size = 0.1,
-  max.cutoff = 'q95',
-  ncol = 3
-)
-ggsave(plt,file="orgo_atac_GA.pseudotimefeatures.pdf",width=25,height=100,limitsize=F)
-
-ga_mat<-data.frame(orgo_atac@assays$GeneActivity@data)
-cirm43_ga<-ga_mat[(colnames(ga_mat) %in% orgo_atac@meta.data[orgo_atac@meta.data$cell_line=="CIRM43",]$cellID)]
-cirm43_ga<- cirm43_ga[(row.names(cirm43_ga) %in% feat),]
-cirm43_ga<-data.frame(t(cirm43_ga))
-cirm43_ga$cellID<-row.names(cirm43_ga)
-
-cirm43_pseudotime<-orgo_atac@meta.data[orgo_atac@meta.data$cell_line=="CIRM43",c("cellID","pseudotime")]
-cirm43_ga<-merge(cirm43_ga,cirm43_pseudotime,by="cellID")
-
-#Splitting into the two cell lines
-cirm43_tf<-dat_tf[dat_tf$cellID %in% orgo_atac@meta.data[orgo_atac@meta.data$cell_line=="CIRM43",]$cellID,]
-cirm87_tf<-dat_tf[dat_tf$cellID %in% orgo_atac@meta.data[orgo_atac@meta.data$cell_line=="CIRM87",]$cellID,]
-
-cirm43_pseudotime<-orgo_atac@meta.data[orgo_atac@meta.data$cell_line=="CIRM43",c("cellID","pseudotime")]
-cirm43_tf<-merge(cirm43_tf,cirm43_pseudotime,by="cellID")
-cirm43_tf<-cirm43_tf[colnames(cirm43_tf) %in% c(feat,"cellID","pseudotime")]
-cirm87_pseudotime<-orgo_atac@meta.data[orgo_atac@meta.data$cell_line=="CIRM87",c("cellID","pseudotime")]
-cirm87_tf<-merge(cirm87_tf,cirm87_pseudotime,by="cellID")
-cirm87_tf<-cirm87_tf[colnames(cirm87_tf) %in% c(feat,"cellID","pseudotime")]
-
-dat_ga<-cirm43_ga
-dat_tf<-cirm43_tf
-pdf("orgo_atac_cirm43_GAandTF.pseudotime.pdf")
-for (f in feat){
-    ga_tmp<-dat_ga[colnames(dat_ga) %in% c("pseudotime",f)]
-    tf_tmp<-dat_tf[colnames(dat_tf) %in% c("pseudotime",f)]
-    plt_ga<-ggplot(ga_tmp,aes(x=pseudotime,y=ga_tmp[,1]))+geom_smooth()+theme_bw()
-    plt_tf<-ggplot(tf_tmp,aes(x=pseudotime,y=tf_tmp[,1]))+geom_smooth()+theme_bw()
-    plt<-plt_ga/plt_tf #using patchwork syntax
-    print(plt)
-}
-dev.off()
+system("slack -F tf_motif.igraph.pdf ryan_todo")
                  
 
 ```
 
-https://satijalab.org/seurat/v3.0/integration.html
+# Analysis of ChromVAR TF motifs and Gene Activity Through Pseudotime
 
-Integrating the two data sets. First making seurat objects.
+Decided to use a binning strategy to assess pseudotime signal.
 
+```R
 
-```python
-    library(Seurat)
-    library(cicero)
-    setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200218_s3ATAC_brainbarnyard_reprocessing")
-    hg38_ga<-readRDS("hg38_unnorm_GA.Rds")
-    mm10_ga<-readRDS("mm10_unnorm_GA.Rds")
-    mm10_atac<-readRDS("mm10_SeuratObject.Rds")
-    hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+library(Seurat)
+library(Signac)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(Matrix)
+library(cicero)
+library(SeuratWrappers)
+library(ComplexHeatmap)
+library(JASPAR2020)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+library(parallel) 
 
-    #limit seurat object cells to match those of the filtered GA cells
- hg38_atac<-subset(hg38_atac,cells=which(hg38_atac$cellID %in% colnames(hg38_ga)))
- mm10_atac<-subset(mm10_atac,cells=which(mm10_atac$cellID %in% colnames(mm10_ga)))
- row.names(mm10_ga)<-toupper(row.names(mm10_ga))
- 
- hg38_atac[["ACTIVITY"]] <- CreateAssayObject(counts = hg38_ga)
- mm10_atac[["ACTIVITY"]] <- CreateAssayObject(counts = mm10_ga)
-DefaultAssay(hg38_atac)<-"ACTIVITY"
-DefaultAssay(mm10_atac)<-"ACTIVITY"
+orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+orgo_cirm43<-subset(orgo_cirm43,cells=which(orgo_cirm43$celltype %in% c("radial_glia","intermediate_progenitor","excitatory_neuron")))
 
-atac.list<-merge(hg38_atac,mm10_atac)
-atac.list <- SplitObject(atac.list, split.by = "called_species")
-atac.list <- lapply(X = atac.list, FUN = function(x) {
-    x <- NormalizeData(x, assay="ACTIVITY",verbose = FALSE)
-    x <- FindVariableFeatures(x, assay="ACTIVITY",verbose = FALSE)
-})
+#Bin cells by pseudotime
+timebin<-split(orgo_cirm43$cellID[order(orgo_cirm43$pseudotime,decreasing=F)], 
+  rep(1:100,each=length(orgo_cirm43$cellID)/100))
 
-features <- SelectIntegrationFeatures(object.list = atac.list,nfeatures=5000)
-atac.list <- lapply(X = atac.list, FUN = function(x) {
-    x <- ScaleData(x, features = features, verbose = TRUE)
-    x <- RunPCA(x, features = features, verbose = TRUE)
-})
-anchors <- FindIntegrationAnchors(object.list = atac.list, reference = c(1, 2), reduction = "cca",
-    dims = 1:10)
-atac.integrated <- IntegrateData(anchorset = anchors, dims = 1:10)
-atac.integrated <- ScaleData(atac.integrated, verbose = FALSE)
-atac.integrated <- RunPCA(atac.integrated, verbose = FALSE)
-atac.integrated <- RunUMAP(atac.integrated, dims = 1:10)
-pdf("integrated_species.umap.pdf")
-DimPlot(atac.integrated, group.by = "called_species")
-dev.off()
+saveRDS(timebin,"cirm43_pseudotime_bins.rds")
 
 
+# Generate gene annotations for CCAN assignment of marker genes
+hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
 
-    # remove any rows/columns with all zeroes
-unnorm_ga <- unnorm_ga[!Matrix::rowSums(unnorm_ga) == 0,
-                       !Matrix::colSums(unnorm_ga) == 0]
+pos <-as.data.frame(hg38_annotations,row.names=NULL)
+pos$chromosome<-paste0("chr",pos$seqnames)
+pos$gene<-pos$gene_id
+pos <- subset(pos, strand == "+")
+pos <- pos[order(pos$start),] 
+pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
+pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
 
-# make a list of num_genes_expressed
-num_genes <- pData(input_cds)$num_genes_expressed
-names(num_genes) <- row.names(pData(input_cds))
+neg <-as.data.frame(hg38_annotations,row.names=NULL)
+neg$chromosome<-paste0("chr",neg$seqnames)
+neg$gene<-neg$gene_id
+neg <- subset(neg, strand == "-")
+neg <- neg[order(neg$start,decreasing=TRUE),] 
+neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
+neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
 
-# normalize
-cicero_gene_activities <- normalize_gene_activities(unnorm_ga, num_genes)
+gene_annotation<- rbind(pos, neg)
+gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
+names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
 
-# if you had two datasets to normalize, you would pass both:
-# num_genes should then include all cells from both sets
-unnorm_ga2 <- unnorm_ga
-cicero_gene_activities <- normalize_gene_activities(list(unnorm_ga, unnorm_ga2),
-                                                    num_genes)
+#Assign CCAN to RNA cell type markers by promoter overlap
+markers<-c("CTCF","EMX1","EMX2","LHX2","PAX6","RFX4","SOX2",
+             "TBR1","EOMES","NEUROD1","NEUROD2","NEUROG1","TGIF1","TGIF2",
+             "DLX1","DLX2","DLX6","GSX2","LHX6",
+             "POU3F3","POU3F2","TFAP4")
+gene_annotation<-gene_annotation[gene_annotation$gene %in% markers,]
+gene_annotation<-do.call("rbind",
+  lapply(unique(gene_annotation$gene), function(x) {
+  tmp<-gene_annotation[gene_annotation$gene==x,]
+  return(tmp[which.max(abs(tmp$end-tmp$start)),])})) #select longest transcript of each gene for ccan overlap
+
+gene_annotation<-makeGRangesFromDataFrame(gene_annotation,keep.extra.columns=T)
+
+#Set up TF markers
+tf_markers<-c("SOX2","PAX6","HES1","HOPX","VIM","GFAP","TNC","GPX3",
+           "NEUROG1","SSTR2","EOMES","PPP1R17","NEUROD4",
+           "SLC17A7","NEUROD6","SATB2","TBR1","SLA",
+           "DLX2","DLX1","LHX6","GAD1")
+
+#CCANs over pseudotime
+  #First generating list of peaks in CCANs
+  ccan<-Links(orgo_cirm43)
+  ccan<-ccan[!is.na(ccan$group),]
+  ccan<-split(ccan,f=ccan$group)
+  #Plotting amount of peak membership per CCAN
+    ccan_membership<-unlist(lapply(ccan,length))
+    plt<-ggplot()+geom_density(aes(x=ccan_membership))+theme_bw()+xlim(c(0,500))
+    ggsave(plt,file="ccan_membership.pdf")
+    system("slack -F ccan_membership.pdf ryan_todo")
+
+  #Getting list of peaks
+    peaks<-row.names(orgo_cirm43@assays$peaks@data)
+    seqname=unlist(lapply(strsplit(peaks,"-"),"[",1))
+    start=unlist(lapply(strsplit(peaks,"-"),"[",2))
+    end=unlist(lapply(strsplit(peaks,"-"),"[",3))
+  peak_info<-makeGRangesFromDataFrame(data.frame(seqname=seqname,start=start,end=end,peak_id=peaks),keep.extra.columns=T)
+
+  #find overlaps between peaks and CCAN regions (cicero merges similar peaks, so take all within overlap)
+  #then from those overlapped peak per CCAN, grab peak data from the seurat object
+  #then perform colSums (per cell peak accessibility summarized by the CCAN)
+  #then normalize the data based on the cell specific size factor
+  cell_accessibility_per_ccan<-function(x){
+    ccan_tmp<-ccan[x]
+    peak_subset<-peak_info[unique(findOverlaps(query=ccan_tmp,subject=peak_info)@to),]$peak_id
+    dat_tmp<-as.data.frame(orgo_cirm43@assays$peaks@data[peak_subset,])
+    norm_dat_tmp<-colSums(dat_tmp)/orgo_cirm43@meta.data[match(orgo_cirm43@meta.data$cellID,colnames(dat_tmp)),]$nCount_peaks
+    norm_dat_tmp
+  }
+
+  ccan_sum<-mclapply(1:length(ccan),cell_accessibility_per_ccan,mc.cores=20)
+  ccan_sum<-as.data.frame(do.call("rbind",ccan_sum))
+  row.names(ccan_sum)<-names(ccan)
+  dim(ccan_sum)
+  #[1]  3927 30293
+
+  marker_annote_per_ccan<-function(x){
+    ccan_tmp<-ccan[x]
+    markers<-ifelse(countOverlaps(query=ccan_tmp,subject=gene_annotation)>0,
+      unique(gene_annotation[unique(findOverlaps(query=ccan_tmp,subject=gene_annotation)@to),]$gene),
+      "NA")
+    markers
+  }
+
+  ccan_markers<-mclapply(1:length(ccan),marker_annote_per_ccan,mc.cores=10)
+  ccan_markers<-as.data.frame(do.call("rbind",ccan_markers))
+  row.names(ccan_markers)<-names(ccan)
+
+  #summarize ccans through pseudotime cell bins
+  #using mean here as the summary statistic
+  ccan_summarize_per_bin<-function(x){
+    bin_tmp<-timebin[[x]]
+    return(apply(ccan_sum[colnames(ccan_sum) %in% bin_tmp],1,mean))
+  }
+
+  ccan_mean<-lapply(1:length(timebin),ccan_summarize_per_bin)
+  ccan_mean<-as.data.frame(do.call("rbind",ccan_mean))
+  row.names(ccan_mean)<-names(timebin)
+  colnames(ccan_mean)<-names(ccan)
+  saveRDS(ccan_mean,file="pseudotime_cirm43_ccan.rds")
+
+
+  #Transcription Factor activity (ChromVAR TF motifs) over pseudotime bins
+  chromvar_motifs_per_bin<-function(x){
+    bin_tmp<-timebin[[x]]
+    chromvar<-orgo_cirm43@assays$chromvar@data
+    return(
+      apply(chromvar[,colnames(chromvar) %in% bin_tmp],1,mean))
+  }
+
+  motif_mean<-mclapply(1:length(timebin),chromvar_motifs_per_bin,mc.cores=10)
+  motif_mean<-as.data.frame(do.call("rbind",motif_mean))
+    #Assign human readable TF motif names
+  tfList <- getMatrixByID(JASPAR2020, ID=colnames(motif_mean))
+  tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
+  colnames(motif_mean)<-tfList
+  motif_mean<-as.data.frame(t(motif_mean))
+  motif_mean<-motif_mean[complete.cases(motif_mean),]
+
+  dim(motif_mean)
+  saveRDS(motif_mean,file="pseudotime_cirm43_chromvarMotifs.rds")
+
+  #Question: do we see a bias in CCAN opening through pseudotime with TF motif presence?
+  #Take out motif presence in overlapping peaks with CCANs
+  #This is taking from the chromvar motif peak association
+  #generate background set per TF motif from all peaks
+  #going to use a hypergeometric score since number of peaks per ccan is variable
+
+  #Building contingency table
+  ##             TFmotif  non-TFmotif
+  ## CCAN            a  b
+  ## Non-CCAN        c  d
+  ## Total    f (a+c) g(b+d)
+
+  dat_tmp_bg_f.<-colSums(orgo_cirm43@assays$peaks@motifs@data>0)
+  dat_tmp_bg_g.<-colSums(orgo_cirm43@assays$peaks@motifs@data==0)
+
+  fisher_tfmotifs_per_ccan<-function(ccan_idx=x,dat_tmp_bg_f=dat_tmp_bg_f.,dat_tmp_bg_g=dat_tmp_bg_g.){
+    ccan_tmp<-ccan[ccan_idx]
+    peak_subset<-peak_info[unique(findOverlaps(query=ccan_tmp,subject=peak_info)@to),]$peak_id
+    dat_tmp<-as.data.frame(orgo_cirm43@assays$peaks@motifs@data[peak_subset,])
+    a_list<-colSums(dat_tmp>0)
+    b_list<-colSums(dat_tmp==0)
+    c_list<-dat_tmp_bg_f - a_list
+    d_list<-dat_tmp_bg_g - b_list
+    tf_dat<-unlist(
+      lapply(colnames(dat_tmp),FUN=function(y) {
+        a<-a_list[y]
+        b<-b_list[y]
+        c<-c_list[y]
+        d<-d_list[y]
+        contingency_table<-matrix(c(a,b,c,d),nrow=2)
+        fisher.test(contingency_table,alternative="greater")$p.value}
+      ))
+    names(tf_dat)<-colnames(dat_tmp)
+    return(tf_dat)
+  }
+    
+  ccan_tf_enrich<-mclapply(1:length(ccan),function(x) fisher_tfmotifs_per_ccan(ccan_idx=x),mc.cores=10)
+  ccan_tf_enrich<-as.data.frame(do.call("rbind",ccan_tf_enrich))
+  #Assign human readable TF motif names
+  tfList <- getMatrixByID(JASPAR2020, ID=colnames(ccan_tf_enrich))
+  tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
+  colnames(ccan_tf_enrich)<-tfList
+  sig_tfs<-as.data.frame(t(apply(ccan_tf_enrich,1,p.adjust,method="bonferroni")))
+  #sig_tfs <- sig_tfs[colSums(sig_tfs<0.05)>length(ccan)/20] #limit to TF motifs that reach significance in at least 5% ccans
+  sig_tfs <- -log10(sig_tfs)
+  saveRDS(sig_tfs,file="pseudotime_cirm43_ccan_tfmotif_enrichment.rds")
+
+  #Question: do we see bias in GWAS associated sites within CCANs through pseudotime?
+  #Take out GWAS sites in overlapping peaks with CCANs
+  #This is taking from https://www.ebi.ac.uk/gwas/docs/file-downloads
+  #generate background set per condition from all peaks
+  #going to use a hypergeometric score since number of peaks per ccan is variable
+
+  #Building contingency table
+  ##             GWAS   non-GWAS
+  ## CCAN            a  b
+  ## Non-CCAN        c  d
+  ## Total    f (a+c) g(b+d)
+  gwas<-read.csv("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/gwas_catalog_v1.0-associations_e100_r2020-10-20.tsv",header=T,sep="\t")
+  gwas$seqname<-paste0("chr",gwas$CHR_ID)
+  gwas$start<-as.numeric(gwas$CHR_POS)
+  gwas<-gwas[colnames(gwas) %in% c("seqname","start","MAPPED_GENE","DISEASE.TRAIT")]
+  gwas$end<-gwas$start+1
+  gwas<-gwas[complete.cases(gwas),]
+  gwas<-makeGRangesFromDataFrame(gwas,keep.extra.columns=T)
+  gwas<-split(gwas,f=gwas$DISEASE.TRAIT)
+
+#GWAS analysis to be changed
+  #dat_tmp_bg_f<-colSums(orgo_cirm43@assays$peaks@motifs@data>0)
+  #dat_tmp_bg_g<-colSums(orgo_cirm43@assays$peaks@motifs@data==0)
+
+  #tfmotifs_per_ccan<-function(x){
+#   ccan_tmp<-ccan[x]
+#   peak_subset<-peak_info[unique(findOverlaps(query=ccan_tmp,subject=peak_info)@to),]$peak_id
+#   dat_tmp<-as.data.frame(orgo_cirm43@assays$peaks@motifs@data[peak_subset,])
+#   a_list<-colSums(dat_tmp>0)
+#   b_list<-colSums(dat_tmp==0)
+#   c_list<-dat_tmp_bg_f - a_list
+#   d_list<-dat_tmp_bg_g - b_list
+#   tf_dat<-unlist(lapply(1:ncol(dat_tmp),FUN=fisher_test_columnwise,a_list=a_list,b_list=b_list,c_list=c_list,d_list=d_list))
+#   names(tf_dat)<-colnames(dat_tmp)
+#   return(tf_dat)
+# }
+
+# ccan_tf_enrich<-mclapply(1:length(ccan),tfmotifs_per_ccan,mc.cores=10)
+# ccan_tf_enrich<-as.data.frame(do.call("rbind",ccan_tf_enrich))
+  #Assign human readable TF motif names
+# tfList <- getMatrixByID(JASPAR2020, ID=colnames(ccan_tf_enrich))
+# tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
+# colnames(ccan_tf_enrich)<-tfList
+# sig_tfs<-as.data.frame(t(apply(ccan_tf_enrich,1,p.adjust,method="bonferroni")))
+# sig_tfs <- sig_tfs[colSums(sig_tfs<0.05)>length(ccan)/20] #limit to TF motifs that reach significance in at least 5% ccans
+# sig_tfs <- -log10(sig_tfs)
+
+  sig_tfs<-readRDS(file="pseudotime_cirm43_ccan_tfmotif_enrichment.rds")
+  motif_mean<-readRDS(file="pseudotime_cirm43_chromvarMotifs.rds")
+  ccan_mean<-readRDS(file="pseudotime_cirm43_ccan.rds")
+
+  timebin<-readRDS("cirm43_pseudotime_bins.rds")
+  timebin_df<-as.data.frame(do.call("rbind",lapply(1:length(timebin),function(x) cbind(names(timebin)[x],unlist(timebin[x])))))
+  colnames(timebin_df)<-c("pseudotime_bin","cellID")
+  timebin_df<-merge(orgo_cirm43@meta.data,timebin_df,by="cellID")
+  
+  library(dplyr)
+  library(reshape2)
+  
+  library(ComplexHeatmap)
+  library(circlize)
+
+  #Set up different annotation stacked barplots
+  annotation_bin_summary<-function(x){
+  tmp_timebin<-as.data.frame(timebin_df %>% group_by_("pseudotime_bin",x) %>% summarize(count=n()))
+  colnames(tmp_timebin)<-c("bin","var","count")
+  tmp_timebin<-dcast(tmp_timebin,bin~var,value.var="count",fill=0)
+  row.names(tmp_timebin)<-tmp_timebin$bin
+  tmp_timebin<-as.data.frame(t(tmp_timebin[2:ncol(tmp_timebin)]))
+  tmp_timebin = as.data.frame(scale(tmp_timebin, center = FALSE, 
+               scale = colSums(tmp_timebin)))
+  return(tmp_timebin)}
+  
+  div_timebin<-annotation_bin_summary(x="DIV")
+  celltype_timebin<-annotation_bin_summary(x="celltype")
+  cluster_timebin<-annotation_bin_summary(x="seurat_clusters")
+  organoid_timebin<-annotation_bin_summary(x="orgID")
+
+  ha_barplots = HeatmapAnnotation(
+    DIV = anno_barplot(t(div_timebin), name="DIV",bar_width=1,gp = gpar(color = 1:nrow(div_timebin),fill = 1:nrow(div_timebin))),
+    celltype = anno_barplot(t(celltype_timebin), name="cell type",bar_width=1,gp = gpar(color = 1:nrow(celltype_timebin),fill= 1:nrow(celltype_timebin))),
+    cluster = anno_barplot(t(cluster_timebin), name="cluster",bar_width=1,gp = gpar(color = 1:nrow(cluster_timebin),fill = 1:nrow(cluster_timebin))),
+    organoid = anno_barplot(t(organoid_timebin), name="organoid",bar_width=1,gp = gpar(color = 1:nrow(organoid_timebin),fill = 1:nrow(organoid_timebin)))
+    )
+
+    lgd_list = list(
+    Legend(labels = row.names(div_timebin), title = "DIV", type = "points", pch = 16, legend_gp = gpar(col = 1:nrow(div_timebin))),
+    Legend(labels = row.names(celltype_timebin), title = "celltype", type = "points", pch = 16, legend_gp = gpar(col = 1:nrow(celltype_timebin))),
+    Legend(labels = row.names(cluster_timebin), title = "cluster", type = "points", pch = 16, legend_gp = gpar(col = 1:nrow(cluster_timebin))),
+    Legend(labels = row.names(organoid_timebin), title = "organoid", type = "points", pch = 16, legend_gp = gpar(col = 1:nrow(organoid_timebin)))
+)
+
+  vars<-apply(motif_mean, 1, var)
+  motif_mean<-motif_mean[vars > quantile(vars, 0.8),]
+
+  col_fun = colorRamp2(c(-4, -2,0, 2,4), rev(c("#e66101","#fdb863","#f7f7f7","#b2abd2","#5e3c99")))
+
+  plt3<-Heatmap(motif_mean,
+    column_order=1:ncol(motif_mean),
+    row_names_gp = gpar(fontsize = 3),
+    clustering_distance_rows="spearman",
+    col=col_fun,
+    show_column_names=F,
+    bottom_annotation=ha_barplots,
+    row_km=3,
+    show_heatmap_legend=T)
+
+  pdf("cirm43_pseudotime.motifTF.heatmap.pdf",width=30)
+  draw(plt3,annotation_legend_list=lgd_list)
+  dev.off()
+  system("slack -F cirm43_pseudotime.motifTF.heatmap.pdf ryan_todo")
+  
+  col_fun = colorRamp2(c(-4, -2,0, 2,4), rev(c("#ca0020","#f4a582","#f7f7f7","#92c5de","#0571b0")))
+
+  plt1<-Heatmap(t(scale(ccan_mean)),
+    column_order=1:nrow(ccan_mean),
+    show_row_names=F,
+    clustering_distance_rows="spearman",
+    row_km=6,
+    bottom_annotation=ha_barplots,
+    col=col_fun
+    )
+  plt2<-Heatmap(sig_tfs,
+    column_km=3,
+    col = colorRamp2(c("white", "red"),breaks=c(0,5)),
+    column_names_gp = gpar(fontsize = 3),
+    clustering_distance_columns="spearman")
+
+  plt<-plt1+plt2
+  pdf("cirm43_pseudotime.ccan.heatmap.pdf")
+  draw(plt1,annotation_legend_list=lgd_list)
+  dev.off()
+
+  system("slack -F cirm43_pseudotime.ccan.heatmap.pdf ryan_todo")
     
 ```
 
