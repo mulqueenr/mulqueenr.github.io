@@ -21,9 +21,9 @@
 title: Single Cell Omics
 email: mulqueen@ohsu.edu
 description: >- # this means to ignore newlines until "baseurl:"
-  Write an awesome description for your new site here. You can edit this
-  line in _config.yml. It will appear in your document head meta (for
-  Google search results) and in your feed.xml site description.
+  I take the reproducibility crisis that is ongoing in science seriously. 
+  To address this, I try to make all my protocols and code as widely available as possible. 
+  It sometimes ain't pretty, but it is always visible.
 baseurl: "" # the subpath of your site, e.g. /blog
 url: "" # the base hostname & protocol for your site, e.g. http://example.com
 github_username:  mulqueenr
