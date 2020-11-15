@@ -8,7 +8,7 @@ category: s3
 This notebook details the processing of the "20K" and "70K" loaded mouse brain and human cortex samples. It begins with scitools wrapper functions for intial alignment to a concatenated mouse and human genome, following with splitting of reads and realignment to separate human and mouse genomes. It then follows the established scitools formation of a counts matrix and Signac processing.
 
 
-```python
+```bash
 #libraries were generated as two separate lanes of a NovaSeq S4 flowcell.
 #bcl2fastq was run prior to the run transfer
 FASTQ_DIR="/home/groups/oroaklab/fastq/201103_NovaSeq_sciDropATAC"
@@ -107,8 +107,11 @@ tree $wd
 
 ```
 
+# Calculate collision rate from barnyard experiment
 
-```python
+NOTE THIS SHOULD BE CHANGED, NOT ALL TN5 INDECES ARE TRUE BARNYARD
+
+```R
 #Processing of barnyard comparisons
     #Processing of 70k samples
         library(ggplot2)
@@ -179,8 +182,9 @@ tree $wd
 
 ```
 
+## Split out species from barnyard experiments
 
-```python
+```bash
 sciDROP_20k_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_20K"
 sciDROP_70k_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_70k"
 
@@ -215,264 +219,11 @@ wc -l hg38.merged.bbrd.q10.500.bed
 
 scitools atac-counts -O hg38 hg38.merged.bbrd.q10.bam hg38.merged.bbrd.q10.500.bed &
 scitools atac-counts -O mm10 mm10.merged.bbrd.q10.bam mm10.merged.bbrd.q10.500.bed &
+
+#scitools wrapper for samtools isize
+scitools isize hg38.merged.bbrd.q10.bam &
+scitools isize mm10.merged.bbrd.q10.bam &
 ```
-
-### R processing to generate a list of cellIDs which are >95% human or >95% mouse
-
-
-```python
-R
-library(reshape2)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
-
-#read in indexes master file
-idx<-read.table("/home/groups/oroaklab/src/scitools/scitools-dev/SCI_stdchem_Indexes.txt",col.names=c("idx_name","idx_cycles","idx_seq"))
-idx_i7<-idx[idx$idx_cycles==1,]
-colnames(idx_i7)<-c("i7_idx_name","i7_idx_cycle","i7_idx_seq")
-idx_i5<-idx[idx$idx_cycles==2,]
-colnames(idx_i5)<-c("i5_idx_name","i5_idx_cycle","i5_idx_seq")
-idx_tn5<-idx[idx$idx_cycles==3,]
-colnames(idx_tn5)<-c("tn5_idx_name","tn5_idx_cycle","tn5_idx_seq")
-
-#read in barnyard output
-barnyard<-read.table("./barnyard_analysis/s3atac_barnyard.bbrd.q10.filt.barnyard_cells.txt", header=F)
-colnames(barnyard)<-c("cellID","total_reads_q20","hg38_q20","mm10_q20","perc_human","species_call")
-barnyard$i7_idx_seq<-substr(barnyard$cellID,0,8)
-barnyard$tn5_idx_seq<-substr(barnyard$cellID,17,24)
-barnyard$i5_idx_seq<-substr(barnyard$cellID,9,16)
-dat<-merge(barnyard,idx_i7,by="i7_idx_seq")
-dat<-merge(dat,idx_tn5,by="tn5_idx_seq")
-dat<-merge(dat,idx_i5,by="i5_idx_seq")
-dat$pcr_plate<-substr(dat$i5_idx_name,5,5)
-dat$i5_set<-paste0("CPT_",dat$pcr_plate)
-
-#Per Plate breakdown of data contained as sheets in https://docs.google.com/spreadsheets/d/1mZ34KIwmr2vdjQlnqY7v_u0-Eca8mRc-HgI2r_WICXk/edit#gid=1305239528
-#Not all plates are a proper barnyard mix.
-i5_annot<-read.table("i5_pcr_annot.txt",sep="\t",header=T)
-i7_annot<-read.table("i7_pcr_annot.txt",sep="\t",header=T)
-
-dat<-merge(dat,i7_annot,by="i7_idx_seq")
-dat<-merge(dat,i5_annot,by="i5_idx_seq")
-
-#Plate 4 and 5 are only human (as noted in spreadsheet)
-dat[dat$i5_sample=="Human",]$i7_sample_designation<-"hum_cortex"
-
-#Also based on FACS sorting data, Plate 1, Column 6 Row E was incorrectly double sorted (experimentor error) and will be excluded
-#this is also reflected in high cell count in the well (28 cells) compared to average (~8 cells)
-dat<-dat[!(dat$i7_plate_column=="6" & dat$i5_row=="E" & dat$i5_pcr_plate=="Plate_1"),]
-#Also removing plate 2 (used to polymerase testing)
-dat<-dat[!(dat$i5_pcr_plate=="Plate_2"),]
-
-#True barnyard results (columns 7-11 only of plates 1 2 and 3)
-true_by_cellstested<-nrow(dat[dat$i7_sample_designation =="equimolar_tagment_mix",])
-true_by_cellspassed<-nrow(dat[dat$i7_sample_designation =="equimolar_tagment_mix" & (dat$species_call != "Mixed"),])
-true_by_cellsfailed<-nrow(dat[dat$i7_sample_designation =="equimolar_tagment_mix" & (dat$species_call == "Mixed"),])
-
-(true_by_cellsfailed/true_by_cellstested)*2
-#0.05531295
-#so 5.5% estimated collision rate (19/687)
-
-#PostTagMixed Barnyard (column 12 only)
-posttag_by_cellstested<-nrow(dat[dat$i7_sample_designation =="equimolar_posttag_mix",])
-posttag_by_cellspassed<-nrow(dat[dat$i7_sample_designation =="equimolar_posttag_mix" & (dat$species_call == "Mouse"),])
-
-((posttag_by_cellstested-posttag_by_cellspassed)/posttag_by_cellstested)*2
-#0
-#so 0%
-
-#Plot true barnyard and posttag barnyard cells
-library(ggplot2)
-plt<-ggplot(dat[dat$i7_sample_designation =="equimolar_tagment_mix",],aes(x=hg38_q20,y=mm10_q20,color=as.factor(species_call)))+geom_point()+xlab("hg38 Reads")+ylab("mm10 Reads")+theme_bw()
-ggsave(plt,file="truebarnyard_readcount.pdf")
-
-plt<-ggplot(dat[dat$i7_sample_designation =="equimolar_tagment_mix",],aes(x=perc_human))+geom_histogram(bins=100)+xlab("Percent Human")+ylab("Cells")+theme_bw()
-ggsave(plt,file="truebarnyard_perchuman.pdf")
-
-#Post tagmentation barnyard
-plt<-ggplot(dat[dat$i7_sample_designation =="equimolar_posttag_mix",],aes(x=hg38_q20,y=mm10_q20,color=as.factor(species_call)))+geom_point()+xlab("hg38 Reads")+ylab("mm10 Reads")+theme_bw()
-ggsave(plt,file="posttagbarnyard_readcount.pdf")
-
-plt<-ggplot(dat[dat$i7_sample_designation =="equimolar_posttag_mix",],aes(x=perc_human))+geom_histogram(bins=100)+xlab("Percent Human")+ylab("Cells")+theme_bw()
-ggsave(plt,file="posttagbarnyard_perchuman.pdf")
-
-#Make annot files for apriori_species, called_species, plate_volume, barnyard_condition
-
-dat$species_apriori<-as.character(dat$i7_sample_designation)
-dat[dat$i7_sample_designation %in% c("equimolar_tagment_mix","equimolar_posttag_mix"),]$species_apriori<-"barnyard"
-
-#apriori species
-write.table(dat[c("cellID","species_apriori")],file="barnyard_apriorispecies.annot",sep="\t",quote=F,col.names=F,row.names=F)
-
-#called species
-write.table(dat[c("cellID","species_call")],file="barnyard_calledspecies.annot",sep="\t",quote=F,col.names=F,row.names=F)
-
-#PCR Plate
-write.table(dat[c("cellID","pcr_plate")],file="barnyard_pcrplate.annot",sep="\t",quote=F,col.names=F,row.names=F)
-
-#Plate Volume
-write.table(dat[c("cellID","i5_plate_condition")],file="barnyard_platevolume.annot",sep="\t",quote=F,col.names=F,row.names=F)
-
-#Barnyard Condition
-write.table(dat[c("cellID","i7_sample_designation")],file="barnyard_condition.annot",sep="\t",quote=F,col.names=F,row.names=F)
-
-#Freshvfrozen
-write.table(dat[c("cellID","i5_frozen")],file="barnyard_storagecondition.annot",sep="\t",quote=F,col.names=F,row.names=F)
-
-#PCR_pol
-write.table(dat[c("cellID","PCR_Pol")],file="barnyard_polymerase.annot",sep="\t",quote=F,col.names=F,row.names=F)
-
-#Full Data Write Out
-write.table(dat,file="barnyard_full_cell_summary.tsv",sep="\t",quote=F,col.names=T,row.names=F)
-
-```
-
-### Analysis of barnyard output
-
-Split Human and mouse cells at the fastq level based on the barnyard output. Then processed in parallel.
-
-Further processing after human and mouse cells were split
-
-
-```python
-#Merge original fastqs, and split original fastqs by called species for downstream processing
-cat /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/raw_fq/Barnyard_ATAC*.1.fq.gz > /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/Barnyard_ATAC.merged.1.fq.gz &
-cat /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/raw_fq/Barnyard_ATAC*.2.fq.gz > /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/Barnyard_ATAC.merged.2.fq.gz &
-scitools fastq-split -X -A ../barnyard_calledspecies.annot Barnyard_ATAC.merged.1.fq.gz Barnyard_ATAC.merged.2.fq.gz &
-
-awk '{if($2="Human") print $1}' barnyard_calledspecies.annot > hg38.cellID.list 
-awk '{if($2="Mouse") print $1}' barnyard_calledspecies.annot > mm10.cellID.list
-
-#realign to reference genomes with subset cellIDs
-scitools fastq-align -t 10 -r 10 hg38 hg38 barnyard_calledspecies.Human.1.fq.gz barnyard_calledspecies.Human.2.fq.gz &
-scitools fastq-align -t 10 -r 10 mm10 mm10 barnyard_calledspecies.Mouse.1.fq.gz barnyard_calledspecies.Mouse.2.fq.gz &
-
-#Project out bam files to look for maximum complexity
-scitools bam-project hg38.bam &
-scitools bam-project mm10.bam &
-
-#Performing bbrd and changing file name to be simplified.
-scitools bam-rmdup hg38.bam &
-scitools bam-rmdup mm10.bam &
-  
-#Calling peaks on human and mouse cells
-scitools callpeaks hg38.bbrd.q10.bam &
-scitools callpeaks mm10.bbrd.q10.bam &
-
-#  304049 hg38.bbrd.q10.500.bed
-#  181791 mm10.bbrd.q10.500.bed
-
-
-#Set up cellID by peak count sparse matrix
-scitools atac-count hg38.bbrd.q10.bam hg38.bbrd.q10.500.bed &
-scitools atac-count mm10.bbrd.q10.bam mm10.bbrd.q10.500.bed &
-
-#TSS enrichment calculation
-module load bedops/2.4.36
-scitools bam-tssenrich -X hg38.bbrd.q10.bam hg38 &
-scitools bam-tssenrich -X -E hg38.bbrd.q10.bam hg38 &
-scitools bam-tssenrich -X -E mm10.bbrd.q10.bam mm10 &
-scitools bam-tssenrich -X mm10.bbrd.q10.bam mm10 &
-
-#Complexity plotting (split bam into single cells then project out)
-#for hg38, splitting bam into multiples of 1000 unique barcodes for faster processing and limiting IO
-split --additional-suffix=.cellID.list hg38.cellID.list hg38. #default is to split to 1000 lines (so 1000 cells)
-for i in hg38.??.cellID.list; do awk 'OFS="\t"{split(FILENAME,a,"[.]");print $1,a[2]}' $i ; done > hg38.cellID.split.annot # awk to concatenate split into a scitools annot file
-scitools bam-split -A hg38.cellID.split.annot hg38.bam & #split bam file
-for i in hg38.??.bam; do scitools bam-addrg $i & done & # add RG
-for i in hg38.??.RG.bam; do samtools split -@8 -f './hg38_split/%*_%!.%.' $i ; done & #perform samtools split on RG (cellIDs)
-cd hg38_split
-for i in hg38*bam; do scitools bam-project -r 1000 -X -e  $i; done & #perform complexity projection on 1000 read intervals
-
-#repeat with mm10, but skip the bulk bam splitting (since cell count is lower)
-scitools bam-addrg mm10.bam &
-mkdir mm10_split
-samtools split -@20 -f './mm10_split/%*_%!.%.' mm10.RG.bam &
-cd mm10_split
-for i in mm10*bam; do scitools bam-project -r 1000 -X -e  $i; done &
-
-#Grab single cell read projections
-for i in ./mm10_split/*.read_projections; 
-do cellid=${i:21:-17};
-awk -v cellid=$cellid 'OFS="\t" {print $1,$2,$3,cellid}' $i/cell_summaries.txt;
-done > ./mm10_projected_reads.txt
-
-for i in ./hg38_split/*.read_projections; 
-do cellid=${i:24:-17};
-awk -v cellid=$cellid 'OFS="\t" {print $1,$2,$3,cellid}' $i/cell_summaries.txt;
-done > ./hg38_projected_reads.txt #change in cellid string slicing to account for added "split bam identifier"
-
-#isize distribution
-scitools isize hg38.bbrd.q10.bam &
-scitools isize mm10.bbrd.q10.bam &
-```
-
-### Plotting projected read counts for human and mouse cells
-
-
-```python
-library(ggplot2)
-library(dplyr)
-
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
-
-hg38_dat<-read.table("hg38_projected_reads.txt",sep="\t")
-colnames(hg38_dat)<-c("perc_uniq","read_count","uniqread_count","cellID")
-hg38_dat$species<-"human"
-mm10_dat<-read.table("mm10_projected_reads.txt",sep="\t")
-colnames(mm10_dat)<-c("perc_uniq","read_count","uniqread_count","cellID")
-mm10_dat$species<-"mouse"
-
-dat<-rbind(hg38_dat,mm10_dat)
-dat<- as.data.frame(dat %>% 
-                    group_by(species,perc_uniq) %>% 
-                    summarize(mean=mean(log10(uniqread_count)),
-                              sd=sd(log10(uniqread_count)),
-                              median=median(log10(uniqread_count))))
-
-ggplot(dat,aes(x=as.numeric(perc_uniq),fill = species,color=species))+
-geom_ribbon(aes(ymin = mean - sd, ymax = mean + sd),alpha=0.1) +
-geom_line(aes(y=mean,linetype="solid"))+
-geom_line(aes(y=median,linetype="dashed")) +
-theme_bw() + scale_x_reverse()
-
-
-ggsave(file="projected_readcount.png")
-ggsave(file="projected_readcount.pdf")
-```
-
-
-      File "<ipython-input-1-798084185fba>", line 8
-        hg38_dat$species<-"human"
-                ^
-    SyntaxError: invalid syntax
-
-
-
-### Plotting TSS Enrichment
-
-
-```python
-#Plotting hg38 tss enrichment
-library(ggplot2)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
-hg38_rangeR <- read.table("hg38.bbrd.q10.bulkTSSdist_1000.txt")
-colnames(hg38_rangeR)<-c("distance","count")
-hg38_rangeR$species<-"hg38"
-mm10_rangeR <- read.table("mm10.bbrd.q10.bulkTSSdist_1000.txt")
-colnames(mm10_rangeR)<-c("distance","count")
-mm10_rangeR$species<-"mm10"
-dat<-rbind(hg38_rangeR,mm10_rangeR)
-ggplot(dat,aes(x=distance,y=count))+geom_area()+theme_bw()+facet_grid(species ~. )
-ggsave("s3atac_bulk_TSS.pdf")
-```
-
-
-      File "<ipython-input-2-179ae6ede5e8>", line 2
-        bins <- seq(from=min(as.numeric(rangeR$V1)),to=max(as.numeric(rangeR$V1)),by=as.numeric(5))
-                       ^
-    SyntaxError: invalid syntax
-
-
 
 ## Tabix fragment file generation
 
@@ -486,27 +237,25 @@ ggsave("s3atac_bulk_TSS.pdf")
 - 5 duplicateCount  The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeqT instrument are excluded from this count.
 
 
-
-```python
+```bash
 #human processing
-input_bam="hg38.bbrd.q10.bam"
+input_bam="hg38.merged.bbrd.q10.bam"
 output_name=${input_bam::-13}
 tabix="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/tabix"
 bgzip="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/bgzip"
 samtools view --threads 10 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=30 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz; wait ;
 $tabix -p bed $output_name.fragments.tsv.gz &
 #mouse
-input_bam="mm10.bbrd.q10.bam"
+input_bam="mm10.merged.bbrd.q10.bam"
 output_name=${input_bam::-13}
 samtools view --threads 10 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=10 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz
 $tabix -p bed $output_name.fragments.tsv.gz &
 ```
 
-## Comparison of s3ATAC adult mouse brain reads with available data sets
+## Comparison of sciDROP adult mouse brain reads with available data sets
+ TO BE DONE
 
-
-
-```python
+```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/barnyard_analysis")
 
 dat_10x<-read.csv("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/10x_atac_v1_adult_brain_fresh_5k_singlecell.csv")
@@ -592,22 +341,13 @@ for (j in unique(dat$assay)){
 #[1] "s3ATAC_Plate_C,s3ATAC_Plate_C,0.5,264133.506711409,264133.506711409,greater,Welch Two Sample t-test"
 ```
 
-
-      File "<ipython-input-1-a8f9f9e73d58>", line 6
-        dat_10x<-dat_10x[dat_10x$barcode %in% barcused_10x$V1,]
-                                ^
-    SyntaxError: invalid syntax
-
-
-
-# s3 ATAC Full Processing
+# sciDROP Full Processing
 
 ### Generating Seurat Objects
 
 Using R v4.0.0 and Signac v1.0
 
-
-```python
+```R
 library(Signac)
 library(Seurat)
 library(GenomeInfoDb)
