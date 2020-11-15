@@ -21,19 +21,17 @@
 title: Single Cell Omics
 email: mulqueen@ohsu.edu
 description: >- # this means to ignore newlines until "baseurl:"
-  I take the reproducibility crisis that is ongoing in science seriously. 
-  To address this, I try to make all my protocols and code as widely available as possible. 
-  It sometimes ain't pretty, but it is always visible.
+  Advancing single cell technologies for the study of neurogenesis and carcinogenesis.
 baseurl: "" # the subpath of your site, e.g. /blog
 url: "" # the base hostname & protocol for your site, e.g. http://example.com
 github_username:  mulqueenr
 
 # Build settings
-theme: minima
+theme: jekyll-theme-lanyon
 plugins:
   - jekyll-feed
   - jekyll-sitemap
-  - jekyll-toc
+  - jekyll-paginate
 # Exclude from processing.
 # The following items will not be processed, by default.
 # Any item listed under the `exclude:` key here will be automatically added to

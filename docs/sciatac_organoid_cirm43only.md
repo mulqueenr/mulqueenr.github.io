@@ -1,17 +1,17 @@
 ---
 title: Organoids
 layout: page
+author: Ryan Mulqueen
 permalink: /organoid/
 category: sciATAC
-toc: true
 ---
 
 # Processing for sciATAC portion for organoid analysis.
 I ran multiple sequecing runs for the sciATAC. For now I am just processing the most recent, but I will loop back to the original Pitstop2 experiments.
 
+## BCL File Locations
 
 ```bash
-Bcl file locations:
 #First Prep
 /home/groups/oroaklab/seq/hiseq/180630_AML_Pitstop
 
@@ -25,6 +25,8 @@ Bcl file locations:
 /home/groups/oroaklab/seq/madbum/191119_NS500556_0363_AHTVL7AFXY
 ```
 
+### Initial Processing of Files
+Includes barcode assignment, fastq splitting, alignment, removal of duplicate reads, calling peaks and looking at TSS enrichment.
 
 ```bash
 #200722 Organoid Processing
@@ -236,7 +238,7 @@ write.table(organoid_annot,file=paste0(first_prep_annot_path,"/","first_prep_org
 
 ```
 
-## Tabix fragment file generation
+### Tabix fragment file generation
 
 
 - Column Number  Name    Description
@@ -260,9 +262,9 @@ $tabix -p bed $output_name.fragments.tsv.gz &
 
 ```
 
-# sciATAC Full Processing
+# sciATAC Full Processing in R
 
-### Generating Seurat Objects
+## Generating Seurat Objects
 
 Using R v4.0 and Signac v1.0 for processing.
 
@@ -318,9 +320,7 @@ orgo_atac <- CreateSeuratObject(
 saveRDS(orgo_atac,file="orgo_SeuratObject.Rds")
 ```
 
-## Plotting and updating metadata
-
-
+### Plotting and updating metadata
 
 ```R
 #renaming annot for simplified annotation file making
@@ -391,8 +391,6 @@ saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ```
 
 ## Performing cisTopic and UMAP
-
-
 
 ```R
 library(Signac)
@@ -540,8 +538,7 @@ system(paste0("slack -F ",i," ryan_todo"))#post to ryan_todo
 saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ```
 
-# Statistics on cell reads
-
+### Statistics on cell reads
 
 ```R
 library(Signac)
@@ -755,7 +752,7 @@ mclapply(unique(cirm43_da_peaks$enriched_group), FUN=great_processing, peak_data
 
 ```
 
-## ChromVar
+### ChromVar for Transcription Factor Motifs
 
 
 ```R
@@ -804,7 +801,7 @@ orgo_cirm43 <- RegionStats(object = orgo_cirm43, genome = BSgenome.Hsapiens.UCSC
 orgo_cirm43 <- RunChromVAR( object = orgo_cirm43,genome = BSgenome.Hsapiens.UCSC.hg38)
 saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ```
-## Differential Motif Accessibility
+### Differential Motif Accessibility
 
 ```R
 ###Differential TF Accessibility by cluster###
@@ -923,7 +920,7 @@ dat$da_tf <- unlist(lapply(unlist(lapply(dat$da_region, function(x) getMatrixByI
 write.table(dat,file="cirm43.onevone.da_tf.txt",sep="\t",col.names=T,row.names=T,quote=F)
 ```
 
-# Cicero
+## Cicero for Coaccessible Networks
 
 
 ```R
@@ -1316,8 +1313,9 @@ saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
 
 ```
 
-## Plotting ChromVAR motifs through pseudotime
-### The following code is exploratory but in the end wasn't included in analysis for the manuscript.
+### Plotting ChromVAR motifs through pseudotime
+
+ The following code is exploratory but in the end wasn't included in analysis for the manuscript.
 I mainly just wanted to play around with network analysis a bit.
 
 ```R
@@ -1393,7 +1391,7 @@ system("slack -F tf_motif.igraph.pdf ryan_todo")
 
 ```
 
-# Analysis of ChromVAR TF motifs and Gene Activity Through Pseudotime
+## Analysis of ChromVAR TF motifs and Gene Activity Through Pseudotime
 
 Decided to use a binning strategy to assess pseudotime signal.
 
