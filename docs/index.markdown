@@ -5,3 +5,8 @@
 layout: home
 title:"Single cell omics technologies"
 ---
+<ul>
+{% for page in site.pages %}
+	<li><a href="{{ page.url }}">{{page.title}}</a></li>
+{% endfor %}
+</ul>
