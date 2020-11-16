@@ -12,73 +12,73 @@ I ran multiple sequecing runs for the sciATAC. For now I am just processing the 
 ## BCL File Locations
 
 ```bash
-#First Prep
-/home/groups/oroaklab/seq/hiseq/180630_AML_Pitstop
+  #First Prep
+  /home/groups/oroaklab/seq/hiseq/180630_AML_Pitstop
 
-#Second prep
-/home/groups/oroaklab/seq/madbum/200721_NS500556_0411_AHCM3CAFX2
-/home/groups/oroaklab/seq/madbum/200804_NS500556_0413_AHCMMJBGXF
+  #Second prep
+  /home/groups/oroaklab/seq/madbum/200721_NS500556_0411_AHCM3CAFX2
+  /home/groups/oroaklab/seq/madbum/200804_NS500556_0413_AHCMMJBGXF
 
-#RNA prep
-/home/groups/oroaklab/seq/madbum/191113_NS500556_0361_AHTVFLAFXY
-/home/groups/oroaklab/seq/madbum/191118_NS500556_0362_AHVYV7AFXY
-/home/groups/oroaklab/seq/madbum/191119_NS500556_0363_AHTVL7AFXY
+  #RNA prep
+  /home/groups/oroaklab/seq/madbum/191113_NS500556_0361_AHTVFLAFXY
+  /home/groups/oroaklab/seq/madbum/191118_NS500556_0362_AHVYV7AFXY
+  /home/groups/oroaklab/seq/madbum/191119_NS500556_0363_AHTVL7AFXY
 ```
 
 ### Initial Processing of Files
 Includes barcode assignment, fastq splitting, alignment, removal of duplicate reads, calling peaks and looking at TSS enrichment.
 
 ```bash
-#200722 Organoid Processing
-NextSeq2fastq -R 200721_NS500556_0411_AHCM3CAFX2
-NextSeq2fastq -R 200804_NS500556_0413_AHCMMJBGXF
+  #200722 Organoid Processing
+  NextSeq2fastq -R 200721_NS500556_0411_AHCM3CAFX2
+  NextSeq2fastq -R 200804_NS500556_0413_AHCMMJBGXF
 
-outdir="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis"
+  outdir="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis"
 
-mkdir $outdir
+  mkdir $outdir
 
-scitools fastq-dump -R 200721_NS500556_0411_AHCM3CAFX2 -O $outdir
-scitools fastq-dump -R 200804_NS500556_0413_AHCMMJBGXF -O $outdir
+  scitools fastq-dump -R 200721_NS500556_0411_AHCM3CAFX2 -O $outdir
+  scitools fastq-dump -R 200804_NS500556_0413_AHCMMJBGXF -O $outdir
 
-#quick annotation generation for initial fastq splitting from other libraries sequenced on the same run
-scitools make-annot orgo+NEX,CB=ALL+NEX,BC=ALL+NEX,CA=ALL+NEX,BB=ALL+NEX,AA=ALL+NEX,BA=ALL\
-+PCR,CB=ALL+PCR,CA=ALL+PCR,CC=ALL+PCR,CD=ALL,+PCR,CE=ALL,+PCR,CF=ALL,+PCR,AD=ALL,+PCR,AE=ALL,+PCR,AF=ALL,+PCR,AG=ALL > base_orgo.annot                 
+  #quick annotation generation for initial fastq splitting from other libraries sequenced on the same run
+  scitools make-annot orgo+NEX,CB=ALL+NEX,BC=ALL+NEX,CA=ALL+NEX,BB=ALL+NEX,AA=ALL+NEX,BA=ALL\
+  +PCR,CB=ALL+PCR,CA=ALL+PCR,CC=ALL+PCR,CD=ALL,+PCR,CE=ALL,+PCR,CF=ALL,+PCR,AD=ALL,+PCR,AE=ALL,+PCR,AF=ALL,+PCR,AG=ALL > base_orgo.annot                 
 
-scitools split-fastq -X -A base_orgo.annot 200721_NS500556_0411_AHCM3CAFX2.1.fq.gz 200721_NS500556_0411_AHCM3CAFX2.2.fq.gz
-scitools split-fastq -X -A base_orgo.annot 200804_NS500556_0413_AHCMMJBGXF.1.fq.gz 200804_NS500556_0413_AHCMMJBGXF.2.fq.gz
+  scitools split-fastq -X -A base_orgo.annot 200721_NS500556_0411_AHCM3CAFX2.1.fq.gz 200721_NS500556_0411_AHCM3CAFX2.2.fq.gz
+  scitools split-fastq -X -A base_orgo.annot 200804_NS500556_0413_AHCMMJBGXF.1.fq.gz 200804_NS500556_0413_AHCMMJBGXF.2.fq.gz
 
-#move all relevant files to /home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis
-    
-#Align with a wrapper for bwa mem ###RUNNING
-scitools fastq-align -t 10 -r 10 hg38 orgo_prep2_1 200721_NS500556_0411_AHCM3CAFX2.1.fq.gz 200721_NS500556_0411_AHCM3CAFX2.2.fq.gz &
-scitools fastq-align -t 10 -r 10 hg38 orgo_prep2_2 200804_NS500556_0413_AHCMMJBGXF.orgo.1.fq.gz 200804_NS500556_0413_AHCMMJBGXF.orgo.2.fq.gz 
-scitools fastq-align -t 20 -r 20 hg38 orgo_prep1_1 180630.RM.1.fq.gz 180630.RM.1.fq.gz & 
+  #move all relevant files to /home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis
+      
+  #Align with a wrapper for bwa mem ###RUNNING
+  scitools fastq-align -t 10 -r 10 hg38 orgo_prep2_1 200721_NS500556_0411_AHCM3CAFX2.1.fq.gz 200721_NS500556_0411_AHCM3CAFX2.2.fq.gz &
+  scitools fastq-align -t 10 -r 10 hg38 orgo_prep2_2 200804_NS500556_0413_AHCMMJBGXF.orgo.1.fq.gz 200804_NS500556_0413_AHCMMJBGXF.orgo.2.fq.gz 
+  scitools fastq-align -t 20 -r 20 hg38 orgo_prep1_1 180630.RM.1.fq.gz 180630.RM.1.fq.gz & 
 
-#Barcode based remove duplicates, barcodes are contained in the read name
-scitools bam-rmdup -t 10 orgo_prep2_1.bam &
-scitools bam-rmdup -t 10 orgo_prep2_2.bam &
-scitools bam-rmdup -t 10 orgo_prep1_1.bam &
+  #Barcode based remove duplicates, barcodes are contained in the read name
+  scitools bam-rmdup -t 10 orgo_prep2_1.bam &
+  scitools bam-rmdup -t 10 orgo_prep2_2.bam &
+  scitools bam-rmdup -t 10 orgo_prep1_1.bam &
 
-#Filter based on barcodes with >1000 unique reads
-for i in orgo_prep1_1.bbrd.q10.bam orgo_prep2_1.bbrd.q10.bam orgo_prep2_2.bbrd.q10.bam; do scitools bam-filter -N 1000 $i ; done &
+  #Filter based on barcodes with >1000 unique reads
+  for i in orgo_prep1_1.bbrd.q10.bam orgo_prep2_1.bbrd.q10.bam orgo_prep2_2.bbrd.q10.bam; do scitools bam-filter -N 1000 $i ; done &
 
-#merge bam files
-scitools bam-merge orgo.bam orgo_prep1_1.bbrd.q10.filt.bam orgo_prep2_1.bbrd.q10.filt.bam orgo_prep2_2.bbrd.q10.filt.bam
+  #merge bam files
+  scitools bam-merge orgo.bam orgo_prep1_1.bbrd.q10.filt.bam orgo_prep2_1.bbrd.q10.filt.bam orgo_prep2_2.bbrd.q10.filt.bam
 
-#Look at tss enrichment to ensure libraries are of good quality
-module load bedops/2.4.36
-scitools bam-tssenrich -X -E orgo.ID.bam hg38 & #bulk ENCODE method
-scitools bam-tssenrich -X orgo.ID.bam hg38 & #single cell method
+  #Look at tss enrichment to ensure libraries are of good quality
+  module load bedops/2.4.36
+  scitools bam-tssenrich -X -E orgo.ID.bam hg38 & #bulk ENCODE method
+  scitools bam-tssenrich -X orgo.ID.bam hg38 & #single cell method
 
-#Did a fresh install of macs2 for py3 environment
-#pip install macs2 #for python3 macs2
-scitools callpeaks orgo.bam &
+  #Did a fresh install of macs2 for py3 environment
+  #pip install macs2 #for python3 macs2
+  scitools callpeaks orgo.bam &
 
-#Modifying bam file to include prep number in cellID field (to maintain single cell identity through index collisions)
-((samtools view -H orgo.bam)&(samtools view orgo.bam |awk 'OFS="\t" {split($1,a,":");split(a[3],b,"="); $1=a[1]"_"b[2]":"a[2]":"a[3]; print $0}')) | samtools view -bS - > orgo.ID.bam &
+  #Modifying bam file to include prep number in cellID field (to maintain single cell identity through index collisions)
+  ((samtools view -H orgo.bam)&(samtools view orgo.bam |awk 'OFS="\t" {split($1,a,":");split(a[3],b,"="); $1=a[1]"_"b[2]":"a[2]":"a[3]; print $0}')) | samtools view -bS - > orgo.ID.bam &
 
-#Generating sparse matrix format counts matrix
-scitools atac-counts orgo.ID.bam orgo.500.bed &
+  #Generating sparse matrix format counts matrix
+  scitools atac-counts orgo.ID.bam orgo.500.bed &
 
 
 ```
