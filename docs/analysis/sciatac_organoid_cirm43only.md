@@ -9,8 +9,6 @@ category: sciATAC
 # Processing for sciATAC portion for organoid analysis.
 I ran multiple sequecing runs for the sciATAC. For now I am just processing the most recent, but I will loop back to the original Pitstop2 experiments.
 
-  {% include cirm43_umap.html %}
-
 ## BCL File Locations
 
 ```bash
