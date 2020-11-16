@@ -9,6 +9,8 @@ category: sciATAC
 # Processing for sciATAC portion for organoid analysis.
 I ran multiple sequecing runs for the sciATAC. For now I am just processing the most recent, but I will loop back to the original Pitstop2 experiments.
 
+  {% include cirm43_umap.html %}
+
 ## BCL File Locations
 
 ```bash
@@ -1310,6 +1312,131 @@ pseudotime<-cirm43_pseudotime$pseudotime
 names(pseudotime)<-cirm43_pseudotime$cellID
 orgo_cirm43 <- AddMetaData(object = orgo_cirm43, metadata = pseudotime,col.name="pseudotime")
 saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
+
+```
+
+### 3D Plotting for better trajectory visualization
+
+```R
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+library(Seurat)
+library(Signac)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(Matrix)
+library(cicero)
+library(SeuratWrappers)
+library(ComplexHeatmap)
+library(JASPAR2020)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+library(plotly)
+
+orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+#cirm43_subset<-subset(orgo_cirm43,cells=which(orgo_cirm43$celltype %in% c("radial_glia","intermediate_progenitor","excitatory_neuron")))
+
+
+#reading model selected RDS
+library(cisTopic)
+
+cirm43_cistopic_models<-readRDS(file="orgo_cirm43.CisTopicObject.Rds")
+#set topics based on derivative
+cirm43_selected_topic=27
+cirm43_cisTopicObject<-cisTopic::selectModel(cirm43_cistopic_models,select=cirm43_selected_topic,keepModels=T)
+
+####Function to include topics and umap in seurat object
+cistopic_wrapper<-function(object_input=orgo_atac,cisTopicObject=orgo_cisTopicObject,resolution=0.8){   
+
+
+    #run UMAP on topics
+    topic_df<-as.data.frame(cisTopicObject@selected.model$document_expects)
+    row.names(topic_df)<-paste0("Topic_",row.names(topic_df))
+    dims<-as.data.frame(uwot::umap(t(topic_df),n_components=3))
+    row.names(dims)<-colnames(topic_df)
+    colnames(dims)<-c("x","y","z")
+    dims$cellID<-row.names(dims)
+    dims<-merge(dims,object_input@meta.data,by.x="cellID",by.y="row.names")
+
+
+    #Add cell embeddings into seurat
+    cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
+    colnames(cell_embeddings)<-cisTopicObject@cell.names
+    n_topics<-nrow(cell_embeddings)
+    row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
+    cell_embeddings<-as.data.frame(t(cell_embeddings))
+
+    #Add feature loadings into seurat
+    feature_loadings<-as.data.frame(cisTopicObject@selected.model$topics)
+    row.names(feature_loadings)<-paste0("topic_",1:n_topics)
+    feature_loadings<-as.data.frame(t(feature_loadings))
+
+    #combined cistopic results (cistopic loadings and umap with seurat object)
+    cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
+    umap_dims<-as.data.frame(as.matrix(dims[2:4]))
+    colnames(umap_dims)<-c("UMAP_1","UMAP_2","UMAP_3")
+    row.names(umap_dims)<-dims$cellID
+    cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(umap_dims),assay="peaks",key="UMAP_")
+    object_input@reductions$cistopic<-cistopic_obj
+    object_input@reductions$umap<-cistopic_umap
+
+    n_topics<-ncol(Embeddings(object_input,reduction="cistopic"))
+
+    object_input <- FindNeighbors(
+      object = object_input,
+      reduction = 'cistopic',
+      dims = 1:n_topics
+    )
+    object_input <- FindClusters(
+      object = object_input,
+      verbose = TRUE,
+      resolution=resolution
+    )
+
+return(object_input)}
+
+orgo_cirm43<-cistopic_wrapper(object_input=orgo_cirm43,cisTopicObject=cirm43_cisTopicObject,resolution=0.5)
+
+
+monocle_processing<-function(prefix, seurat_input){
+    atac.cds <- as.cell_data_set(seurat_input)
+    atac.cds <- cluster_cells(cds = atac.cds, reduction_method = "UMAP") 
+    #Read in cds from cicero processing earlier and continue processing
+    atac.cds<- learn_graph(atac.cds, 
+                           use_partition = F, 
+                           learn_graph_control=list(
+                               minimal_branch_len=10,
+                               orthogonal_proj_tip=F,
+                               prune_graph=T))
+    return(atac.cds)
+}
+
+cirm43_subset.cicero<-monocle_processing(seurat_input=orgo_cirm43,prefix="cirm43")
+
+#Then determine root nodes via plots and assign by order cells function.
+cirm43.cds <- order_cells(cirm43_subset.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_253")) #Chose youngest cells as root
+
+
+#Generating a 3D Plot via Plotly of the umap projection.
+#Loading in additional libraries.
+  library(plotly)
+  library(htmlwidgets)
+  library(RColorBrewer)
+
+#cirm43_subset.cicero@principal_graph$UMAP
+
+dat<-merge(orgo_cirm43@reductions$umap@cell.embeddings,orgo_cirm43@meta.data,by="row.names") 
+dat$DIV<-as.character(dat$DIV) 
+  #Generate 3D Plot and standalone HTML widget
+  p<-plot_ly(type="scatter3d")
+  p<- p %>% add_trace(p,mode="markers",data=dat,x = ~UMAP_1, y = ~UMAP_2, z = ~UMAP_3,color=~celltype,size=5,opacity=0.7)
+  p<- p %>% add_trace(p,mode="markers",data=dat,x = ~UMAP_1, y = ~UMAP_2, z = ~UMAP_3,color=~DIV,size=5,opacity=0.7)
+  htmlwidgets::saveWidget(as_widget(p), "cirm43_umap.html",selfcontained=TRUE)
+
+system("slack -F cirm43_umap.html ryan_todo")
+
 
 ```
 
