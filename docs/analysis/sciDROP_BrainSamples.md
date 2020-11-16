@@ -254,7 +254,7 @@ $tabix -p bed $output_name.fragments.tsv.gz &
 #mouse
 input_bam="mm10.merged.bbrd.q10.bam"
 output_name=${input_bam::-13}
-samtools view --threads 10 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=10 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz
+samtools view --threads 20 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=20 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz
 $tabix -p bed $output_name.fragments.tsv.gz &
 ```
 
