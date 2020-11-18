@@ -2,7 +2,7 @@
 layout: default
 title: Single cell omics technologies
 ---
-![omics overview](/assets/images/omics_overviews.png)
+![omics overview](/assets/images/omics_overviews.png){: .center-image width="60%"}
 
 ## Welcome!
 

@@ -1,6 +1,6 @@
 ---
 title: sciDROP
-layout: page
+layout: analysis
 permalink: /scidrop/
 category: s3
 ---
@@ -8,7 +8,7 @@ category: s3
 
 ## Processing for sciDROP
 
-![sciDROP Overview](/assets/images/sciDROP.png)
+![sciDROP Overview](/assets/images/sciDROP.png){:width="80%"}
 
 
 This notebook details the processing of the "20K" and "70K" loaded mouse brain and human cortex samples. It begins with scitools wrapper functions for intial alignment to a concatenated mouse and human genome, following with splitting of reads and realignment to separate human and mouse genomes. It then follows the established scitools formation of a counts matrix and Signac processing.
@@ -304,22 +304,24 @@ scitools split-fastq -A $sciDROP_20k_dir/species.annot $sciDROP_20k_dir/sciDROP_
 scitools split-fastq -A $sciDROP_70k_dir/species.annot $sciDROP_70k_dir/sciDROP_70k.1.fq.gz $sciDROP_70k_dir/sciDROP_70k.2.fq.gz &
 
 #Realign fastq files to proper genome
-scitools fastq-align -t 10 -r 10 hg38 hg38 $sciDROP_20k_dir/species.Human.1.fq.gz $sciDROP_20k_dir/species.Human.2.fq.gz &
-scitools fastq-align -t 10 -r 10 mm10 mm10 $sciDROP_20k_dir/species.Mouse.1.fq.gz $sciDROP_20k_dir/species.Mouse.2.fq.gz &
+scitools fastq-align -t 10 -r 10 -n hg38 hg38 $sciDROP_20k_dir/species.Human.1.fq.gz $sciDROP_20k_dir/species.Human.2.fq.gz &
+scitools fastq-align -t 10 -r 10 -n mm10 mm10 $sciDROP_20k_dir/species.Mouse.1.fq.gz $sciDROP_20k_dir/species.Mouse.2.fq.gz &
 
-scitools fastq-align -t 20 -r 20 hg38 hg38 $sciDROP_70k_dir/species.Human.1.fq.gz $sciDROP_70k_dir/species.Human.2.fq.gz &
-scitools fastq-align -t 20 -r 20 mm10 mm10 $sciDROP_70k_dir/species.Mouse.1.fq.gz $sciDROP_70k_dir/species.Mouse.2.fq.gz &
+scitools fastq-align -t 20 -r 20 -n hg38 hg38 $sciDROP_70k_dir/species.Human.1.fq.gz $sciDROP_70k_dir/species.Human.2.fq.gz &
+scitools fastq-align -t 20 -r 20 -n mm10 mm10 $sciDROP_70k_dir/species.Mouse.1.fq.gz $sciDROP_70k_dir/species.Mouse.2.fq.gz &
+
+#Remove duplicates
+scitools bam-rmdup -n $sciDROP_20k_dir/mm10.bam &
+scitools bam-rmdup -n $sciDROP_20k_dir/hg38.bam &
+scitools bam-rmdup -n $sciDROP_70k_dir/mm10.bam &
+scitools bam-rmdup -n $sciDROP_70k_dir/hg38.bam &
 ```
 {% endcapture %} {% include details.html %} 
 
 # Haven't run following code. Commented it out for now.
 
 <!---
-#Remove duplicates
-scitools bam-rmdup $sciDROP_20k_dir/mm10.bam &
-scitools bam-rmdup $sciDROP_20k_dir/hg38.bam &
-scitools bam-rmdup $sciDROP_70k_dir/mm10.bam &
-scitools bam-rmdup $sciDROP_70k_dir/hg38.bam &
+
 
 #move merged bam files up a directory
 out_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard"

@@ -1,6 +1,6 @@
 ---
-title: Tbr1 Mutations
-layout: page
+title: Tbr1 Mouse Knockout
+layout: analysis
 author: Ryan Mulqueen
 permalink: /tbr1/
 category: sciATAC

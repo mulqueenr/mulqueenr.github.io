@@ -1,6 +1,6 @@
 ---
 title: Organoids
-layout: page
+layout: analysis
 author: Ryan Mulqueen
 permalink: /organoid/
 category: sciATAC
@@ -1473,6 +1473,8 @@ I mainly just wanted to play around with network analysis a bit.
 ## Analysis of ChromVAR TF motifs and Gene Activity Through Pseudotime
 
 Decided to use a binning strategy to assess pseudotime signal.
+This is to be rerun. When first attempted it looked like a lot of radial glia were at the end of the pseudotime, which is weird. 
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
@@ -1559,9 +1561,10 @@ Decided to use a binning strategy to assess pseudotime signal.
 
   #CCANs over pseudotime
     #First generating list of peaks in CCANs
-    ccan<-Links(orgo_cirm43)
-    ccan<-ccan[!is.na(ccan$group),]
-    ccan<-split(ccan,f=ccan$group)
+      ccan<-Links(orgo_cirm43)
+      ccan<-ccan[!is.na(ccan$group),]
+      ccan<-split(ccan,f=ccan$group)
+
     #Plotting amount of peak membership per CCAN
       ccan_membership<-unlist(lapply(ccan,length))
       plt<-ggplot()+geom_density(aes(x=ccan_membership))+theme_bw()+xlim(c(0,500))
@@ -1609,7 +1612,7 @@ Decided to use a binning strategy to assess pseudotime signal.
     #using mean here as the summary statistic
     ccan_summarize_per_bin<-function(x){
       bin_tmp<-timebin[[x]]
-      return(apply(ccan_sum[colnames(ccan_sum) %in% bin_tmp],1,mean))
+      return(apply(ccan_sum[,bin_tmp],1,mean))
     }
 
     ccan_mean<-mclapply(1:length(timebin),ccan_summarize_per_bin,mc.cores=10)
@@ -1624,7 +1627,7 @@ Decided to use a binning strategy to assess pseudotime signal.
       bin_tmp<-timebin[[x]]
       chromvar<-orgo_cirm43@assays$chromvar@data
       return(
-        apply(chromvar[,colnames(chromvar) %in% bin_tmp],1,mean))
+        apply(chromvar[,bin_tmp],1,mean))
     }
 
     motif_mean<-mclapply(1:length(timebin),chromvar_motifs_per_bin,mc.cores=10)
@@ -1739,7 +1742,8 @@ Decided to use a binning strategy to assess pseudotime signal.
 
     timebin<-readRDS("cirm43_pseudotime_bins.rds")
     timebin_df<-as.data.frame(do.call("rbind",lapply(1:length(timebin),function(x) cbind(as.character(x),unlist(timebin[x])))))
-    colnames(timebin_df)<-c("pseudotime_bin","cellID")
+    colnames(timebin_df)<-c("pseudotime_bin","cellID_idx")
+    timebin_df$cellID<-colnames(orgo_cirm43)[as..numeric(timebin_df$cellID_idx)]
     timebin_df<-merge(orgo_cirm43@meta.data,timebin_df,by="cellID")
     
     library(dplyr)
@@ -1815,7 +1819,7 @@ Decided to use a binning strategy to assess pseudotime signal.
       clustering_distance_columns="spearman")
 
     plt<-plt1+plt2
-    pdf("cirm43_pseudotime.ccan.heatmap.pdf")
+    pdf("cirm43_pseudotime.ccan.heatmap.pdf",width=30)
     draw(plt1,annotation_legend_list=lgd_list)
     dev.off()
 
@@ -1824,6 +1828,65 @@ Decided to use a binning strategy to assess pseudotime signal.
 ```
 {% endcapture %} {% include details.html %} 
 
+
+### Cell cycle testing
+
+Seurat has a stored set of cell cycle genes that we can use to assess cell cycle signatures.
+
+[Following this.](https://satijalab.org/seurat/v3.2/cell_cycle_vignette.html)
+
+The gene lists are based on # A list of cell cycle markers, from Tirosh et al, 2015.
+
+```R
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  library(Seurat)
+  library(Signac)
+  library(plotly)
+  library(htmlwidgets)
+  library(RColorBrewer)
+
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+  s.genes <- cc.genes$s.genes
+  g2m.genes <- cc.genes$g2m.genes
+
+  s.genes
+# [1] "MCM5"     "PCNA"     "TYMS"     "FEN1"     "MCM2"     "MCM4"
+# [7] "RRM1"     "UNG"      "GINS2"    "MCM6"     "CDCA7"    "DTL"
+#[13] "PRIM1"    "UHRF1"    "MLF1IP"   "HELLS"    "RFC2"     "RPA2"
+#[19] "NASP"     "RAD51AP1" "GMNN"     "WDR76"    "SLBP"     "CCNE2"
+#[25] "UBR7"     "POLD3"    "MSH2"     "ATAD2"    "RAD51"    "RRM2"
+#[31] "CDC45"    "CDC6"     "EXO1"     "TIPIN"    "DSCC1"    "BLM"
+#[37] "CASP8AP2" "USP1"     "CLSPN"    "POLA1"    "CHAF1B"   "BRIP1"
+#[43] "E2F8"
+  g2m.genes
+# [1] "HMGB2"   "CDK1"    "NUSAP1"  "UBE2C"   "BIRC5"   "TPX2"    "TOP2A"
+# [8] "NDC80"   "CKS2"    "NUF2"    "CKS1B"   "MKI67"   "TMPO"    "CENPF"
+#[15] "TACC3"   "FAM64A"  "SMC4"    "CCNB2"   "CKAP2L"  "CKAP2"   "AURKB"
+#[22] "BUB1"    "KIF11"   "ANP32E"  "TUBB4B"  "GTSE1"   "KIF20B"  "HJURP"
+#[29] "CDCA3"   "HN1"     "CDC20"   "TTK"     "CDC25C"  "KIF2C"   "RANGAP1"
+#[36] "NCAPD2"  "DLGAP5"  "CDCA2"   "CDCA8"   "ECT2"    "KIF23"   "HMMR"
+#[43] "AURKA"   "PSRC1"   "ANLN"    "LBR"     "CKAP5"   "CENPE"   "CTCF"
+#[50] "NEK2"    "G2E3"    "GAS2L3"  "CBX5"    "CENPA"
+
+
+  DefaultAssay(orgo_cirm43) <- 'GeneActivity'
+
+  orgo_cirm43 <- CellCycleScoring(orgo_cirm43, s.features = s.genes, g2m.features = g2m.genes, set.ident = F)
+
+
+  dat<-merge(orgo_cirm43@reductions$umap@cell.embeddings,orgo_cirm43@meta.data,by="row.names") 
+    
+  #Generate 2D Plot and standalone HTML widget
+    p<-plot_ly(dat, type="scattergl", mode="markers", size=I(2),
+      x= ~UMAP_1, y= ~UMAP_2,
+      color=~Phase)
+    p <- p %>% add_markers(color=~DIV)
+
+  htmlwidgets::saveWidget(as_widget(toWebGL(p)), "cirm43_umap.html",selfcontained=TRUE)
+
+  system("slack -F cirm43_umap.html ryan_todo")
+
+```
 ## Rest is commented out currently
 
 <!---
