@@ -113,78 +113,173 @@ tree $wd
 
 ```
 
+# Combine 10% Sampling of 20K Experiment with current run data
+```bash
+dir_20k_10perc="/home/groups/oroaklab/adey_lab/projects/sciDROP/201007_BrainBarnyard_Test"
+sciDROP_20K_demux="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_20K"
+
+#Complexity file
+cat $sciDROP_20K_demux/sciDROP_20k.complexity.txt \
+$dir_20k_10perc/scidrop_barnyard.complexity.txt > $sciDROP_20K_demux/sciDROP_20k.complexity.merge.txt
+
+#Barnyard cells file
+cat $sciDROP_20K_demux/sciDROP_20k.bbrd.q10.barnyard_cells.txt \
+$dir_20k_10perc/scidrop_barnyard.bbrd.q10.barnyard_cells.txt > $sciDROP_20K_demux/sciDROP_20k.bbrd.q10.barnyard_cells.merge.txt
+
+#Fastq files
+dir_20k_10perc_demux="/home/groups/oroaklab/demultiplex/201007_NS500556_0428_AHGFMMAFX2"
+cat $sciDROP_20K_demux/sciDROP_20K.1.fq.gz \
+$dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.1.fq.gz > $sciDROP_20K_demux/sciDROP_20K.1.merge.fq.gz &
+
+cat $sciDROP_20K_demux/sciDROP_20K.2.fq.gz \
+$dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_demux/sciDROP_20K.2.merge.fq.gz &
+
+
+```
 # Calculate collision rate from barnyard experiment
 
 NOTE THIS SHOULD BE CHANGED, NOT ALL TN5 INDECES ARE TRUE BARNYARD
 
 ```R
 #Processing of barnyard comparisons
-    #Processing of 70k samples
         library(ggplot2)
+        library(Biostrings)
+        #Read in index file to assign well position to indexes
+        index_file<-read.table("/home/groups/oroaklab/src/scitools/scitools-dev/SCI_stdchem_Indexes.txt")
+
+        idx_pcr<-index_file[index_file$V2==1,]
+        colnames(idx_pcr)<-c("i7_idx_name","i7_idx_cycle","i7_idx_sequence")
+        idx_tn5<-index_file[index_file$V2==3,]
+        colnames(idx_tn5)<-c("tn5_idx_name","tn5_idx_cycle","tn5_idx_sequence")
+        idx_tn5$tn5_column<-c(1:12)
+        idx_tn5$tn5_row<-rep(c("A","B","C","D","E","F","G","H"),c(rep(12,8)))
+
+        #Processing of 70k samples
         setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_70k")
         dat<-read.table("sciDROP_70k.bbrd.q10.barnyard_cells.txt",header=F)
         colnames(dat)<-c("cellID","total_reads_q20","hg38_count","mm10_count","percent_human","species_call")
+
         compl<-read.table("sciDROP_70k.complexity.txt",header=F)
         colnames(compl)<-c("row_carryover","cellID","total_reads_q10","uniq_reads_q10","perc_uniq")
-        compl<-compl[compl$uniq_reads_q10>=10000 & compl$perc_uniq <= 90,]
+        compl<-compl[compl$uniq_reads_q10>=10000 & compl$perc_uniq <= 90,] #filter cells based on minimum read count and library complexity
+        
         dat<-merge(dat,compl,by="cellID")
         dat$pcr_idx<-substr(dat$cellID,1,8)
-        dat$gem_idx<-substr(dat$cellID,9,25)
-        dat$tn5_idx<-substr(dat$cellID,26,32)
+        dat$gem_idx<-substr(dat$cellID,9,24)
+        dat$tn5_idx<-substr(dat$cellID,25,32)
+        
+        dat<-merge(dat,idx_pcr,by.x="pcr_idx",by.y="i7_idx_sequence") #add pcr i7 index, defining 10% or 90% pool
+
+        table(dat$i7_idx_name)
+        #PCR_i7_P7.S707 PCR_i7_P7.S708
+        #  6460          54928
+
+        dat<-merge(dat,idx_tn5,by.x="tn5_idx",by.y="tn5_idx_sequence")
+
+        library(dplyr)
+        summary(as.data.frame(dat %>% group_by(tn5_column,tn5_row) %>% summarize(count=n()))$count) #cell count distribution per tn5 well
+        #   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+        #  104.0   512.0   615.0   646.2   767.0  1171.0
+
         nrow(dat)/length(unique(dat$gem_idx)) #count of cells within unique GEMs
-        #1.169808
+        #[1] 1.665256
+
+        dat$condition<-"Mix"
+        dat[dat$tn5_row %in% c("A","B"),]$condition<-"Human"
+        dat[dat$tn5_row %in% c("C","D"),]$condition<-"Mouse"
 
         ggplot(dat,aes(x=perc_uniq,y=log10(uniq_reads_q10),color=species_call))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,100))
         ggsave("complexity.pdf")
         system("slack -F complexity.pdf ryan_todo")
 
-        ggplot(dat,aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))
-        ggsave("barnyard.pdf")
+        library(patchwork)
+        plt_barnyard<-ggplot(dat[dat$condition=="Mix",],aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))+ggtitle("Barnyard")
+        plt_human<-ggplot(dat[dat$condition=="Human",],aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))+ggtitle("Human")
+        plt_mouse<-ggplot(dat[dat$condition=="Mouse",],aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))+ggtitle("Mouse")
+        plt<-plt_barnyard+plt_human+plt_mouse
+        ggsave(plt,file="barnyard.pdf",width=20)
         system("slack -F barnyard.pdf ryan_todo")
 
-        #annot species
+        #count of barnyard species calls
+        table(dat[dat$condition=="Mix",]$species_call)
+        #Human Mixed Mouse
+        #10040   170 18985
+        (table(dat[dat$condition=="Mix",]$species_call)[["Mixed"]]/nrow(dat))*2 #get estimated collision rate
+        #[1] 0.005538542 so 0.55%
+        write.table(dat,"70k_barnyard.summary.txt",quote=F,sep="\t",col.names=F,row.names=F)
+
+
+         #annot species
+        dat<-dat[(dat$condition=="Mouse" & dat$species_call=="Mouse") | (dat$condition=="Human" & dat$species_call=="Human") | dat$condition=="Mix", ]
+        table(paste(dat$condition,dat$species_call))
+        #Human Human   Mix Human   Mix Mixed   Mix Mouse Mouse Mouse
+        #12525       10040         170       18985       19526
         annot<-dat[c("cellID","species_call")]
         write.table(annot,"species.annot",quote=F,sep="\t",col.names=F,row.names=F)
-        #count of barnyard species calls
-        table(dat$species_call)
-        #Human Mixed Mouse
-        #22565   217 38606
-        (table(dat$species_call)[["Mixed"]]/nrow(dat))*2 #get estimated collision rate
-        #[1] 0.007069786 so 0.7%
-        write.table(dat,"70k_barnyard.summary.txt",quote=F,sep="\t",col.names=F,row.names=F)
 
     #Processing of 20k samples
         setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_20K")
-        dat<-read.table("sciDROP_20k.bbrd.q10.barnyard_cells.txt",header=F)
+        dat<-read.table("sciDROP_20k.bbrd.q10.barnyard_cells.merge.txt",header=F)
         colnames(dat)<-c("cellID","total_reads_q20","hg38_count","mm10_count","percent_human","species_call")
-        compl<-read.table("sciDROP_20k.complexity.txt",header=F)
+
+        compl<-read.table("sciDROP_20k.complexity.merge.txt",header=F)
         colnames(compl)<-c("row_carryover","cellID","total_reads_q10","uniq_reads_q10","perc_uniq")
         compl<-compl[compl$uniq_reads_q10>=10000 & compl$perc_uniq <= 90,]
+
         dat<-merge(dat,compl,by="cellID")
         dat$pcr_idx<-substr(dat$cellID,1,8)
-        dat$gem_idx<-substr(dat$cellID,9,25)
-        dat$tn5_idx<-substr(dat$cellID,26,32)
+        dat$gem_idx<-substr(dat$cellID,9,24)
+        dat$tn5_idx<-substr(dat$cellID,25,32)
+        
+        dat<-merge(dat,idx_pcr,by.x="pcr_idx",by.y="i7_idx_sequence") #add pcr i7 index, defining 10% or 90% pool
+
+        table(dat$i7_idx_name)
+        #PCR_i7_P7.S701 PCR_i7_P7.S702
+        #  1848          17293
+
+        dat<-merge(dat,idx_tn5,by.x="tn5_idx",by.y="tn5_idx_sequence")
+
+        library(dplyr)
+        summary(as.data.frame(dat %>% group_by(tn5_column,tn5_row) %>% summarize(count=n()))$count) #cell count distribution per tn5 well
+        # Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+        #63.0   161.0   195.0   201.5   246.5   331.0
         nrow(dat)/length(unique(dat$gem_idx)) #count of cells within unique GEMs
-        #[1] 1.060205
+        #1.257456
+
+        dat$condition<-"Mix"
+        dat[dat$tn5_row %in% c("A","B"),]$condition<-"Human"
+        dat[dat$tn5_row %in% c("C","D"),]$condition<-"Mouse"
 
         ggplot(dat,aes(x=perc_uniq,y=log10(uniq_reads_q10),color=species_call))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,100))
         ggsave("complexity.pdf")
         system("slack -F complexity.pdf ryan_todo")
 
-        ggplot(dat,aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))
-        ggsave("barnyard.pdf")
+        library(patchwork)
+        plt_barnyard<-ggplot(dat[dat$condition=="Mix",],aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))+ggtitle("Barnyard")
+        plt_human<-ggplot(dat[dat$condition=="Human",],aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))+ggtitle("Human")
+        plt_mouse<-ggplot(dat[dat$condition=="Mouse",],aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))+ggtitle("Mouse")
+        plt<-plt_barnyard+plt_human+plt_mouse
+        ggsave(plt,file="barnyard.pdf",width=30)
         system("slack -F barnyard.pdf ryan_todo")
+        #[1] 0.002660036 so 0.2% collision rate
 
+        write.table(dat,"20k_barnyard.summary.txt",quote=F,sep="\t",col.names=F,row.names=F)
+
+        #count of barnyard species calls
+        table(dat[dat$condition=="Mix",]$species_call)
+        #Human Mixed Mouse
+        #10040   170 18985
+        (table(dat[dat$condition=="Mix",]$species_call)[["Mixed"]]/nrow(dat))*2 #get estimated collision rate
+        #[1] 0.005538542 so 0.55%
+        #Filter to data that matches apriori assumption or single cell
         #annot species
+        dat<-dat[(dat$condition=="Mouse" & dat$species_call=="Mouse") | (dat$condition=="Human" & dat$species_call=="Human") | dat$condition=="Mix", ]
+
+        #Human Human   Mix Human   Mix Mixed   Mix Mouse Mouse Mouse
+        # 3687        3001          24        6572        5841
         annot<-dat[c("cellID","species_call")]
         write.table(annot,"species.annot",quote=F,sep="\t",col.names=F,row.names=F)
-        #count of barnyard species calls
-        table(dat$species_call)
-        #Human Mixed Mouse
-        #6098    23 11172
-        (table(dat$species_call)[["Mixed"]]/nrow(dat))*2 #get estimated collision rate
-        #[1] 0.002660036 so 0.2% collision rate
-        write.table(dat,"20k_barnyard.summary.txt",quote=F,sep="\t",col.names=F,row.names=F)
+
 
 ```
 
@@ -262,7 +357,7 @@ $tabix -p bed $output_name.fragments.tsv.gz &
  TO BE DONE
 
 ```R
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/barnyard_analysis")
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 dat_10x<-read.csv("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/10x_atac_v1_adult_brain_fresh_5k_singlecell.csv")
 dat_10x<-dat_10x[c("barcode","passed_filters")]
@@ -362,15 +457,15 @@ set.seed(1234)
 library(EnsDb.Hsapiens.v86)
 library(EnsDb.Mmusculus.v79)
 library(Matrix)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 #function to read in sparse matrix format from atac-count
 read_in_sparse<-function(x){ #x is character file prefix followed by .bbrd.q10.500.counts.sparseMatrix.values.gz
-IN<-as.matrix(read.table(paste0(x,".bbrd.q10.500.counts.sparseMatrix.values.gz")))
+IN<-as.matrix(read.table(paste0(x,".counts.sparseMatrix.values.gz")))
 IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
-COLS<-read.table(paste0(x,".bbrd.q10.500.counts.sparseMatrix.cols.gz"))
+COLS<-read.table(paste0(x,".counts.sparseMatrix.cols.gz"))
 colnames(IN)<-COLS$V1
-ROWS<-read.table(paste0(x,".bbrd.q10.500.counts.sparseMatrix.rows.gz"))
+ROWS<-read.table(paste0(x,".counts.sparseMatrix.rows.gz"))
 row.names(IN)<-ROWS$V1
 return(IN)
 }
@@ -379,8 +474,8 @@ hg38_counts<-read_in_sparse("hg38") # make hg38 counts matrix from sparse matrix
 mm10_counts<-read_in_sparse("mm10") # make mm10 counts matrix from sparse matrix
 
 #Read in fragment path for coverage plots
-mm10_fragment.path="./mm10.fragments.tsv.gz"
-hg38_fragment.path="./hg38.fragments.tsv.gz"
+mm10_fragment.path="./mm10.merged.fragments.tsv.gz"
+hg38_fragment.path="./hg38.merged.fragments.tsv.gz"
 
 # extract gene annotations from EnsDb
 hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
