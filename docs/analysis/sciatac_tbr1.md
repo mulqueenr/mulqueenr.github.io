@@ -14,12 +14,12 @@ For a test run we got about 10% of the run pool after PCR amplification of two p
 
 Full breakdown of experimental setup is located [here.](https://docs.google.com/spreadsheets/d/1Px1OAE8vIi3GUXPny7OaVvYJHgGESCp4fyZKnLWW0UE/edit#gid=823628902)
 
-{% include text-expand.html %}
 ```bash
   #First Test Run (Two PCR Plates)
   /home/groups/oroaklab/seq/madbum/201116_NS500556_0437_AH72CMAFX2
 
 ```
+
 
 ## Initial Processing of Files
 Includes conversion of bcl to fastq files, barcode assignment, fastq splitting, alignment, removal of duplicate reads, calling peaks and looking at TSS enrichment.
