@@ -10,6 +10,7 @@ category: sciATAC
 I ran multiple sequecing runs for the sciATAC. For now I am just processing the most recent, but I will loop back to the original Pitstop2 experiments.
 
 ## BCL File Locations
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   #First Prep
@@ -24,9 +25,12 @@ I ran multiple sequecing runs for the sciATAC. For now I am just processing the 
   /home/groups/oroaklab/seq/madbum/191118_NS500556_0362_AHVYV7AFXY
   /home/groups/oroaklab/seq/madbum/191119_NS500556_0363_AHTVL7AFXY
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Initial Processing of Files
 Includes barcode assignment, fastq splitting, alignment, removal of duplicate reads, calling peaks and looking at TSS enrichment.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   #200722 Organoid Processing
@@ -80,9 +84,11 @@ Includes barcode assignment, fastq splitting, alignment, removal of duplicate re
   #Generating sparse matrix format counts matrix
   scitools atac-counts orgo.ID.bam orgo.500.bed &
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Generation of thorough annotation file and all meta data per cell 
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #generated organoid annotation file from google sheet https://docs.google.com/spreadsheets/d/1k93smqwxmYVUMLqq9SG8UjgjFeTinERzOflWUMRN8n8/edit#gid=1394545516
@@ -231,22 +237,21 @@ Includes barcode assignment, fastq splitting, alignment, removal of duplicate re
   write.table(treatment_annot,file=paste0(first_prep_annot_path,"/","first_prep_treatment.annot"),sep="\t",col.names=F,row.names=F,quote=F)
   write.table(organoid_annot,file=paste0(first_prep_annot_path,"/","first_prep_organoid.annot"),sep="\t",col.names=F,row.names=F,quote=F)
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Tabix fragment file generation
 
 
-- Column Number  Name    Description
-
+Column Number  Name    Description
 - 1 chrom   Reference genome chromosome of fragment
 - 2 chromStart  Adjusted start position of fragment on chromosome.
 - 3 chromEnd    Adjusted end position of fragment on chromosome. The end position is exclusive, so represents the position immediately following the fragment interval.
 - 4 barcode The 10x cell barcode of this fragment. This corresponds to the CB tag attached to the corresponding BAM file records for this fragment.
-- 5 duplicateCount  The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeqT instrument are excluded from this count.
+- 5 duplicateCount  The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeq instrument are excluded from this count.
 
-
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
-  #Organoid processing
   input_bam="orgo.ID.bam"
   output_name="orgo"
   tabix="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/tabix"
@@ -254,6 +259,7 @@ Includes barcode assignment, fastq splitting, alignment, removal of duplicate re
   samtools view --threads 10 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=30 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz
   $tabix -p bed $output_name.fragments.tsv.gz &
 ```
+{% endcapture %} {% include details.html %} 
 
 # sciATAC Full Processing in R
 
@@ -261,6 +267,7 @@ Includes barcode assignment, fastq splitting, alignment, removal of duplicate re
 
 Using R v4.0 and Signac v1.0 for processing.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -312,8 +319,11 @@ Using R v4.0 and Signac v1.0 for processing.
   #saving unprocessed SeuratObject
   saveRDS(orgo_atac,file="orgo_SeuratObject.Rds")
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Plotting and updating metadata
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #renaming annot for simplified annotation file making
@@ -382,8 +392,11 @@ Using R v4.0 and Signac v1.0 for processing.
 
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ```
+{% endcapture %} {% include details.html %} 
 
 ## Performing cisTopic and UMAP
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -530,8 +543,10 @@ Using R v4.0 and Signac v1.0 for processing.
   ###save Seurat file
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Statistics on cell reads
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -565,15 +580,18 @@ Using R v4.0 and Signac v1.0 for processing.
 
   system("slack -F cirm43_cluster_summary_statistics.tsv ryan_todo")
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Differential Accessibillity on Clusters
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Performing GREAT on DA peaks
-
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #mkdir GREAT_analysis
@@ -633,9 +651,11 @@ Using R v4.0 and Signac v1.0 for processing.
   library(parallel)
   mclapply(unique(cirm43_da_peaks$enriched_group), FUN=great_processing, peak_dataframe=cirm43_da_peaks,prefix="cirm43",mc.cores=10)
 ```
+{% endcapture %} {% include details.html %} 
 
 ### ChromVar for Transcription Factor Motifs
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -683,7 +703,10 @@ Using R v4.0 and Signac v1.0 for processing.
   orgo_cirm43 <- RunChromVAR( object = orgo_cirm43,genome = BSgenome.Hsapiens.UCSC.hg38)
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ```
+{% endcapture %} {% include details.html %} 
+
 ### Differential Motif Accessibility
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   ###Differential TF Accessibility by cluster###
@@ -801,9 +824,10 @@ Using R v4.0 and Signac v1.0 for processing.
   dat$da_tf <- unlist(lapply(unlist(lapply(dat$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
   write.table(dat,file="cirm43.onevone.da_tf.txt",sep="\t",col.names=T,row.names=T,quote=F)
 ```
+{% endcapture %} {% include details.html %} 
 
 ## Cicero for Coaccessible Networks
-
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -901,8 +925,9 @@ Using R v4.0 and Signac v1.0 for processing.
   )
   saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
 ```
-# TO BE ADDED scRNA PREPROCESSING SECTION
+{% endcapture %} {% include details.html %} 
 
+# TO BE ADDED scRNA PREPROCESSING SECTION
 
 ## Celltype Assignment of Clusters
 
@@ -911,6 +936,8 @@ Doing this in three parts.
 1. Using bulk sorted RG, IPC, eN and iN RNA markers compared to our ATAC cluster gene activity scores
 2. Using bulk sorted RG, IPC, eN and iN ATAC motifs compared to our ATAC cluster motifs
 3. Using single-cell Primary Cortex RG, IPC, eN and iN annotated cells to define signatures and perform CCA for label transfer
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #https://satijalab.org/seurat/v3.1/atacseq_integration_vignette.html://satijalab.org/seurat/v3.1/atacseq_integration_vignette.html
@@ -1105,7 +1132,11 @@ Doing this in three parts.
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ```
 
+{% endcapture %} {% include details.html %} 
+
 ## Monocle
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
@@ -1190,8 +1221,10 @@ Doing this in three parts.
   orgo_cirm43 <- AddMetaData(object = orgo_cirm43, metadata = pseudotime,col.name="pseudotime")
   saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
 ```
+{% endcapture %} {% include details.html %} 
 
 ## Plot interactive scatter plot
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #Generating a 3D Plot via Plotly of the umap projection.
@@ -1219,7 +1252,10 @@ Doing this in three parts.
 
   system("slack -F cirm43_umap.html ryan_todo")
 ```
+{% endcapture %} {% include details.html %} 
+
 ### 3D Plotting for better trajectory visualization
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
@@ -1353,11 +1389,14 @@ Doing this in three parts.
 
   system("slack -F cirm43_umap.3d.html ryan_todo")
 ```
+{% endcapture %} {% include details.html %} 
+
 
 ### Plotting ChromVAR motifs through pseudotime
 
  The following code is exploratory but in the end wasn't included in analysis for the manuscript.
 I mainly just wanted to play around with network analysis a bit.
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
@@ -1429,10 +1468,12 @@ I mainly just wanted to play around with network analysis a bit.
   dev.off()
   system("slack -F tf_motif.igraph.pdf ryan_todo")
 ```
+{% endcapture %} {% include details.html %} 
 
 ## Analysis of ChromVAR TF motifs and Gene Activity Through Pseudotime
 
 Decided to use a binning strategy to assess pseudotime signal.
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 
@@ -1459,12 +1500,16 @@ Decided to use a binning strategy to assess pseudotime signal.
 
   #Set up a sliding window #This needs to be fixed
   # 1% bins with 0.33% step
-  ord_cells=orgo_cirm43$cellID[order(orgo_cirm43$pseudotime,decreasing=F)]
+  ord_cells=order(orgo_cirm43$pseudotime,decreasing=F) #ordered row indexes based on pseudotime
   binwidth=as.integer(length(ord_cells)/100)
   stepsize=as.integer(length(ord_cells)/300)
 
-  timebin<-rollapply(ord_cells,width=binwidth,by=stepsize,FUN=names)
-  timebin<-lapply(1:ncol(timebin),FUN=function(x) timebin[,x])
+  sliding_window<-function(i){
+    start_location=(stepsize*i)+1
+    end_location=(stepsize*i)+binwidth
+    return(ord_cells[start_location:end_location])
+  }
+  timebin<-lapply(0:round(length(ord_cells)/stepsize-4),FUN=sliding_window)
  
   summary(unlist(lapply(timebin,FUN=length)))
   saveRDS(timebin,"cirm43_pseudotime_bins.rds")
@@ -1542,7 +1587,7 @@ Decided to use a binning strategy to assess pseudotime signal.
       norm_dat_tmp
     }
 
-    ccan_sum<-mclapply(1:length(ccan),cell_accessibility_per_ccan,mc.cores=20)
+    ccan_sum<-mclapply(1:length(ccan),cell_accessibility_per_ccan,mc.cores=10)
     ccan_sum<-as.data.frame(do.call("rbind",ccan_sum))
     row.names(ccan_sum)<-names(ccan)
     dim(ccan_sum)
@@ -1777,7 +1822,11 @@ Decided to use a binning strategy to assess pseudotime signal.
     system("slack -F cirm43_pseudotime.ccan.heatmap.pdf ryan_todo")
       
 ```
+{% endcapture %} {% include details.html %} 
 
+## Rest is commented out currently
+
+<!---
 # 10x scRNA Seq Analysis
 
 
@@ -2913,3 +2962,5 @@ CombinePlots(list(plot1,plot2), ncol = 2)
 dev.off()
 
 ```
+
+--->

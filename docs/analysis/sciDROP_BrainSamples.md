@@ -13,6 +13,7 @@ category: s3
 
 This notebook details the processing of the "20K" and "70K" loaded mouse brain and human cortex samples. It begins with scitools wrapper functions for intial alignment to a concatenated mouse and human genome, following with splitting of reads and realignment to separate human and mouse genomes. It then follows the established scitools formation of a counts matrix and Signac processing.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #libraries were generated as two separate lanes of a NovaSeq S4 flowcell.
@@ -112,8 +113,12 @@ tree $wd
 2 directories, 76 files
 
 ```
+{% endcapture %} {% include details.html %} 
 
-# Combine 10% Sampling of 20K Experiment with current run data
+## Combine 10% Sampling of 20K Experiment with current run data
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```bash
 dir_20k_10perc="/home/groups/oroaklab/adey_lab/projects/sciDROP/201007_BrainBarnyard_Test"
 sciDROP_20K_demux="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_20K"
@@ -136,9 +141,11 @@ $dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_dem
 
 
 ```
-# Calculate collision rate from barnyard experiment
+{% endcapture %} {% include details.html %} 
 
-NOTE THIS SHOULD BE CHANGED, NOT ALL TN5 INDECES ARE TRUE BARNYARD
+## Calculate collision rate from barnyard experiment
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 #Processing of barnyard comparisons
@@ -282,8 +289,11 @@ NOTE THIS SHOULD BE CHANGED, NOT ALL TN5 INDECES ARE TRUE BARNYARD
 
 
 ```
+{% endcapture %} {% include details.html %} 
 
 ## Split out species from barnyard experiments
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 sciDROP_20k_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_20K"
@@ -299,7 +309,12 @@ scitools fastq-align -t 10 -r 10 mm10 mm10 $sciDROP_20k_dir/species.Mouse.1.fq.g
 
 scitools fastq-align -t 20 -r 20 hg38 hg38 $sciDROP_70k_dir/species.Human.1.fq.gz $sciDROP_70k_dir/species.Human.2.fq.gz &
 scitools fastq-align -t 20 -r 20 mm10 mm10 $sciDROP_70k_dir/species.Mouse.1.fq.gz $sciDROP_70k_dir/species.Mouse.2.fq.gz &
+```
+{% endcapture %} {% include details.html %} 
 
+# Haven't run following code. Commented it out for now.
+
+<!---
 #Remove duplicates
 scitools bam-rmdup $sciDROP_20k_dir/mm10.bam &
 scitools bam-rmdup $sciDROP_20k_dir/hg38.bam &
@@ -2591,3 +2606,5 @@ library(Signac)
 ```
 
 ```
+
+--->

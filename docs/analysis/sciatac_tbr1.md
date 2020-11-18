@@ -14,11 +14,15 @@ For a test run we got about 10% of the run pool after PCR amplification of two p
 
 Full breakdown of experimental setup is located [here.](https://docs.google.com/spreadsheets/d/1Px1OAE8vIi3GUXPny7OaVvYJHgGESCp4fyZKnLWW0UE/edit#gid=823628902)
 
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```bash
   #First Test Run (Two PCR Plates)
   /home/groups/oroaklab/seq/madbum/201116_NS500556_0437_AH72CMAFX2
 
 ```
+{% endcapture %} {% include details.html %} 
 
 
 ## Initial Processing of Files
@@ -32,6 +36,8 @@ This is read in bcl files from the raw run folder in:
 
 And output fastq files in:
 /home/groups/oroaklab/fastq
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   NextSeq2fastq -R 201116_NS500556_0437_AH72CMAFX2
@@ -47,6 +53,8 @@ And output fastq files in:
   #@POSSIBLE_OUTS = ("Undetermined_S0_R1_001.fastq.gz", "Undetermined_S0_R2_001.fastq.gz", "Undetermined_S0_I1_001.fastq.gz", "Undetermined_S0_I2_001.fastq.gz");
 
 ```
+{% endcapture %} {% include details.html %} 
+
 
 ### Demultiplexing the fastq files
 After fastq files are generated we can then demultiplex them. By this, I mean that we are going to assign our index sequences based on the index reads from the run. 
@@ -63,13 +71,20 @@ We use a scitools function which is a perl script to do this. This demultiplexer
   4. It assigns the proper index sequence to all indexes based on the hash lookup table.
   5. It writes out properly assigned reads (all four indexes have a proper match in the hash) in the sci-format, where the read name becomes the corrected list of indexes (referred to as a library barcode).
 
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```bash
   scitools fastq-dump -R 201116_NS500556_0437_AH72CMAFX2
 ```
 
+{% endcapture %} {% include details.html %} 
+
 This will output to /home/groups/oroaklab/fastq/201116_NS500556_0437_AH72CMAFX2.
 
 I then set up a working directory a moved the properly assigned reads.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   mkdir /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates
@@ -79,6 +94,8 @@ I then set up a working directory a moved the properly assigned reads.
   /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates
 
 ```
+{% endcapture %} {% include details.html %} 
+
 ### Generation of thorough annotation file and all meta data per cell 
 
 Now that we have reads that assign to known scitools indexes, we have to get more specific. We are going to generate a proper annotation for our experiment based on our PCR and Tn5 primers used. We will do this for all possible index combinations as a ".annot" file.
@@ -94,6 +111,8 @@ For this, I am once again looking at our experimental design from  [here.](https
 
 I'm going to use a scitools helper function to do this, but a simple for loop through the index master list would work as well.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ``` bash
 #Since all plates are a random assortment of all Tn5 tagmentation, we can generate a simplified annotation schematic for PCR plates.
 
@@ -108,11 +127,15 @@ Plate_1+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,AA
 Plate_10+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,AB=ALL \
 > firstplates.annot
 ```
+{% endcapture %} {% include details.html %} 
+
 ### Splitting out our reads from the demultiplexed fastqs
 
 Now that we know which barcodes belong to our reads, we can split them out from the full pool.
 
 To do this we will use a scitools function that looks at fastq read 1 and read 2 and splits it into new files based on matches to our annotation.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 scitools fastq-split -X -A firstplates.annot \
@@ -121,11 +144,15 @@ scitools fastq-split -X -A firstplates.annot \
 
 #The -X flag tells it to not write out barcodes which don't match. Those would be other sci formatted experiments on the same run
 ```
+{% endcapture %} {% include details.html %} 
+
 ## Alignment
 
 We have our reads, so now we can align them to the mouse reference genome. ATAC data is count based. 
 
 We use another scitools function for convenience. It wraps bwa mem. We will use -t 10 threads for alignment and -r 10 threads for samtools sort afterwards.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   #For plate 1
@@ -133,11 +160,13 @@ We use another scitools function for convenience. It wraps bwa mem. We will use 
   #For plate 10
   scitools fastq-align -t 10 -r 10 mm10 plate10 firstplates.Plate_10.1.fq.gz firstplates.Plate_10.2.fq.gz &
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Deduplicate
 
 Once we have aligned reads, we can mark PCR duplicates. Because we are sampling across the genome, it is highly unlikely that we capture the same exact start and end region twice. So we can use a combination of our barcode, and the start and end positions of a read to mark duplication rates.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   #For plate 1
@@ -149,6 +178,8 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
   scitools plot-complexity plate10.complexity.txt &
   scitools plot-complexity plate1.complexity.txt &
 ```
+{% endcapture %} {% include details.html %} 
+
 
 ## Looks good! Need more sequencing to get a better sense of it.
 
