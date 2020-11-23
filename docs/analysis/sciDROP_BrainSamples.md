@@ -315,19 +315,13 @@ scitools bam-rmdup -n $sciDROP_20k_dir/mm10.bam &
 scitools bam-rmdup -n $sciDROP_20k_dir/hg38.bam &
 scitools bam-rmdup -n $sciDROP_70k_dir/mm10.bam &
 scitools bam-rmdup -n $sciDROP_70k_dir/hg38.bam &
-```
-{% endcapture %} {% include details.html %} 
-
-# Haven't run following code. Commented it out for now.
-
-<!---
-
 
 #move merged bam files up a directory
 out_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard"
 samtools merge -@ 20 -h $sciDROP_70k_dir/hg38.bbrd.q10.bam $out_dir/hg38.merged.bbrd.q10.bam $sciDROP_70k_dir/hg38.bbrd.q10.bam $sciDROP_20k_dir/hg38.bbrd.q10.bam &  
 samtools merge -@ 20 -h $sciDROP_70k_dir/mm10.bbrd.q10.bam $out_dir/mm10.merged.bbrd.q10.bam $sciDROP_70k_dir/mm10.bbrd.q10.bam $sciDROP_20k_dir/mm10.bbrd.q10.bam &  
 
+#Call peaks by read pileups
 cd $out_dir
 scitools callpeaks hg38.merged.bbrd.q10.bam &
 scitools callpeaks mm10.merged.bbrd.q10.bam &
@@ -335,41 +329,59 @@ scitools callpeaks mm10.merged.bbrd.q10.bam &
 wc -l hg38.merged.bbrd.q10.500.bed
 #423832 hg38.merged.bbrd.q10.500.bed
 
-scitools atac-counts -O hg38 hg38.merged.bbrd.q10.bam hg38.merged.bbrd.q10.500.bed &
-scitools atac-counts -O mm10 mm10.merged.bbrd.q10.bam mm10.merged.bbrd.q10.500.bed &
+wc -l mm10.merged.bbrd.q10.500.bed
+#423832 hg38.merged.bbrd.q10.500.bed
+
+
+scitools atac-counts -O hg38 hg38.merged.bbrd.q10.bam \
+hg38.merged.bbrd.q10.500.bed &
+scitools atac-counts -O mm10 mm10.merged.bbrd.q10.bam \
+mm10.merged.bbrd.q10.500.bed &
 
 #scitools wrapper for samtools isize
 scitools isize hg38.merged.bbrd.q10.bam &
 scitools isize mm10.merged.bbrd.q10.bam &
 ```
+{% endcapture %} {% include details.html %} 
 
-## Tabix fragment file generation
+### Tabix fragment file generation
 
+Tabix file format is a tab separated multicolumn data structure.
 
-- Column Number  Name    Description
+| Column Number | Name | Description |
+|:--------|:-------:|:--------|
+|1 |chrom |  Reference genome chromosome of fragment |
+|2 |chromStart | Adjusted start position of fragment on chromosome. |
+|3 |chromEnd   | Adjusted end position of fragment on chromosome. The end position is exclusive, so represents the position immediately following the fragment interval. |
+|4 |barcode | The 10x (or sci) cell barcode of this fragment. This corresponds to the CB tag attached to the corresponding BAM file records for this fragment. |
+|5 |duplicateCount |The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeq instrument are excluded from this count. |
 
-- 1 chrom   Reference genome chromosome of fragment
-- 2 chromStart  Adjusted start position of fragment on chromosome.
-- 3 chromEnd    Adjusted end position of fragment on chromosome. The end position is exclusive, so represents the position immediately following the fragment interval.
-- 4 barcode The 10x cell barcode of this fragment. This corresponds to the CB tag attached to the corresponding BAM file records for this fragment.
-- 5 duplicateCount  The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeqT instrument are excluded from this count.
-
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
+tabix="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/tabix"
+bgzip="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/bgzip"
 #human processing
 input_bam="hg38.merged.bbrd.q10.bam"
 output_name=${input_bam::-13}
-tabix="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/tabix"
-bgzip="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/bgzip"
 samtools view --threads 10 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=30 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz; wait ;
 $tabix -p bed $output_name.fragments.tsv.gz &
-#mouse
+#mouse processing
 input_bam="mm10.merged.bbrd.q10.bam"
 output_name=${input_bam::-13}
 samtools view --threads 20 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=20 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz
 $tabix -p bed $output_name.fragments.tsv.gz &
 ```
 
+{% endcapture %} {% include details.html %} 
+
+```bash
+
+```
+
+# Haven't run following code. Commented it out for now.
+
+<!--
 ## Comparison of sciDROP adult mouse brain reads with available data sets
  TO BE DONE
 

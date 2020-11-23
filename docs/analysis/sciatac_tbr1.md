@@ -64,12 +64,19 @@ Index cycles on the Nextseq are substantially more error prone than read cycles,
 We use a scitools function which is a perl script to do this. This demultiplexer also assumes the same directory structure as NextSeq2fastq, meaning only the run name must be specified on our clusters.
 
 *The script does the following:*
-  1. Reads in the supplied index files. By default the index file is located here: /home/groups/oroaklab/src/scitools/scitools-dev/SCI_Indexes.txt. 
-  These are of format: <IDX_NAME><\t><IDX_NUMBER><\t><IDX_SEQUENCE>.
-  2. For each index, it then creates a hash (think python dictionary) for possible base changes for each index.
-  3. It then reads in the fastq data, and splits index reads to appropriate lengths for sci-chemistry.
-  4. It assigns the proper index sequence to all indexes based on the hash lookup table.
-  5. It writes out properly assigned reads (all four indexes have a proper match in the hash) in the sci-format, where the read name becomes the corrected list of indexes (referred to as a library barcode).
+  * Reads in the supplied index files. By default the index file is located here: 
+
+  ```bash
+  /home/groups/oroaklab/src/scitools/scitools-dev/SCI_Indexes.txt. 
+  ```
+  These are of tab-separated format: 
+
+| IDX_NAME | IDX_NUMBER | IDX_SEQUENCE |
+  
+  * For each index, it then creates a hash (think python dictionary) for possible base changes for each index.
+  * It then reads in the fastq data, and splits index reads to appropriate lengths for sci-chemistry.
+  * It assigns the proper index sequence to all indexes based on the hash lookup table.
+  * It writes out properly assigned reads (all four indexes have a proper match in the hash) in the sci-format, where the read name becomes the corrected list of indexes (referred to as a library barcode).
 
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -80,9 +87,11 @@ We use a scitools function which is a perl script to do this. This demultiplexer
 
 {% endcapture %} {% include details.html %} 
 
-This will output to /home/groups/oroaklab/fastq/201116_NS500556_0437_AH72CMAFX2.
-
-I then set up a working directory a moved the properly assigned reads.
+This will output to:
+```bash
+ /home/groups/oroaklab/fastq/201116_NS500556_0437_AH72CMAFX2.
+```
+I then set up a working directory and moved the properly assigned reads.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
