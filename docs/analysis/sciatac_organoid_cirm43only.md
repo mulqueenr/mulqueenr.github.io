@@ -953,7 +953,6 @@ Using R v4.0 and Signac v1.0 for processing.
   library(EnsDb.Hsapiens.v86)
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
-
   #Cicero processing function
   cicero_processing<-function(object_input=orgo_atac,prefix="orgo_atac"){
 
@@ -1267,9 +1266,93 @@ Doing this in three parts.
   library(TFBSTools)
   library(BSgenome.Hsapiens.UCSC.hg38)
   library(patchwork)
+  library(cisTopic)
 
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
   cirm43_subset<-subset(orgo_cirm43,cells=which(orgo_cirm43$celltype %in% c("radial_glia","intermediate_progenitor","excitatory_neuron")))
+
+  #Rerun cistopic on subset of organoid cells
+  cistopic_processing<-function(seurat_input,prefix){
+      cistopic_counts_frmt<-seurat_input$peaks@counts #grabbing counts matrices
+      row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt)) #renaming row names to fit granges expectation of format
+      atac_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt) #set up CisTopicObjects
+      #Run warp LDA on objects
+      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(10,20:30,40),nCores=12,addModels=FALSE)
+      print("Saving cistopic models.")
+      saveRDS(atac_cistopic_models,file=paste(prefix,"CisTopicObject.Rds",sep=".")) 
+  }
+          
+  cistopic_processing(seurat_input=cirm43_subset,prefix="cirm43_subset")
+
+
+  #reading model selected RDS
+  cirm43_subset_cistopic_models<-readRDS(file="cirm43_subset.CisTopicObject.Rds")
+  
+  #Setting up topic count selection
+  pdf("cirm43_subset_model_selection.pdf")
+  par(mfrow=c(1,3))
+  cirm43_subset_cistopic_models <- selectModel(cirm43_subset_cistopic_models, type='derivative')
+  dev.off()
+  system("slack -F cirm43_subset_model_selection.pdf ryan_todo")
+
+  #set topics based on derivative
+  cirm43_subset_selected_topic=27
+  cirm43_subset_cisTopicObject<-cisTopic::selectModel(cirm43_subset_cistopic_models,select=cirm43_subset_selected_topic,keepModels=T)
+
+  ####Function to include topics and umap in seurat object
+  cistopic_wrapper<-function(object_input=cirm43_subset,cisTopicObject=cirm43_subset_cisTopicObject,resolution=0.8){   
+
+
+      #run UMAP on topics
+      topic_df<-as.data.frame(cisTopicObject@selected.model$document_expects)
+      row.names(topic_df)<-paste0("Topic_",row.names(topic_df))
+      dims<-as.data.frame(uwot::umap(t(topic_df),n_components=3))
+      row.names(dims)<-colnames(topic_df)
+      colnames(dims)<-c("x","y","z")
+      dims$cellID<-row.names(dims)
+      dims<-merge(dims,object_input@meta.data,by.x="cellID",by.y="row.names")
+
+
+      #Add cell embeddings into seurat
+      cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
+      colnames(cell_embeddings)<-cisTopicObject@cell.names
+      cell_embeddings<-cell_embeddings[,colnames(cell_embeddings) %in% dims$cellID,]
+      n_topics<-nrow(cell_embeddings)
+      row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
+      cell_embeddings<-as.data.frame(t(cell_embeddings))
+
+      #Add feature loadings into seurat
+      feature_loadings<-as.data.frame(cisTopicObject@selected.model$topics)
+      row.names(feature_loadings)<-paste0("topic_",1:n_topics)
+      feature_loadings<-as.data.frame(t(feature_loadings))
+
+      #combined cistopic results (cistopic loadings and umap with seurat object)
+      cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
+      umap_dims<-as.data.frame(as.matrix(dims[2:4]))
+      colnames(umap_dims)<-c("UMAP_1","UMAP_2","UMAP_3")
+      row.names(umap_dims)<-dims$cellID
+      cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(umap_dims),assay="peaks",key="UMAP_")
+      object_input@reductions$cistopic<-cistopic_obj
+      object_input@reductions$umap<-cistopic_umap
+
+      n_topics<-ncol(Embeddings(object_input,reduction="cistopic"))
+
+      object_input <- FindNeighbors(
+        object = object_input,
+        reduction = 'cistopic',
+        dims = 1:n_topics
+      )
+      object_input <- FindClusters(
+        object = object_input,
+        verbose = TRUE,
+        resolution=resolution
+      )
+
+  return(object_input)}
+
+  cirm43_subset<-cistopic_wrapper(object_input=cirm43_subset,
+    cisTopicObject=cirm43_cisTopicObject,
+    resolution=0.5)
 
   monocle_processing<-function(prefix, seurat_input){
       atac.cds <- as.cell_data_set(seurat_input)
@@ -1521,6 +1604,17 @@ Doing this in three parts.
         return(p)
       }
 
+
+    l <- list(
+      font = list(
+        family = "sans-serif",
+        size = 8,
+        color = "#000"),
+      bgcolor = "#E2E2E2",
+      bordercolor = "#FFFFFF",
+      borderwidth = 2,
+      travedorder="group")
+
     #Generate 3D Plot and standalone HTML widget
     p<-plot_ly(dat,
       x = ~UMAP_1, y = ~UMAP_2, z = ~UMAP_3,
@@ -1530,7 +1624,7 @@ Doing this in three parts.
     plotly_pseudotime(x=cirm43_subset.cicero) %>%
     add_markers(color=~DIV,legendgroup="DIV") %>%
     add_markers(color=~pseudotime,legendgroup="Pseudotime",showlegend=F) %>%
-    add_markers(color=~seurat_clusters,legendgroup="Clusters")
+    add_markers(color=~seurat_clusters,legendgroup="Clusters") %>% layout(legend = l)
 
     htmlwidgets::saveWidget(as_widget(partial_bundle(p)), "cirm43_umap.3d.html",selfcontained=TRUE)
 

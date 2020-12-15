@@ -375,10 +375,672 @@ $tabix -p bed $output_name.fragments.tsv.gz &
 
 {% endcapture %} {% include details.html %} 
 
-```bash
+
+# sciDROP Full Processing
+
+### Generating Seurat Objects
+
+Using R v4.0.0 and Signac v1.0
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+
+```R
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(EnsDb.Mmusculus.v79)
+library(Matrix)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+#function to read in sparse matrix format from atac-count
+read_in_sparse<-function(x){ #x is character file prefix followed by .bbrd.q10.500.counts.sparseMatrix.values.gz
+IN<-as.matrix(read.table(paste0(x,".counts.sparseMatrix.values.gz")))
+IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
+COLS<-read.table(paste0(x,".counts.sparseMatrix.cols.gz"))
+colnames(IN)<-COLS$V1
+ROWS<-read.table(paste0(x,".counts.sparseMatrix.rows.gz"))
+row.names(IN)<-ROWS$V1
+return(IN)
+}
+
+hg38_counts<-read_in_sparse("hg38") # make hg38 counts matrix from sparse matrix
+mm10_counts<-read_in_sparse("mm10") # make mm10 counts matrix from sparse matrix
+
+#Read in fragment path for coverage plots
+mm10_fragment.path="./mm10.merged.fragments.tsv.gz"
+hg38_fragment.path="./hg38.merged.fragments.tsv.gz"
+
+# extract gene annotations from EnsDb
+hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+mm10_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+
+# change to UCSC style
+seqlevelsStyle(hg38_annotations) <- 'UCSC'
+seqlevelsStyle(mm10_annotations) <- 'UCSC'
+
+genome(hg38_annotations) <- "hg38"
+genome(mm10_annotations) <- "mm10"
+
+#Generate ChromatinAssay Objects
+hg38_chromatinassay <- CreateChromatinAssay(
+  counts = hg38_counts,
+  genome="hg38",
+  min.cells = 1,
+  annotation=hg38_annotations,
+  sep=c("_","_"),
+  fragments=hg38_fragment.path
+)
+
+mm10_chromatinassay <- CreateChromatinAssay(
+  counts = mm10_counts,
+  genome="mm10",
+  min.cells = 1,
+  annotation=mm10_annotations,
+  sep=c("_","_"),
+  fragments=mm10_fragment.path
+)
+
+
+#Create Seurat Objects
+hg38_atac <- CreateSeuratObject(
+  counts = hg38_chromatinassay,
+  assay = "peaks"
+)
+mm10_atac <- CreateSeuratObject(
+  counts = mm10_chromatinassay,
+  assay = "peaks"
+)
+
+#Meta.data to be updated after clustering
+
+#saving unprocessed SeuratObjects
+saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
+saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
+```
+
+{% endcapture %} {% include details.html %} 
+
+```R
+library(cisTopic)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(EnsDb.Mmusculus.v79)
+library(Matrix)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+
+hg38_cistopic_counts_frmt<-hg38_atac$peaks@counts
+
+#renaming row names to fit granges expectation of format
+row.names(hg38_cistopic_counts_frmt)<-sub("-", ":", row.names(hg38_cistopic_counts_frmt))
+
+#set up CisTopicObjects
+hg38_atac_cistopic<-cisTopic::createcisTopicObject(hg38_cistopic_counts_frmt)
+
+#Run warp LDA on objects
+hg38_atac_cistopic_models<-cisTopic::runWarpLDAModels(hg38_atac_cistopic,topic=c(10,20,22,24,26,28,30),nCores=7,addModels=FALSE)
+
+#Saving all models for posterity
+saveRDS(hg38_atac_cistopic_models,file="hg38_CisTopicObject.Rds")
+
+#Performing same operation for mm10
+mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+mm10_cistopic_counts_frmt<-mm10_atac$peaks@counts
+row.names(mm10_cistopic_counts_frmt)<-sub("-", ":", row.names(mm10_cistopic_counts_frmt))
+mm10_atac_cistopic<-cisTopic::createcisTopicObject(mm10_cistopic_counts_frmt)
+mm10_atac_cistopic_models<-cisTopic::runWarpLDAModels(mm10_atac_cistopic,topic=c(10,20,22,24,26,28,30),nCores=7,addModels=FALSE)
+saveRDS(mm10_atac_cistopic_models,file="mm10_CisTopicObject.Rds")
+
+mm10_atac_cistopic_models<-readRDS(file="mm10_CisTopicObject.Rds")
+hg38_atac_cistopic_models<-readRDS(file="hg38_CisTopicObject.Rds")
+
+#Setting up topic count selection
+pdf("hg38_atac_model_selection.pdf")
+par(mfrow=c(3,3))
+hg38_atac_cistopic_models <- selectModel(hg38_atac_cistopic_models, type='derivative')
+dev.off()
+
+pdf("mm10_atac_model_selection.pdf")
+par(mfrow=c(3,3))
+mm10_atac_cistopic_models <- selectModel(mm10_atac_cistopic_models, type='derivative')
+dev.off()
+
+system("slack -F hg38_atac_model_selection.pdf ryan_todo")
+system("slack -F mm10_atac_model_selection.pdf ryan_todo")
+
+#set topics based on derivative
+#selected topics subject to change
+mm10_selected_topic=26
+hg38_selected_topic=28
+mm10_cisTopicObject<-cisTopic::selectModel(mm10_atac_cistopic_models,select=mm10_selected_topic,keepModels=F)
+hg38_cisTopicObject<-cisTopic::selectModel(hg38_atac_cistopic_models,select=hg38_selected_topic,keepModels=F)
+
+#saving model selected RDS
+saveRDS(hg38_cisTopicObject,file="hg38_CisTopicObject.Rds")
+saveRDS(mm10_cisTopicObject,file="mm10_CisTopicObject.Rds")
+
+#Read in cisTopic objects
+hg38_cisTopicObject<-readRDS("hg38_CisTopicObject.Rds")
+mm10_cisTopicObject<-readRDS("mm10_CisTopicObject.Rds")
+#read in seurat format object
+hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+
+
+
+#run UMAP on topics
+hg38_topic_df<-as.data.frame(hg38_cisTopicObject@selected.model$document_expects)
+row.names(hg38_topic_df)<-paste0("Topic_",row.names(hg38_topic_df))
+hg38_dims<-as.data.frame(uwot::umap(t(hg38_topic_df),n_components=2))
+row.names(hg38_dims)<-colnames(hg38_topic_df)
+colnames(hg38_dims)<-c("x","y")
+hg38_dims$cellID<-row.names(hg38_dims)
+hg38_dims<-merge(hg38_dims,hg38_atac@meta.data,by.x="cellID",by.y="row.names")
+
+mm10_topic_df<-as.data.frame(mm10_cisTopicObject@selected.model$document_expects)
+row.names(mm10_topic_df)<-paste0("Topic_",row.names(mm10_topic_df))
+mm10_dims<-as.data.frame(uwot::umap(t(mm10_topic_df),n_components=2))
+row.names(mm10_dims)<-colnames(mm10_topic_df)
+colnames(mm10_dims)<-c("x","y")
+mm10_dims$cellID<-row.names(mm10_dims)
+mm10_dims<-merge(mm10_dims,mm10_atac@meta.data,by.x="cellID",by.y="row.names")
+
+#plot heatmaps of topics
+pdf("mm10_atac_cistopic_heatmap.pdf")
+cellTopicHeatmap(mm10_cisTopicObject, method='Probability')
+dev.off()
+
+pdf("hg38_atac_cistopic_heatmap.pdf")
+cellTopicHeatmap(hg38_cisTopicObject, method='Probability')
+dev.off()
+
+#predictive measurements of topics
+#hg38_pred.matrix <- predictiveDistribution(hg38_cisTopicObject)
+#mm10_pred.matrix <- predictiveDistribution(mm10_cisTopicObject)
+
+# Obtain signatures
+#hg38_path_to_signatures <- '/home/groups/oroaklab/refs/hg38/tfbs/'
+#hg38_HomerTF_signatures <- paste(hg38_path_to_signatures, list.files(hg38_path_to_signatures), sep='')
+#mm10_path_to_signatures <- '/home/groups/oroaklab/refs/mm10/JASPAR2018_TF_Sites/bed_files/'
+#mm10_JASPARTF_signatures <- paste(mm10_path_to_signatures, list.files(mm10_path_to_signatures), sep='')
+
+#get a list of files in directory and strsplit into labels
+#hg38_labels  <- unlist(lapply(strsplit(list.files(hg38_path_to_signatures),"[.]"),"[",1))
+#mm10_labels  <- unlist(lapply(strsplit(list.files(mm10_path_to_signatures),"[.]"),"[",1))
+
+#get signature region scores for topics
+#hg38_cisTopicObject <- getSignaturesRegions(hg38_cisTopicObject, hg38_HomerTF_signatures, labels=hg38_labels, minOverlap = 0.4)
+#mm10_cisTopicObject <- getSignaturesRegions(mm10_cisTopicObject, mm10_JASPARTF_signatures, labels=mm10_labels, minOverlap = 0.4)
+
+#get regions from topics
+#hg38_cisTopicObject <- getRegionsScores(hg38_cisTopicObject, method='NormTop', scale=TRUE)
+#   mm10_cisTopicObject <- getRegionsScores(mm10_cisTopicObject, method='NormTop', scale=TRUE)
+
+#plot tfbs predictions to topics
+#pdf("hg38_atac_cistopic_SignatureRegions.pdf",height=25,width=25)
+#signaturesHeatmap(hg38_cisTopicObject,row_names_gp=gpar(fontsize=5))
+#dev.off()
+
+    #pdf("mm10_atac_cistopic_SignatureRegions.pdf",height=25,width=25)
+    #signaturesHeatmap(mm10_cisTopicObject,row_names_gp=gpar(fontsize=5))
+    #dev.off()
+
+#plot general annotations to topics (this still needs to be run)
+#library(org.Hs.eg.db)
+#library(org.Mm.eg.db)
+#library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+#library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+
+#hg38_cisTopicObject <- annotateRegions(hg38_cisTopicObject, txdb=TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb='org.Hs.eg.db')
+#pdf("hg38_atac_cistopic_SignatureRegions.pdf")
+#signaturesHeatmap(hg38_cisTopicObject, selected.signatures = 'annotation')
+#dev.off()
+
+    #mm10_cisTopicObject <- annotateRegions(mm10_cisTopicObject, txdb=TxDb.Mmusculus.UCSC.mm10.knownGene, annoDb='org.Mm.eg.db')
+    #pdf("mm10_atac_cistopic_SignatureRegions.pdf")
+    #signaturesHeatmap(mm10_cisTopicObject, selected.signatures = 'annotation')
+    #dev.off()
+
+    # Compute cell rankings
+    #library(AUCell)
+    #pdf("orgo_atac_cistopic_AUCellRankings.pdf")
+    #aucellRankings <- AUCell_buildRankings(pred.matrix, plot=TRUE, verbose=FALSE)
+    #dev.off()
+
+    # Check signature enrichment in cells
+    #pdf("orgo_atac_cistopic_sigantureCellEnrichment.pdf")
+    #cisTopicObject <- signatureCellEnrichment(cisTopicObject, aucellRankings, selected.signatures='all', aucMaxRank = 0.1*nrow(aucellRankings), plot=TRUE)
+    #dev.off()
+
+    #pdf("orgo_atac_cistopic_gammafit_regions.pdf")
+    #par(mfrow=c(2,5))
+    #cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.975, plot=TRUE)
+    #dev.off()
+
+#   #saving model selected RDS
+#   saveRDS(hg38_cisTopicObject,file="hg38_CisTopicObject.Rds")
+#   saveRDS(mm10_cisTopicObject,file="mm10_CisTopicObject.Rds")
+
+#bin_hg38_cisTopicObject<-binarizecisTopics(hg38_cisTopicObject)
+#   getBedFiles(bin_hg38_cisTopicObject, path='hg38_cisTopic_beds')
+#bin_mm10_cisTopicObject<-binarizecisTopics(mm10_cisTopicObject)
+#   getBedFiles(bin_mm10_cisTopicObject, path='mm10_cisTopic_beds')
+
+
+    #Read in cisTopic objects
+#   hg38_cisTopicObject<-readRDS("hg38_CisTopicObject.Rds")
+#   mm10_cisTopicObject<-readRDS("mm10_CisTopicObject.Rds")
+
+#Add cell embeddings into seurat
+hg38_cell_embeddings<-as.data.frame(hg38_cisTopicObject@selected.model$document_expects)
+colnames(hg38_cell_embeddings)<-hg38_cisTopicObject@cell.names
+hg38_n_topics<-nrow(hg38_cell_embeddings)
+row.names(hg38_cell_embeddings)<-paste0("topic_",1:hg38_n_topics)
+hg38_cell_embeddings<-as.data.frame(t(hg38_cell_embeddings))
+
+mm10_cell_embeddings<-as.data.frame(mm10_cisTopicObject@selected.model$document_expects)
+colnames(mm10_cell_embeddings)<-mm10_cisTopicObject@cell.names
+mm10_n_topics<-nrow(mm10_cell_embeddings)
+row.names(mm10_cell_embeddings)<-paste0("topic_",1:mm10_n_topics)
+mm10_cell_embeddings<-as.data.frame(t(mm10_cell_embeddings))
+
+#Add feature loadings into seurat
+hg38_feature_loadings<-as.data.frame(hg38_cisTopicObject@selected.model$topics)
+row.names(hg38_feature_loadings)<-paste0("topic_",1:hg38_n_topics)
+hg38_feature_loadings<-as.data.frame(t(hg38_feature_loadings))
+
+mm10_feature_loadings<-as.data.frame(mm10_cisTopicObject@selected.model$topics)
+row.names(mm10_feature_loadings)<-paste0("topic_",1:mm10_n_topics)
+mm10_feature_loadings<-as.data.frame(t(mm10_feature_loadings))
+
+#combined cistopic results (cistopic loadings and umap with seurat object)
+hg38_cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(hg38_cell_embeddings),loadings=as.matrix(hg38_feature_loadings),assay="peaks",key="topic_")
+hg38_umap_dims<-as.data.frame(as.matrix(hg38_dims[2:3]))
+colnames(hg38_umap_dims)<-c("UMAP_1","UMAP_2")
+row.names(hg38_umap_dims)<-hg38_dims$cellID
+hg38_cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(hg38_umap_dims),assay="peaks",key="UMAP_")
+hg38_atac@reductions$cistopic<-hg38_cistopic_obj
+hg38_atac@reductions$umap<-hg38_cistopic_umap
+
+mm10_cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(mm10_cell_embeddings),loadings=as.matrix(mm10_feature_loadings),assay="peaks",key="topic_")
+mm10_umap_dims<-as.data.frame(as.matrix(mm10_dims[2:3]))
+colnames(mm10_umap_dims)<-c("UMAP_1","UMAP_2")
+row.names(mm10_umap_dims)<-mm10_dims$cellID
+mm10_cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(mm10_umap_dims),assay="peaks",key="UMAP_")
+mm10_atac@reductions$cistopic<-mm10_cistopic_obj
+mm10_atac@reductions$umap<-mm10_cistopic_umap
+
+hg38_n_topics<-ncol(Embeddings(hg38_atac,reduction="cistopic"))
+
+hg38_atac <- FindNeighbors(
+  object = hg38_atac,
+  reduction = 'cistopic',
+  dims = 1:hg38_n_topics
+)
+hg38_atac <- FindClusters(
+  object = hg38_atac,
+  verbose = TRUE,
+  resolution=0.01 #targetting roughly 8 communities
+)
+
+mm10_n_topics<-ncol(Embeddings(mm10_atac,reduction="cistopic"))
+
+mm10_atac <- FindNeighbors(
+  object = mm10_atac,
+  reduction = 'cistopic',
+  dims = 1:mm10_n_topics
+)
+mm10_atac <- FindClusters(
+  object = mm10_atac,
+  verbose = TRUE,
+  resolution=0.02 #targetting roughly 10 communities for gross cell clustering
+)
+
+###save Seurat files
+saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
+saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
+
+#Plotting 2d projection and clusters
+
+plt<-DimPlot(hg38_atac,group.by=c('seurat_clusters'))
+ggsave(plt,file="hg38.umap.png")
+system("slack -F hg38.umap.png ryan_todo")
+
+plt<-DimPlot(mm10_atac,group.by=c('seurat_clusters'))
+ggsave(plt,file="mm10.umap.png")
+system("slack -F mm10.umap.png ryan_todo")
+
 
 ```
 
+```R
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(patchwork)
+library(cicero)
+library(cisTopic)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(Matrix)
+library(JASPAR2020)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+set.seed(1234)
+library(dplyr)
+library(ggrepel)
+
+
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+#Read in data and modify to monocle CDS file
+#read in RDS file.
+hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+dir.create("subcluster")
+
+######FUNCTIONS#####
+cistopic_generation<-function(x,celltype.x,species="hg38"){
+#Perform cistopic on subclusters of data 
+    atac_sub<-x
+    cistopic_counts_frmt<-atac_sub$peaks@counts
+    row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
+    sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
+    sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(5,10,20:30),nCores=12,addModels=FALSE)
+    saveRDS(sub_cistopic_models,file=paste("./subcluster/",species,celltype.x,".CisTopicObject.Rds",sep="_"))
+
+    pdf(paste("./subcluster/",species,celltype.x,"_model_selection.pdf",sep="_"))
+    par(mfrow=c(3,3))
+    sub_cistopic_models<- selectModel(sub_cistopic_models, type='derivative')
+    dev.off()
+    rm(sub_cistopic_models)
+    rm(sub_cistopic)
+    }
+
+
+#UMAP Projection and clustering on selected cistopic model
+clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_atac,celltype.x,topiccount_list.=topic_count_list){
+    #set up subset object again
+    atac_sub<-subset(object_input,subset=seurat_clusters==celltype.x) 
+    #select_topic
+    models_input<-readRDS(paste("./subcluster/",species,celltype.x,".CisTopicObject.Rds",sep="_"))
+    cisTopicObject<-cisTopic::selectModel(models_input,select=topiccount_list.[celltype.x],keepModels=F)
+    
+    #perform UMAP on topics
+    topic_df<-as.data.frame(cisTopicObject@selected.model$document_expects)
+    row.names(topic_df)<-paste0("Topic_",row.names(topic_df))
+    dims<-as.data.frame(uwot::umap(t(topic_df),n_components=2))
+    row.names(dims)<-colnames(topic_df)
+    colnames(dims)<-c("x","y")
+    dims$cellID<-row.names(dims)
+    dims<-merge(dims,object_input@meta.data,by.x="cellID",by.y="row.names")
+
+    #get cell embeddings
+    cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
+    colnames(cell_embeddings)<-cisTopicObject@cell.names
+    n_topics<-nrow(cell_embeddings)
+    row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
+    cell_embeddings<-as.data.frame(t(cell_embeddings))
+    
+    #get feature loadings
+    feature_loadings<-as.data.frame(cisTopicObject@selected.model$topics)
+    row.names(feature_loadings)<-paste0("topic_",1:n_topics)
+    feature_loadings<-as.data.frame(t(feature_loadings))
+    
+    #combine with seurat object for celltype seuratobject  
+    cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
+    umap_dims<-as.data.frame(as.matrix(dims[2:3]))
+    colnames(umap_dims)<-c("UMAP_1","UMAP_2")
+    row.names(umap_dims)<-dims$cellID
+    cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(umap_dims),assay="peaks",key="UMAP_")
+    atac_sub@reductions$cistopic<-cistopic_obj
+    atac_sub@reductions$umap<-cistopic_umap
+    #finally recluster
+    n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic"))
+    #Clustering with multiple resolutions to account for different celltype complexities
+    atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics)
+    atac_sub <- FindClusters(object = atac_sub,resolution=0.1)
+    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.2)
+    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.5)
+    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.9)
+    
+    saveRDS(atac_sub,paste("./subcluster/",species,celltype.x,"SeuratObject.Rds",sep="_"))
+    plt<-DimPlot(atac_sub,group.by=c('peaks_snn_res.0.1','peaks_snn_res.0.2','peaks_snn_res.0.5','peaks_snn_res.0.9'))
+    ggsave(plt,file=paste("./subcluster/",species,celltype.x,"clustering.pdf",sep="_"))
+}
+
+####################################
+### Processing ###
+#hg38
+    #Set up variables
+    species="hg38"
+    celltype_list<-unique(hg38_atac$seurat_clusters)
+
+    #Running cistopic subclustering on all identified cell types
+    for (i in celltype_list){atac_sub<-subset(hg38_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i)}
+    topicmodel_list<-paste("./subcluster/",species,celltype_list,".CisTopicObject.Rds",sep="_")
+
+    #determine model count to use for each cell type
+    for (i in paste("./subcluster/",species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
+
+    #selecting topics based on derivative, making a named vector 
+    topic_count_list<-setNames(c(24,28,24,27,28,23,26,25),celltype_list)
+    names(topic_count_list)<-celltype_list
+
+    #Running clustering loop
+    for (i in celltype_list){clustering_loop(object_input=hg38_atac,celltype.x=i)}
+
+    #selecting resolution by plots
+    for (i in celltype_list){system(paste0("slack -F ",paste("./subcluster/",species,i,"clustering.pdf",sep="_")," ryan_todo"))}
+    
+#mm10
+    #Set up variables
+    species="mm10"
+    celltype_list<-unique(mm10_atac$seurat_clusters)
+
+    
+    #Running cistopic subclustering on all identified cell types
+    for (i in celltype_list){atac_sub<-subset(mm10_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="mm10")}
+    topicmodel_list<-paste(species,celltype_list,".CisTopicObject.Rds",sep="_")
+
+    #determine model count to use for each cell type
+    for (i in paste(species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
+
+    #selecting topics based on derivative, making a named vector 
+    topic_count_list<-c(28,22,23,28,28,22)
+    names(topic_count_list)<-celltype_list
+
+    #Running clustering loop
+    for (i in celltype_list){clustering_loop(object_input=hg38_atac,celltype.x=i)}
+
+    #selecting resolution by plots
+    for (i in celltype_list){system(paste0("slack -F ",paste(species,i,"clustering.pdf",sep="_")," ryan_todo"))}
+
+```
+
+```R
+#Gross cell type list (for both organisms)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+marker_list<-NULL
+marker_list[["Oligodendrocyte"]]<-c('Mobp','Cldn1','Prox1','Olig1')
+marker_list[["Polydendrocyte"]]<-c('Cspg4','Pdgfra')
+marker_list[["Astrocyte"]]<-c('Gfap','GluI','Slc1a2','Agt')
+marker_list[["Ex_Neuron"]]<-c('Satb2','Cux2','Rorb','Pcp4','Foxp2','Col19a1','Slc17a7')
+marker_list[["Microglia"]]<-c('C1qa','C1qc','Cxcr1')
+marker_list[["Inhib_Neuron"]]<-c('Cnr1','Bcl11b','Gad1','Dlx1','Dlx2')
+saveRDS(marker_list,"grosscelltype_markerlist.rds")
+
+#Function to plot cell type markers
+#For now just using the gross celltype marker list
+
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(EnsDb.Mmusculus.v79)
+library(parallel)
+
+region_check<-function(i,object=hg38_atac){
+    return(nrow(as.data.frame(LookupGeneCoords(object=object,gene=toupper(gene_list[i])))))
+    }
+
+marker_plot<-function(j,k=celltype_name,l=hg38_atac,m="hg38_",n="seurat_clusters"){
+    plt<-CoveragePlot(
+        object = l,
+        region = j,
+        group.by=n,
+        extend.upstream = 1000,
+        extend.downstream = 1000,
+        ncol = 1
+    )
+    pdf(paste0("./marker_sets/",m,k,"_",j,"_genebody_accessibility.pdf"))
+    print(plt)
+    dev.off()
+}
+
+dir.create("marker_sets")
+
+hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+marker_list<-readRDS("grosscelltype_markerlist.rds")
+
+
+for (x in 1:length(marker_list)){
+    gene_list<-marker_list[[x]]
+    gene_list<-gene_list[as.numeric(unlist(lapply(1:length(gene_list),FUN=region_check)))==1]
+    gene_list<-toupper(gene_list)
+    celltype_name<-names(marker_list)[x]
+    mclapply(gene_list,FUN=marker_plot,k=celltype_name,,n="peaks_snn_res.0.01",mc.cores=5)
+}
+
+for (i in list.files(path="./marker_sets",pattern="markerset_hg38")){
+    system(paste0("slack -F ./marker_sets/",i," ryan_todo"))
+}
+
+#Now setting up for mm10 
+region_check<-function(i,object=mm10_atac){
+    return(nrow(as.data.frame(LookupGeneCoords(object=object,gene=gene_list[i]))))
+    }
+
+marker_plot<-function(j,k=celltype_name,l=mm10_atac,m="mm10_",n="seurat_clusters"){
+    plt<-CoveragePlot(
+        object = l,
+        region = j,
+        group.by=n,
+        extend.upstream = 1000,
+        extend.downstream = 1000,
+        ncol = 1,
+        tile=T,
+        tile.size=500,
+        tile.cells=downsamp
+    )
+    pdf(paste0("./marker_sets/",m,k,"_",j,"_genebody_accessibility.pdf"))
+    print(plt)
+    dev.off()
+}
+
+mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+marker_list<-readRDS("./marker_sets/grosscelltype_markerlist.rds")
+summary(mm10_atac@meta.data$seurat_clusters) #setting tile cells to 99 to downsample
+downsamp=30
+
+for (x in 1:length(marker_list)){
+    gene_list<-marker_list[[x]]
+    gene_list<-gene_list[as.numeric(unlist(lapply(1:length(gene_list),FUN=region_check)))==1]
+    celltype_name<-names(marker_list)[x]
+    mclapply(gene_list,FUN=marker_plot,k=celltype_name,mc.cores=20) 
+}
+
+#For concatenating cell types into a single scrollable pdf
+celltype=`ls mm10*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
+for i in $celltype ; do convert `echo mm10_${i}_*genebody_accessibility.pdf` markerset_mm10_${i}.pdf; done
+
+celltype=`ls hg38*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
+for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` markerset_hg38_${i}.pdf; done
+
+```
+Plotting of subcluster marker sets
+```R
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(EnsDb.Mmusculus.v79)
+library(parallel)
+
+
+region_check<-function(i,object=hg38_atac){
+    return(nrow(as.data.frame(LookupGeneCoords(object=object,gene=toupper(gene_list[i])))))
+    }
+
+marker_plot<-function(j,k=celltype_name,l=hg38_atac,m="hg38_",n="seurat_clusters",outdir){
+    plt<-CoveragePlot(
+        object = l,
+        region = j,
+        group.by=n,
+        extend.upstream = 1000,
+        extend.downstream = 1000,
+        ncol = 1
+    )
+    pdf(paste0(outdir,m,k,"_",j,"_genebody_accessibility.pdf"))
+    print(plt)
+    dev.off()
+}
+
+#Subcell type labelling of hg38 subcluster 4 (excitatory neurons)
+dir.create("./subcluster/hg38_4_markers")
+hg38_atac<-readRDS(file="./subcluster/_hg38_4_SeuratObject.Rds")
+marker_list<-readRDS("hg38_markerlist.rds")
+outdirec="./subcluster/hg38_4_markers/"
+#Subset marker list to excitatory neuron subclusters
+for (x in c("L5ET","L6CT","L56NP","L4IT","L6b","L56ITCAR3")){
+    gene_list<-marker_list[[x]]
+    gene_list<-gene_list[as.numeric(unlist(lapply(1:length(gene_list),FUN=region_check)))==1]
+    gene_list<-toupper(gene_list)
+    celltype_name<-x
+    mclapply(gene_list,FUN=marker_plot,k=celltype_name,outdir=outdirec,n="peaks_snn_res.0.2",mc.cores=5)
+}
+
+
+#Subcell type labelling of hg38 subcluster 6 (inhibitory neurons)
+dir.create("./subcluster/hg38_6_markers")
+hg38_atac<-readRDS(file="./subcluster/_hg38_6_SeuratObject.Rds")
+marker_list<-readRDS("hg38_markerlist.rds")
+outdirec="./subcluster/hg38_6_markers"
+#Subset marker list to inhibitory neuron subclusters
+for (x in c("VLMC","PVALB","VIP","PAX6","LAMP5","SST")){
+    gene_list<-marker_list[[x]]
+    gene_list<-gene_list[as.numeric(unlist(lapply(1:length(gene_list),FUN=region_check)))==1]
+    gene_list<-toupper(gene_list)
+    celltype_name<-names(marker_list)[x]
+    mclapply(gene_list,FUN=marker_plot,k=celltype_name,outdir=outdirec,n="peaks_snn_res.0.2",mc.cores=5)
+}
+
+
+celltype=`ls hg38*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
+for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` markerset_hg38_${i}.pdf; done
+
+
+
+```
 # Haven't run following code. Commented it out for now.
 
 <!--
@@ -471,88 +1133,6 @@ for (j in unique(dat$assay)){
 #[1] "s3ATAC_Plate_C,s3ATAC_Plate_C,0.5,264133.506711409,264133.506711409,greater,Welch Two Sample t-test"
 ```
 
-# sciDROP Full Processing
-
-### Generating Seurat Objects
-
-Using R v4.0.0 and Signac v1.0
-
-```R
-library(Signac)
-library(Seurat)
-library(GenomeInfoDb)
-library(ggplot2)
-set.seed(1234)
-library(EnsDb.Hsapiens.v86)
-library(EnsDb.Mmusculus.v79)
-library(Matrix)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
-
-#function to read in sparse matrix format from atac-count
-read_in_sparse<-function(x){ #x is character file prefix followed by .bbrd.q10.500.counts.sparseMatrix.values.gz
-IN<-as.matrix(read.table(paste0(x,".counts.sparseMatrix.values.gz")))
-IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
-COLS<-read.table(paste0(x,".counts.sparseMatrix.cols.gz"))
-colnames(IN)<-COLS$V1
-ROWS<-read.table(paste0(x,".counts.sparseMatrix.rows.gz"))
-row.names(IN)<-ROWS$V1
-return(IN)
-}
-
-hg38_counts<-read_in_sparse("hg38") # make hg38 counts matrix from sparse matrix
-mm10_counts<-read_in_sparse("mm10") # make mm10 counts matrix from sparse matrix
-
-#Read in fragment path for coverage plots
-mm10_fragment.path="./mm10.merged.fragments.tsv.gz"
-hg38_fragment.path="./hg38.merged.fragments.tsv.gz"
-
-# extract gene annotations from EnsDb
-hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
-mm10_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
-
-# change to UCSC style
-seqlevelsStyle(hg38_annotations) <- 'UCSC'
-seqlevelsStyle(mm10_annotations) <- 'UCSC'
-
-genome(hg38_annotations) <- "hg38"
-genome(mm10_annotations) <- "mm10"
-
-#Generate ChromatinAssay Objects
-hg38_chromatinassay <- CreateChromatinAssay(
-  counts = hg38_counts,
-  genome="hg38",
-  min.cells = 1,
-  annotation=hg38_annotations,
-  sep=c("_","_"),
-  fragments=hg38_fragment.path
-)
-
-mm10_chromatinassay <- CreateChromatinAssay(
-  counts = mm10_counts,
-  genome="mm10",
-  min.cells = 1,
-  annotation=mm10_annotations,
-  sep=c("_","_"),
-  fragments=mm10_fragment.path
-)
-
-
-#Create Seurat Objects
-hg38_atac <- CreateSeuratObject(
-  counts = hg38_chromatinassay,
-  assay = "peaks"
-)
-mm10_atac <- CreateSeuratObject(
-  counts = mm10_chromatinassay,
-  assay = "peaks"
-)
-
-#Meta.data to be updated after clustering
-
-#saving unprocessed SeuratObjects
-saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
-saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
-```
 
 ## Plotting and updating metadata
 
@@ -626,251 +1206,7 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
 
 ```python
-#continued from above session
-library(cisTopic)
-library(Signac)
-library(Seurat)
-library(GenomeInfoDb)
-library(ggplot2)
-set.seed(1234)
-library(EnsDb.Hsapiens.v86)
-library(EnsDb.Mmusculus.v79)
-library(Matrix)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
 
-hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
-mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
-
-hg38_cistopic_counts_frmt<-hg38_atac$peaks@counts
-mm10_cistopic_counts_frmt<-mm10_atac$peaks@counts
-
-#renaming row names to fit granges expectation of format
-row.names(hg38_cistopic_counts_frmt)<-sub("-", ":", row.names(hg38_cistopic_counts_frmt))
-row.names(mm10_cistopic_counts_frmt)<-sub("-", ":", row.names(mm10_cistopic_counts_frmt))
-
-#set up CisTopicObjects
-hg38_atac_cistopic<-cisTopic::createcisTopicObject(hg38_cistopic_counts_frmt)
-mm10_atac_cistopic<-cisTopic::createcisTopicObject(mm10_cistopic_counts_frmt)
-
-#Run warp LDA on objects
-hg38_atac_cistopic_models<-cisTopic::runWarpLDAModels(hg38_atac_cistopic,topic=c(5,10,20:30,40,50,55,60:70),nCores=27,addModels=FALSE)
-mm10_atac_cistopic_models<-cisTopic::runWarpLDAModels(mm10_atac_cistopic,topic=c(5,10,20:30,40,50,55,60:70),nCores=27,addModels=FALSE)
-
-#Saving all models for posterity
-saveRDS(hg38_atac_cistopic_models,file="hg38_CisTopicObject.Rds")
-saveRDS(mm10_atac_cistopic_models,file="mm10_CisTopicObject.Rds")
-
-#Setting up topic count selection
-pdf("hg38_atac_model_selection.pdf")
-par(mfrow=c(3,3))
-hg38_atac_cistopic_models <- selectModel(hg38_atac_cistopic_models, type='maximum')
-hg38_atac_cistopic_models <- selectModel(hg38_atac_cistopic_models, type='perplexity')
-hg38_atac_cistopic_models <- selectModel(hg38_atac_cistopic_models, type='derivative')
-dev.off()
-
-pdf("mm10_atac_model_selection.pdf")
-par(mfrow=c(3,3))
-mm10_atac_cistopic_models <- selectModel(mm10_atac_cistopic_models, type='maximum')
-mm10_atac_cistopic_models <- selectModel(mm10_atac_cistopic_models, type='perplexity')
-mm10_atac_cistopic_models <- selectModel(mm10_atac_cistopic_models, type='derivative')
-dev.off()
-
-hg38_atac_cistopic_models<-readRDS(file="hg38_CisTopicObject.Rds")
-mm10_atac_cistopic_models<-readRDS(file="mm10_CisTopicObject.Rds")
-
-
-#set topics based on derivative
-#selected topics subject to change
-mm10_selected_topic=27
-hg38_selected_topic=24
-mm10_cisTopicObject<-cisTopic::selectModel(mm10_atac_cistopic_models,select=mm10_selected_topic,keepModels=F)
-hg38_cisTopicObject<-cisTopic::selectModel(hg38_atac_cistopic_models,select=hg38_selected_topic,keepModels=F)
-
-#saving model selected RDS
-saveRDS(hg38_cisTopicObject,file="hg38_CisTopicObject.Rds")
-saveRDS(mm10_cisTopicObject,file="mm10_CisTopicObject.Rds")
-
-#Read in cisTopic objects
-hg38_cisTopicObject<-readRDS("hg38_CisTopicObject.Rds")
-mm10_cisTopicObject<-readRDS("mm10_CisTopicObject.Rds")
-#read in seurat format object
-hg38_atac<-readRDS("hg38_SeuratObject.Rds")
-mm10_atac<-readRDS("mm10_SeuratObject.Rds")
-
-
-
-#run UMAP on topics
-hg38_topic_df<-as.data.frame(hg38_cisTopicObject@selected.model$document_expects)
-row.names(hg38_topic_df)<-paste0("Topic_",row.names(hg38_topic_df))
-hg38_dims<-as.data.frame(uwot::umap(t(hg38_topic_df),n_components=2))
-row.names(hg38_dims)<-colnames(hg38_topic_df)
-colnames(hg38_dims)<-c("x","y")
-hg38_dims$cellID<-row.names(hg38_dims)
-hg38_dims<-merge(hg38_dims,hg38_atac@meta.data,by.x="cellID",by.y="row.names")
-
-mm10_topic_df<-as.data.frame(mm10_cisTopicObject@selected.model$document_expects)
-row.names(mm10_topic_df)<-paste0("Topic_",row.names(mm10_topic_df))
-mm10_dims<-as.data.frame(uwot::umap(t(mm10_topic_df),n_components=2))
-row.names(mm10_dims)<-colnames(mm10_topic_df)
-colnames(mm10_dims)<-c("x","y")
-mm10_dims$cellID<-row.names(mm10_dims)
-mm10_dims<-merge(mm10_dims,mm10_atac@meta.data,by.x="cellID",by.y="row.names")
-
-#plot heatmaps of topics
-pdf("mm10_atac_cistopic_heatmap.pdf")
-cellTopicHeatmap(mm10_cisTopicObject, method='Probability')
-dev.off()
-
-pdf("hg38_atac_cistopic_heatmap.pdf")
-cellTopicHeatmap(hg38_cisTopicObject, method='Probability',use_raster=F)
-dev.off()
-
-#predictive measurements of topics
-#hg38_pred.matrix <- predictiveDistribution(hg38_cisTopicObject)
-#mm10_pred.matrix <- predictiveDistribution(mm10_cisTopicObject)
-
-# Obtain signatures
-#hg38_path_to_signatures <- '/home/groups/oroaklab/refs/hg38/tfbs/'
-#hg38_HomerTF_signatures <- paste(hg38_path_to_signatures, list.files(hg38_path_to_signatures), sep='')
-#mm10_path_to_signatures <- '/home/groups/oroaklab/refs/mm10/JASPAR2018_TF_Sites/bed_files/'
-#mm10_JASPARTF_signatures <- paste(mm10_path_to_signatures, list.files(mm10_path_to_signatures), sep='')
-
-#get a list of files in directory and strsplit into labels
-#hg38_labels  <- unlist(lapply(strsplit(list.files(hg38_path_to_signatures),"[.]"),"[",1))
-#mm10_labels  <- unlist(lapply(strsplit(list.files(mm10_path_to_signatures),"[.]"),"[",1))
-
-#get signature region scores for topics
-#hg38_cisTopicObject <- getSignaturesRegions(hg38_cisTopicObject, hg38_HomerTF_signatures, labels=hg38_labels, minOverlap = 0.4)
-#mm10_cisTopicObject <- getSignaturesRegions(mm10_cisTopicObject, mm10_JASPARTF_signatures, labels=mm10_labels, minOverlap = 0.4)
-
-#get regions from topics
-#hg38_cisTopicObject <- getRegionsScores(hg38_cisTopicObject, method='NormTop', scale=TRUE)
-#	mm10_cisTopicObject <- getRegionsScores(mm10_cisTopicObject, method='NormTop', scale=TRUE)
-
-#plot tfbs predictions to topics
-#pdf("hg38_atac_cistopic_SignatureRegions.pdf",height=25,width=25)
-#signaturesHeatmap(hg38_cisTopicObject,row_names_gp=gpar(fontsize=5))
-#dev.off()
-
-	#pdf("mm10_atac_cistopic_SignatureRegions.pdf",height=25,width=25)
-	#signaturesHeatmap(mm10_cisTopicObject,row_names_gp=gpar(fontsize=5))
-	#dev.off()
-
-#plot general annotations to topics (this still needs to be run)
-#library(org.Hs.eg.db)
-#library(org.Mm.eg.db)
-#library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-#library(TxDb.Mmusculus.UCSC.mm10.knownGene)
-
-#hg38_cisTopicObject <- annotateRegions(hg38_cisTopicObject, txdb=TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb='org.Hs.eg.db')
-#pdf("hg38_atac_cistopic_SignatureRegions.pdf")
-#signaturesHeatmap(hg38_cisTopicObject, selected.signatures = 'annotation')
-#dev.off()
-
-	#mm10_cisTopicObject <- annotateRegions(mm10_cisTopicObject, txdb=TxDb.Mmusculus.UCSC.mm10.knownGene, annoDb='org.Mm.eg.db')
-	#pdf("mm10_atac_cistopic_SignatureRegions.pdf")
-	#signaturesHeatmap(mm10_cisTopicObject, selected.signatures = 'annotation')
-	#dev.off()
-
-	# Compute cell rankings
-	#library(AUCell)
-	#pdf("orgo_atac_cistopic_AUCellRankings.pdf")
-	#aucellRankings <- AUCell_buildRankings(pred.matrix, plot=TRUE, verbose=FALSE)
-	#dev.off()
-
-	# Check signature enrichment in cells
-	#pdf("orgo_atac_cistopic_sigantureCellEnrichment.pdf")
-	#cisTopicObject <- signatureCellEnrichment(cisTopicObject, aucellRankings, selected.signatures='all', aucMaxRank = 0.1*nrow(aucellRankings), plot=TRUE)
-	#dev.off()
-
-	#pdf("orgo_atac_cistopic_gammafit_regions.pdf")
-	#par(mfrow=c(2,5))
-	#cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.975, plot=TRUE)
-	#dev.off()
-
-#	#saving model selected RDS
-#	saveRDS(hg38_cisTopicObject,file="hg38_CisTopicObject.Rds")
-#	saveRDS(mm10_cisTopicObject,file="mm10_CisTopicObject.Rds")
-
-#bin_hg38_cisTopicObject<-binarizecisTopics(hg38_cisTopicObject)
-#	getBedFiles(bin_hg38_cisTopicObject, path='hg38_cisTopic_beds')
-#bin_mm10_cisTopicObject<-binarizecisTopics(mm10_cisTopicObject)
-#	getBedFiles(bin_mm10_cisTopicObject, path='mm10_cisTopic_beds')
-
-
-	#Read in cisTopic objects
-#	hg38_cisTopicObject<-readRDS("hg38_CisTopicObject.Rds")
-#	mm10_cisTopicObject<-readRDS("mm10_CisTopicObject.Rds")
-
-#Add cell embeddings into seurat
-hg38_cell_embeddings<-as.data.frame(hg38_cisTopicObject@selected.model$document_expects)
-colnames(hg38_cell_embeddings)<-hg38_cisTopicObject@cell.names
-hg38_n_topics<-nrow(hg38_cell_embeddings)
-row.names(hg38_cell_embeddings)<-paste0("topic_",1:hg38_n_topics)
-hg38_cell_embeddings<-as.data.frame(t(hg38_cell_embeddings))
-
-mm10_cell_embeddings<-as.data.frame(mm10_cisTopicObject@selected.model$document_expects)
-colnames(mm10_cell_embeddings)<-mm10_cisTopicObject@cell.names
-mm10_n_topics<-nrow(mm10_cell_embeddings)
-row.names(mm10_cell_embeddings)<-paste0("topic_",1:mm10_n_topics)
-mm10_cell_embeddings<-as.data.frame(t(mm10_cell_embeddings))
-
-#Add feature loadings into seurat
-hg38_feature_loadings<-as.data.frame(hg38_cisTopicObject@selected.model$topics)
-row.names(hg38_feature_loadings)<-paste0("topic_",1:hg38_n_topics)
-hg38_feature_loadings<-as.data.frame(t(hg38_feature_loadings))
-
-mm10_feature_loadings<-as.data.frame(mm10_cisTopicObject@selected.model$topics)
-row.names(mm10_feature_loadings)<-paste0("topic_",1:mm10_n_topics)
-mm10_feature_loadings<-as.data.frame(t(mm10_feature_loadings))
-
-#combined cistopic results (cistopic loadings and umap with seurat object)
-hg38_cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(hg38_cell_embeddings),loadings=as.matrix(hg38_feature_loadings),assay="peaks",key="topic_")
-hg38_umap_dims<-as.data.frame(as.matrix(hg38_dims[2:3]))
-colnames(hg38_umap_dims)<-c("UMAP_1","UMAP_2")
-row.names(hg38_umap_dims)<-hg38_dims$cellID
-hg38_cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(hg38_umap_dims),assay="peaks",key="UMAP_")
-hg38_atac@reductions$cistopic<-hg38_cistopic_obj
-hg38_atac@reductions$umap<-hg38_cistopic_umap
-
-mm10_cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(mm10_cell_embeddings),loadings=as.matrix(mm10_feature_loadings),assay="peaks",key="topic_")
-mm10_umap_dims<-as.data.frame(as.matrix(mm10_dims[2:3]))
-colnames(mm10_umap_dims)<-c("UMAP_1","UMAP_2")
-row.names(mm10_umap_dims)<-mm10_dims$cellID
-mm10_cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(mm10_umap_dims),assay="peaks",key="UMAP_")
-mm10_atac@reductions$cistopic<-mm10_cistopic_obj
-mm10_atac@reductions$umap<-mm10_cistopic_umap
-
-hg38_n_topics<-ncol(Embeddings(hg38_atac,reduction="cistopic"))
-
-hg38_atac <- FindNeighbors(
-  object = hg38_atac,
-  reduction = 'cistopic',
-  dims = 1:hg38_n_topics
-)
-hg38_atac <- FindClusters(
-  object = hg38_atac,
-  verbose = TRUE,
-  resolution=0.3
-)
-
-mm10_n_topics<-ncol(Embeddings(mm10_atac,reduction="cistopic"))
-
-mm10_atac <- FindNeighbors(
-  object = mm10_atac,
-  reduction = 'cistopic',
-  dims = 1:mm10_n_topics
-)
-mm10_atac <- FindClusters(
-  object = mm10_atac,
-  verbose = TRUE,
-  resolution=0.2
-)
-
-###save Seurat files
-saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
-saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
-```
 
 ## Plotting and writing out cell table summaries
 

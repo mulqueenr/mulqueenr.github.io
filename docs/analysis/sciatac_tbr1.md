@@ -20,6 +20,9 @@ Full breakdown of experimental setup is located [here.](https://docs.google.com/
 ```bash
   #First Test Run (Two PCR Plates)
   /home/groups/oroaklab/seq/madbum/201116_NS500556_0437_AH72CMAFX2
+  #Second Test Run (Three PCR Plates, processed an additional frozen plate)
+  /home/groups/oroaklab/seq/madbum/201203_NS500556_0442_AH7FJGBGXG]$
+
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -40,7 +43,8 @@ And output fastq files in:
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
-  NextSeq2fastq -R 201116_NS500556_0437_AH72CMAFX2
+  run_name="201203_NS500556_0442_AH7FJGBGXG"
+  NextSeq2fastq -R $run_name
 
   #This assumes the following variables for bcl2fastq:
   # DEFAULT VARIABLES
@@ -82,14 +86,16 @@ We use a scitools function which is a perl script to do this. This demultiplexer
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
-  scitools fastq-dump -R 201116_NS500556_0437_AH72CMAFX2
+  scitools fastq-dump -R $run_name
 ```
 
 {% endcapture %} {% include details.html %} 
 
 This will output to:
 ```bash
- /home/groups/oroaklab/fastq/201116_NS500556_0437_AH72CMAFX2.
+ /home/groups/oroaklab/demultiplex/201116_NS500556_0437_AH72CMAFX2
+ /home/groups/oroaklab/demultiplex/201203_NS500556_0442_AH7FJGBGXG
+
 ```
 I then set up a working directory and moved the properly assigned reads.
 
@@ -98,10 +104,13 @@ I then set up a working directory and moved the properly assigned reads.
 ```bash
   mkdir /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates
 
-  mv /home/groups/oroaklab/fastq/201116_NS500556_0437_AH72CMAFX2/201116_NS500556_0437_AH72CMAFX2.1.fq.gz \
-  /home/groups/oroaklab/fastq/201116_NS500556_0437_AH72CMAFX2/201116_NS500556_0437_AH72CMAFX2.2.fq.gz \
+  mv /home/groups/oroaklab/demultiplex/201116_NS500556_0437_AH72CMAFX2/201116_NS500556_0437_AH72CMAFX2.1.fq.gz \
+  /home/groups/oroaklab/demultiplex/201116_NS500556_0437_AH72CMAFX2/201116_NS500556_0437_AH72CMAFX2.2.fq.gz \
   /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates
 
+  mv /home/groups/oroaklab/demultiplex/201203_NS500556_0442_AH7FJGBGXG/201203_NS500556_0442_AH7FJGBGXG.1.fq.gz \
+  /home/groups/oroaklab/demultiplex/201203_NS500556_0442_AH7FJGBGXG/201203_NS500556_0442_AH7FJGBGXG.2.fq.gz \
+  /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -130,10 +139,12 @@ I'm going to use a scitools helper function to do this, but a simple for loop th
 Plate   Plate_SDSBSA_Condition  PCR_Index_i5    PCR_Index_i7    PCR_Cycles
 1       Fresh   A       A       17
 10      Old     A       B       17
+2       Fresh   C       B       17
 
 scitools make-annot \
 Plate_1+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,AA=ALL \
 Plate_10+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,AB=ALL \
+Plate_2+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,CB=ALL \
 > firstplates.annot
 ```
 {% endcapture %} {% include details.html %} 
@@ -147,10 +158,17 @@ To do this we will use a scitools function that looks at fastq read 1 and read 2
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
-scitools fastq-split -X -A firstplates.annot \
-201116_NS500556_0437_AH72CMAFX2.1.fq.gz \
-201116_NS500556_0437_AH72CMAFX2.2.fq.gz &
+#Combine fastq files across runs
+cat 201116_NS500556_0437_AH72CMAFX2.1.fq.gz 201203_NS500556_0442_AH7FJGBGXG.1.fq.gz > tbr1.1.fq.gz
+cat 201116_NS500556_0437_AH72CMAFX2.2.fq.gz 201203_NS500556_0442_AH7FJGBGXG.2.fq.gz > tbr1.2.fq.gz
 
+scitools fastq-split -X -A firstplates.annot \
+tbr1.1.fq.gz \
+tbr1.2.fq.gz &
+
+#Annot: Plate_1, count = 85746573
+#Annot: Plate_10, count = 78801321
+#Annot: Plate_2, count = 70776718
 #The -X flag tells it to not write out barcodes which don't match. Those would be other sci formatted experiments on the same run
 ```
 {% endcapture %} {% include details.html %} 
@@ -168,6 +186,8 @@ We use another scitools function for convenience. It wraps bwa mem. We will use 
   scitools fastq-align -t 10 -r 10 mm10 plate1 firstplates.Plate_1.1.fq.gz firstplates.Plate_1.2.fq.gz &
   #For plate 10
   scitools fastq-align -t 10 -r 10 mm10 plate10 firstplates.Plate_10.1.fq.gz firstplates.Plate_10.2.fq.gz &
+  #For plate 2
+  scitools fastq-align -t 10 -r 10 mm10 plate2 firstplates.Plate_2.1.fq.gz firstplates.Plate_2.2.fq.gz &
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -182,17 +202,44 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
   scitools bam-rmdup plate1.bam &
   #For plate 10
   scitools bam-rmdup plate10.bam &
+  #For plate 2
+  scitools bam-rmdup plate2.bam &
 
   #Once these finish, plot the complexity per cell
   scitools plot-complexity plate10.complexity.txt &
   scitools plot-complexity plate1.complexity.txt &
+  scitools plot-complexity plate2.complexity.txt &
+
+
+  #Combine bam files and filter
+  scitools bam-merge tbr1_ko.bam plate1.bbrd.q10.bam plate2.bbrd.q10.bam plate10.bbrd.q10.bam &
+  #Filter bam
+  scitools bam-filter -N 1000 tbr1_ko.bam
+  #Generate counts matrix
+  scitools atac-callpeak tbr1_ko.filt.bam &
+  scitools atac-counts tbr1_ko.filt.bam tbr1_ko.filt.500.bed &
+
+  #Get insert size distribution
+  scitools isize tbr1_ko.filt.bam &
+  #Get TSS enrichment per cell
+  module load bedops/2.4.36
+    #Bulk ENCODE method
+    scitools bam-tssenrich -E tbr1_ko.filt.bam mm10 &
+    #Per cell method
+    scitools bam-tssenrich tbr1_ko.filt.bam mm10 &
+
+
+  #Filter bam file by insert sizes to be between 200 to 1000 bp (based on insert size distribution)
+  samtools view -h tbr1_ko.filt.bam | \
+  awk 'substr($0,1,1)=="@" || ($9>= 120 && $9<=1000) || ($9<=-120 && $9>=-1000)' | \
+  samtools view -b > tbr1_ko.filt.120_1000.bam
 ```
 {% endcapture %} {% include details.html %} 
 
 
 ## Looks good! Need more sequencing to get a better sense of it.
 
-<!---
+
 ### Tabix fragment file generation
 
 
@@ -204,17 +251,20 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
 - 4 barcode The 10x cell barcode of this fragment. This corresponds to the CB tag attached to the corresponding BAM file records for this fragment.
 - 5 duplicateCount  The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeqT instrument are excluded from this count.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 
 ```bash
   #Organoid processing
-  input_bam="orgo.ID.bam"
-  output_name="orgo"
+  input_bam="tbr1_ko.bam"
+  output_name="tbr1_ko"
   tabix="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/tabix"
   bgzip="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/bgzip"
   samtools view --threads 10 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=30 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz
   $tabix -p bed $output_name.fragments.tsv.gz &
 ```
+
+{% endcapture %} {% include details.html %} 
 
 # sciATAC Full Processing in R
 
@@ -222,6 +272,8 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
 
 Using R v4.0 and Signac v1.0 for processing.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 
 ```R
   library(Signac)
@@ -229,41 +281,41 @@ Using R v4.0 and Signac v1.0 for processing.
   library(GenomeInfoDb)
   library(ggplot2)
   set.seed(1234)
-  library(EnsDb.Hsapiens.v86)
+  library(EnsDb.Mmusculus.v79)
   library(Matrix)
-  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
 
   # make counts matrix from sparse matrix
-  IN<-as.matrix(read.table("orgo.500.counts.sparseMatrix.values.gz"))
+  IN<-as.matrix(read.table("tbr1_ko.filt.500.counts.sparseMatrix.values.gz"))
   IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
-  COLS<-read.table("orgo.500.counts.sparseMatrix.cols.gz")
+  COLS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.cols.gz")
   colnames(IN)<-COLS$V1
-  ROWS<-read.table("orgo.500.counts.sparseMatrix.rows.gz")
+  ROWS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.rows.gz")
   row.names(IN)<-ROWS$V1
 
   #Read in fragment path for coverage plots
-  orgo_fragment.path="./orgo.fragments.tsv.gz"
+  fragment.path="./tbr1_ko.fragments.tsv.gz"
 
   # extract gene annotations from EnsDb
-  annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+  annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
 
   # change to UCSC style since the data was mapped to hg38
   seqlevelsStyle(annotations) <- 'UCSC'
-  genome(annotations) <- "hg38"
+  genome(annotations) <- "mm10"
 
   #Generate ChromatinAssay Objects
-  orgo_chromatinassay <- CreateChromatinAssay(
+  obj.chromassay <- CreateChromatinAssay(
     counts = IN,
-    genome="hg38",
+    genome="mm10",
     min.cells = 1,
     annotation=annotations,
     sep=c("_","_"),
-    fragments=orgo_fragment.path
+    fragments=fragment.path
   )
 
   #Create Seurat Object
-  orgo_atac <- CreateSeuratObject(
-    counts = orgo_chromatinassay,
+  obj <- CreateSeuratObject(
+    counts = obj.chromassay,
     assay = "peaks",
   )
 
@@ -271,81 +323,16 @@ Using R v4.0 and Signac v1.0 for processing.
 
 
   #saving unprocessed SeuratObject
-  saveRDS(orgo_atac,file="orgo_SeuratObject.Rds")
+  saveRDS(obj,file="tbr1_ko_SeuratObject.Rds")
 ```
+{% endcapture %} {% include details.html %} 
 
-### Plotting and updating metadata
 
-```R
-  #renaming annot for simplified annotation file making
-  #rename processing_ processing. *annot
-  library(Signac)
-  library(Seurat)
-  library(GenomeInfoDb)
-  library(ggplot2)
-  set.seed(1234)
-  library(EnsDb.Hsapiens.v86)
-  library(Matrix)
-  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-
-  #Set up annotation summaries to contain the same information, in same column order
-  first_annot_append<-read.table("first_prep_summary_statistics_per_cell.tsv",header=T)
-  first_annot_append<-first_annot_append[c("cellID",
-                                           "tn5_plate",
-                                           "column","row",
-                                           "tn5_i5","tn5_i5_idx_name","tn5_i5_idx_seq",
-                                           "tn5_i7","tn5_i7_idx_name","tn5_i7_idx_seq",
-                                           "pcr_i7_idx_seq","pcr_i5_idx_seq",
-                                           "total_reads","uniq_reads","perc_uniq",
-                                           "prep","orgID","cell_line","differentiation_exp","DIV",
-                                           "freezing_protocol","sort_gate","treatment","organoid")]
-
-  second_annot_append<-read.table("second_prep_summary_statistics_per_cell.tsv",header=T)
-  second_annot_append$freezing_protocol<-"Flash_Frozen" #change this for the DIV90 cirm 43 diff exp 5 organoids
-  second_annot_append[(second_annot_append$DIV=="90" & second_annot_append$differentiation_exp=="5"),]$freezing_protocol<-"Slow_Freeze"
-  second_annot_append$sort_gate<-"NA"
-  second_annot_append$treatment<-"No"
-  second_annot_append$organoid<-second_annot_append$orgID
-
-  second_annot_append<-second_annot_append[c("cellID",
-                                           "tn5_plate",
-                                           "column","row",
-                                           "tn5_i5","tn5_i5_idx_name","tn5_i5_idx_seq",
-                                           "tn5_i7","tn5_i7_idx_name","tn5_i7_idx_seq",
-                                           "pcr_i7_idx_seq","pcr_i5_idx_seq",
-                                           "total_reads","uniq_reads","perc_uniq",
-                                           "prep","orgID","cell_line","differentiation_exp","DIV",
-                                           "freezing_protocol","sort_gate","treatment","organoid")]
-
-  annot_append<-rbind(first_annot_append,second_annot_append)
-  #orgID and prep need to be accounted for to get unique organoids (there are duplicates in orgID)
-
-  original_cluster<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/180703_sciATAC_Organoids/NatureLetterData/cellID_fullcharacterization.txt",header=T)
-  original_cluster$cellID<-paste0(original_cluster$cellID,"_1")
-  original_cluster<-original_cluster[c("cellID","Phenograph_Cluster")]
-  colnames(original_cluster)<-c("cellID","original_cluster")
-
-  orgo_atac<-readRDS(file="orgo_SeuratObject.Rds")
-  orgo_atac@meta.data$cellID<-row.names(orgo_atac@meta.data)
-
-  annot<-as.data.frame(orgo_atac@meta.data)
-  annot<-merge(annot,annot_append,by="cellID",all.x=T)
-  annot<-merge(annot,original_cluster,by="cellID",all.x=T)
-  row.names(annot)<-annot$cellID
-
-  orgo_atac@meta.data<-annot
-  saveRDS(orgo_atac,file="orgo_SeuratObject.Rds")
-  write.table(annot,file="merged_summary_statistics_per_cell.tsv",col.names=T,row.names=T,sep="\t",quote=F)
-
-  #excluding differentiation experiment 4
-  orgo_atac<-subset(orgo_atac,differentiation_exp %in% c("5","7"))
-  orgo_cirm43<-subset(orgo_atac,cell_line=="CIRM43")
-
-  saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
-```
 
 ## Performing cisTopic and UMAP
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```R
   library(Signac)
   library(Seurat)
@@ -354,10 +341,10 @@ Using R v4.0 and Signac v1.0 for processing.
   set.seed(1234)
   library(EnsDb.Hsapiens.v86)
   library(Matrix)
-  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
 
   library(cisTopic)
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+  obj<-readRDS(file="tbr1_ko_SeuratObject.Rds")
 
   cistopic_processing<-function(seurat_input,prefix){
       cistopic_counts_frmt<-seurat_input$peaks@counts #grabbing counts matrices
@@ -370,17 +357,18 @@ Using R v4.0 and Signac v1.0 for processing.
   }
           
 
-  cistopic_processing(seurat_input=orgo_cirm43,prefix="orgo_cirm43")
+  cistopic_processing(seurat_input=obj,prefix="tbr1_ko")
 
-  cirm43_cistopic_models<-readRDS("orgo_cirm43.CisTopicObject.Rds")
+  cistopic_models<-readRDS("tbr1_ko.CisTopicObject.Rds")
 
 
   #Setting up topic count selection
-  pdf("cirm43_model_selection.pdf")
+  pdf("cistopic_model_selection.pdf")
   par(mfrow=c(1,3))
-  cirm43_cistopic_models <- selectModel(cirm43_cistopic_models, type='derivative')
+  cistopic_models <- selectModel(cistopic_models, type='derivative')
   dev.off()
-  system("slack -F cirm43_model_selection.pdf ryan_todo")
+  system("slack -F cistopic_model_selection.pdf ryan_todo")
+
 
 
   ###############################################
@@ -405,29 +393,29 @@ Using R v4.0 and Signac v1.0 for processing.
       object_input@reductions$umap<-cistopic_umap
       
       #finally plot
-      plt<-DimPlot(object_input,group.by=c('DIV','cell_line'),size=0.1)+ggtitle(as.character(topic_number))
+      plt<-DimPlot(object_input,size=0.1)+ggtitle(as.character(topic_number))
       return(plt)
   }
 
   library(patchwork)
-
-  plt_list<-lapply(cirm43_cistopic_models@calc.params$runWarpLDAModels$topic,
+  library(parallel)
+  plt_list<-mclapply(cistopic_models@calc.params$runWarpLDAModels$topic,
                      FUN=cistopic_loop,
-                     object_input=orgo_cirm43,
-                     models_input=cirm43_cistopic_models)
+                     object_input=obj,
+                     models_input=cistopic_models,mc.cores=10)
   plt_list<-wrap_plots(plt_list)
-  ggsave(plt_list,file="cirm43.umap_multipleTopicModels_clustering.png",height=20,width=60,limitsize=FALSE)
-
+  ggsave(plt_list,file="tbr1_ko.umap_multipleTopicModels_clustering.png",height=20,width=60,limitsize=FALSE)
+  system("slack -F tbr1_ko.umap_multipleTopicModels_clustering.png ryan_todo")
   ###############################################
 
 
 
   #set topics based on derivative
-  cirm43_selected_topic=27
-  cirm43_cisTopicObject<-cisTopic::selectModel(cirm43_cistopic_models,select=cirm43_selected_topic,keepModels=T)
+  selected_topic=27
+  cisTopicObject<-cisTopic::selectModel(cistopic_models,select=selected_topic,keepModels=T)
 
   #saving model selected RDS
-  saveRDS(cirm43_cisTopicObject,file="orgo_cirm43.CisTopicObject.Rds")
+  saveRDS(cisTopicObject,file="tbr1_ko.CisTopicObject.Rds")
 
   ####Function to include topics and umap in seurat object
   cistopic_wrapper<-function(object_input=orgo_atac,cisTopicObject=orgo_cisTopicObject,resolution=0.8){   
@@ -473,23 +461,84 @@ Using R v4.0 and Signac v1.0 for processing.
       )
       object_input <- FindClusters(
         object = object_input,
-        verbose = TRUE,
-        resolution=resolution
-      )
+  plt<-DimPlot(obj,group.by=c('seurat_clusters'),size=0.1)
+  ggsave(plt,file="tbr1_ko.umap.png",width=20)
+  ggsave(plt,file="tbr1_ko.umap.pdf",width=20)
 
-  return(object_input)}
-
-  orgo_cirm43<-cistopic_wrapper(object_input=orgo_cirm43,cisTopicObject=cirm43_cisTopicObject,resolution=0.5)
-
-  plt<-DimPlot(orgo_cirm43,group.by=c('DIV','cell_line','prep','orgID','differentiation_exp','seurat_clusters','original_cluster'),size=0.1)
-  ggsave(plt,file="cirm43.umap.png",width=20)
-  ggsave(plt,file="cirm43.umap.pdf",width=20)
-
-  i="cirm43.umap.png"
+  i="tbr1_ko.umap.png"
   system(paste0("slack -F ",i," ryan_todo"))#post to ryan_todo
          
   ###save Seurat file
-  saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
+  saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
+
+  return(object_input)}
+
+  obj<-cistopic_wrapper(object_input=obj,cisTopicObject=cisTopicObject,resolution=0.5)
+
+```
+{% endcapture %} {% include details.html %} 
+
+
+
+### Plotting and updating metadata
+
+```R
+  #renaming annot for simplified annotation file making
+  #rename processing_ processing. *annot
+  library(Signac)
+  library(Seurat)
+  library(GenomeInfoDb)
+  library(ggplot2)
+  set.seed(1234)
+  library(EnsDb.Hsapiens.v86)
+  library(Matrix)
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
+
+  obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
+  obj@meta.data$cellID<-row.names(obj@meta.data)
+  dim(obj@meta.data)
+
+  #Read in expected sci indexes
+  #Set up indexes for merging
+  sci_idx<-read.table("/home/groups/oroaklab/src/scitools/scitools-dev/SCI_Indexes.txt",header=F)
+  sci_idx_tn5_i5<-sci_idx[sci_idx$V2=="3",]
+  sci_idx_tn5_i5$set<-unlist(lapply(strsplit(sci_idx_tn5_i5$V1,"_"),"[",2)) #split string to get set name
+  sci_idx_tn5_i5$row<-unlist(lapply(strsplit(sci_idx_tn5_i5$V1,"_"),"[",4)) #split string to get row name
+  colnames(sci_idx_tn5_i5)<-c("tn5_i5_idx_name","tn5_i5_idx_cycle","tn5_i5_idx_seq","tn5_i5_set","tn5_i5_row")
+
+  sci_idx_tn5_i7<-sci_idx[sci_idx$V2=="1",]
+  sci_idx_tn5_i7$set<-unlist(lapply(strsplit(sci_idx_tn5_i7$V1,"_"),"[",2)) #split string to get set name
+  sci_idx_tn5_i7$column<-unlist(lapply(strsplit(sci_idx_tn5_i7$V1,"_"),"[",4)) #split string to get column name
+  colnames(sci_idx_tn5_i7)<-c("tn5_i7_idx_name","tn5_i7_idx_cycle","tn5_i7_idx_seq","tn5_i7_set","tn5_i7_row")
+
+  #merge cellID with sci_idx_tn5 data frame based on idx_sequences
+  obj$tn5_i7_idx_seq<-substr(obj$cellID,1,8)
+  obj$pcr_i7_idx_seq<-substr(obj$cellID,9,18)
+  obj$tn5_i5_idx_seq<-substr(obj$cellID,19,26)
+  obj$pcr_i5_idx_seq<-substr(obj$cellID,27,36)
+
+  obj@meta.data<-merge(obj@meta.data,sci_idx_tn5_i5,by="tn5_i5_idx_seq")
+  obj@meta.data<-merge(obj@meta.data,sci_idx_tn5_i7,by="tn5_i7_idx_seq")
+
+  #Read in sample information
+  samp_info<-read.table("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/sample_id.txt",header=T,sep="\t")
+  #Read in Tn5-linked sample annotation
+  tn5_info<-read.table("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/tn5_annotation.txt",header=T,sep="\t")
+  samp_info<-merge(samp_info,tn5_info,by="Sample_ID")
+  samp_info$tn5_i5_set<-substr(samp_info$Plate,1,1) #split string to get set name
+  samp_info$tn5_i7_set<-substr(samp_info$Plate,2,2) #split string to get set name
+  obj@meta.data<-merge(obj@meta.data,samp_info,by.x=c("tn5_i5_set","tn5_i5_row","tn5_i7_set","tn5_i7_row"),by.y=c("tn5_i5_set","Row","tn5_i7_set","Column"))
+  dim(obj@meta.data)
+
+
+  saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
+  write.table(obj@meta.data,file="summary_statistics_per_cell.tsv",col.names=T,row.names=T,sep="\t",quote=F)
+
+  plt<-DimPlot(obj,split.by=c("line"),size=0.1)
+  ggsave(plt,file="tbr1_ko.umap.png",width=20)
+  ggsave(plt,file="tbr1_ko.umap.pdf",width=20)
+  system("slack -F tbr1_ko.umap.pdf ryan_todo")
+
 ```
 
 ### Statistics on cell reads
@@ -526,6 +575,8 @@ Using R v4.0 and Signac v1.0 for processing.
 
   system("slack -F cirm43_cluster_summary_statistics.tsv ryan_todo")
 ```
+
+<!---
 
 ### Differential Accessibillity on Clusters
 
