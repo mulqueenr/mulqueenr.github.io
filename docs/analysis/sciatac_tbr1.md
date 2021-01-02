@@ -237,7 +237,6 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
 {% endcapture %} {% include details.html %} 
 
 
-## Looks good! Need more sequencing to get a better sense of it.
 
 
 ### Tabix fragment file generation
@@ -266,6 +265,16 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
 
 {% endcapture %} {% include details.html %} 
 
+# Using alternative peaks from MOCA data set
+peaks used from the MOCA mouse sci-ATAC atlas:
+http://krishna.gs.washington.edu/content/members/ajh24/mouse_atlas_data_release/matrices/atac_matrix.binary.qc_filtered.peaks.txt
+
+```bash
+
+awk 'OFS="\t" {split($1,a,"_"); print a[1],a[2],a[3]}' atac_matrix.binary.qc_filtered.peaks.txt > atac_matrix.binary.qc_filtered.peaks.bed
+scitools atac-counts -O tbr1_ko_moca tbr1_ko.filt.bam ../atac_matrix.binary.qc_filtered.peaks.bed & 
+
+```
 # sciATAC Full Processing in R
 
 ## Generating Seurat Objects
@@ -286,11 +295,11 @@ Using R v4.0 and Signac v1.0 for processing.
   setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
 
   # make counts matrix from sparse matrix
-  IN<-as.matrix(read.table("tbr1_ko.filt.500.counts.sparseMatrix.values.gz"))
+  IN<-as.matrix(read.table("tbr1_ko_moca.counts.sparseMatrix.values.gz"))
   IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
-  COLS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.cols.gz")
+  COLS<-read.table("tbr1_ko_moca.counts.sparseMatrix.cols.gz")
   colnames(IN)<-COLS$V1
-  ROWS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.rows.gz")
+  ROWS<-read.table("tbr1_ko_moca.counts.sparseMatrix.rows.gz")
   row.names(IN)<-ROWS$V1
 
   #Read in fragment path for coverage plots
@@ -307,7 +316,7 @@ Using R v4.0 and Signac v1.0 for processing.
   obj.chromassay <- CreateChromatinAssay(
     counts = IN,
     genome="mm10",
-    min.cells = 1,
+    min.cells = 100,
     annotation=annotations,
     sep=c("_","_"),
     fragments=fragment.path
@@ -323,7 +332,7 @@ Using R v4.0 and Signac v1.0 for processing.
 
 
   #saving unprocessed SeuratObject
-  saveRDS(obj,file="tbr1_ko_SeuratObject.Rds")
+  saveRDS(obj,file="tbr1_ko_moca.SeuratObject.Rds")
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -344,7 +353,7 @@ Using R v4.0 and Signac v1.0 for processing.
   setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
 
   library(cisTopic)
-  obj<-readRDS(file="tbr1_ko_SeuratObject.Rds")
+  obj<-readRDS(file="tbr1_ko_moca.SeuratObject.Rds")
 
   cistopic_processing<-function(seurat_input,prefix){
       cistopic_counts_frmt<-seurat_input$peaks@counts #grabbing counts matrices
@@ -357,17 +366,17 @@ Using R v4.0 and Signac v1.0 for processing.
   }
           
 
-  cistopic_processing(seurat_input=obj,prefix="tbr1_ko")
+  cistopic_processing(seurat_input=obj,prefix="tbr1_ko_moca")
 
-  cistopic_models<-readRDS("tbr1_ko.CisTopicObject.Rds")
+  cistopic_models<-readRDS("tbr1_ko_moca.CisTopicObject.Rds")
 
 
   #Setting up topic count selection
-  pdf("cistopic_model_selection.pdf")
+  pdf("tbr1_ko_moca.cistopic_model_selection.pdf")
   par(mfrow=c(1,3))
   cistopic_models <- selectModel(cistopic_models, type='derivative')
   dev.off()
-  system("slack -F cistopic_model_selection.pdf ryan_todo")
+  system("slack -F tbr1_ko_moca.cistopic_model_selection.pdf ryan_todo")
 
 
 
@@ -411,11 +420,11 @@ Using R v4.0 and Signac v1.0 for processing.
 
 
   #set topics based on derivative
-  selected_topic=27
+  selected_topic=29
   cisTopicObject<-cisTopic::selectModel(cistopic_models,select=selected_topic,keepModels=T)
 
   #saving model selected RDS
-  saveRDS(cisTopicObject,file="tbr1_ko.CisTopicObject.Rds")
+  saveRDS(cisTopicObject,file="tbr1_ko_moca.CisTopicObject.Rds")
 
   ####Function to include topics and umap in seurat object
   cistopic_wrapper<-function(object_input=orgo_atac,cisTopicObject=orgo_cisTopicObject,resolution=0.8){   
@@ -461,24 +470,89 @@ Using R v4.0 and Signac v1.0 for processing.
       )
       object_input <- FindClusters(
         object = object_input,
-  plt<-DimPlot(obj,group.by=c('seurat_clusters'),size=0.1)
-  ggsave(plt,file="tbr1_ko.umap.png",width=20)
-  ggsave(plt,file="tbr1_ko.umap.pdf",width=20)
+        verbose = TRUE,
+        resolution=resolution)
 
-  i="tbr1_ko.umap.png"
+  plt<-DimPlot(object_input,group.by=c('seurat_clusters'),size=0.1)
+  ggsave(plt,file="tbr1_ko_moca.umap.png",width=20)
+  ggsave(plt,file="tbr1_ko_moca.umap.pdf",width=20)
+
+  i="tbr1_ko_moca.umap.png"
   system(paste0("slack -F ",i," ryan_todo"))#post to ryan_todo
          
   ###save Seurat file
-  saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
+  saveRDS(object_input,file="tbr1_ko_moca.SeuratObject.Rds")
 
   return(object_input)}
 
   obj<-cistopic_wrapper(object_input=obj,cisTopicObject=cisTopicObject,resolution=0.5)
 
+
 ```
 {% endcapture %} {% include details.html %} 
 
+```R
+#Plotting regions
+  library(Signac)
+  library(Seurat)
+  library(GenomeInfoDb)
+  library(ggplot2)
+  set.seed(1234)
+  library(EnsDb.Hsapiens.v86)
+  library(Matrix)
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
 
+  obj<-readRDS(file="tbr1_ko_moca.SeuratObject.Rds")
+
+
+#from https://science.sciencemag.org/content/364/6440/eaav2522.long
+marker_list<-NULL
+marker_list[["early"]]<-c("Sox2","Eomes","Tbr2","Neurod2") #eomes and tbr2 are the same
+marker_list[["deep_layer"]]<-c("Sox5","Bcl11b","Fezf2")
+marker_list[["superficial_layer"]]<-c("Rorb","Pou3f2","Cux1")
+marker_list[["astro"]]<-c("Gfap")
+marker_list[["inhib"]]<-c("Gad2")
+marker_list[["ren"]]<-c("Hes5","Neurod6","Dlx5","Apoe","Gata1")
+saveRDS(marker_list,"grosscelltype_markerlist.rds")
+
+
+#Now setting up for mm10 
+region_check<-function(i,object=obj){
+    return(nrow(as.data.frame(LookupGeneCoords(object=object,gene=gene_list[i]))))
+    }
+
+marker_plot<-function(j,k=celltype_name,l=obj,m="mm10_tbr1_moca",n="seurat_clusters"){
+    plt<-CoveragePlot(
+        object = l,
+        region = j,
+        group.by=n,
+        extend.upstream = 5000,
+        extend.downstream = 5000,
+        ncol = 1
+    )
+    pdf(paste0("./marker_sets/",m,k,"_",j,"_genebody_accessibility.pdf"))
+    print(plt)
+    dev.off()
+}
+
+mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+marker_list<-readRDS("grosscelltype_markerlist.rds")
+
+dir.create("marker_sets")
+
+for (x in 1:length(marker_list)){
+    gene_list<-marker_list[[x]]
+    gene_list<-gene_list[as.numeric(unlist(lapply(1:length(gene_list),FUN=region_check)))==1]
+    celltype_name<-names(marker_list)[x]
+    mclapply(gene_list,FUN=marker_plot,k=celltype_name,mc.cores=20) 
+}
+
+
+#For concatenating cell types into a single scrollable pdf
+#celltype=`ls mm10*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
+#for i in $celltype ; do convert `echo mm10_${i}_*genebody_accessibility.pdf` markerset_mm10_*${i}.pdf; done
+
+```
 
 ### Plotting and updating metadata
 

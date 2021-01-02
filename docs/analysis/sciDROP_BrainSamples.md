@@ -464,6 +464,8 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
 {% endcapture %} {% include details.html %} 
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```R
 library(cisTopic)
 library(Signac)
@@ -721,6 +723,12 @@ system("slack -F mm10.umap.png ryan_todo")
 
 
 ```
+{% endcapture %} {% include details.html %} 
+
+### Subclustering 
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 
 ```R
 library(Signac)
@@ -846,6 +854,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     #selecting resolution by plots
     for (i in celltype_list){system(paste0("slack -F ",paste("./subcluster/",species,i,"clustering.pdf",sep="_")," ryan_todo"))}
     
+    #Assign clustering resolution based on clustering.pdf output
 #mm10
     #Set up variables
     species="mm10"
@@ -870,6 +879,169 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     for (i in celltype_list){system(paste0("slack -F ",paste(species,i,"clustering.pdf",sep="_")," ryan_todo"))}
 
 ```
+
+{% endcapture %} {% include details.html %} 
+
+
+### Assign Subcluster identities to larger data set 
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(patchwork)
+library(cicero)
+library(cisTopic)
+library(GenomeInfoDb)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(Matrix)
+library(JASPAR2020)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(dplyr)
+library(ggrepel)
+
+
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+#Read in data and modify to monocle CDS file
+#read in RDS file.
+hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+species="hg38"
+hg38_atac$cellID<-row.names(hg38_atac@meta.data)
+
+celltype_list<-unique(hg38_atac$seurat_clusters)
+hg38_atac$seurat_subcluster<-"NA"
+
+for(celltype.x in celltype_list){
+    atac_sub<-readRDS(paste("./subcluster/",species,celltype.x,"SeuratObject.Rds",sep="_"))
+    hg38_atac@meata.data[match(row.names(atac_sub@meta.data),row.names(hg38_atac@meta.data)),]$seurat_subcluster<-atac_sub@meta.data$
+}
+
+
+mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+ 
+    celltype_list<-unique(mm10_atac$seurat_clusters)
+
+```
+
+{% endcapture %} {% include details.html %} 
+
+## Cicero for Coaccessible Networks
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+  library(Signac)
+  library(Seurat)
+  library(SeuratWrappers)
+  library(ggplot2)
+  library(patchwork)
+  library(monocle3)
+  library(cicero)
+  library(EnsDb.Hsapiens.v86)
+  library(EnsDb.Mmusculus.v79)
+   setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+  #Cicero processing function
+  cicero_processing<-function(object_input=hg38_atac,prefix="hg38"){
+
+      #Generate CDS format from Seurat object
+      atac.cds <- as.cell_data_set(object_input,group_by="seurat_clusters")
+
+      # convert to CellDataSet format and make the cicero object
+      print("Making Cicero format CDS file")
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
+      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+      
+      genome <- seqlengths(object_input) # get the chromosome sizes from the Seurat object
+      genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
+      
+      print("Running Cicero to generate connections.")
+      conns <- run_cicero(atac.cicero, genomic_coords = genome.df, sample_num = 10) # run cicero
+      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+      
+      print("Generating CCANs")
+      ccans <- generate_ccans(conns) # generate ccans
+      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+      
+      print("Adding CCAN links into Seurat Object and Returning.")
+      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
+      Links(object_input) <- links
+      return(object_input)
+  }
+
+
+  hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+  hg38_atac<-cicero_processing(object_input=hg38_atac,prefix="hg38")
+  saveRDS(hg38_atac,"hg38_SeuratObject.GA.Rds")
+
+  mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+  mm10_atac<-cicero_processing(object_input=mm10_atac,prefix="mm10")
+  saveRDS(mm10_atac,"mm10_SeuratObject.GA.Rds")
+  
+  # generate unnormalized gene activity matrix
+  # gene annotation sample
+  annotation_generation<-function(ensdb_obj){
+      annotations <- GetGRangesFromEnsDb(ensdb = ensdb_obj)
+      pos <-as.data.frame(annotations,row.names=NULL)
+      pos$chromosome<-paste0("chr",pos$seqnames)
+      pos$gene<-pos$gene_id
+      pos <- subset(pos, strand == "+")
+      pos <- pos[order(pos$start),] 
+      pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
+      pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
+      neg <-as.data.frame(annotations,row.names=NULL)
+      neg$chromosome<-paste0("chr",neg$seqnames)
+      neg$gene<-neg$gene_id
+      neg <- subset(neg, strand == "-")
+      neg <- neg[order(neg$start,decreasing=TRUE),] 
+      neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
+      neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
+      gene_annotation<- rbind(pos, neg)
+      gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
+      names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
+      return(gene_annotation)
+    }
+
+    hg38_annotation<-annotation_generation(ensdb_obj=EnsDb.Hsapiens.v86)
+    mm10_annotation<-annotation_generation(ensdb_obj=EnsDb.Mmusculus.v79)
+
+  geneactivity_processing<-function(cds_input,conns_input,prefix){
+      atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
+      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
+      saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
+  }
+
+  conns<-as.data.frame(readRDS("orgo_cirm43_atac_cicero_conns.Rds"))
+  orgo_cirm43.cicero<-readRDS("orgo_cirm43_atac_cicero_cds.Rds")
+  geneactivity_processing(cds_input=as.cell_data_set(orgo_cirm43,group_by="seurat_clusters"),conns_input=conns,prefix="cirm43_atac")
+
+  #These can be added to the seurat object as a new assay later
+
+  #Read in unnormalized GA
+  cicero_gene_activities<-readRDS("cirm43_atac.unnorm_GA.Rds")
+  orgo_cirm43[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
+
+  # normalize
+  orgo_cirm43 <- NormalizeData(
+    object = orgo_cirm43,
+    assay = 'GeneActivity',
+    normalization.method = 'LogNormalize',
+    scale.factor = median(orgo_cirm43$nCount_peaks)
+  )
+  saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
+```
+{% endcapture %} {% include details.html %} 
+
+### Marker Plotting
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 #Gross cell type list (for both organisms)
@@ -974,7 +1146,12 @@ celltype=`ls hg38*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}
 for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` markerset_hg38_${i}.pdf; done
 
 ```
-Plotting of subcluster marker sets
+{% endcapture %} {% include details.html %} 
+
+### Plotting of subcluster marker sets
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 library(Signac)
@@ -1024,14 +1201,14 @@ for (x in c("L5ET","L6CT","L56NP","L4IT","L6b","L56ITCAR3")){
 dir.create("./subcluster/hg38_6_markers")
 hg38_atac<-readRDS(file="./subcluster/_hg38_6_SeuratObject.Rds")
 marker_list<-readRDS("hg38_markerlist.rds")
-outdirec="./subcluster/hg38_6_markers"
+outdirec="./subcluster/hg38_6_markers/"
 #Subset marker list to inhibitory neuron subclusters
 for (x in c("VLMC","PVALB","VIP","PAX6","LAMP5","SST")){
     gene_list<-marker_list[[x]]
     gene_list<-gene_list[as.numeric(unlist(lapply(1:length(gene_list),FUN=region_check)))==1]
     gene_list<-toupper(gene_list)
     celltype_name<-names(marker_list)[x]
-    mclapply(gene_list,FUN=marker_plot,k=celltype_name,outdir=outdirec,n="peaks_snn_res.0.2",mc.cores=5)
+    mclapply(gene_list,FUN=marker_plot,k=celltype_name,outdir=outdirec,n="peaks_snn_res.0.2",mc.cores=20)
 }
 
 
