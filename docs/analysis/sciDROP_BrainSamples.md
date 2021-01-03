@@ -344,6 +344,7 @@ scitools isize mm10.merged.bbrd.q10.bam &
 ```
 {% endcapture %} {% include details.html %} 
 
+
 ### Tabix fragment file generation
 
 Tabix file format is a tab separated multicolumn data structure.
@@ -404,12 +405,14 @@ COLS<-read.table(paste0(x,".counts.sparseMatrix.cols.gz"))
 colnames(IN)<-COLS$V1
 ROWS<-read.table(paste0(x,".counts.sparseMatrix.rows.gz"))
 row.names(IN)<-ROWS$V1
+writeMM(IN,file=paste0(x,".counts.mtx")) #this is to generate counts matrices in scrublet friendly format
 return(IN)
 }
 
 hg38_counts<-read_in_sparse("hg38") # make hg38 counts matrix from sparse matrix
 mm10_counts<-read_in_sparse("mm10") # make mm10 counts matrix from sparse matrix
 
+#write out as MM format
 #Read in fragment path for coverage plots
 mm10_fragment.path="./mm10.merged.fragments.tsv.gz"
 hg38_fragment.path="./hg38.merged.fragments.tsv.gz"
@@ -463,6 +466,91 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 ```
 
 {% endcapture %} {% include details.html %} 
+
+
+### Perform Scrublet on Data to Ensure Single-cells
+
+Code from tutorial here.[https://github.com/AllonKleinLab/scrublet/blob/master/examples/scrublet_basics.ipynb]
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+```python
+#using a conda environment set up by ARSN
+#source /home/groups/oroaklab/nishida/scitools_env/bin/activate
+#Installing scrublet
+#pip install scrublet
+import scrublet as scr
+import scipy.io
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+from scipy.sparse import coo_matrix
+import gzip
+import pandas as pd
+
+#Load the raw counts matrix as a scipy sparse matrix with cells as rows and genes as columns.
+
+input_dir = '/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/'
+
+#Perform scrublet on mm10 cells
+    counts_matrix = scipy.io.mmread(input_dir + 'mm10.counts.mtx').T.tocsc() #generated during the initialization of the Seurat Object
+
+    peaks= np.array(gzip.open(input_dir+'mm10.counts.sparseMatrix.rows.gz', 'rt').read().split()) #This is read in to check that our data frame is in the correct orientation
+    cellid= gzip.open(input_dir+'mm10.counts.sparseMatrix.cols.gz', 'rt').read().split() #This is read in to check that our data frame is in the correct orientation
+    print('Counts matrix shape: {} rows, {} columns'.format(counts_matrix.shape[0], counts_matrix.shape[1]))
+    print('Number of genes in gene list: {}'.format(len(peaks)))
+    #Run scrublet
+    scrub = scr.Scrublet(counts_matrix, expected_doublet_rate=0.05)
+    #Run the default pipeline, which includes:
+    #Doublet simulation
+    #Normalization, gene filtering, rescaling, PCA
+    #Doublet score calculation
+    #Doublet score threshold detection and doublet calling
+    doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2, 
+                                                              min_cells=3, 
+                                                              min_gene_variability_pctl=85, 
+                                                              n_prin_comps=30)
+
+    """
+    Simulating doublets...
+    Embedding transcriptomes using PCA...
+    Calculating doublet scores...
+    Automatically set threshold at doublet score = 0.37
+    Detected doublet rate = 2.0%
+    Estimated detectable doublet fraction = 53.6%
+    Overall doublet rate:
+            Expected   = 5.0%
+            Estimated  = 3.7%
+    Elapsed time: 1072.8 seconds
+    """
+    df = pd.DataFrame({'cellid':cellid, 'doublet_scores':doublet_scores,'predicted_doublets':predicted_doublets})
+    df.to_csv('mm10.scrublet.tsv', index=False, sep="\t")
+
+#Perform on hg38 cells
+counts_matrix = scipy.io.mmread(input_dir + 'hg38.counts.mtx').T.tocsc() #generated during the initialization of the Seurat Object
+
+peaks= np.array(gzip.open(input_dir+'hg38.counts.sparseMatrix.rows.gz', 'rt').read().split()) #This is read in to check that our data frame is in the correct orientation
+cellid= gzip.open(input_dir+'hg38.counts.sparseMatrix.cols.gz', 'rt').read().split() #This is read in to check that our data frame is in the correct orientation
+print('Counts matrix shape: {} rows, {} columns'.format(counts_matrix.shape[0], counts_matrix.shape[1]))
+print('Number of genes in gene list: {}'.format(len(peaks)))
+#Run scrublet
+scrub = scr.Scrublet(counts_matrix, expected_doublet_rate=0.05)
+#Run the default pipeline, which includes:
+#Doublet simulation
+#Normalization, gene filtering, rescaling, PCA
+#Doublet score calculation
+#Doublet score threshold detection and doublet calling
+doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2, 
+                                                          min_cells=3, 
+                                                          min_gene_variability_pctl=85, 
+                                                          n_prin_comps=30)
+
+df = pd.DataFrame({'cellid':cellid, 'doublet_scores':doublet_scores,'predicted_doublets':predicted_doublets})
+df.to_csv('hg38.scrublet.tsv', index=False, sep="\t")
+```
+{% endcapture %} {% include details.html %} 
+
+## Running Initial Clustering of Cells
+Using CisTopic for Dimensionality reduction and UMAP for projection.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -707,25 +795,41 @@ mm10_atac <- FindClusters(
   resolution=0.02 #targetting roughly 10 communities for gross cell clustering
 )
 
+#Add scrublet scores to meta data
+mm10_scrub<-read.table("mm10.scrublet.tsv",header=T)
+hg38_scrub<-read.table("hg38.scrublet.tsv",header=T)
+
+mm10_atac@meta.data<-cbind(mm10_atac@meta.data,mm10_scrub[match(mm10_scrub$cellid,row.names(mm10_atac@meta.data),nomatch=0),])
+hg38_atac@meta.data<-cbind(hg38_atac@meta.data,hg38_scrub[match(hg38_scrub$cellid,row.names(hg38_atac@meta.data),nomatch=0),])
+
 ###save Seurat files
 saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
 saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
 #Plotting 2d projection and clusters
 
-plt<-DimPlot(hg38_atac,group.by=c('seurat_clusters'))
-ggsave(plt,file="hg38.umap.png")
-system("slack -F hg38.umap.png ryan_todo")
+plt<-DimPlot(hg38_atac,group.by=c('seurat_clusters','predicted_doublets'))
+ggsave(plt,file="hg38.umap.png",width=10)
+system("slack -F hg38.umap.png sci_drop_atac")
 
-plt<-DimPlot(mm10_atac,group.by=c('seurat_clusters'))
-ggsave(plt,file="mm10.umap.png")
-system("slack -F mm10.umap.png ryan_todo")
+plt<-DimPlot(mm10_atac,group.by=c('seurat_clusters','predicted_doublets'))
+ggsave(plt,file="mm10.umap.png",width=10)
+system("slack -F mm10.umap.png sci_drop_atac")
 
+plt<-FeaturePlot(hg38_atac,feature=c('doublet_scores'))
+ggsave(plt,file="hg38.umap.scrub.png")
+system("slack -F hg38.umap.scrub.png sci_drop_atac")
+
+plt<-FeaturePlot(mm10_atac,feature=c('doublet_scores'))
+ggsave(plt,file="mm10.umap.scrub.png")
+system("slack -F mm10.umap.scrub.png sci_drop_atac")
 
 ```
 {% endcapture %} {% include details.html %} 
 
 ### Subclustering 
+
+Going to exclude cells in subclustering that are identified by scrublet as potential doublets.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -764,6 +868,7 @@ dir.create("subcluster")
 cistopic_generation<-function(x,celltype.x,species="hg38"){
 #Perform cistopic on subclusters of data 
     atac_sub<-x
+    atac_sub<-subset(atac_sub,subset=predicted_doublets=="False") #remove doublets from subclustering
     cistopic_counts_frmt<-atac_sub$peaks@counts
     row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
     sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
