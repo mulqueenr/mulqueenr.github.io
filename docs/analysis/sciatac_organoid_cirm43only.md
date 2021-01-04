@@ -534,11 +534,11 @@ Using R v4.0 and Signac v1.0 for processing.
 
   return(object_input)}
 
-  orgo_cirm43<-cistopic_wrapper(object_input=orgo_cirm43,cisTopicObject=cirm43_cisTopicObject,resolution=0.5)
+  orgo_cirm43<-cistopic_wrapper(object_input=orgo_cirm43,cisTopicObject=cirm43_cisTopicObject,resolution=0.15)
 
   plt<-DimPlot(orgo_cirm43,group.by=c('DIV','cell_line','prep','orgID','differentiation_exp','seurat_clusters','original_cluster'),size=0.1)
-  ggsave(plt,file="cirm43.umap.png",width=20)
-  ggsave(plt,file="cirm43.umap.pdf",width=20)
+  ggsave(plt,file="cirm43.umap.png",width=15)
+  ggsave(plt,file="cirm43.umap.pdf",width=15)
 
   i="cirm43.umap.png"
   system(paste0("slack -F ",i," ryan_todo"))#post to ryan_todo
@@ -549,6 +549,7 @@ Using R v4.0 and Signac v1.0 for processing.
 {% endcapture %} {% include details.html %} 
 
 ### Statistics on cell reads
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
@@ -577,8 +578,9 @@ Using R v4.0 and Signac v1.0 for processing.
   #Cluster summaries
   dat<-orgo_cirm43@meta.data
   dat_sum<-as.data.frame(dat %>% 
-  group_by(differentiation_exp,DIV,treatment,seurat_clusters) %>% 
-  summarize(mean=mean(uniq_reads),sd=sd(uniq_reads),median=median(uniq_reads),mean_FRIP=mean(FRIP),cell_count=n(),organoid_count=length(unique(orgID))))
+  group_by(orgID,seurat_clusters,differentiation_exp,DIV) %>% 
+  summarize(count=n()))
+
   write.table(dat_sum,"cirm43_cluster_summary_statistics.tsv",col.names=T,row.names=T,quote=F,sep="\t")
 
   system("slack -F cirm43_cluster_summary_statistics.tsv ryan_todo")
@@ -675,9 +677,17 @@ Using R v4.0 and Signac v1.0 for processing.
 
   #Plot out top peaks and associated gene name for each cluster
   dat<-read.table("cirm43.onevrest.da_peaks.txt",header=T,sep="\t")
-  dat_select<-dat %>% arrange(rev(desc(p_val_adj))) %>% group_by(enriched_group) %>% slice(1:2) #grabbing top 2 most significant peaks to label
-  plt<-ggplot(dat,aes(x=avg_logFC,y=(-log(p_val)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(dat=dat_select,aes(label=gene_name,size=-distance),force=3)+theme_bw()
+
+  dat$label<-c("")
+  for (i in unique(dat$enriched_group)){
+    selc_genes<-row.names(dat %>% filter(enriched_group==i) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:5))
+    dat[row.names(dat) %in% selc_genes & dat$enriched_group==i,]$label<- dat[row.names(dat) %in% selc_genes & dat$enriched_group==i,]$gene_name
+  }
+
+
+  plt<-ggplot(dat,aes(x=pct.1/pct.2,y=(-log(p_val_adj)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(aes(label=label,size=0.05),force=10)+theme_bw()+xlim(c(0,30))
   ggsave(plt,file="cirm43_da_peaks.pdf")
+  system("slack -F cirm43_da_peaks.pdf ryan_todo")
 
   #Empty list to rerun for 1v1 comparisons
   cirm43_da_peaks<-list()
@@ -696,6 +706,7 @@ Using R v4.0 and Signac v1.0 for processing.
 
   write("Outputting One v One DA Table.", stderr())
   write.table(cirm43_da_peaks,file="cirm43.onevone.da_peaks.txt",sep="\t",col.names=T,row.names=T,quote=F)
+
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -730,13 +741,13 @@ Using R v4.0 and Signac v1.0 for processing.
   orgo_bg_bed$start<-as.numeric(as.character(orgo_bg_bed$start))
   orgo_bg_bed$end<-as.numeric(as.character(orgo_bg_bed$end))
 
-  cirm43_da_peaks<-read.table("cirm43.onevone.da_peaks.txt",header=T)
+  cirm43_da_peaks<-read.table("cirm43.onevrest.da_peaks.txt",header=T)
 
   write("Beginning loop through all annotation groups.", stderr())
 
   great_processing<-function(enriched_group_input,peak_dataframe,prefix){
       #subset bed file to peaks enriched in input group
-      orgo_bed<-as.data.frame(do.call("rbind",strsplit(orgo_da_peaks[orgo_da_peaks$enriched_group==enriched_group_input,]$da_region,"-")))
+      orgo_bed<-as.data.frame(do.call("rbind",strsplit(peak_dataframe[peak_dataframe$enriched_group==enriched_group_input,]$da_region,"-")))
       colnames(orgo_bed)<-c("chr","start","end")
       orgo_bed$start<-as.numeric(as.character(orgo_bed$start))
       orgo_bed$end<-as.numeric(as.character(orgo_bed$end))
@@ -909,9 +920,15 @@ Using R v4.0 and Signac v1.0 for processing.
   #To convert JASPAR ID TO TF NAME
   dat$da_tf <- unlist(lapply(unlist(lapply(dat$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
   write.table(dat,file="cirm43.onevrest.da_tf.txt",sep="\t",col.names=T,row.names=T,quote=F)
-  dat_select<-dat %>% arrange(rev(desc(p_val_adj))) %>% group_by(enriched_group) %>% slice(1:2) #grabbing top 2 most significant peaks to label
-  plt<-ggplot(dat,aes(x=avg_logFC,y=(-log(p_val)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(dat=dat_select,aes(label=da_tf),force=3)+theme_bw()
+  dat$label<-c("")
+  for (i in unique(dat$enriched_group)){
+    selc_genes<-row.names(dat %>% filter(enriched_group==i) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:5))
+    dat[row.names(dat) %in% selc_genes & dat$enriched_group==i,]$label<- dat[row.names(dat) %in% selc_genes & dat$enriched_group==i,]$da_tf
+  }
+
+  plt<-ggplot(dat,aes(x=avg_logFC,y=(-log(p_val_adj)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_text_repel(aes(label=label),force=3)+theme_bw()
   ggsave(plt,file="cirm43_oncevrest.da_tf.pdf")
+  system("slack -F cirm43_oncevrest.da_tf.pdf ryan_todo")
 
   #Empty list to rerun for 1v1 comparisons
   cirm43_tf<-list()
@@ -1039,8 +1056,6 @@ Using R v4.0 and Signac v1.0 for processing.
 ```
 {% endcapture %} {% include details.html %} 
 
-# TO BE ADDED scRNA PREPROCESSING SECTION
-
 ## Celltype Assignment of Clusters
 
 Cell Type Assignment of Organoid Clusters
@@ -1081,10 +1096,6 @@ Doing this in three parts.
   #subset to cell types expected to occur in organoids
   pubprimary<-subset(pubprimary,idents=c("Excitatory Neuron","Inhibitory Neuron","IPC","Radial Glia"))
 
-  #Our RNA
-  #setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis/rna_processing")
-  #orgo_rna<-readRDS("orgo_rna.SeuratObject.rds")
-
   #Our ATAC
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
   orgo_cirm43<-readRDS(file="orgo_cirm43.SeuratObject.Rds")
@@ -1101,6 +1112,7 @@ Doing this in three parts.
                "TBR1","EOMES","NEUROD1","NEUROD2","NEUROG1","TGIF1","TGIF2",
                "DLX1","DLX2","DLX6","GSX2","LHX6",
                "POU3F3","POU3F2","TFAP4")
+
     #Setting up chromvar matrix from CIRM43
     tfList <- getMatrixByID(JASPAR2020, ID=row.names(orgo_cirm43@assays$chromvar@data)) 
     tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
@@ -1124,7 +1136,7 @@ Doing this in three parts.
     #set na values to 0 for clustering
     dat_tf[which(is.na(dat_tf),arr.ind=T)]<-0
     dat_tf<-as.data.frame(t(dat_tf))
-    clus_order<-c("12","4","1","0","5","3","9","2","8","6","7","10","11","13")
+    clus_order<-c("5","3","0","2","1","4")
     dat_tf<-dat_tf[colnames(dat_tf) %in% clus_order]
 
     plt<-Heatmap(dat_tf,
@@ -1162,7 +1174,7 @@ Doing this in three parts.
     #set na values to 0 for clustering
     dat_ga<-data.frame(t(dat_ga))
     colnames(dat_ga)<-as.character(0:(ncol(dat_ga)-1))
-    clus_order<-c("12","4","1","0","5","3","9","2","8","6","7","10","11","13")
+    clus_order<-c("5","3","0","2","1","4")
     dat_ga<-dat_ga[colnames(dat_ga) %in% clus_order]
     
     plt<-Heatmap(dat_ga,
@@ -1216,13 +1228,13 @@ Doing this in three parts.
     predictdat<-melt(predictdat)
     predictdat<-as.data.frame(predictdat %>% group_by(seurat_clusters,variable) %>% summarize(average=mean(value)))
 
-    predictdat$variable<-substr(predictdat$variable,18,length(predictdat$variable))
+    predictdat$variable<-substring(predictdat$variable,first=18)
     predictdat<-predictdat[predictdat$variable %in% c("Excitatory.Neuron","Inhibitory.Neuron","IPC","Radial.Glia"),]
     predictdat<-dcast(predictdat,seurat_clusters~variable)
     row.names(predictdat)<-predictdat$seurat_clusters
     predictdat<-predictdat[!(colnames(predictdat) %in% c("seurat_clusters"))]
-    predictdat<-as.data.frame(t(scale(predictdat,scale=F)))
-    clus_order<-c("12","4","1","0","5","3","9","2","8","6","7","10","11","13")
+    predictdat<-as.data.frame(t(scale(predictdat,scale=T)))
+    clus_order<-c("5","3","0","2","1","4")
     predictdat<-predictdat[colnames(predictdat) %in% clus_order]
     plt<-Heatmap(predictdat,
     row_order=c("Radial.Glia","IPC","Excitatory.Neuron","Inhibitory.Neuron"),
@@ -1236,11 +1248,10 @@ Doing this in three parts.
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
   orgo_cirm43<-readRDS(file="orgo_cirm43.SeuratObject.Rds")
   orgo_cirm43@meta.data$celltype<-"unknown"
-  orgo_cirm43@meta.data[orgo_cirm43@meta.data$seurat_clusters %in% c("10"),]$celltype<-"neuroepithelial"
-  orgo_cirm43@meta.data[orgo_cirm43@meta.data$seurat_clusters %in% c("12","4","1","0"),]$celltype<-"radial_glia"
-  orgo_cirm43@meta.data[orgo_cirm43@meta.data$seurat_clusters %in% c("5","3"),]$celltype<-"intermediate_progenitor"
-  orgo_cirm43@meta.data[orgo_cirm43@meta.data$seurat_clusters %in% c("9","2","8"),]$celltype<-"excitatory_neuron"
-  orgo_cirm43@meta.data[orgo_cirm43@meta.data$seurat_clusters %in% c("6"),]$celltype<-"inhibitory_neuron"
+  orgo_cirm43@meta.data[orgo_cirm43@meta.data$seurat_clusters %in% c("4"),]$celltype<-"neuroepithelial"
+  orgo_cirm43@meta.data[orgo_cirm43@meta.data$seurat_clusters %in% c("5","3","0"),]$celltype<-"radial_glia"
+  orgo_cirm43@meta.data[orgo_cirm43@meta.data$seurat_clusters %in% c("2"),]$celltype<-"intermediate_progenitor"
+  orgo_cirm43@meta.data[orgo_cirm43@meta.data$seurat_clusters %in% c("1"),]$celltype<-"excitatory_neuron"
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ```
 
@@ -1256,6 +1267,12 @@ library(ggplot2)
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
 
+#From https://www.nature.com/articles/s41586-020-1962-0#MOESM1 Supplementary Table 9 and markers by Supplementary Table 3
+areal_signatures<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/areal_signatures.tsv",sep="\t",head=T)
+organoid_cluster_markers<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/bhaduri_organoid_markers.tsv",sep="\t",head=T)
+organoid_cluster_desc<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/bhaduri_organoid_marker_clusters.tsv",sep="\t",head=T)
+
+
 module_membership<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/gene_modules.membership.txt",sep="\t",head=T) #Formatted from Table S4
 colnames(module_membership)<-c("gene","module_name")
 module_description<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/gene_module.description.txt",sep="\t",head=T) #Formatted from Table S4
@@ -1270,46 +1287,56 @@ lapply(module_dat, function(i) c(length(i),sum(i %in% row.names(orgo_cirm43@assa
 
 orgo_cirm43_wip<-AddModuleScore(orgo_cirm43,features=module_dat,assay="GeneActivity",name=paste0(names(module_dat),"_"), search=T)
 saveRDS(orgo_cirm43_wip,file="orgo_cirm43.SeuratObject.ModulesWIP.Rds")
+orgo_cirm43_wip<-readRDS("orgo_cirm43.SeuratObject.ModulesWIP.Rds")
 
-for (i in unique(module_curated$celltype)){
-  features=colnames(orgo_cirm43_wip@meta.data)[which(unlist(lapply(strsplit(colnames(orgo_cirm43_wip@meta.data),"_"),"[",1)) %in% module_curated[module_curated$celltype==i,]$module_name)]
-  plt<-FeaturePlot(orgo_cirm43_wip,
-    features=features,
-    #max.cutoff="q90",
-    min.cutoff="q10",
-    pt.size=0.1,
-    cols=c("white","red"),
-    order=T,
-    ncol=3)
-  ggsave(plt,file=paste0(i,"_modules.png"),width=20,height=round(5*(length(features)/3)),limit=F)
-  system(paste0("slack -F ",paste0(i,"_modules.png")," ryan_todo"))}
+predictdat<-orgo_cirm43_wip@meta.data
+predictdat<-predictdat[startsWith(colnames(predictdat),"organoid.human")| startsWith(colnames(predictdat),"primary.human") | colnames(predictdat) %in% c("seurat_clusters")]
+predictdat<-predictdat[!(colnames(predictdat) %in% c("prediction.score.max","predicted.id"))]
 
-#Also performing module test with chromvar output
-  library(JASPAR2020)
-  library(TFBSTools)
-    #Assign human readable TF motif names
-    tfList <- getMatrixByID(JASPAR2020, ID=row.names(orgo_cirm43@assays$chromvar@data))
-    tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
-    row.names(orgo_cirm43@assays$chromvar@data)<-tfList
+predictdat<-melt(predictdat)
+predictdat<-as.data.frame(predictdat %>% group_by(seurat_clusters,variable) %>% summarize(average=median(value)))
 
-  orgo_cirm43_wip<-AddModuleScore(orgo_cirm43,features=module_dat,assay="chromvar",name=paste0(names(module_dat),"_"), search=T)
-  saveRDS(orgo_cirm43_wip,file="orgo_cirm43.SeuratObject.ModulesWIP.Rds")  
+predictdat<-dcast(predictdat,seurat_clusters~variable)
+row.names(predictdat)<-predictdat$seurat_clusters
+predictdat<-predictdat[,2:ncol(predictdat)]
+predictdat<-as.data.frame(t(scale(predictdat,scale=T)))
+clus_order<-c("5","3","0","2","1","4")
+predictdat<-predictdat[colnames(predictdat) %in% clus_order]
+predictdat<-predictdat[unlist(lapply(strsplit(row.names(predictdat),"_"),"[",1)) %in% module_curated$module_name,]
 
 
-for (i in unique(module_curated$celltype)){
-  features=colnames(orgo_cirm43_wip@meta.data)[which(unlist(lapply(strsplit(colnames(orgo_cirm43_wip@meta.data),"_"),"[",1)) %in% module_curated[module_curated$celltype==i,]$module_name)]
-  plt<-FeaturePlot(orgo_cirm43_wip,
-    features=features,
-    max.cutoff="q95",
-    min.cutoff="q5",
-    pt.size=0.05,
-    cols=c("blue","white","red"),
-    order=T,
-    ncol=3)
-  ggsave(plt,file=paste0(i,"_modules.png"),width=20,height=round(5*(length(features)/3)),limit=F)
-  system(paste0("slack -F ",paste0(i,"_modules.png")," ryan_todo"))}
+plt<-Heatmap(predictdat,
+row_names_gp = gpar(fontsize = 4),
+column_order=clus_order,
+left_annotation=rowAnnotation(celltype=module_curated[match(unlist(lapply(strsplit(row.names(predictdat),"_"),"[",1)),module_curated$module_name),]$celltype),
+row_split=unlist(lapply(strsplit(row.names(predictdat),"[.]"),"[",1))
+
+)
+
+pdf("predictedid.heatmap.modules.pdf")
+plt
+dev.off()
+system("slack -F predictedid.heatmap.modules.pdf ryan_todo")
 
 
+```
+{% endcapture %} {% include details.html %} 
+
+### Marker Plotting Function
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+library(Signac)
+library(Seurat)
+library(ggplot2)
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+
+
+  plt3<-FeaturePlot(orgo_cirm43,features=c('STMN2'),pt.size=0.1,order=T,min.cutoff='q10')
+
+  ggsave(plt3,file="test_marker.png")
+  system("slack -F test_marker.png ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -1351,11 +1378,7 @@ for (i in unique(module_curated$celltype)){
     cirm43_subset<-subset(orgo_cirm43,cells=which(orgo_cirm43$celltype == i))
     cistopic_processing(seurat_input=cirm43_subset,prefix=i)}
 
-    #Also running cistopic on IPC and excitatory neuron clusters
-    cirm43_subset<-subset(orgo_cirm43,cells=which(orgo_cirm43$celltype %in% c("intermediate_progenitor","excitatory_neuron")))
-    cistopic_processing(seurat_input=cirm43_subset,prefix="ipc_and_exNeu")
-
-  for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron","ipc_and_exNeu")){
+  for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){
     #Setting up topic count selection
     atac_cistopic_models <-readRDS(paste(i,"CisTopicObject.Rds",sep="."))
     pdf(paste(i,"CisTopicObject_model_selection.pdf",sep="."))
@@ -1365,9 +1388,9 @@ for (i in unique(module_curated$celltype)){
     system(paste0("slack -F ",paste(i,"CisTopicObject_model_selection.pdf",sep=".")," ryan_todo"))}
 
   #set topics based on derivative
-  topic_counts<-setNames(c(24,24,27,23),c("radial_glia","intermediate_progenitor","excitatory_neuron","ipc_and_exNeu"))
+  topic_counts<-setNames(c(24,30,22),c("radial_glia","intermediate_progenitor","excitatory_neuron"))
 
-  topicmodel_list<-setNames(c("radial_glia","intermediate_progenitor","excitatory_neuron","ipc_and_exNeu"), paste(c("radial_glia","intermediate_progenitor","excitatory_neuron","ipc_and_exNeu"),"CisTopicObject.Rds",sep="."))
+  topicmodel_list<-setNames(c("radial_glia","intermediate_progenitor","excitatory_neuron"), paste(c("radial_glia","intermediate_progenitor","excitatory_neuron"),"CisTopicObject.Rds",sep="."))
 
 #UMAP Projection and clustering on selected cistopic model
 clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=orgo_cirm43,celltype.x,topiccount_list.=topic_counts){
@@ -1418,6 +1441,8 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=orgo_cir
     saveRDS(atac_sub,paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
     plt<-DimPlot(atac_sub,group.by=c('peaks_snn_res.0.1','peaks_snn_res.0.2','peaks_snn_res.0.5','peaks_snn_res.0.9'))
     ggsave(plt,file=paste("./subcluster/",celltype.x,"clustering.pdf",sep="_"))
+    system(paste0("slack -F ",paste("./subcluster/",celltype.x,"clustering.pdf",sep="_")," ryan_todo"))
+
 }
 
 library(Signac)
@@ -1431,25 +1456,27 @@ library(patchwork)
 set.seed(1234)
 
 
-celltype.x="ipc_and_exNeu"
-
-chromvar_loop<-function(celltype.x){
-    atac_sub<-readRDS(paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
-      # Get a list of motif position frequency matrices from the JASPAR database
-    pfm <- getMatrixSet(x = JASPAR2020,opts = list(species =9606, all_versions = FALSE))
-      # Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
-    motif.matrix <- CreateMotifMatrix(features = granges(atac_sub),pwm = pfm,genome = 'hg38',use.counts = FALSE)
-      # Create a new Mofif object to store the results
-    motif <- CreateMotifObject(data = motif.matrix,pwm = pfm)
-    atac_sub <- SetAssayData(object = atac_sub, assay = 'peaks',slot = 'motifs',new.data = motif)
-    atac_sub <- RegionStats(object = atac_sub, genome = BSgenome.Hsapiens.UCSC.hg38)
-    atac_sub<- RunChromVAR( object = atac_sub,genome = BSgenome.Hsapiens.UCSC.hg38,verbose=T)
-    saveRDS(atac_sub,paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
-}
-
 dir.create("./subcluster")
 
 for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){clustering_loop(celltype.x=i)}
+
+for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){system(paste0("slack -F ",paste("./subcluster/",i,"clustering.pdf",sep="_")," ryan_todo"))}
+
+
+
+
+subcluster_assignment<-function(resolution_list.=resolution_list,object_input=orgo_cirm43,celltype.x){
+    #set up subset object again
+    atac_sub<-readRDS(paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
+    atac_sub$seurat_subcluster<-atac_sub@meta.data[,which(colnames(atac_sub@meta.data)==resolution_list[celltype.x])]
+    saveRDS(atac_sub,paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
+}
+
+#Selected resolution based on subclustering plots
+resolution_list<-setNames(c("peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.2"),c("radial_glia","intermediate_progenitor","excitatory_neuron"))
+#Seurat subcluster assignment based on resolution plots
+for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){subcluster_assignment(celltype.x=i)}
+
 
 
 library(princurve)
@@ -1457,34 +1484,45 @@ library(ggplot2)
 library(patchwork)
 setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis/subcluster")
 
-prin_curve<-function(celltype.x=i){
-atac_sub<-readRDS(paste("",i,"SeuratObject.Rds",sep="_"))
-dims<-atac_sub@reductions$umap@cell.embeddings
+
+prin_curve<-function(celltype.x=i,atac_sub,subcluster_list){
+cellid_subset<-row.names(atac_sub@meta.data)[atac_sub$seurat_subcluster %in% subcluster_list]
+dims<-atac_sub@reductions$umap@cell.embeddings[cellid_subset,]
 prcurve_out<-principal_curve(dims)
-dims<-cbind(dims,atac_sub@meta.data[match(row.names(dims),row.names(atac_sub@meta.data)),])
-dims$prcurve<-prcurve_out$lambda[match(names(prcurve_out$lambda),row.names(dims))]
+dims<-cbind(dims,atac_sub@meta.data[cellid_subset,])
+dims$prcurve<-prcurve_out$lambda[cellid_subset]
 
 plt1<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
   geom_point(aes(color=as.factor(DIV)),size=0.1)+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
+
 plt2<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
-  geom_point(aes(color=peaks_snn_res.0.1),size=0.1)+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
+  geom_point(aes(color=seurat_subcluster),size=0.1)+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
+
 plt3<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
-  geom_point(aes(color=peaks_snn_res.0.2),size=0.1)+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
-plt4<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
-  geom_point(aes(color=peaks_snn_res.0.9),size=0.1)+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
-plt5<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
   geom_point(aes(color=as.numeric(prcurve)),size=0.1)+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
-plt<-(plt1+plt2)/(plt3+plt4)/plt5
+plt<-(plt1+plt2)/(plt3)
 
 ggsave(plt,file=paste(i,"prcurve.pdf",sep="."))
 system(paste0("slack -F ",paste(i,"prcurve.pdf",sep=".")," ryan_todo"))
-atac_sub@meta.data<-dims
+saveRDS(prcurve_out,file=paste(i,"prcurve.Rds",sep="."))
+atac_sub@meta.data$prcurve<-NA
+atac_sub@meta.data[cellid_subset,]$prcurve<-dims$prcurve
+
+plt<-FeaturePlot(atac_sub,feature="prcurve")
+ggsave(plt,file=paste(i,"prcurve.seurat.pdf",sep="."))
+system(paste0("slack -F ",paste(i,"prcurve.seurat.pdf",sep=".")," ryan_todo"))
 saveRDS(atac_sub,paste("",i,"SeuratObject.Rds",sep="_"))
 }
 
-for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){
-  prin_curve(celltype.x=i)
-}
+i="radial_glia";subclusters<-c("3","1","0")
+atac_sub<-readRDS("_radial_glia_SeuratObject.Rds")
+prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
+
+i="intermediate_progenitor";subclusters<-c("0","1","2")
+atac_sub<-readRDS("_intermediate_progenitor_SeuratObject.Rds")
+prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
+
+
 
 
 ```
@@ -1832,12 +1870,12 @@ Decided to use a binning strategy to assess pseudotime signal.
   #Perform parallel application of DA test
   library(parallel)
 
-  n.cores=length(unique(atac_sub$peaks_snn_res.0.5))
+  n.cores=length(unique(atac_sub$peaks_snn_res.0.2))
   da_peaks<-mclapply(
-      unique(atac_sub$peaks_snn_res.0.5),
+      unique(atac_sub$peaks_snn_res.0.2),
       FUN=da_one_v_rest_da,
       obj=atac_sub,
-      group="peaks_snn_res.0.5",
+      group="peaks_snn_res.0.2",
       mc.cores=n.cores)
 
   #Merge the final data frame from the list for 1vrest DA
@@ -1855,10 +1893,10 @@ Decided to use a binning strategy to assess pseudotime signal.
 
   da_tf<-list()
   da_tf<-mclapply(
-      unique(atac_sub$peaks_snn_res.0.5),
+      unique(atac_sub$peaks_snn_res.0.2),
       FUN=da_one_v_rest_tf,
       obj=atac_sub,
-      group="peaks_snn_res.0.5",
+      group="peaks_snn_res.0.2",
       mc.cores=n.cores)
 
   #Merge the final data frame from the list for 1vrest DA

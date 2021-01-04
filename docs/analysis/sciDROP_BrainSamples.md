@@ -653,83 +653,6 @@ pdf("hg38_atac_cistopic_heatmap.pdf")
 cellTopicHeatmap(hg38_cisTopicObject, method='Probability')
 dev.off()
 
-#predictive measurements of topics
-#hg38_pred.matrix <- predictiveDistribution(hg38_cisTopicObject)
-#mm10_pred.matrix <- predictiveDistribution(mm10_cisTopicObject)
-
-# Obtain signatures
-#hg38_path_to_signatures <- '/home/groups/oroaklab/refs/hg38/tfbs/'
-#hg38_HomerTF_signatures <- paste(hg38_path_to_signatures, list.files(hg38_path_to_signatures), sep='')
-#mm10_path_to_signatures <- '/home/groups/oroaklab/refs/mm10/JASPAR2018_TF_Sites/bed_files/'
-#mm10_JASPARTF_signatures <- paste(mm10_path_to_signatures, list.files(mm10_path_to_signatures), sep='')
-
-#get a list of files in directory and strsplit into labels
-#hg38_labels  <- unlist(lapply(strsplit(list.files(hg38_path_to_signatures),"[.]"),"[",1))
-#mm10_labels  <- unlist(lapply(strsplit(list.files(mm10_path_to_signatures),"[.]"),"[",1))
-
-#get signature region scores for topics
-#hg38_cisTopicObject <- getSignaturesRegions(hg38_cisTopicObject, hg38_HomerTF_signatures, labels=hg38_labels, minOverlap = 0.4)
-#mm10_cisTopicObject <- getSignaturesRegions(mm10_cisTopicObject, mm10_JASPARTF_signatures, labels=mm10_labels, minOverlap = 0.4)
-
-#get regions from topics
-#hg38_cisTopicObject <- getRegionsScores(hg38_cisTopicObject, method='NormTop', scale=TRUE)
-#   mm10_cisTopicObject <- getRegionsScores(mm10_cisTopicObject, method='NormTop', scale=TRUE)
-
-#plot tfbs predictions to topics
-#pdf("hg38_atac_cistopic_SignatureRegions.pdf",height=25,width=25)
-#signaturesHeatmap(hg38_cisTopicObject,row_names_gp=gpar(fontsize=5))
-#dev.off()
-
-    #pdf("mm10_atac_cistopic_SignatureRegions.pdf",height=25,width=25)
-    #signaturesHeatmap(mm10_cisTopicObject,row_names_gp=gpar(fontsize=5))
-    #dev.off()
-
-#plot general annotations to topics (this still needs to be run)
-#library(org.Hs.eg.db)
-#library(org.Mm.eg.db)
-#library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-#library(TxDb.Mmusculus.UCSC.mm10.knownGene)
-
-#hg38_cisTopicObject <- annotateRegions(hg38_cisTopicObject, txdb=TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb='org.Hs.eg.db')
-#pdf("hg38_atac_cistopic_SignatureRegions.pdf")
-#signaturesHeatmap(hg38_cisTopicObject, selected.signatures = 'annotation')
-#dev.off()
-
-    #mm10_cisTopicObject <- annotateRegions(mm10_cisTopicObject, txdb=TxDb.Mmusculus.UCSC.mm10.knownGene, annoDb='org.Mm.eg.db')
-    #pdf("mm10_atac_cistopic_SignatureRegions.pdf")
-    #signaturesHeatmap(mm10_cisTopicObject, selected.signatures = 'annotation')
-    #dev.off()
-
-    # Compute cell rankings
-    #library(AUCell)
-    #pdf("orgo_atac_cistopic_AUCellRankings.pdf")
-    #aucellRankings <- AUCell_buildRankings(pred.matrix, plot=TRUE, verbose=FALSE)
-    #dev.off()
-
-    # Check signature enrichment in cells
-    #pdf("orgo_atac_cistopic_sigantureCellEnrichment.pdf")
-    #cisTopicObject <- signatureCellEnrichment(cisTopicObject, aucellRankings, selected.signatures='all', aucMaxRank = 0.1*nrow(aucellRankings), plot=TRUE)
-    #dev.off()
-
-    #pdf("orgo_atac_cistopic_gammafit_regions.pdf")
-    #par(mfrow=c(2,5))
-    #cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.975, plot=TRUE)
-    #dev.off()
-
-#   #saving model selected RDS
-#   saveRDS(hg38_cisTopicObject,file="hg38_CisTopicObject.Rds")
-#   saveRDS(mm10_cisTopicObject,file="mm10_CisTopicObject.Rds")
-
-#bin_hg38_cisTopicObject<-binarizecisTopics(hg38_cisTopicObject)
-#   getBedFiles(bin_hg38_cisTopicObject, path='hg38_cisTopic_beds')
-#bin_mm10_cisTopicObject<-binarizecisTopics(mm10_cisTopicObject)
-#   getBedFiles(bin_mm10_cisTopicObject, path='mm10_cisTopic_beds')
-
-
-    #Read in cisTopic objects
-#   hg38_cisTopicObject<-readRDS("hg38_CisTopicObject.Rds")
-#   mm10_cisTopicObject<-readRDS("mm10_CisTopicObject.Rds")
-
 #Add cell embeddings into seurat
 hg38_cell_embeddings<-as.data.frame(hg38_cisTopicObject@selected.model$document_expects)
 colnames(hg38_cell_embeddings)<-hg38_cisTopicObject@cell.names
@@ -869,11 +792,14 @@ cistopic_generation<-function(x,celltype.x,species="hg38"){
 #Perform cistopic on subclusters of data 
     atac_sub<-x
     atac_sub<-subset(atac_sub,subset=predicted_doublets=="False") #remove doublets from subclustering
+    print("subset atac data")
     cistopic_counts_frmt<-atac_sub$peaks@counts
     row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
     sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
-    sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(5,10,20:30),nCores=12,addModels=FALSE)
+    print("made cistopic object")
+    sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(10,22:28),nCores=8,addModels=FALSE)
     saveRDS(sub_cistopic_models,file=paste("./subcluster/",species,celltype.x,".CisTopicObject.Rds",sep="_"))
+    print("finshed running cistopic")
 
     pdf(paste("./subcluster/",species,celltype.x,"_model_selection.pdf",sep="_"))
     par(mfrow=c(3,3))
@@ -881,6 +807,7 @@ cistopic_generation<-function(x,celltype.x,species="hg38"){
     dev.off()
     rm(sub_cistopic_models)
     rm(sub_cistopic)
+    rm(atac_sub)
     }
 
 
