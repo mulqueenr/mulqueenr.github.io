@@ -6,10 +6,10 @@ permalink: /organoid/
 category: sciATAC
 ---
 
-# Processing for sciATAC portion for organoid analysis.
+## Processing for sciATAC portion for organoid analysis.
 I ran multiple sequecing runs for the sciATAC. For now I am just processing the most recent, but I will loop back to the original Pitstop2 experiments.
 
-## BCL File Locations
+### BCL File Locations
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
@@ -264,9 +264,9 @@ Tabix file format is a tab separated multicolumn data structure.
 
 {% endcapture %} {% include details.html %} 
 
-# sciATAC Full Processing in R
+## sciATAC Generalized Processing in R
 
-## Generating Seurat Objects
+### Generating Seurat Objects
 
 Using R v4.0 and Signac v1.0 for processing.
 
@@ -397,7 +397,7 @@ Using R v4.0 and Signac v1.0 for processing.
 ```
 {% endcapture %} {% include details.html %} 
 
-## Performing cisTopic and UMAP
+### Performing cisTopic and UMAP
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -955,7 +955,7 @@ Using R v4.0 and Signac v1.0 for processing.
 ```
 {% endcapture %} {% include details.html %} 
 
-## Cicero for Coaccessible Networks
+### Cicero for Coaccessible Networks
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -1056,7 +1056,9 @@ Using R v4.0 and Signac v1.0 for processing.
 ```
 {% endcapture %} {% include details.html %} 
 
-## Celltype Assignment of Clusters
+## Organoid Cell type analysis
+
+### Celltype Assignment of Clusters
 
 Cell Type Assignment of Organoid Clusters
 Doing this in three parts.
@@ -1257,6 +1259,7 @@ Doing this in three parts.
 
 {% endcapture %} {% include details.html %} 
 
+<!---
 ### Feature values from https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6544371/#SD2
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -1321,6 +1324,7 @@ system("slack -F predictedid.heatmap.modules.pdf ryan_todo")
 
 ```
 {% endcapture %} {% include details.html %} 
+--->
 
 ### Marker Plotting Function
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -1340,7 +1344,7 @@ library(ggplot2)
 ```
 {% endcapture %} {% include details.html %} 
 
-## Simplified Pseudotime trajectories
+### Subclustering of celltypes and Pseudotime Trajectories
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 ```R
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
@@ -1522,14 +1526,11 @@ i="intermediate_progenitor";subclusters<-c("0","1","2")
 atac_sub<-readRDS("_intermediate_progenitor_SeuratObject.Rds")
 prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
 
-
-
-
 ```
 {% endcapture %} {% include details.html %} 
 
 
-## Analysis of ChromVAR TF motifs and Gene Activity Through Pseudotime
+### Analysis of ChromVAR TF motifs and Gene Activity Through Pseudotime
 
 Decided to use a binning strategy to assess pseudotime signal.
 
