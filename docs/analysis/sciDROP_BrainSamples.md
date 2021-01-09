@@ -964,7 +964,7 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 
 {% endcapture %} {% include details.html %} 
 
-## Cicero for Coaccessible Networks
+## Gene Activity Scores for coembedding with RNA data
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -978,7 +978,47 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
   library(cicero)
   library(EnsDb.Hsapiens.v86)
   library(EnsDb.Mmusculus.v79)
-   setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+  setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+  hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+  gene.activities<-GeneActivity(hg38_atac)
+  hg38_atac[["RNA"]]<-CreateAssayObject(counts=gene.activities)
+  hg38_atac<-NormalizeData(
+    object=hg38_atac,
+    assay="RNA",
+    normalization.method="LogNormalize",
+    scale.factor=median(hg38_atac$nCount_RNA))
+  saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
+
+  mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+  gene.activities<-GeneActivity(mm10_atac)
+  mm10_atac[["RNA"]]<-CreateAssayObject(counts=gene.activities)
+  mm10_atac<-NormalizeData(
+    object=mm10_atac,
+    assay="RNA",
+    normalization.method="LogNormalize",
+    scale.factor=median(mm10_atac$nCount_RNA))
+  saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
+
+
+```
+{% endcapture %} {% include details.html %} 
+
+## Cicero for Coaccessible Networks (A better way to do gene activities)
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+  library(Signac)
+  library(Seurat)
+  library(SeuratWrappers)
+  library(ggplot2)
+  library(patchwork)
+  library(monocle3)
+  library(cicero)
+  library(EnsDb.Hsapiens.v86)
+  library(EnsDb.Mmusculus.v79)
+  setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
   #Cicero processing function
   cicero_processing<-function(object_input=hg38_atac,prefix="hg38"){
@@ -990,12 +1030,13 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
       print("Making Cicero format CDS file")
       atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
       saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
-      
+      atac.cicero<-readRDS(paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+
       genome <- seqlengths(object_input) # get the chromosome sizes from the Seurat object
       genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
       
       print("Running Cicero to generate connections.")
-      conns <- run_cicero(atac.cicero, genomic_coords = genome.df, sample_num = 10) # run cicero
+      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
       saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
       
       print("Generating CCANs")
@@ -1007,7 +1048,6 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
       Links(object_input) <- links
       return(object_input)
   }
-
 
   hg38_atac<-readRDS("hg38_SeuratObject.Rds")
   hg38_atac<-cicero_processing(object_input=hg38_atac,prefix="hg38")
@@ -1070,6 +1110,93 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
   saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
 ```
 {% endcapture %} {% include details.html %} 
+
+## Public Data RNA Comparison
+
+### Download data from Allen Brain-span
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+```bash
+cd /home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex
+
+wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/70/32/70326830-e306-4743-a02c-a8da5bf9eb56/readme-m1-10.txt
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/metadata.csv
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/matrix.csv
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/trimmed_means.csv
+wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/0c/0c/0c0c882d-1c31-40a9-8039-3bf2706a77cd/sample-exp_component_mapping_human_10x_apr2020.zip
+```
+
+### Process Data into Seurat Object
+
+Following https://satijalab.org/seurat/v3.2/pbmc3k_tutorial.html
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+```R
+library(Seurat)
+library(ggplot2)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex")
+
+meta_data<-read.csv("metadata.csv",header=T)
+row.names(meta_data)<-meta_data$sample_name
+counts<-read.csv("matrix.csv",header=T,row.names=1)
+brainspan <- CreateSeuratObject(counts = as.data.frame(t(counts)), project = "brainspain", min.cells = 3, min.features = 500, meta.data=meta_data)
+saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
+
+
+brainspan <- NormalizeData(brainspan, normalization.method = "LogNormalize", scale.factor = 10000)
+brainspan <- FindVariableFeatures(brainspan, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(brainspan)
+brainspan <- ScaleData(brainspan, features = all.genes)
+brainspan <- RunPCA(brainspan, features = VariableFeatures(object = brainspan))
+plt<-ElbowPlot(brainspan)
+ggsave(plt,file="allen_brainspan_humancortex.elbowplot.pdf")
+system("slack -F allen_brainspan_humancortex.elbowplot.pdf ryan_todo")
+brainspan <- FindNeighbors(brainspan, dims = 1:14)
+brainspan <- FindClusters(brainspan, resolution = 0.5)
+brainspan <- RunUMAP(brainspan, dims = 1:14)
+plt<-DimPlot(brainspan, reduction = "umap",group.by=c("class_label","subclass_label"))
+ggsave(plt,file="allen_brainspan_humancortex.dimplot.pdf",width=30)
+system("slack -F allen_brainspan_humancortex.dimplot.pdf ryan_todo")
+saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
+
+```
+{% endcapture %} {% include details.html %} 
+
+### Integration of ATAC and RNA for cell type identification
+
+```R
+library(Seurat)
+library(ggplot2)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+
+brainspan <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
+
+transfer.anchors <- FindTransferAnchors(
+  reference = brainspan,
+  query = hg38_atac,
+  reduction = 'cca'
+)
+
+predicted.labels.class <- TransferData(
+  anchorset = transfer.anchors,
+  refdata = brainspan$class_label,
+  weight.reduction = hg38_atac[['lsi']],
+  dims = 2:30
+)
+
+
+predicted.labels.class <- TransferData(
+  anchorset = transfer.anchors,
+  refdata = brainspan$subclass_label,
+  weight.reduction = hg38_atac[['lsi']],
+  dims = 2:30
+)
+
+hg38_atac <- AddMetaData(object = hg38_atac, metadata = predicted.labels.class)
+hg38_atac <- AddMetaData(object = hg38_atac, metadata = predicted.labels.subclass)
+
+```
 
 ### Marker Plotting
 
