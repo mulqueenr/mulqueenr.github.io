@@ -1530,6 +1530,225 @@ prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
 {% endcapture %} {% include details.html %} 
 
 
+### Differential Accessibility between subclusters
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+
+```R
+ setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+
+  library(Signac)
+  library(Seurat)
+  library(GenomeInfoDb)
+  library(ggplot2)
+  set.seed(1234)
+  library(EnsDb.Hsapiens.v86)
+  library(parallel)
+  library(ggplot2)
+  library(ggrepel)
+  library(dplyr)
+  library(JASPAR2020)
+  library(TFBSTools)
+
+
+
+  #define DA functions for parallelization
+  #Use LR test for atac data
+  da_one_v_rest_da<-function(i,obj,group){
+      da_peaks_tmp <- FindMarkers(
+          object = obj,
+          ident.1 = i,
+          group.by = group,
+          test.use = 'LR',
+          latent.vars = 'nCount_peaks',
+          only.pos=T,
+          assay="peaks"
+          )
+      da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
+      closest_genes <- ClosestFeature(obj,da_peaks_tmp$da_region)
+      da_peaks_tmp<-cbind(da_peaks_tmp,closest_genes)
+      da_peaks_tmp$enriched_group<-c(i)
+      da_peaks_tmp$compared_group<-c("all_other_cells")
+      return(da_peaks_tmp)
+    }
+
+  #define DA functions for parallelization
+  #Use LR test for atac data
+  da_one_v_rest_tf<-function(i,obj,group){
+      da_peaks_tmp <- FindMarkers(
+          object = obj,
+          ident.1 = i,
+          group.by = group,
+          test.use = 'LR',
+          latent.vars = 'nCount_peaks',
+          only.pos=T,
+          assay="chromvar"
+          )
+      da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
+      da_peaks_tmp$enriched_group<-c(i)
+      da_peaks_tmp$compared_group<-c("all_other_cells")
+      return(da_peaks_tmp)
+    }
+
+
+  for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){
+    atac_sub<-readRDS(paste("./subcluster/",i,"SeuratObject.Rds",sep="_"))
+  #Perform One vs. rest DA enrichment
+
+  write("Performing one vs. rest DA enrichment per annotation grouping supplied.", stderr())
+
+  #set up an empty list for looping through
+  da_peaks<-list()
+
+  #Perform parallel application of DA test
+  library(parallel)
+
+  n.cores=length(unique(atac_sub$seurat_subcluster))
+  da_peaks<-mclapply(
+      unique(atac_sub$seurat_subcluster),
+      FUN=da_one_v_rest_da,
+      obj=atac_sub,
+      group="seurat_subcluster",
+      mc.cores=n.cores)
+
+  #Merge the final data frame from the list for 1vrest DA
+  da_peaks<-do.call("rbind",da_peaks)
+
+  write("Outputting One v Rest DA Table.", stderr())
+  write.table(da_peaks,file=paste0(i,".onevrest.da_peaks.txt"),sep="\t",col.names=T,row.names=T,quote=F)
+
+  #Plot out top peaks and associated gene name for each cluster
+  dat<-read.table(paste0(i,".onevrest.da_peaks.txt"),header=T,sep="\t")
+  dat$label<-""
+  for (x in unique(dat$enriched_group)){
+    selc_genes<-row.names(dat %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:5))
+    dat[row.names(dat) %in% selc_genes & dat$enriched_group==x,]$label<- dat[row.names(dat) %in% selc_genes & dat$enriched_group==x,]$gene_name
+  }
+
+  plt<-ggplot(dat,aes(x=avg_logFC,y=(-log(p_val_adj)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(aes(label=label),force=10)+theme_bw()+xlim(c(0,20))
+  ggsave(plt,file=paste0(i,".da_peaks.pdf"))
+  system(paste0("slack -F ", i,".da_peaks.pdf", " ryan_todo"))
+
+  da_tf<-list()
+  da_tf<-mclapply(
+      unique(atac_sub$seurat_subcluster),
+      FUN=da_one_v_rest_tf,
+      obj=atac_sub,
+      group="seurat_subcluster",
+      mc.cores=n.cores)
+
+  #Merge the final data frame from the list for 1vrest DA
+  da_tf<-do.call("rbind",da_tf)
+
+  write("Outputting One v Rest DA Table.", stderr())
+  write.table(da_tf,file=paste0(i,".onevrest.da_tf.txt"),sep="\t",col.names=T,row.names=T,quote=F)
+
+  dat<-read.table(paste0(i,".onevrest.da_tf.txt"),header=T,sep="\t")
+
+  #To convert JASPAR ID TO TF NAME
+  dat$da_tf <- unlist(lapply(unlist(lapply(dat$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
+  write.table(dat,file=paste0(i,".onevrest.da_tf.txt"),sep="\t",col.names=T,row.names=T,quote=F)
+  dat$label<-""
+  for (x in unique(dat$enriched_group)){
+    selc_genes<-row.names(dat %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:5))
+    dat[row.names(dat) %in% selc_genes & dat$enriched_group==x,]$label<- dat[row.names(dat) %in% selc_genes & dat$enriched_group==x,]$da_tf
+  }
+
+  plt<-ggplot(dat,aes(x=avg_logFC,y=(-log(p_val)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(dat=dat,aes(label=label),force=3)+theme_bw()
+  ggsave(plt,file=paste0(i,".da_tf.pdf"))
+  system(paste0("slack -F ", i,".da_tf.pdf", " ryan_todo"))
+
+}
+```
+{% endcapture %} {% include details.html %} 
+
+### Transcription Factor Modules
+
+https://www.cell.com/neuron/pdf/S0896-6273(19)30561-6.pdf Defined waves of transcription factors active is neocoritcal mid-gestation.
+Supplementary table 8 details this. We looked at these in both gene activity and transcription factor motif accessibility where available.
+The regulon is defined by the transcription factor (ChromVar Motif Score) and acts on the listed genes (Gene Activity Score). We can then relate these regulons within our subclusters to that of the human mid-gestational data (Supp table 9).
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+
+  library(Seurat)
+  library(Signac)
+  library(GenomeInfoDb)
+  library(ggplot2)
+  set.seed(1234)
+  library(EnsDb.Hsapiens.v86)
+  library(Matrix)
+  library(cicero)
+  library(SeuratWrappers)
+  library(ComplexHeatmap)
+  library(JASPAR2020)
+  library(TFBSTools)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(patchwork)
+  library(parallel) 
+  library(zoo)
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+
+  #TF Modules
+  tf_modules<-read.csv("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/PUBMED31303374.SuppTable8.tsv",sep="\t",head=T)
+  tf_modules<-tf_modules[,2:ncol(tf_modules)]
+  modules<-lapply(1:ncol(tf_modules),function(x) unlist(tf_modules[x]))
+  modules<-lapply(modules,function(x) x[x !=""])
+  names(modules)<-colnames(tf_modules)
+  #Unname genes in the vectors
+  modules<-lapply(modules,unname)
+  orgo_cirm43<-AddModuleScore(orgo_cirm43,features=modules,assay="GeneActivity",name=paste0("TF_",names(modules),"_"), search=T)
+
+  #Generate Heatmap of TF ChromVar score and TF modules
+  modules<-orgo_cirm43@meta.data[grepl("TF_",colnames(orgo_cirm43@meta.data))] #set up module matrix
+  module_tfs<-unlist(lapply(strsplit(colnames(modules),"_"),"[",2)) #set up TF names
+
+  tf_chrom<-orgo_cirm43[["chromvar"]]@data #set up chromvar matrix
+  tfList <- getMatrixByID(JASPAR2020, ID=row.names(tf_chrom)) #correct names
+  tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
+  row.names(tf_chrom)<-tfList
+  tfList<-tfList[tfList %in% module_tfs]
+  tf_chrom<-as.data.frame(t(tf_chrom[tfList,]))
+
+  modules<-modules[module_tfs %in% colnames(tf_chrom)] #filter modules to chromvar matrix
+  colnames(modules)<-unlist(lapply(strsplit(colnames(modules),"_"),"[",2))
+  #Combine over subclusters
+  tf_chrom<-split(tf_chrom,orgo_cirm43$seurat_clusters) #group by rows to seurat clusters
+  tf_chrom<-lapply(tf_chrom,function(x) apply(x,2,mean)) #take average across group
+  tf_chrom<-do.call("rbind",tf_chrom) #condense to smaller data frame
+
+  modules<-split(modules,orgo_cirm43$seurat_clusters) #group by rows to seurat clusters
+  modules<-lapply(modules,function(x) apply(x,2,mean)) #take average across group
+  modules<-do.call("rbind",modules) #condense to smaller data frame
+
+  modules<-t(scale(modules))
+  tf_chrom<-t(scale(tf_chrom))
+
+  plt1<-Heatmap(tf_chrom,
+    column_order=c("5","3","0","2","1","4"))
+  plt2<-Heatmap(modules,
+    column_order=c("5","3","0","2","1","4"))
+  pdf("test.complexheatmap.pdf",height=20)
+  plt1+plt2
+  dev.off()
+  system("slack -F test.complexheatmap.pdf ryan_todo")
+  #Generate a tanglegram to look at gene opening before or after chromvar activity
+  pre_tang_d_train_test <- d_train_test %>% ladderize %>% # untangle %>%
+     set("branches_k_color", k = 7)
+  train_branches_colors <- get_leaves_branches_col(pre_tang_d_train_test$train)
+  pre_tang_d_train_test %>% tanglegram(fast = TRUE, color_lines = train_branches_colors)
+
+  #Cell type and state
+
+
+  saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
+
+
+```
+{% endcapture %} {% include details.html %} 
+
 ### Analysis of ChromVAR TF motifs and Gene Activity Through Pseudotime
 
 Decided to use a binning strategy to assess pseudotime signal.
@@ -1615,88 +1834,89 @@ Decided to use a binning strategy to assess pseudotime signal.
     apply(chromvar[,bin_tmp],1,mean))
   }
 
-  for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){
-  atac_sub<-readRDS(paste("",i,"SeuratObject.Rds",sep="_"))
+  for (i in c("radial_glia","intermediate_progenitor")){
+    atac_sub<-readRDS(paste("",i,"SeuratObject.Rds",sep="_"))
 
-  #Set up a sliding window #This needs to be fixed
-  # 1% bins with 0.33% step
-  ord_cells=order(atac_sub$prcurve,decreasing=F) #ordered row indexes based on pseudotime
-  binwidth=as.integer(length(ord_cells)/100)
-  stepsize=as.integer(length(ord_cells)/300)
-  timebin<-lapply(0:round(length(ord_cells)/stepsize-4),FUN=sliding_window)
-  summary(unlist(lapply(timebin,FUN=length))) #membership of bins
-  saveRDS(timebin,paste(i,"pseudotime.bins.rds",sep="."))
+    #Set up a sliding window #This needs to be fixed
+    # 1% bins with 0.33% step
+    ord_cells=order(atac_sub$prcurve,decreasing=F,na.last=T) #ordered row indexes based on pseudotime
+    binwidth=as.integer(length(ord_cells)/100)
+    stepsize=as.integer(length(ord_cells)/300)
+    timebin<-lapply(0:round(length(ord_cells)/stepsize-4),FUN=sliding_window)
+    summary(unlist(lapply(timebin,FUN=length))) #membership of bins
+    saveRDS(timebin,paste(i,"pseudotime.bins.rds",sep="."))
 
-  #Assign CCAN to RNA cell type markers by promoter overlap
-  markers<-c("CTCF","EMX1","EMX2","LHX2","PAX6","RFX4","SOX2",
-               "TBR1","EOMES","NEUROD1","NEUROD2","NEUROG1","TGIF1","TGIF2",
-               "DLX1","DLX2","DLX6","GSX2","LHX6",
-               "POU3F3","POU3F2","TFAP4")
-  gene_annotation<-gene_annotation[gene_annotation$gene %in% markers,]
-  gene_annotation<-do.call("rbind",
-    lapply(unique(gene_annotation$gene), function(x) {
-    tmp<-gene_annotation[gene_annotation$gene==x,]
-    return(tmp[which.max(abs(tmp$end-tmp$start)),])})) #select longest transcript of each gene for ccan overlap
+    #Assign CCAN to RNA cell type markers by promoter overlap
+    markers<-c("CTCF","EMX1","EMX2","LHX2","PAX6","RFX4","SOX2",
+                 "TBR1","EOMES","NEUROD1","NEUROD2","NEUROG1","TGIF1","TGIF2",
+                 "DLX1","DLX2","DLX6","GSX2","LHX6",
+                 "POU3F3","POU3F2","TFAP4")
+    gene_annotation<-gene_annotation[gene_annotation$gene %in% markers,]
+    gene_annotation<-makeGRangesFromDataFrame(do.call("rbind",
+      lapply(unique(gene_annotation$gene), function(x) {
+      tmp<-gene_annotation[gene_annotation$gene==x,]
+      return(as.data.frame(tmp[which.max(as.data.frame(tmp@ranges)$width),]))})),keep.extra.columns=T) 
+      #select longest transcript of each gene for ccan overlap
 
-  #Set up TF markers
-  tf_markers<-c("SOX2","PAX6","HES1","HOPX","VIM","GFAP","TNC","GPX3",
-             "NEUROG1","SSTR2","EOMES","PPP1R17","NEUROD4",
-             "SLC17A7","NEUROD6","SATB2","TBR1","SLA",
-             "DLX2","DLX1","LHX6","GAD1")
+    #Set up TF markers
+    tf_markers<-c("SOX2","PAX6","HES1","HOPX","VIM","GFAP","TNC","GPX3",
+               "NEUROG1","SSTR2","EOMES","PPP1R17","NEUROD4",
+               "SLC17A7","NEUROD6","SATB2","TBR1","SLA",
+               "DLX2","DLX1","LHX6","GAD1")
 
-  #CCANs over pseudotime
-    #First generating list of peaks in CCANs
-      ccan<-Links(atac_sub)
-      ccan<-ccan[!is.na(ccan$group),]
-      ccan<-split(ccan,f=ccan$group)
+    #CCANs over pseudotime
+      #First generating list of peaks in CCANs
+        ccan<-Links(atac_sub)
+        ccan<-ccan[!is.na(ccan$group),]
+        ccan<-split(ccan,f=ccan$group)
 
-    #Plotting amount of peak membership per CCAN
-      ccan_membership<-unlist(lapply(ccan,length))
-      plt<-ggplot()+geom_density(aes(x=ccan_membership))+theme_bw()+xlim(c(0,500))
-      ggsave(plt,file="ccan_membership.pdf")
-      system("slack -F ccan_membership.pdf ryan_todo")
+      #Plotting amount of peak membership per CCAN
+        ccan_membership<-unlist(lapply(ccan,length))
+        plt<-ggplot()+geom_density(aes(x=ccan_membership))+theme_bw()+xlim(c(0,500))
+        ggsave(plt,file="ccan_membership.pdf")
+        system("slack -F ccan_membership.pdf ryan_todo")
 
-    #Getting list of peaks
-      peaks<-row.names(atac_sub@assays$peaks@data)
-      seqname=unlist(lapply(strsplit(peaks,"-"),"[",1))
-      start=unlist(lapply(strsplit(peaks,"-"),"[",2))
-      end=unlist(lapply(strsplit(peaks,"-"),"[",3))
-    peak_info<-makeGRangesFromDataFrame(data.frame(seqname=seqname,start=start,end=end,peak_id=peaks),keep.extra.columns=T)
+      #Getting list of peaks
+        peaks<-row.names(atac_sub@assays$peaks@data)
+        seqname=unlist(lapply(strsplit(peaks,"-"),"[",1))
+        start=unlist(lapply(strsplit(peaks,"-"),"[",2))
+        end=unlist(lapply(strsplit(peaks,"-"),"[",3))
+      peak_info<-makeGRangesFromDataFrame(data.frame(seqname=seqname,start=start,end=end,peak_id=peaks),keep.extra.columns=T)
 
-    #find overlaps between peaks and CCAN regions (cicero merges similar peaks, so take all within overlap)
-    #then from those overlapped peak per CCAN, grab peak data from the seurat object
-    #then perform colSums (per cell peak accessibility summarized by the CCAN)
-    #then normalize the data based on the cell specific size factor
-    ccan_sum<-mclapply(1:length(ccan),cell_accessibility_per_ccan,mc.cores=10)
-    ccan_sum<-as.data.frame(do.call("rbind",ccan_sum))
-    row.names(ccan_sum)<-names(ccan)
-    dim(ccan_sum)
+      #find overlaps between peaks and CCAN regions (cicero merges similar peaks, so take all within overlap)
+      #then from those overlapped peak per CCAN, grab peak data from the seurat object
+      #then perform colSums (per cell peak accessibility summarized by the CCAN)
+      #then normalize the data based on the cell specific size factor
+      ccan_sum<-mclapply(1:length(ccan),cell_accessibility_per_ccan,mc.cores=30)
+      ccan_sum<-as.data.frame(do.call("rbind",ccan_sum))
+      row.names(ccan_sum)<-names(ccan)
+      dim(ccan_sum)
 
-    #Find overlap between CCAN peaks and gene bodies
-        ccan_markers<-mclapply(1:length(ccan),marker_annote_per_ccan,mc.cores=10)
-    ccan_markers<-as.data.frame(do.call("rbind",ccan_markers))
-    row.names(ccan_markers)<-names(ccan)
+      #Find overlap between CCAN peaks and gene bodies
+      ccan_markers<-mclapply(1:length(ccan),marker_annote_per_ccan,mc.cores=10)
+      ccan_markers<-as.data.frame(do.call("rbind",ccan_markers))
+      row.names(ccan_markers)<-names(ccan)
 
-    #summarize ccans through pseudotime cell bins
-    #using mean here as the summary statistic
-    ccan_mean<-mclapply(1:length(timebin),ccan_summarize_per_bin,mc.cores=10)
-    ccan_mean<-as.data.frame(do.call("rbind",ccan_mean))
-    row.names(ccan_mean)<-names(timebin)
-    colnames(ccan_mean)<-names(ccan)
-    saveRDS(ccan_mean,file=paste(i,"pseudotime_ccan.rds",sep="."))
+      #summarize ccans through pseudotime cell bins
+      #using mean here as the summary statistic
+      ccan_mean<-mclapply(1:length(timebin),ccan_summarize_per_bin,mc.cores=10)
+      ccan_mean<-as.data.frame(do.call("rbind",ccan_mean))
+      row.names(ccan_mean)<-names(timebin)
+      colnames(ccan_mean)<-names(ccan)
+      saveRDS(ccan_mean,file=paste(i,"pseudotime_ccan.rds",sep="."))
 
-    #Transcription Factor activity (ChromVAR TF motifs) over pseudotime bins
-    motif_mean<-mclapply(1:length(timebin),chromvar_motifs_per_bin,mc.cores=10)
-    motif_mean<-as.data.frame(do.call("rbind",motif_mean))
-      #Assign human readable TF motif names
-    tfList <- getMatrixByID(JASPAR2020, ID=colnames(motif_mean))
-    tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
-    colnames(motif_mean)<-tfList
-    motif_mean<-as.data.frame(t(motif_mean))
-    motif_mean<-motif_mean[complete.cases(motif_mean),]
+      #Transcription Factor activity (ChromVAR TF motifs) over pseudotime bins
+      motif_mean<-mclapply(1:length(timebin),chromvar_motifs_per_bin,mc.cores=10)
+      motif_mean<-as.data.frame(do.call("rbind",motif_mean))
+        #Assign human readable TF motif names
+      tfList <- getMatrixByID(JASPAR2020, ID=colnames(motif_mean))
+      tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
+      colnames(motif_mean)<-tfList
+      motif_mean<-as.data.frame(t(motif_mean))
+      motif_mean<-motif_mean[complete.cases(motif_mean),]
 
-    dim(motif_mean)
-    saveRDS(motif_mean,file=paste(i,"pseudotime_chromvarMotifs.rds",sep="."))
+      dim(motif_mean)
+      saveRDS(motif_mean,file=paste(i,"pseudotime_chromvarMotifs.rds",sep="."))
 
   } 
     #Question: do we see a bias in CCAN opening through pseudotime with TF motif presence?
@@ -1796,175 +2016,6 @@ Decided to use a binning strategy to assess pseudotime signal.
 ```
 {% endcapture %} {% include details.html %} 
 
-
-### Differential Accessibility between subclusters
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-
-```R
- setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-
-  library(Signac)
-  library(Seurat)
-  library(GenomeInfoDb)
-  library(ggplot2)
-  set.seed(1234)
-  library(EnsDb.Hsapiens.v86)
-  library(parallel)
-  library(ggplot2)
-  library(ggrepel)
-  library(dplyr)
-  library(JASPAR2020)
-  library(TFBSTools)
-
-
-
-  #define DA functions for parallelization
-  #Use LR test for atac data
-  da_one_v_rest_da<-function(i,obj,group){
-      da_peaks_tmp <- FindMarkers(
-          object = obj,
-          ident.1 = i,
-          group.by = group,
-          test.use = 'LR',
-          latent.vars = 'nCount_peaks',
-          only.pos=T,
-          assay="peaks"
-          )
-      da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
-      closest_genes <- ClosestFeature(obj,da_peaks_tmp$da_region)
-      da_peaks_tmp<-cbind(da_peaks_tmp,closest_genes)
-      da_peaks_tmp$enriched_group<-c(i)
-      da_peaks_tmp$compared_group<-c("all_other_cells")
-      return(da_peaks_tmp)
-    }
-
-  #define DA functions for parallelization
-  #Use LR test for atac data
-  da_one_v_rest_tf<-function(i,obj,group){
-      da_peaks_tmp <- FindMarkers(
-          object = obj,
-          ident.1 = i,
-          group.by = group,
-          test.use = 'LR',
-          latent.vars = 'nCount_peaks',
-          only.pos=T,
-          assay="chromvar"
-          )
-      da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
-      da_peaks_tmp$enriched_group<-c(i)
-      da_peaks_tmp$compared_group<-c("all_other_cells")
-      return(da_peaks_tmp)
-    }
-
-
-  for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron","ipc_and_exNeu")){
-    atac_sub<-readRDS(paste("./subcluster/",i,"SeuratObject.Rds",sep="_"))
-  #Perform One vs. rest DA enrichment
-
-  write("Performing one vs. rest DA enrichment per annotation grouping supplied.", stderr())
-
-  #set up an empty list for looping through
-  da_peaks<-list()
-
-  #Perform parallel application of DA test
-  library(parallel)
-
-  n.cores=length(unique(atac_sub$peaks_snn_res.0.2))
-  da_peaks<-mclapply(
-      unique(atac_sub$peaks_snn_res.0.2),
-      FUN=da_one_v_rest_da,
-      obj=atac_sub,
-      group="peaks_snn_res.0.2",
-      mc.cores=n.cores)
-
-  #Merge the final data frame from the list for 1vrest DA
-  da_peaks<-do.call("rbind",da_peaks)
-
-  write("Outputting One v Rest DA Table.", stderr())
-  write.table(da_peaks,file=paste0(i,".onevrest.da_peaks.txt"),sep="\t",col.names=T,row.names=T,quote=F)
-
-  #Plot out top peaks and associated gene name for each cluster
-  dat<-read.table(paste0(i,".onevrest.da_peaks.txt"),header=T,sep="\t")
-  dat_select<-dat %>% arrange(rev(desc(p_val_adj))) %>% group_by(enriched_group) %>% dplyr::slice(1:5) #grabbing top 2 most significant peaks to label
-  plt<-ggplot(dat,aes(x=avg_logFC,y=(-log(p_val)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(dat=dat_select,aes(label=gene_name,size=-distance),force=3)+theme_bw()+xlim(c(0,20))
-  ggsave(plt,file=paste0(i,".da_peaks.pdf"))
-  system(paste0("slack -F ", i,".da_peaks.pdf", " ryan_todo"))
-
-  da_tf<-list()
-  da_tf<-mclapply(
-      unique(atac_sub$peaks_snn_res.0.2),
-      FUN=da_one_v_rest_tf,
-      obj=atac_sub,
-      group="peaks_snn_res.0.2",
-      mc.cores=n.cores)
-
-  #Merge the final data frame from the list for 1vrest DA
-  da_tf<-do.call("rbind",da_tf)
-
-  write("Outputting One v Rest DA Table.", stderr())
-  write.table(da_tf,file=paste0(i,".onevrest.da_tf.txt"),sep="\t",col.names=T,row.names=T,quote=F)
-
-  dat<-read.table(paste0(i,".onevrest.da_tf.txt"),header=T,sep="\t")
-  #To convert JASPAR ID TO TF NAME
-  dat$da_tf <- unlist(lapply(unlist(lapply(dat$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
-  write.table(dat,file=paste0(i,".onevrest.da_tf.txt"),sep="\t",col.names=T,row.names=T,quote=F)
-  dat_select<-dat %>% arrange(rev(desc(p_val_adj))) %>% group_by(enriched_group) %>% dplyr::slice(1:5) #grabbing top 2 most significant peaks to label
-  plt<-ggplot(dat,aes(x=avg_logFC,y=(-log(p_val)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(dat=dat_select,aes(label=da_tf),force=3)+theme_bw()
-  ggsave(plt,file=paste0(i,".da_tf.pdf"))
-  system(paste0("slack -F ", i,".da_tf.pdf", " ryan_todo"))
-
-}
-
-
-#  da_one_v_one<-function(i,obj,group,j_list){
-#      i<-as.character(i)
-#      da_tmp_2<-list()
-#      for (j in j_list){
-#          if ( i != j){
-#          da_peaks_tmp <- FindMarkers(
-#              object = obj,
-#              ident.1 = i,
-#              ident.2 = j,
-#              group.by = group,
-#              test.use = 'LR',
-#              latent.vars = 'nCount_peaks',
-#              only.pos=T
-#              )
-#          da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
-#          closest_genes <- ClosestFeature(obj,da_peaks_tmp$da_region)
-#          da_peaks_tmp<-cbind(da_peaks_tmp,closest_genes)
-#          da_peaks_tmp$enriched_group<-c(i)
-#          da_peaks_tmp$compared_group<-c(j)
-#          da_tmp_2[[paste(i,j)]]<-da_peaks_tmp
-#          }
-#      }
-#      return(da_tmp_2)
-#    }
-
-
-  #Empty list to rerun for 1v1 comparisons
-  #cirm43_da_peaks<-list()
-
-  #n.cores=length(unique(orgo_cirm43@meta.data$seurat_clusters))
-  #cirm43_da_peaks<-mclapply(
-  #    unique(orgo_cirm43@meta.data$seurat_clusters),
-  #    FUN=da_one_v_one,
-  #    obj=orgo_cirm43,
-  #    group="seurat_clusters",
-  #    j_list=do.call("as.character",list(unique(orgo_cirm43@meta.data$seurat_clusters))),
-  #    mc.cores=n.cores)
-
-  #Merge the final data frame from the list for 1v1 DA
-  #cirm43_da_peaks<-do.call("rbind",do.call("rbind",cirm43_da_peaks))
-
-  #write("Outputting One v One DA Table.", stderr())
-  #write.table(cirm43_da_peaks,file="cirm43.onevone.da_peaks.txt",sep="\t",col.names=T,row.names=T,quote=F)
-```
-{% endcapture %} {% include details.html %} 
-
-
 ### Plotting Pseudotime Bins And Defined Regulatory Waves
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -1992,7 +2043,7 @@ Decided to use a binning strategy to assess pseudotime signal.
     library(ComplexHeatmap)
     library(circlize)
 
-  for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){
+  for (i in c("radial_glia","intermediate_progenitor")){
     atac_sub<-readRDS(paste("",i,"SeuratObject.Rds",sep="_"))
 
     #sig_tfs<-readRDS(file="pseudotime_cirm43_ccan_tfmotif_enrichment.rds") #excluded for now
@@ -2021,16 +2072,14 @@ Decided to use a binning strategy to assess pseudotime signal.
     
     div_timebin<-annotation_bin_summary(x="DIV")
     #celltype_timebin<-annotation_bin_summary(x="celltype")
-    cluster_timebin<-annotation_bin_summary(x="peaks_snn_res.0.2")
+    cluster_timebin<-annotation_bin_summary(x="seurat_subcluster")
     organoid_timebin<-annotation_bin_summary(x="orgID")
 
     ha_barplots = HeatmapAnnotation(
       DIV = anno_barplot(div_timebin, name="DIV",bar_width=1,gp = gpar(color = 1:nrow(div_timebin),fill = 1:nrow(div_timebin)),border=F),
 
       #celltype = anno_barplot(celltype_timebin, name="cell type",bar_width=1,gp = gpar(color = 1:nrow(celltype_timebin),fill= 1:nrow(celltype_timebin)),border=F),
-      
       cluster = anno_barplot(cluster_timebin, name="cluster",bar_width=1,gp = gpar(color = 1:nrow(cluster_timebin),fill = 1:nrow(cluster_timebin)),border=F),
-      
       organoid = anno_barplot(organoid_timebin, name="organoid",bar_width=1,gp = gpar(color = 1:nrow(organoid_timebin),fill = 1:nrow(organoid_timebin)),border=F)
       )
 
@@ -2103,11 +2152,7 @@ Decided to use a binning strategy to assess pseudotime signal.
       right_annotation=ha_rowmarkers,
       col=col_fun
       )
-    plt2<-Heatmap(sig_tfs,
-      column_km=3,
-      col = colorRamp2(c("white", "red"),breaks=c(0,5)),
-      column_names_gp = gpar(fontsize = 3),
-      clustering_distance_columns="pearson")
+    
 
     #plt<-plt1+plt2
     plt<-draw(plt1,annotation_legend_list=lgd_list)

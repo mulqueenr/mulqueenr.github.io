@@ -814,7 +814,7 @@ cistopic_generation<-function(x,celltype.x,species="hg38"){
 #UMAP Projection and clustering on selected cistopic model
 clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_atac,celltype.x,topiccount_list.=topic_count_list){
     #set up subset object again
-    atac_sub<-subset(object_input,subset=seurat_clusters==celltype.x) 
+    atac_sub<-subset(object_input,subset=(seurat_clusters==celltype.x & predicted_doublets=="False")) 
     #select_topic
     models_input<-readRDS(paste("./subcluster/",species,celltype.x,".CisTopicObject.Rds",sep="_"))
     cisTopicObject<-cisTopic::selectModel(models_input,select=topiccount_list.[celltype.x],keepModels=F)
@@ -870,14 +870,15 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     celltype_list<-unique(hg38_atac$seurat_clusters)
 
     #Running cistopic subclustering on all identified cell types
-    for (i in celltype_list){atac_sub<-subset(hg38_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i)}
+    lapply(celltype_list, function(i){atac_sub<-subset(hg38_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="hg38")})
+    
     topicmodel_list<-paste("./subcluster/",species,celltype_list,".CisTopicObject.Rds",sep="_")
 
     #determine model count to use for each cell type
     for (i in paste("./subcluster/",species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
 
-    #selecting topics based on derivative, making a named vector 
-    topic_count_list<-setNames(c(24,28,24,27,28,23,26,25),celltype_list)
+    #selecting topics based on derivative, making a named vector, note some of these seem to suggest a topic count over 28, but were artificially capped
+    topic_count_list<-setNames(c(27,26,25,26,28,25,28,28),celltype_list)
     names(topic_count_list)<-celltype_list
 
     #Running clustering loop
@@ -886,36 +887,80 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     #selecting resolution by plots
     for (i in celltype_list){system(paste0("slack -F ",paste("./subcluster/",species,i,"clustering.pdf",sep="_")," ryan_todo"))}
     
+    #adding all subclustering info back into main RDS object
+    hg38_atac$seurat_subcluster<-"NA"
+    hg38_atac$subcluster_x<-"NA"
+    hg38_atac$subcluster_y<-"NA"
+
     #Assign clustering resolution based on clustering.pdf output
+    resolution_list<-setNames(c("peaks_snn_res.0.1","peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.2",
+        "peaks_snn_res.0.2","peaks_snn_res.0.5","peaks_snn_res.0.1","peaks_snn_res.0.1"),celltype_list)
+    cell_order<-row.names(hg38_atac@meta.data)
+
+    for(celltype.x in celltype_list){
+        atac_sub<-readRDS(paste("./subcluster/",species,celltype.x,"SeuratObject.Rds",sep="_"))
+        embedding_order<-row.names(atac_sub@reductions$umap@cell.embeddings)
+        row_order<-match(cell_order,embedding_order,nomatch=0)
+        hg38_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(hg38_atac@meta.data),nomatch=0),]$seurat_subcluster<-as.character(unlist(atac_sub@meta.data[which(colnames(atac_sub@meta.data)==resolution_list[celltype.x])]))
+        hg38_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(hg38_atac@meta.data),nomatch=0),]$subcluster_x<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,1])
+        hg38_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(hg38_atac@meta.data),nomatch=0),]$subcluster_y<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,2])
+    }
+
+    as.data.frame(hg38_atac@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
+    #na values are doublets  
+    saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
+
 #mm10
     #Set up variables
     species="mm10"
     celltype_list<-unique(mm10_atac$seurat_clusters)
 
-    
     #Running cistopic subclustering on all identified cell types
-    for (i in celltype_list){atac_sub<-subset(mm10_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="mm10")}
-    topicmodel_list<-paste(species,celltype_list,".CisTopicObject.Rds",sep="_")
-
+    lapply(celltype_list, function(i){atac_sub<-subset(mm10_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="mm10")})
+    
     #determine model count to use for each cell type
-    for (i in paste(species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
+    for (i in paste("./subcluster/",species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
+    topicmodel_list<-paste("./subcluster/",species,celltype_list,".CisTopicObject.Rds",sep="_")
 
     #selecting topics based on derivative, making a named vector 
-    topic_count_list<-c(28,22,23,28,28,22)
+    topic_count_list<-setNames(c(25,26,25,27,28,26,25,24,24,28),celltype_list)
     names(topic_count_list)<-celltype_list
 
     #Running clustering loop
-    for (i in celltype_list){clustering_loop(object_input=hg38_atac,celltype.x=i)}
+    for (i in celltype_list){clustering_loop(object_input=mm10_atac,celltype.x=i)}
 
-    #selecting resolution by plots
+    #selecting resolution by plots 
     for (i in celltype_list){system(paste0("slack -F ",paste(species,i,"clustering.pdf",sep="_")," ryan_todo"))}
+
+    #adding all subclustering info back into main RDS object
+    mm10_atac$seurat_subcluster<-"NA"
+    mm10_atac$subcluster_x<-"NA"
+    mm10_atac$subcluster_y<-"NA"
+
+    #Assign clustering resolution based on clustering.pdf output
+    resolution_list<-setNames(c("peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.2",
+        "peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.1"),celltype_list)
+    cell_order<-row.names(mm10_atac@meta.data)
+
+    for(celltype.x in celltype_list){
+        atac_sub<-readRDS(paste("./subcluster/",species,celltype.x,"SeuratObject.Rds",sep="_"))
+        embedding_order<-row.names(atac_sub@reductions$umap@cell.embeddings)
+        row_order<-match(cell_order,embedding_order,nomatch=0)
+        mm10_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(mm10_atac@meta.data),nomatch=0),]$seurat_subcluster<-as.character(unlist(atac_sub@meta.data[which(colnames(atac_sub@meta.data)==resolution_list[celltype.x])]))
+        mm10_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(mm10_atac@meta.data),nomatch=0),]$subcluster_x<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,1])
+        mm10_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(mm10_atac@meta.data),nomatch=0),]$subcluster_y<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,2])
+    }
+
+    as.data.frame(mm10_atac@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
+    #na values are doublets  
+    saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
 
 ```
 
 {% endcapture %} {% include details.html %} 
 
 
-### Assign Subcluster identities to larger data set 
+### Plot Data and Subclusters
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -930,35 +975,115 @@ library(cicero)
 library(cisTopic)
 library(GenomeInfoDb)
 set.seed(1234)
-library(EnsDb.Hsapiens.v86)
 library(Matrix)
-library(JASPAR2020)
-library(TFBSTools)
-library(BSgenome.Hsapiens.UCSC.hg38)
 library(dplyr)
 library(ggrepel)
-
-
+library(RColorBrewer)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 #Read in data and modify to monocle CDS file
 #read in RDS file.
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
-species="hg38"
-hg38_atac$cellID<-row.names(hg38_atac@meta.data)
-
-celltype_list<-unique(hg38_atac$seurat_clusters)
-hg38_atac$seurat_subcluster<-"NA"
-
-for(celltype.x in celltype_list){
-    atac_sub<-readRDS(paste("./subcluster/",species,celltype.x,"SeuratObject.Rds",sep="_"))
-    hg38_atac@meata.data[match(row.names(atac_sub@meta.data),row.names(hg38_atac@meta.data)),]$seurat_subcluster<-atac_sub@meta.data$
-}
-
-
 mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
- 
-    celltype_list<-unique(mm10_atac$seurat_clusters)
+
+#plotting mm10 umap and subclusters
+    dat<-as.data.frame(mm10_atac@meta.data)
+    cell_order<-row.names(dat)
+    embedding_order<-row.names(mm10_atac@reductions$umap@cell.embeddings)
+    row_order<-match(cell_order,embedding_order)
+
+    dat$umap_x<-as.numeric(mm10_atac@reductions$umap@cell.embeddings[row_order,1])
+    dat$umap_y<-as.numeric(mm10_atac@reductions$umap@cell.embeddings[row_order,2])
+    dat<-dat[dat$predicted_doublets=="False",]
+
+    cols<-brewer.pal(n = length(unique(dat$seurat_clusters)), name = "Spectral");names(cols)<-unique(dat$seurat_clusters) #clusters
+    cols_df<-data.frame(seurat_clusters=names(cols),cluster_col=cols)
+    dat<-merge(dat,cols_df,by="seurat_clusters")
+    dat$subcluster_col<-NA
+
+    col_profile<-c("PuOr","RdGy","Oranges","YlOrBr","RdYlGn","PiYG","BuGn","Blues","BuPu","Purples")
+    names(col_profile)<-c("4","2","3","1","0","6","5","8","9","7")
+
+    for (x in 1:length(col_profile)){
+        print(col_profile[x])
+        cols_temp<-brewer.pal(n = length(unique(dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster)), name = as.character(col_profile[x]))
+        subcluster_member_count<-length(unique(dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster))
+        if(length(cols_temp) != subcluster_member_count){cols_temp<-cols_temp[1:subcluster_member_count]}
+        cols_temp_df<-data.frame(seurat_subcluster=unique(dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster),
+                        subcluster_col=cols_temp)
+        subclus_order<-dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster
+        dat[dat$seurat_clusters==names(col_profile[x]),]$subcluster_col<-cols_temp_df[match(subclus_order,cols_temp_df$seurat_subcluster),]$subcluster_col
+    }
+
+    plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
+    geom_point(alpha=0.1,size=0.5)+
+    theme_bw()+scale_color_manual(values=levels(as.factor(dat$cluster_col)))+
+    ggtitle("mm10")+
+    theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
+
+    plt_list<-ggplot(dat,aes(x=as.numeric(subcluster_x),y=as.numeric(subcluster_y),color=as.factor(subcluster_col)))+
+    geom_point(alpha=0.1,size=0.05)+scale_color_manual(values=levels(as.factor(dat$subcluster_col)))+
+    theme_classic()+theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none")+
+    facet_wrap(facets=vars(seurat_clusters),ncol=2)
+    plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
+    ggsave(plt,file="mm10_umap.png")
+    system("slack -F mm10_umap.png ryan_todo")
+
+    mm10_atac@meta.data$cluster_col<-"NA"
+    mm10_atac@meta.data[match(dat$cellid,row.names(mm10_atac@meta.data),nomatch=0),]$cluster_col<-dat$cluster_col
+    mm10_atac@meta.data$subcluster_col<-"NA"
+    mm10_atac@meta.data[match(dat$cellid,row.names(mm10_atac@meta.data),nomatch=0),]$subcluster_col<-dat$subcluster_col
+    saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
+
+
+#plotting hg38 umap and subclusters
+    dat<-as.data.frame(hg38_atac@meta.data)
+    cell_order<-row.names(dat)
+    embedding_order<-row.names(hg38_atac@reductions$umap@cell.embeddings)
+    row_order<-match(cell_order,embedding_order)
+
+    dat$umap_x<-as.numeric(hg38_atac@reductions$umap@cell.embeddings[row_order,1])
+    dat$umap_y<-as.numeric(hg38_atac@reductions$umap@cell.embeddings[row_order,2])
+    dat<-dat[dat$predicted_doublets=="False",]
+
+    cols<-brewer.pal(n = length(unique(dat$seurat_clusters)), name = "Spectral");names(cols)<-unique(dat$seurat_clusters) #clusters
+    cols_df<-data.frame(seurat_clusters=names(cols),cluster_col=cols)
+    dat<-merge(dat,cols_df,by="seurat_clusters")
+    dat$subcluster_col<-NA
+
+    col_profile<-c("YlOrRd","Oranges","PuOr","YlGn","Greens","PRGn","PuBuGn","PuBu")
+    names(col_profile)<-c("0","5","1","3","2","6","7","4")
+
+    for (x in 1:length(col_profile)){
+        print(col_profile[x])
+        cols_temp<-brewer.pal(n = length(unique(dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster)), name = as.character(col_profile[x]))
+        subcluster_member_count<-length(unique(dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster))
+        if(length(cols_temp) != subcluster_member_count){cols_temp<-cols_temp[1:subcluster_member_count]}
+        cols_temp_df<-data.frame(seurat_subcluster=unique(dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster),
+                        subcluster_col=cols_temp)
+        subclus_order<-dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster
+        dat[dat$seurat_clusters==names(col_profile[x]),]$subcluster_col<-cols_temp_df[match(subclus_order,cols_temp_df$seurat_subcluster),]$subcluster_col
+    }
+
+    plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
+    geom_point(alpha=0.1,size=0.5)+
+    theme_bw()+scale_color_manual(values=levels(as.factor(dat$cluster_col)))+
+    ggtitle("hg38")+
+    theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
+
+    plt_list<-ggplot(dat,aes(x=as.numeric(subcluster_x),y=as.numeric(subcluster_y),color=as.factor(subcluster_col)))+
+    geom_point(alpha=0.1,size=0.05)+scale_color_manual(values=levels(as.factor(dat$subcluster_col)))+
+    theme_classic()+theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none")+
+    facet_wrap(facets=vars(seurat_clusters),ncol=2)
+    plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
+    ggsave(plt,file="hg38_umap.png")
+    system("slack -F hg38_umap.png ryan_todo")
+
+    hg38_atac@meta.data$cluster_col<-"NA"
+    hg38_atac@meta.data[match(dat$cellid,row.names(hg38_atac@meta.data),nomatch=0),]$cluster_col<-dat$cluster_col
+    hg38_atac@meta.data$subcluster_col<-"NA"
+    hg38_atac@meta.data[match(dat$cellid,row.names(hg38_atac@meta.data),nomatch=0),]$subcluster_col<-dat$subcluster_col
+    saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
 
 ```
 
@@ -1044,32 +1169,139 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
     hg38_annotation<-annotation_generation(ensdb_obj=EnsDb.Hsapiens.v86)
     mm10_annotation<-annotation_generation(ensdb_obj=EnsDb.Mmusculus.v79)
 
-  geneactivity_processing<-function(cds_input,conns_input,prefix){
+  geneactivity_processing<-function(cds_input,conns_input,prefix,gene_annotation){
       atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
       unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
       saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
   }
 
-  conns<-as.data.frame(readRDS("orgo_cirm43_atac_cicero_conns.Rds"))
-  orgo_cirm43.cicero<-readRDS("orgo_cirm43_atac_cicero_cds.Rds")
-  geneactivity_processing(cds_input=as.cell_data_set(orgo_cirm43,group_by="seurat_clusters"),conns_input=conns,prefix="cirm43_atac")
+  #hg38
+  conns<-as.data.frame(readRDS("hg38_atac_cicero_conns.Rds"))
+  geneactivity_processing(cds_input=as.cell_data_set(hg38_atac,group_by="seurat_clusters"),conns_input=conns,prefix="hg38",gene_annotation=hg38_annotation)
+  cicero_gene_activities<-readRDS("hg38.unnorm_GA.Rds")  #Read in unnormalized GA
+  hg38_atac[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
+  hg38_atac <- NormalizeData(object = hg38_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(hg38_atac$nCount_peaks))  # normalize
+  saveRDS(hg38_atac,"hg38_atac.SeuratObject.Rds")
 
-  #These can be added to the seurat object as a new assay later
 
-  #Read in unnormalized GA
-  cicero_gene_activities<-readRDS("cirm43_atac.unnorm_GA.Rds")
-  orgo_cirm43[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
 
-  # normalize
-  orgo_cirm43 <- NormalizeData(
-    object = orgo_cirm43,
-    assay = 'GeneActivity',
-    normalization.method = 'LogNormalize',
-    scale.factor = median(orgo_cirm43$nCount_peaks)
-  )
-  saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
 ```
 {% endcapture %} {% include details.html %} 
+
+## Public Data RNA Comparison
+### Download data from Allen Brain-span
+For human: https://portal.brain-map.org/atlases-and-data/rnaseq/human-m1-10x
+For mouse: https://portal.brain-map.org/atlases-and-data/rnaseq/mouse-whole-cortex-and-hippocampus-10x
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+```bash
+cd /home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex
+wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/70/32/70326830-e306-4743-a02c-a8da5bf9eb56/readme-m1-10.txt
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/metadata.csv
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/matrix.csv
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/trimmed_means.csv
+wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/0c/0c/0c0c882d-1c31-40a9-8039-3bf2706a77cd/sample-exp_component_mapping_human_10x_apr2020.zip
+```
+### Process Data into Seurat Object
+Following https://satijalab.org/seurat/v3.2/pbmc3k_tutorial.html
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+```R
+library(Seurat)
+library(ggplot2)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex")
+meta_data<-read.csv("metadata.csv",header=T)
+row.names(meta_data)<-meta_data$sample_name
+counts<-read.csv("matrix.csv",header=T,row.names=1)
+brainspan <- CreateSeuratObject(counts = as.data.frame(t(counts)), project = "brainspain", min.cells = 3, min.features = 500, meta.data=meta_data)
+saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
+brainspan <- NormalizeData(brainspan, normalization.method = "LogNormalize", scale.factor = 10000)
+brainspan <- FindVariableFeatures(brainspan, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(brainspan)
+brainspan <- ScaleData(brainspan, features = all.genes)
+brainspan <- RunPCA(brainspan, features = VariableFeatures(object = brainspan))
+plt<-ElbowPlot(brainspan)
+ggsave(plt,file="allen_brainspan_humancortex.elbowplot.pdf")
+system("slack -F allen_brainspan_humancortex.elbowplot.pdf ryan_todo")
+brainspan <- FindNeighbors(brainspan, dims = 1:14)
+brainspan <- FindClusters(brainspan, resolution = 0.5)
+brainspan <- RunUMAP(brainspan, dims = 1:14)
+plt<-DimPlot(brainspan, reduction = "umap",group.by=c("class_label","subclass_label"))
+ggsave(plt,file="allen_brainspan_humancortex.dimplot.pdf",width=30)
+system("slack -F allen_brainspan_humancortex.dimplot.pdf ryan_todo")
+saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
+```
+{% endcapture %} {% include details.html %} 
+
+### Integration of ATAC and RNA for cell type identification
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+library(Seurat)
+library(Signac)
+library(ggplot2)
+library(ComplexHeatmap)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+brainspan <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
+
+transfer.anchors <- FindTransferAnchors(
+  reference = brainspan,
+  query = hg38_atac,
+  query.assay="GeneActivity",
+  reduction = 'cca'
+)
+
+saveRDS(transfer.anchors,file="hg38.transferanchors.rds")
+
+predicted.labels.class <- TransferData(
+  anchorset = transfer.anchors,
+  refdata = brainspan$class_label,
+  weight.reduction = "cca",
+  dims = 1:30
+)
+
+predicted.labels.subclass <- TransferData(
+  anchorset = transfer.anchors,
+  refdata = brainspan$subclass_label,
+  weight.reduction = "cca",
+  dims = 1:30
+)
+hg38_atac <- AddMetaData(object = hg38_atac, metadata = predicted.labels.class)
+hg38_atac <- AddMetaData(object = hg38_atac, metadata = predicted.labels.subclass)
+saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
+
+feat<-colnames(hg38_atac@meta.data)[which(grepl("prediction.score",colnames(hg38_atac@meta.data)))]
+feat<-feat[feat !="prediction.score.max"]
+
+#plot feature plots
+plt<-FeaturePlot(hg38_atac,features=feat)
+ggsave(plt,file="hg38_predicted.umap.png",width=20,height=20)
+system("slack -F hg38_predicted.umap.png ryan_todo")
+
+#plot merged cluster heatmap
+  #Generate Heatmap of TF ChromVar score and TF modules
+  pred<-hg38_atac@meta.data[,feat]
+  colnames(pred)<-substring(colnames(pred),18)
+
+  #Combine over subclusters
+  pred<-split(pred,paste(hg38_atac$seurat_clusters,hg38_atac$seurat_subcluster,sep="_")) #group by rows to seurat clusters
+  pred<-lapply(pred,function(x) apply(x,2,mean)) #take average across group
+  pred<-do.call("rbind",pred) #condense to smaller data frame
+  pred<-pred[!endsWith(row.names(pred),"NA"),] #remove doublets not assigned a subcluster
+
+  plt1<-Heatmap(pred,column_split=c(rep("class",3),rep("subclass",20)),clustering_distance_rows="maximum",clustering_distance_columns="maximum")
+  pdf("test.complexheatmap.pdf",height=20)
+  plt1
+  dev.off()
+  system("slack -F test.complexheatmap.pdf ryan_todo")
+
+
+
+```
+
+{% endcapture %} {% include details.html %} 
+
+
+
 
 ### Marker Plotting
 
