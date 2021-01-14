@@ -177,7 +177,7 @@ $dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_dem
         
         dat<-merge(dat,idx_pcr,by.x="pcr_idx",by.y="i7_idx_sequence") #add pcr i7 index, defining 10% or 90% pool
 
-        table(dat$i7_idx_name)
+        table(dat$i7_idx_namez`)
         #PCR_i7_P7.S707 PCR_i7_P7.S708
         #  6460          54928
 
@@ -200,9 +200,9 @@ $dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_dem
         system("slack -F complexity.pdf ryan_todo")
 
         library(patchwork)
-        plt_barnyard<-ggplot(dat[dat$condition=="Mix",],aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))+ggtitle("Barnyard")
-        plt_human<-ggplot(dat[dat$condition=="Human",],aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))+ggtitle("Human")
-        plt_mouse<-ggplot(dat[dat$condition=="Mouse",],aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))+ggtitle("Mouse")
+        plt_barnyard<-ggplot(dat[dat$condition=="Mix",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Barnyard")
+        plt_human<-ggplot(dat[dat$condition=="Human",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Human")
+        plt_mouse<-ggplot(dat[dat$condition=="Mouse",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Mouse")
         plt<-plt_barnyard+plt_human+plt_mouse
         ggsave(plt,file="barnyard.pdf",width=20)
         system("slack -F barnyard.pdf ryan_todo")
@@ -213,10 +213,10 @@ $dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_dem
         #10040   170 18985
         (table(dat[dat$condition=="Mix",]$species_call)[["Mixed"]]/nrow(dat))*2 #get estimated collision rate
         #[1] 0.005538542 so 0.55%
-        write.table(dat,"70k_barnyard.summary.txt",quote=F,sep="\t",col.names=F,row.names=F)
+        write.table(dat,"70k_barnyard.summary.txt",quote=F,sep="\t",col.names=T,row.names=F)
 
 
-         #annot species
+        #annot species
         dat<-dat[(dat$condition=="Mouse" & dat$species_call=="Mouse") | (dat$condition=="Human" & dat$species_call=="Human") | dat$condition=="Mix", ]
         table(paste(dat$condition,dat$species_call))
         #Human Human   Mix Human   Mix Mixed   Mix Mouse Mouse Mouse
@@ -249,7 +249,7 @@ $dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_dem
         library(dplyr)
         summary(as.data.frame(dat %>% group_by(tn5_column,tn5_row) %>% summarize(count=n()))$count) #cell count distribution per tn5 well
         # Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
-        #63.0   161.0   195.0   201.5   246.5   331.0
+        #63.0   161.0   195.0   201.5   246.5   331.0   
         nrow(dat)/length(unique(dat$gem_idx)) #count of cells within unique GEMs
         #1.257456
 
@@ -262,22 +262,22 @@ $dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_dem
         system("slack -F complexity.pdf ryan_todo")
 
         library(patchwork)
-        plt_barnyard<-ggplot(dat[dat$condition=="Mix",],aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))+ggtitle("Barnyard")
-        plt_human<-ggplot(dat[dat$condition=="Human",],aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))+ggtitle("Human")
-        plt_mouse<-ggplot(dat[dat$condition=="Mouse",],aes(x=log10(hg38_count),y=log10(mm10_count),color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,7))+ggtitle("Mouse")
+        plt_barnyard<-ggplot(dat[dat$condition=="Mix",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Barnyard")
+        plt_human<-ggplot(dat[dat$condition=="Human",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Human")
+        plt_mouse<-ggplot(dat[dat$condition=="Mouse",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Mouse")
         plt<-plt_barnyard+plt_human+plt_mouse
-        ggsave(plt,file="barnyard.pdf",width=30)
+        ggsave(plt,file="barnyard.pdf",width=20)
         system("slack -F barnyard.pdf ryan_todo")
-        #[1] 0.002660036 so 0.2% collision rate
 
-        write.table(dat,"20k_barnyard.summary.txt",quote=F,sep="\t",col.names=F,row.names=F)
+        write.table(dat,"20k_barnyard.summary.txt",quote=F,sep="\t",col.names=T,row.names=F)
 
         #count of barnyard species calls
         table(dat[dat$condition=="Mix",]$species_call)
         #Human Mixed Mouse
         #10040   170 18985
         (table(dat[dat$condition=="Mix",]$species_call)[["Mixed"]]/nrow(dat))*2 #get estimated collision rate
-        #[1] 0.005538542 so 0.55%
+        #[1] 0.002660036 so 0.2% collision rate
+
         #Filter to data that matches apriori assumption or single cell
         #annot species
         dat<-dat[(dat$condition=="Mouse" & dat$species_call=="Mouse") | (dat$condition=="Human" & dat$species_call=="Human") | dat$condition=="Mix", ]
@@ -341,6 +341,11 @@ mm10.merged.bbrd.q10.500.bed &
 #scitools wrapper for samtools isize
 scitools isize hg38.merged.bbrd.q10.bam &
 scitools isize mm10.merged.bbrd.q10.bam &
+
+#scitools wrapper for tss enrichment
+scitools bam-tssenrich mm10.merged.bbrd.q10.bam mm10 &
+scitools bam-tssenrich hg38.merged.bbrd.q10.bam hg38 &
+
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -732,23 +737,96 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 #Plotting 2d projection and clusters
 
 plt<-DimPlot(hg38_atac,group.by=c('seurat_clusters','predicted_doublets'))
-ggsave(plt,file="hg38.umap.png",width=10)
-system("slack -F hg38.umap.png sci_drop_atac")
+ggsave(plt,file="hg38.umap.pdf",width=10)
+system("slack -F hg38.umap.pdf sci_drop_atac")
 
 plt<-DimPlot(mm10_atac,group.by=c('seurat_clusters','predicted_doublets'))
-ggsave(plt,file="mm10.umap.png",width=10)
-system("slack -F mm10.umap.png sci_drop_atac")
+ggsave(plt,file="mm10.umap.pdf",width=10)
+system("slack -F mm10.umap.pdf sci_drop_atac")
 
 plt<-FeaturePlot(hg38_atac,feature=c('doublet_scores'))
-ggsave(plt,file="hg38.umap.scrub.png")
-system("slack -F hg38.umap.scrub.png sci_drop_atac")
+ggsave(plt,file="hg38.umap.scrub.pdf")
+system("slack -F hg38.umap.scrub.pdf sci_drop_atac")
 
 plt<-FeaturePlot(mm10_atac,feature=c('doublet_scores'))
-ggsave(plt,file="mm10.umap.scrub.png")
-system("slack -F mm10.umap.scrub.png sci_drop_atac")
+ggsave(plt,file="mm10.umap.scrub.pdf")
+system("slack -F mm10.umap.scrub.pdf sci_drop_atac")
 
 ```
 {% endcapture %} {% include details.html %} 
+
+### Add library complexity data to RDS files.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```bash
+ cat ./sciDROP_20K/hg38.complexity.txt ./sciDROP_20K/mm10.complexity.txt ./sciDROP_70k/hg38.complexity.txt ./sciDROP_70k/mm10.complexity.txt > complexity.txt
+```
+```R
+library(Signac)
+library(Seurat)
+library(ggplot2)
+library(patchwork)
+
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+compl<-read.table(file="complexity.txt",header=F)
+colnames(compl)<-c("row_carryover","cellID","total_reads","unique_reads","percent_uniq")
+hg38_atac$total_reads<-0
+hg38_atac@meta.data[match(row.names(hg38_atac@meta.data),compl$cellID,nomatch=0),]$total_reads<-compl[match(compl$cellID,row.names(hg38_atac@meta.data),nomatch=0),]$total_reads
+hg38_atac$unique_reads<-0
+hg38_atac@meta.data[match(row.names(hg38_atac@meta.data),compl$cellID,nomatch=0),]$unique_reads<-compl[match(compl$cellID,row.names(hg38_atac@meta.data),nomatch=0),]$unique_reads
+hg38_atac$percent_uniq<-0
+hg38_atac@meta.data[match(row.names(hg38_atac@meta.data),compl$cellID,nomatch=0),]$percent_uniq<-compl[match(compl$cellID,row.names(hg38_atac@meta.data),nomatch=0),]$percent_uniq
+hg38_atac@meta.data<-hg38_atac@meta.data[nchar(row.names(hg38_atac@meta.data))==32,]
+hg38_atac$pcr_idx<-substr(hg38_atac$cellid,1,8)
+hg38_atac$gem_idx<-substr(hg38_atac$cellid,9,24)
+hg38_atac$tn5_idx<-substr(hg38_atac$cellid,25,32)
+
+mm10_atac$total_reads<-0
+mm10_atac@meta.data[match(row.names(mm10_atac@meta.data),compl$cellID,nomatch=0),]$total_reads<-compl[match(compl$cellID,row.names(mm10_atac@meta.data),nomatch=0),]$total_reads
+mm10_atac$unique_reads<-0
+mm10_atac@meta.data[match(row.names(mm10_atac@meta.data),compl$cellID,nomatch=0),]$unique_reads<-compl[match(compl$cellID,row.names(mm10_atac@meta.data),nomatch=0),]$unique_reads
+mm10_atac$percent_uniq<-0
+mm10_atac@meta.data[match(row.names(mm10_atac@meta.data),compl$cellID,nomatch=0),]$percent_uniq<-compl[match(compl$cellID,row.names(mm10_atac@meta.data),nomatch=0),]$percent_uniq
+mm10_atac@meta.data<-mm10_atac@meta.data[nchar(row.names(mm10_atac@meta.data))==32,]
+mm10_atac$pcr_idx<-substr(mm10_atac$cellid,1,8)
+mm10_atac$gem_idx<-substr(mm10_atac$cellid,9,24)
+mm10_atac$tn5_idx<-substr(mm10_atac$cellid,25,32)
+
+saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
+saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
+
+plt1<-ggplot(mm10_atac@meta.data[mm10_atac@meta.data$predicted_doublets=="False",], aes(x=as.numeric(percent_uniq), y=log10(as.numeric(unique_reads))) ) +
+  stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
+  scale_fill_distiller(palette= "Spectral", direction=-1) +
+  scale_x_continuous(expand = c(0, 0),limits=c(0,100)) +
+  scale_y_continuous(expand = c(0, 0),limits=c(3,6)) +
+  theme(legend.position='none')
+plt2<-ggplot(hg38_atac@meta.data[hg38_atac@meta.data$predicted_doublets=="False",], aes(x=as.numeric(percent_uniq), y=log10(as.numeric(unique_reads))) ) +
+  stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
+  scale_fill_distiller(palette= "Spectral", direction=-1) +
+  scale_x_continuous(expand = c(0, 0),limits=c(0,100)) +
+  scale_y_continuous(expand = c(0, 0),limits=c(3,6)) +
+  theme(legend.position='none')
+ggsave(plt1+plt2,file="mm10.hg38.complexity.2d.pdf")
+system("slack -F mm10.hg38.complexity.2d.pdf ryan_todo")
+
+
+#hard coded these numbers just because i had them for a meeting
+cell_count_75k<-data.frame(count=c(10040,18985,170,12663-(141+19),19530-(484+50),141+19,484+50),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("75k"))
+cell_count_20k<-data.frame(count=c(3001,6572,24,3703-(27),5841-(449),27,449),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("20k"))
+cell_count<-rbind(cell_count_75k,cell_count_20k)
+plt<-ggplot(cell_count,aes(x=loading,y=count,fill=factor(names,levels=rev(c("mus","hum","by_h","by_m","by_mix","scrub_h","scrub_m")))))+geom_bar(position="stack",stat="identity")
+ggsave(plt,file="mm10.hg38.cellcount.pdf")
+system("slack -F mm10.hg38.cellcount.pdf ryan_todo")
+
+```
+
+{% endcapture %} {% include details.html %} 
+
 
 ### Subclustering 
 
@@ -1016,18 +1094,18 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
     }
 
     plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
-    geom_point(alpha=0.1,size=0.5)+
+    geom_point(alpha=0.1,size=0.5,shape=16)+
     theme_bw()+scale_color_manual(values=levels(as.factor(dat$cluster_col)))+
     ggtitle("mm10")+
     theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
 
     plt_list<-ggplot(dat,aes(x=as.numeric(subcluster_x),y=as.numeric(subcluster_y),color=as.factor(subcluster_col)))+
-    geom_point(alpha=0.1,size=0.05)+scale_color_manual(values=levels(as.factor(dat$subcluster_col)))+
+    geom_point(alpha=0.1,size=0.05,shape=16)+scale_color_manual(values=levels(as.factor(dat$subcluster_col)))+
     theme_classic()+theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none")+
     facet_wrap(facets=vars(seurat_clusters),ncol=2)
     plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
-    ggsave(plt,file="mm10_umap.png")
-    system("slack -F mm10_umap.png ryan_todo")
+    ggsave(plt,file="mm10_umap.pdf")
+    system("slack -F mm10_umap.pdf ryan_todo")
 
     mm10_atac@meta.data$cluster_col<-"NA"
     mm10_atac@meta.data[match(dat$cellid,row.names(mm10_atac@meta.data),nomatch=0),]$cluster_col<-dat$cluster_col
@@ -1066,18 +1144,18 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
     }
 
     plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
-    geom_point(alpha=0.1,size=0.5)+
+    geom_point(alpha=0.1,size=0.5,shape=16)+
     theme_bw()+scale_color_manual(values=levels(as.factor(dat$cluster_col)))+
     ggtitle("hg38")+
     theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
 
     plt_list<-ggplot(dat,aes(x=as.numeric(subcluster_x),y=as.numeric(subcluster_y),color=as.factor(subcluster_col)))+
-    geom_point(alpha=0.1,size=0.05)+scale_color_manual(values=levels(as.factor(dat$subcluster_col)))+
+    geom_point(alpha=0.1,size=0.05,shape=16)+scale_color_manual(values=levels(as.factor(dat$subcluster_col)))+
     theme_classic()+theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none")+
     facet_wrap(facets=vars(seurat_clusters),ncol=2)
     plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
-    ggsave(plt,file="hg38_umap.png")
-    system("slack -F hg38_umap.png ryan_todo")
+    ggsave(plt,file="hg38_umap.pdf")
+    system("slack -F hg38_umap.pdf ryan_todo")
 
     hg38_atac@meta.data$cluster_col<-"NA"
     hg38_atac@meta.data[match(dat$cellid,row.names(hg38_atac@meta.data),nomatch=0),]$cluster_col<-dat$cluster_col
@@ -1089,6 +1167,7 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 
 {% endcapture %} {% include details.html %} 
 
+## Cicero for Coaccessible Networks
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -1102,6 +1181,7 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
   library(cicero)
   library(EnsDb.Hsapiens.v86)
   library(EnsDb.Mmusculus.v79)
+  setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
   #Cicero processing function
   cicero_processing<-function(object_input=hg38_atac,prefix="hg38"){
@@ -1113,10 +1193,13 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
       print("Making Cicero format CDS file")
       atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
       saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+      atac.cicero<-readRDS(paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+
       genome <- seqlengths(object_input) # get the chromosome sizes from the Seurat object
       genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
       
       print("Running Cicero to generate connections.")
+      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
       saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
       
       print("Generating CCANs")
@@ -1129,7 +1212,6 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
       return(object_input)
   }
 
-
   hg38_atac<-readRDS("hg38_SeuratObject.Rds")
   hg38_atac<-cicero_processing(object_input=hg38_atac,prefix="hg38")
   saveRDS(hg38_atac,"hg38_SeuratObject.GA.Rds")
@@ -1137,6 +1219,7 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
   mm10_atac<-readRDS("mm10_SeuratObject.Rds")
   mm10_atac<-cicero_processing(object_input=mm10_atac,prefix="mm10")
   saveRDS(mm10_atac,"mm10_SeuratObject.GA.Rds")
+  mm10_atac<-readRDS("mm10_SeuratObject.GA.Rds")
   
   # generate unnormalized gene activity matrix
   # gene annotation sample
@@ -1177,8 +1260,17 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
   cicero_gene_activities<-readRDS("hg38.unnorm_GA.Rds")  #Read in unnormalized GA
   hg38_atac[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
   hg38_atac <- NormalizeData(object = hg38_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(hg38_atac$nCount_peaks))  # normalize
-  saveRDS(hg38_atac,"hg38_atac.SeuratObject.Rds")
+  saveRDS(hg38_atac,"hg38.SeuratObject.Rds")
 
+
+  #mm10
+  conns<-as.data.frame(readRDS("mm10_atac_cicero_conns.Rds"))
+  geneactivity_processing(cds_input=as.cell_data_set(mm10_atac,group_by="seurat_clusters"),conns_input=conns,prefix="mm10",gene_annotation=mm10_annotation)
+  cicero_gene_activities<-readRDS("mm10.unnorm_GA.Rds")  #Read in unnormalized GA
+  cicero_gene_activities<-cicero_gene_activities[2:nrow(cicero_gene_activities),] #first feature is empy
+  mm10_atac[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
+  mm10_atac <- NormalizeData(object = mm10_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(mm10_atac$nCount_peaks))  # normalize
+  saveRDS(mm10_atac,"mm10.SeuratObject.Rds")
 
 
 ```
@@ -1190,12 +1282,22 @@ For human: https://portal.brain-map.org/atlases-and-data/rnaseq/human-m1-10x
 For mouse: https://portal.brain-map.org/atlases-and-data/rnaseq/mouse-whole-cortex-and-hippocampus-10x
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
+#Human download
 cd /home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex
 wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/70/32/70326830-e306-4743-a02c-a8da5bf9eb56/readme-m1-10.txt
 wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/metadata.csv
 wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/matrix.csv
 wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/trimmed_means.csv
 wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/0c/0c/0c0c882d-1c31-40a9-8039-3bf2706a77cd/sample-exp_component_mapping_human_10x_apr2020.zip
+#Mouse download
+cd /home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse
+wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/87/14/8714d0a3-27d7-4a81-8c77-eebfd605a280/readme_mouse_10x.txt
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_mouse_ctx-hip_10x/metadata.csv 
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_mouse_ctx-hip_10x/matrix.csv
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_mouse_ctx-hip_10x/trimmed_means.csv
+#Downloading Mouse whole brain data 
+wget https://www.dropbox.com/s/kqsy9tvsklbu7c4/allen_brain.rds?dl=0
+
 ```
 ### Process Data into Seurat Object
 Following https://satijalab.org/seurat/v3.2/pbmc3k_tutorial.html
@@ -1203,6 +1305,7 @@ Following https://satijalab.org/seurat/v3.2/pbmc3k_tutorial.html
 ```R
 library(Seurat)
 library(ggplot2)
+#Human
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex")
 meta_data<-read.csv("metadata.csv",header=T)
 row.names(meta_data)<-meta_data$sample_name
@@ -1224,10 +1327,39 @@ plt<-DimPlot(brainspan, reduction = "umap",group.by=c("class_label","subclass_la
 ggsave(plt,file="allen_brainspan_humancortex.dimplot.pdf",width=30)
 system("slack -F allen_brainspan_humancortex.dimplot.pdf ryan_todo")
 saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
+
+#Mouse
+# setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse")
+# meta_data<-read.csv("metadata.csv",header=T)
+# row.names(meta_data)<-meta_data$sample_name
+# counts<-read.csv("matrix.csv",header=T,row.names=1,nrows=100000) #this is 1million cells, i think 10% of that will be fine, hopefully they are evenly distributed
+# brainspan <- CreateSeuratObject(counts = as.data.frame(t(counts)), project = "brainspain", min.cells = 3, min.features = 500, meta.data=meta_data)
+# saveRDS(brainspan, file = "allen_brainspan_mouse.rds")
+# brainspan <- NormalizeData(brainspan, normalization.method = "LogNormalize", scale.factor = 10000)
+# brainspan <- FindVariableFeatures(brainspan, selection.method = "vst", nfeatures = 2000)
+# all.genes <- rownames(brainspan)
+# brainspan <- ScaleData(brainspan, features = all.genes)
+# brainspan <- RunPCA(brainspan, features = VariableFeatures(object = brainspan))
+# plt<-ElbowPlot(brainspan)
+# ggsave(plt,file="allen_brainspan_mouse.elbowplot.pdf")
+# system("slack -F allen_brainspan_mouse.elbowplot.pdf ryan_todo")
+# brainspan <- FindNeighbors(brainspan, dims = 1:15)
+# brainspan <- FindClusters(brainspan, resolution = 0.5)
+# brainspan <- RunUMAP(brainspan, dims = 1:15)
+# plt<-DimPlot(brainspan, reduction = "umap",group.by=c("class_label","subclass_label"))
+# ggsave(plt,file="allen_brainspan_mouse.dimplot.pdf",width=30)
+# system("slack -F allen_brainspan_mouse.dimplot.pdf ryan_todo")
+# saveRDS(brainspan, file = "allen_brainspan_mouse.rds")
+
+
+
+
 ```
 {% endcapture %} {% include details.html %} 
 
 ### Integration of ATAC and RNA for cell type identification
+
+Retry mouse cluster id just straight up following https://satijalab.org/signac/articles/mouse_brain_vignette.html?
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
@@ -1236,170 +1368,402 @@ library(Signac)
 library(ggplot2)
 library(ComplexHeatmap)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+predict_celltype<-function(object,brainspan,prefix){
+    transfer.anchors <- FindTransferAnchors(reference = brainspan,query = object,query.assay="GeneActivity",reduction = 'cca')
+    saveRDS(transfer.anchors,file=paste0(prefix,".transferanchors.rds"))
+    #predict labels for class and subclass
+    predicted.labels.class <- TransferData(anchorset = transfer.anchors,refdata = brainspan$class_label,weight.reduction = "cca",dims = 1:30)
+    predicted.labels.subclass <- TransferData(anchorset = transfer.anchors,refdata = brainspan$subclass_label,weight.reduction = "cca", dims = 1:30)
+    object <- AddMetaData(object = object, metadata = predicted.labels.class)
+    object <- AddMetaData(object = object, metadata = predicted.labels.subclass)
+    saveRDS(object,file=paste0(prefix,"_SeuratObject.Rds"))
+
+    feat<-colnames(object@meta.data)[which(grepl("prediction.score",colnames(object@meta.data)))]
+    feat<-feat[feat !="prediction.score.max"]
+    plt<-FeaturePlot(object,features=feat,order=T)#plot feature plots
+    ggsave(plt,file=paste0(prefix,"_predicted.umap.png"),width=20,height=30)
+    system(paste0("slack -F ",prefix,"_predicted.umap.png ryan_todo"))
+
+    #plot merged cluster heatmap
+    #Generate Heatmap of TF ChromVar score and TF modules
+    pred<-object@meta.data[,feat]
+    colnames(pred)<-substring(colnames(pred),18) #remove "prediction.score" for readability
+    #Combine over subclusters
+    pred<-split(pred,paste(object$seurat_clusters,object$seurat_subcluster,sep="_")) #group by rows to seurat clusters
+    pred<-lapply(pred,function(x) apply(x,2,mean)) #take average across group
+    pred<-do.call("rbind",pred) #condense to smaller data frame
+    pred<-pred[!endsWith(row.names(pred),"NA"),] #remove doublets not assigned a subcluster
+
+    plt1<-Heatmap(pred,column_split=c(rep("class",3),rep("subclass",20)),clustering_distance_rows="maximum",clustering_distance_columns="maximum")
+    pdf(paste0(prefix,".complexheatmap.pdf"),height=20)
+    plt1
+    dev.off()
+    system(paste0("slack -F ",prefix,".complexheatmap.pdf ryan_todo"))
+}
+
 hg38_atac<-readRDS("hg38_SeuratObject.Rds")
-brainspan <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
+brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
+predict_celltype(object=hg38_atac,brainspan=brainspan.,prefix="hg38")
 
-transfer.anchors <- FindTransferAnchors(
-  reference = brainspan,
-  query = hg38_atac,
-  query.assay="GeneActivity",
-  reduction = 'cca'
-)
-
-saveRDS(transfer.anchors,file="hg38.transferanchors.rds")
-
-predicted.labels.class <- TransferData(
-  anchorset = transfer.anchors,
-  refdata = brainspan$class_label,
-  weight.reduction = "cca",
-  dims = 1:30
-)
-
-predicted.labels.subclass <- TransferData(
-  anchorset = transfer.anchors,
-  refdata = brainspan$subclass_label,
-  weight.reduction = "cca",
-  dims = 1:30
-)
-hg38_atac <- AddMetaData(object = hg38_atac, metadata = predicted.labels.class)
-hg38_atac <- AddMetaData(object = hg38_atac, metadata = predicted.labels.subclass)
-saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
-
-feat<-colnames(hg38_atac@meta.data)[which(grepl("prediction.score",colnames(hg38_atac@meta.data)))]
-feat<-feat[feat !="prediction.score.max"]
-
-#plot feature plots
-plt<-FeaturePlot(hg38_atac,features=feat)
-ggsave(plt,file="hg38_predicted.umap.png",width=20,height=20)
-system("slack -F hg38_predicted.umap.png ryan_todo")
-
-#plot merged cluster heatmap
-  #Generate Heatmap of TF ChromVar score and TF modules
-  pred<-hg38_atac@meta.data[,feat]
-  colnames(pred)<-substring(colnames(pred),18)
-
-  #Combine over subclusters
-  pred<-split(pred,paste(hg38_atac$seurat_clusters,hg38_atac$seurat_subcluster,sep="_")) #group by rows to seurat clusters
-  pred<-lapply(pred,function(x) apply(x,2,mean)) #take average across group
-  pred<-do.call("rbind",pred) #condense to smaller data frame
-  pred<-pred[!endsWith(row.names(pred),"NA"),] #remove doublets not assigned a subcluster
-
-  plt1<-Heatmap(pred,column_split=c(rep("class",3),rep("subclass",20)),clustering_distance_rows="maximum",clustering_distance_columns="maximum")
-  pdf("test.complexheatmap.pdf",height=20)
-  plt1
-  dev.off()
-  system("slack -F test.complexheatmap.pdf ryan_todo")
-
+#Mouse using smaller data set that is whole brain
+mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse_10x/allen_brain.rds")
+brainspan. <- FindVariableFeatures(object = brainspan.,nfeatures = 5000)
+brainspan.@meta.data$subclass_label<-brainspan.@meta.data$subclass #setting shared column names
+brainspan.@meta.data$class_label<-brainspan.@meta.data$class
+predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10")
 
 
 ```
 
 {% endcapture %} {% include details.html %} 
 
-<<<<<<< HEAD
+### Differential Gene Activity through Subclusters
 
-
-=======
-## Public Data RNA Comparison
-
-### Download data from Allen Brain-span
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-```bash
-cd /home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex
-
-wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/70/32/70326830-e306-4743-a02c-a8da5bf9eb56/readme-m1-10.txt
-wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/metadata.csv
-wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/matrix.csv
-wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/trimmed_means.csv
-wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/0c/0c/0c0c882d-1c31-40a9-8039-3bf2706a77cd/sample-exp_component_mapping_human_10x_apr2020.zip
-```
-
-### Process Data into Seurat Object
-
-Following https://satijalab.org/seurat/v3.2/pbmc3k_tutorial.html
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-```R
-library(Seurat)
-library(ggplot2)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex")
-
-meta_data<-read.csv("metadata.csv",header=T)
-row.names(meta_data)<-meta_data$sample_name
-counts<-read.csv("matrix.csv",header=T,row.names=1)
-brainspan <- CreateSeuratObject(counts = as.data.frame(t(counts)), project = "brainspain", min.cells = 3, min.features = 500, meta.data=meta_data)
-saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
-
-
-brainspan <- NormalizeData(brainspan, normalization.method = "LogNormalize", scale.factor = 10000)
-brainspan <- FindVariableFeatures(brainspan, selection.method = "vst", nfeatures = 2000)
-all.genes <- rownames(brainspan)
-brainspan <- ScaleData(brainspan, features = all.genes)
-brainspan <- RunPCA(brainspan, features = VariableFeatures(object = brainspan))
-plt<-ElbowPlot(brainspan)
-ggsave(plt,file="allen_brainspan_humancortex.elbowplot.pdf")
-system("slack -F allen_brainspan_humancortex.elbowplot.pdf ryan_todo")
-brainspan <- FindNeighbors(brainspan, dims = 1:14)
-brainspan <- FindClusters(brainspan, resolution = 0.5)
-brainspan <- RunUMAP(brainspan, dims = 1:14)
-plt<-DimPlot(brainspan, reduction = "umap",group.by=c("class_label","subclass_label"))
-ggsave(plt,file="allen_brainspan_humancortex.dimplot.pdf",width=30)
-system("slack -F allen_brainspan_humancortex.dimplot.pdf ryan_todo")
-saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
-
-```
-{% endcapture %} {% include details.html %} 
-
-### Integration of ATAC and RNA for cell type identification
+For hg38 
 
 ```R
 library(Seurat)
+library(Signac)
 library(ggplot2)
+library(ComplexHeatmap)
+library(ggdendro)
+library(dendextend)
+library(parallel)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(RColorBrewer)
+library(viridis)
+
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+hg38_atac$cluster_ID<-paste(hg38_atac$seurat_clusters,hg38_atac$seurat_subcluster,sep="_")
+hg38_atac$celltype<-"NA"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==0,]$celltype<-"ExN"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==1,]$celltype<-"Oligo"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==2,]$celltype<-"Astro"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==3,]$celltype<-"iN"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==4,]$celltype<-"ExN"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==5,]$celltype<-"Micro.PVM"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==6,]$celltype<-"iN"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==7,]$celltype<-"OPC"
+hg38_atac$celltype_col<-"NA"
+hg38_atac@meta.data[hg38_atac@meta.data$celltype=="iN",]$celltype_col<-"#cc3366"
+hg38_atac@meta.data[hg38_atac@meta.data$celltype=="ExN",]$celltype_col<-"#3399cc"
+hg38_atac@meta.data[hg38_atac@meta.data$celltype=="Oligo",]$celltype_col<-"#66cc99"
+hg38_atac@meta.data[hg38_atac@meta.data$celltype=="Astro",]$celltype_col<-"#99cc99"
+hg38_atac@meta.data[hg38_atac@meta.data$celltype=="Micro.PVM",]$celltype_col<-"#ff6633"
+hg38_atac@meta.data[hg38_atac@meta.data$celltype=="OPC",]$celltype_col<-"#ffcc99"
 
-brainspan <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
+#define DA functions for parallelization
+#Use LR test for atac data
+da_one_v_rest<-function(i,obj,group){
+    da_ga_tmp <- FindMarkers(
+        object = obj,
+        ident.1 = i,
+        group.by = group,
+        test.use = 'LR',
+        latent.vars = 'nCount_peaks',
+        only.pos=T,
+        assay="GeneActivity"
+        )
+    da_ga_tmp$da_region<-row.names(da_ga_tmp)
+    da_ga_tmp$enriched_group<-c(i)
+    da_ga_tmp$compared_group<-c("all_other_cells")
+    return(da_ga_tmp)
+  }
 
-transfer.anchors <- FindTransferAnchors(
-  reference = brainspan,
-  query = hg38_atac,
-  reduction = 'cca'
+da_ga<-list() #set up an empty list for looping through
+
+n.cores=20 #Perform parallel application of DA test
+da_ga<-mclapply(
+    unique(hg38_atac$cluster_ID),
+    FUN=da_one_v_rest,
+    obj=hg38_atac,
+    group="cluster_ID",
+    mc.cores=n.cores)
+
+da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
+write.table(da_ga_df,file="hg38.onevrest.da_ga.txt",sep="\t",col.names=T,row.names=T,quote=F)
+
+#Plot out top ga for each cluster
+da_ga<-read.csv(file="hg38.onevrest.da_ga.txt",head=T,sep="\t",row.names=NULL)
+da_ga<-da_ga[complete.cases(da_ga),]
+da_ga<-da_ga[!endsWith(da_ga$enriched_group,"NA"),]
+
+da_ga$label<-c("")
+for (i in unique(da_ga$enriched_group)){
+selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==i) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:5))$row.names
+da_ga[da_ga$row.names %in% selc_genes & da_ga$enriched_group==i,]$label<- da_ga[da_ga$row.names %in% selc_genes & da_ga$enriched_group==i,]$da_region
+}
+
+#plt<-ggplot(da_ga,aes(x=pct.1/pct.2,y=(-log(p_val_adj)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(aes(label=label,size=0.05),force=10)+theme_bw()+xlim(c(0,30))
+#ggsave(plt,file="hg38.da_ga.pdf")
+#system("slack -F hg38.da_ga.pdf ryan_todo")
+
+#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+dat_ga<-as.data.frame(t(as.data.frame(hg38_atac[["GeneActivity"]]@data)))
+sum_ga<-split(dat_ga,hg38_atac$cluster_ID) #group by rows to seurat clusters
+sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
+sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
+
+sum_ga<-t(scale(sum_ga))
+sum_ga<-sum_ga[,!endsWith(colnames(sum_ga),"NA")] #remove NA (doublet cells)
+
+#cluster by all marker genes
+sum_da_dend <- scale(t(sum_ga)) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 8)
+saveRDS(sum_da_dend,file="hg38.geneactivity.dend.rds")
+
+sum_ga<-sum_ga[row.names(sum_ga) %in% unique(da_ga$label),]
+
+annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+annot<-annot[!duplicated(annot$cluster_ID),]
+annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
+annot<-annot[match(colnames(sum_ga),annot$cluster_ID),]
+sum_ga<-t(sum_ga)
+
+annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+
+side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+                col=list(
+                    celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
+                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
+                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                        ))
+
+bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga), labels = colnames(sum_ga)))
+
+colfun=colorRamp2(quantile(unlist(sum_ga), probs=c(0.5,0.90,0.95)),c("#081d58","#c7e9b4","#ffffd9"))
+plt1<-Heatmap(sum_ga,
+    cluster_rows=sum_da_dend,
+    left_annotation=side_ha,
+    col=colfun,
+    #bottom_annotation=bottom_ha,
+    column_names_gp = gpar(fontsize = 8),
+    row_names_gp=gpar(fontsize=7),
+    column_names_rot=90
 )
 
-predicted.labels.class <- TransferData(
-  anchorset = transfer.anchors,
-  refdata = brainspan$class_label,
-  weight.reduction = hg38_atac[['lsi']],
-  dims = 2:30
+pdf("hg38.geneactivity.heatmap.pdf",height=4,width=20)
+plt1
+dev.off()
+system("slack -F hg38.geneactivity.heatmap.pdf ryan_todo")
+
+saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
+
+###########Plotting heatmap using brainspan given markers#############################
+brainspan_markers<-c("GAD1","LHX6","ADARB2","LAMP5","VIP","PVALB","SST","SLC17A7",
+    "CUX2","RORB","THEMIS","FEZF2","CTGF","AQP4","PDGFRA","OPALIN","FYB")
+
+#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+dat_ga<-as.data.frame(t(as.data.frame(hg38_atac[["GeneActivity"]]@data)))
+sum_ga<-split(dat_ga,hg38_atac$cluster_ID) #group by rows to seurat clusters
+sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
+sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
+
+#sum_ga<-t(scale(sum_ga))
+sum_ga<-t(sum_ga)
+sum_ga<-sum_ga[,!endsWith(colnames(sum_ga),"NA")] #remove NA (doublet cells)
+sum_ga<-sum_ga[row.names(sum_ga) %in% unique(brainspan_markers),]
+
+plt1<-Heatmap(sum_ga,
+    cluster_columns=sum_da_dend,
+    top_annotation=top_ha,
+    col=colfun,
+    row_names_gp = gpar(fontsize = 4),
+    column_names_gp=gpar(fontsize=3)
 )
 
-
-predicted.labels.class <- TransferData(
-  anchorset = transfer.anchors,
-  refdata = brainspan$subclass_label,
-  weight.reduction = hg38_atac[['lsi']],
-  dims = 2:30
-)
-
-hg38_atac <- AddMetaData(object = hg38_atac, metadata = predicted.labels.class)
-hg38_atac <- AddMetaData(object = hg38_atac, metadata = predicted.labels.subclass)
-
+pdf("hg38.geneactivity.markers.heatmap.pdf",height=5)
+plt1
+dev.off()
+system("slack -F hg38.geneactivity.markers.heatmap.pdf ryan_todo")
 ```
->>>>>>> 26d174be79b6161a05b7aafebc769fa68c0017af
 
-### Marker Plotting
+For mm10
+```R
+library(Seurat)
+library(Signac)
+library(ggplot2)
+library(ComplexHeatmap)
+library(ggdendro)
+library(dendextend)
+library(parallel)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+mm10_atac$cluster_ID<-paste(mm10_atac$seurat_clusters,mm10_atac$seurat_subcluster,sep="_")
+mm10_atac@meta.data$celltype<-"NA"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="0",]$celltype<-"ExN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="1",]$celltype<-"ExN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="2",]$celltype<-"iN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="3",]$celltype<-"Oligo"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="4",]$celltype<-"iN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="5",]$celltype<-"Astro"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="6",]$celltype<-"iN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="7",]$celltype<-"Micro.PVM"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="8",]$celltype<-"ExN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="9",]$celltype<-"Endo"
+
+mm10_atac$celltype_col<-"NA"
+mm10_atac@meta.data[mm10_atac@meta.data$celltype=="iN",]$celltype_col<-"#cc3366"
+mm10_atac@meta.data[mm10_atac@meta.data$celltype=="ExN",]$celltype_col<-"#3399cc"
+mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Oligo",]$celltype_col<-"#66cc99"
+mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Astro",]$celltype_col<-"#99cc99"
+mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Micro.PVM",]$celltype_col<-"#ff6633"
+mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Endo",]$celltype_col<-"#ffcc99"
+
+#define DA functions for parallelization
+#Use LR test for atac data
+da_one_v_rest<-function(i,obj,group){
+    da_ga_tmp <- FindMarkers(
+        object = obj,
+        ident.1 = i,
+        group.by = group,
+        test.use = 'LR',
+        latent.vars = 'nCount_peaks',
+        only.pos=T,
+        assay="GeneActivity"
+        )
+    da_ga_tmp$da_region<-row.names(da_ga_tmp)
+    da_ga_tmp$enriched_group<-c(i)
+    da_ga_tmp$compared_group<-c("all_other_cells")
+    return(da_ga_tmp)
+  }
+
+da_ga<-list() #set up an empty list for looping through
+
+n.cores=10 #Perform parallel application of DA test
+da_ga<-mclapply(
+    unique(mm10_atac$cluster_ID),
+    FUN=da_one_v_rest,
+    obj=mm10_atac,
+    group="cluster_ID",
+    mc.cores=n.cores)
+
+da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
+write.table(da_ga_df,file="mm10.onevrest.da_ga.txt",sep="\t",col.names=T,row.names=T,quote=F)
+
+#Plot out top ga for each cluster
+da_ga<-read.csv(file="mm10.onevrest.da_ga.txt",head=T,sep="\t",row.names=NULL)
+da_ga<-da_ga[complete.cases(da_ga),]
+da_ga<-da_ga[!endsWith(da_ga$enriched_group,"NA"),]
+
+da_ga$label<-c("")
+for (i in unique(da_ga$enriched_group)){
+selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==i) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:5))$row.names
+da_ga[da_ga$row.names %in% selc_genes & da_ga$enriched_group==i,]$label<- da_ga[da_ga$row.names %in% selc_genes & da_ga$enriched_group==i,]$da_region
+}
+
+#plt<-ggplot(da_ga,aes(x=pct.1/pct.2,y=(-log(p_val_adj)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(aes(label=label,size=0.05),force=10)+theme_bw()+xlim(c(0,30))
+#ggsave(plt,file="mm10.da_ga.pdf")
+#system("slack -F mm10.da_ga.pdf ryan_todo")
+
+#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+dat_ga<-as.data.frame(t(as.data.frame(mm10_atac[["GeneActivity"]]@data)))
+sum_ga<-split(dat_ga,mm10_atac$cluster_ID) #group by rows to seurat clusters
+sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
+sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
+
+sum_ga<-t(scale(sum_ga))
+sum_ga<-sum_ga[,!endsWith(colnames(sum_ga),"NA")] #remove NA (doublet cells)
+
+#cluster by all marker genes
+sum_da_dend <- scale(t(sum_ga)) %>% dist() %>% hclust %>% as.dendrogram %>%  ladderize  %>% set("branches_k_color", k = 8)
+saveRDS(sum_da_dend,file="mm10.geneactivity.dend.rds")
+
+sum_ga<-sum_ga[row.names(sum_ga) %in% unique(da_ga$label),]
+
+annot<-mm10_atac@meta.data[,c("cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype", "celltype_col")] 
+annot<-annot[!duplicated(annot$cluster_ID),]
+annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
+annot<-annot[match(colnames(sum_ga),annot$cluster_ID),]
+annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+sum_ga<-t(sum_ga)
+
+annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+
+side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+                col=list(
+                    celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
+                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
+                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) 
+                        ))
+
+bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga), labels = colnames(sum_ga)))
+
+colfun=colorRamp2(quantile(unlist(sum_ga), probs=c(0.5,0.90,0.95)),rev(c("#fff7f3","#fcc5c0","#3f007d")))
+plt1<-Heatmap(sum_ga,
+    cluster_rows=sum_da_dend,
+    left_annotation=side_ha,
+    col=colfun,
+    #bottom_annotation=bottom_ha,
+    column_names_gp = gpar(fontsize = 8),
+    row_names_gp=gpar(fontsize=7),
+    column_names_rot=90
+)
+
+
+pdf("mm10.geneactivity.heatmap.pdf",height=4,width=20)
+plt1
+dev.off()
+system("slack -F mm10.geneactivity.heatmap.pdf ryan_todo")
+
+
+saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
+
+###########Plotting heatmap using brainspan given markers#############################
+brainspan_markers<-c("GAD1","LHX6","ADARB2","LAMP5","VIP","PVALB","SST","SLC17A7",
+    "CUX2","RORB","THEMIS","FEZF2","CTGF","AQP4","PDGFRA","OPALIN","FYB")
+
+#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+dat_ga<-as.data.frame(t(as.data.frame(mm10_atac[["GeneActivity"]]@data)))
+sum_ga<-split(dat_ga,mm10_atac$cluster_ID) #group by rows to seurat clusters
+sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
+sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
+
+#sum_ga<-t(scale(sum_ga))
+sum_ga<-t(sum_ga)
+sum_ga<-sum_ga[,!endsWith(colnames(sum_ga),"NA")] #remove NA (doublet cells)
+sum_ga<-sum_ga[row.names(sum_ga) %in% unique(brainspan_markers),]
+sum_da_dend <- t(sum_ga) %>% dist() %>% hclust %>% as.dendrogram  %>% set("branches_k_color", k = 8)
+
+
+plt1<-Heatmap(sum_ga,
+    cluster_columns=sum_da_dend,
+    top_annotation=top_ha,
+    col=colorRamp2(c(0,2,4),viridis(3)),
+    row_names_gp = gpar(fontsize = 4),
+    column_names_gp=gpar(fontsize=3)
+)
+
+pdf("mm10.geneactivity.markers.heatmap.pdf",height=20)
+plt1
+dev.off()
+system("slack -F mm10.geneactivity.markers.heatmap.pdf ryan_todo")
+```
+
+### Marker Plotting for cell type refinement
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
-#Gross cell type list (for both organisms)
+library(Seurat)
+library(Signac)
+library(ggplot2)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+hg38_atac<-readRDS("hg38_SeuratObject.Rds")
 
 marker_list<-NULL
 marker_list[["Oligodendrocyte"]]<-c('Mobp','Cldn1','Prox1','Olig1')
 marker_list[["Polydendrocyte"]]<-c('Cspg4','Pdgfra')
-marker_list[["Astrocyte"]]<-c('Gfap','GluI','Slc1a2','Agt')
+marker_list[["Astrocyte"]]<-c('Gfap','Glul','Slc1a2','Agt')
 marker_list[["Ex_Neuron"]]<-c('Satb2','Cux2','Rorb','Pcp4','Foxp2','Col19a1','Slc17a7')
 marker_list[["Microglia"]]<-c('C1qa','C1qc','Cxcr1')
 marker_list[["Inhib_Neuron"]]<-c('Cnr1','Bcl11b','Gad1','Dlx1','Dlx2')

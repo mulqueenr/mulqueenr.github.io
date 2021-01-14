@@ -1259,6 +1259,134 @@ Doing this in three parts.
 
 {% endcapture %} {% include details.html %} 
 
+### Cell cycle testing
+
+Seurat has a stored set of cell cycle genes that we can use to assess cell cycle signatures.
+
+[Following this.](https://satijalab.org/seurat/v3.2/cell_cycle_vignette.html)
+Using gene lists based on cell cycle markers listed in https://www.cell.com/neuron/pdf/S0896-6273(19)30561-6.pdf
+Supplementary Table 7.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  library(Seurat)
+  library(Signac)
+  library(plotly)
+  library(htmlwidgets)
+  library(RColorBrewer)
+
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+  s.genes <- c('AK2', 'SLC25A5', 'TMEM98', 'GGCT', 'DBF4', 'PAX6', 'SPAG9', 'RPS20', 'BAZ1B', 'UQCRC1', 'ANLN', 'BRCA1', 'DDX11', 'TACC3', 'VIM', 'HMGB3', 'CENPQ', 'RFC1', 'MAT2B', 'SPDL1', 'CNTLN', 'TPR', 'RCN1', 'RFC2', 'RAD51', 'POLQ', 'MPHOSPH9', 'NNAT', 'SYNE2', 'COL11A1', 'QSER1', 'SNCAIP', 'MCM10', 'YBX1', 'ASPM', 'MPPED2', 'PKM', 'RHOA', 'PRR11', 'NUCKS1', 'RAD18', 'SMC1A', 'HMMR', 'MCM2', 'CA12', 'PTPLAD1', 'ENO1', 'GTSE1', 'ACTB', 'MCM6', 'SPAG5', 'UBE2T', 'POLD3', 'JADE1', 'FBLN1', 'SLC1A3', 'XRCC5', 'KIF22', 'RBL1', 'NDC80', 'HSPB11', 'XPO1', 'GSTP1', 'SRRT', 'SF3B2', 'TFAP2C', 'TPX2', 'RPLP0', 'FUS', 'KIF4A', 'ORC6', 'ZFHX4', 'HNRNPC', 'SUPT16H', 'WDR76', 'PHGDH', 'EZR', 'MYL6', 'CLSPN', 'CDC45', 'CDC6', 'CBX5', 'MSH2', 'CDC5L', 'HNRNPH3', 'H2AFY2', 'HNRNPM', 'RANBP1', 'SNRPD3', 'CENPM', 'HMGXB4', 'MCM5', 'RPL3', 'FKBP3', 'CEP128', 'ERH', 'VRK1', 'PNN', 'GINS1', 'PLCB4', 'NOP56', 'SMCHD1', 'RBBP8', 'POLA1', 'STAG2', 'RBBP7', 'CMC2', 'UBE2I', 'CCP110', 'CEP152', 'SFRP1', 'EEF1D', 'MCM4', 'RNASEH2A', 'HNRNPUL1', 'LIG1', 'CDK6', 'PTN', 'H2AFV', 'CHCHD2', 'HSPB1', 'NUDT1', 'PPP1R17', 'LSM5', 'RPA3', 'EZH2', 'RHEB', 'LHX2', 'ELAVL2', 'NSMCE4A', 'SMC3', 'KPNB1', 'CBX1', 'PFN1', 'TMEM97', 'WHSC1', 'NCAPG', 'CCDC34', 'MDK', 'C11orf58', 'CORO1C', 'PTGES3', 'FOXM1', 'RAD51AP1', 'TIMELESS', 'GAPDH', 'CHD4', 'TPI1', 'C12orf57', 'LDHB', 'SRSF9', 'FBXO5', 'SRSF3', 'MCM3', 'E2F3', 'GMNN', 'TTK', 'ERBB2IP', 'LMNB1', 'H2AFY', 'SMAD5', 'SMC4', 'TFDP2', 'HES1', 'ECT2', 'BBX', 'NCL', 'PPM1G', 'RPS15', 'FANCL', 'SRSF7', 'MSH6', 'SRSF4', 'IVNS1ABP', 'ACADM', 'PRDX1', 'CNN3', 'CENPF', 'RPA2', 'MESDC2', 'STAG1', 'CASP8AP2', 'HMGN3', 'RPN2', 'CCND2', 'CTNNAL1', 'WDR34', 'SET', 'CNTRL', 'FAM178A', 'HELLS', 'ENY2', 'MASTL', 'EXOSC8', 'EGR1', 'TMPO', 'NFYB', 'NCAPH', 'MND1', 'CCDC18', 'CBX3', 'HNRNPA2B1', 'WIPF3', 'NPY', 'ZWINT', 'CDKN2C', 'DDX39A', 'CENPK', 'NEUROD4', 'CDK2', 'TUBA1B', 'STIL', 'HJURP', 'BAZ2B', 'EXOSC9', 'CKS2', 'SNRPC', 'HIST1H1D', 'HIST1H1A', 'GLO1', 'DEK', 'SOX9', 'PPDPF', 'SNRPD2', 'SNRPB', 'MGME1', 'MCM8', 'HNRNPR', 'RALY', 'UBA2', 'DLGAP5', 'YEATS4', 'PIN1', 'HP1BP3', 'PKMYT1', 'PAICS', 'SPECC1', 'CALU', 'HAT1', 'DUT', 'FAM64A', 'ILF3', 'PARP2', 'MIS18BP1', 'SGOL1', 'GADD45G', 'LSM4', 'DNMT1', 'AKAP12', 'GINS2', 'PSMC3IP', 'TOP2A', 'RAN', 'PCNA', 'NES', 'NASP', 'MYH10', 'TPT1', 
+    'RFC3', 'ANKRD32', 'LRRCC1', 'MEIS2', 'TMEM106C', 'RBM17', 'SYNCRIP', 'ATP5G2', 'CDK4', 'HNRNPA1', 'AHI1', 'DHX9', 'RNASEH2B', 'CKAP2', 'SCRN1', 'SRSF1', 'BRIP1', 'ACTL6A', 'TRA2B', 'SMC2', 'CDK5RAP2', 'ANP32B', 'RPL35', 'RPS6', 'GGH', 'RDX', 'CTDSPL2', 'NUSAP1', 'KIF23', 'CASC5', 'RPLP1', 'KIF11', 'KIF20B', 'DNA2', 'BARD1', 'PPIG', 'MNS1', 'ZGRF1', 'HNRNPD', '44450', 'CENPE', 'HADH', 'SCAF11', 'PHLDA1', 'SNRPF', 'NEDD1', 'ASCL1', 'BRCA2', 'DIAPH3', 'TMX1', 'SERF2', 'COMMD4', 'FANCI', 'MFGE8', 'ANAPC11', 'NFIC', 'SAE1', 'PLK4', 'ITGB3BP', 'KIF2C', 'NUF2', 'ANP32E', 'DTL', 'ILF2', 'SRP9', 'PARP1', 'LBR', 'SNRPG', 'SLC20A1', 'CDCA7', 'GULP1', 'HSPD1', 'HES6', 'FANCD2', 'CENPC', 'CCNA2', 'MYO10', 'G3BP1', 'PHIP', 'MMS22L', 'CDCA5', 'NCAPG2', 'NONO', 'RBMX', 'GINS4', 'PLIN2', 'HAUS6', 'RPL7A', 'ZEB1', 'MKI67', 'SSRP1', 'RPS3', 'INCENP', 'CHEK1', 'DSN1', 'HIRIP3', 'ITGB1', 'CCT5', 'MAGI1', 'NCAPD3', 'CENPU', 'CENPJ', 'SCHIP1', 'MZT2B', 'HAUS1', 'SPC25', 'TMEM123', 'HNRNPDL', 'CENPH', 'CARHSP1', 'SMARCA5', 'HNRNPU', 'SREK1', 'CHD1', 'BUB3', 'BTG3', 'DBI', 'TMEM237', 'VBP1', 'ATAD2', 'BUB1B', 'CCNB2', 'TMSB15A', 'EIF5B', 'MIS18A', 'C21orf58', 'PCNT', 'FDPS', 'IER2', 'RPL8', 'SRSF2', 'RACGAP1', 'SPC24', 'ASRGL1', 'MAGOH', 'RBBP4', 'NFIA', 'USP1', 'PEA15', 'KIAA1524', 'EOMES', 'SGOL2', 'GMPS', 'TOPBP1', 'KIF15', 'RFC4', 'SLBP', 'RNF168', 'H2AFZ', 'PGRMC2', 'HMGB2', 'MAD2L1', 'ANXA5', 'RHOBTB3', 'STK17A', 'PTTG1', 'CDCA7L', 'FABP5', 'RAD21', 'PSIP1', 'HNRNPK', 'MELK', 'SPTSSA', 'SKA3', 'LRR1', 'E2F7', 'PSMC3', 'CEP295', 'CKB', 'CENPN', 'MCM7', 'CENPV', 'B2M', 'FAM111A', 'KIAA0101', 'SNRPD1', 'ACAA2', 'RRM1', 'TPM4', 'CHAF1A', 'C19orf48', 'PRDX2', 'TK1', 'SRRM2', 'RPSA', 'PBK', 'RBPJ', 'GNG4', 'HIST1H1E', '44441', 'DTYMK', 'FEN1', 'STXBP6', 'HNRNPH1', 'SDC2', 'CKAP2L', 'BUB1', 'CNBP', 'HNRNPF', 'UBE2E3', 'KCNAB3', 'HNRNPA3', 'CDK1', 'UBB', 'FOS', 'EMX2', 'PA2G4', 'LSM3', 'SHCBP1', 'CHD7', 'ESCO2', 'CXXC5', 'RRM2', 'RPS7', 'ID4', 'CKS1B', 'INSM1', 'SMARCC1', 'GOLIM4', 'GNG5', 'EXO1', 'ZWILCH', 'LARP7', 'CEP135', 'RSRC1', 'UBE2C', 'CSRP2', 'CCNE2', 'BANF1', 'CCDC14', 'NR2F1', 'COX8A', 'TYMS', 'PXMP2', 'RPLP2', 'JUN', 'HNRNPA0', 'ARL6IP6', 'KDELC2', 'GEN1', 'SUZ12', 'RMI1', 'AURKB', 'RAD23A', 'SSTR2', 'NPM1', 'PENK', 'SOX2', 'ZBTB20', 'NEUROG1', 'SNRPE', 'RTKN2', 'IDH2', 'SKA2', 'HIST2H2AC', 'HIST1H1B', 'POU3F2', 'H1FX', 'NDUFA6', 'SIVA1', 'ZFP36L1', 'MYBL1', 'NKAIN3', '44449', 'NAP1L1', 'PTMA', 'HIST1H1C', 'TUBB4B', 'H2AFX', 'SUMO2', 'FAM111B', 'H1F0', 'HMGB1', 'PPIA', 'XRCC6', 'XRCC2', 'HIST1H4C', 'PCBP2', 'BLM', 'HNRNPAB', 'HES5', 'ELOVL2', 'PRIM1', 'HMGN5', 'RPL23A', 'ASPH', 'WDHD1', 'BAZ1A', 'SMOC1', 'ARHGAP11A', 'HMGN2', 'CCDC152', 'SMC5', 'PRC1', 'CCDC167', 'CENPW', 'GPANK1', 'NAP1L4', 'TMSB4X', 'HMGN1', 'HN1L', 'DNAJC9', 'MIR99AHG', 'CKLF', 'UBA52', 'FGD5-AS1', 'DHFR', 'RPL41', 'DLEU2', 'LINC01158', 'MAGI2-AS3', 'PEG10', 'SNHG6', 'TMEM158', 'PRKDC')
+  g2m.genes <- c('CDC27', 'DBF4', 'PAX6', 'SPAG9', 'NCAPD2', 'ANLN', 'BRCA1', 'TACC3', 'DEPDC1', 'VIM', 'HMGB3', 'DEPDC1B', 'MAT2B', 'SPDL1', 'PSMA4', 'CNTLN', 'TPR', 'SLC4A8', 'POLQ', 'MPHOSPH9', 'NNAT', 'SYNE2', 'CCAR1', 'COL11A1', 'QSER1', 'SPA17', 'SUGP2', 'HMG20B', 'ASPM', 'MPPED2', 'PRR11', 'LAPTM4A', 'NUCKS1', 'SMC1A', 'HMMR', 'NDE1', 'SRI', 'GTSE1', 'ACTB', 'SPAG5', 'UBE2T', 'JADE1', 'PPP2R5C', 'PCM1', 'SLC1A3', 'KIF22', 'NDC80', 'STK17B', 'XPO1', 'REST', 'SEPHS1', 'AURKA', 'AAMDC', 'TPX2', 'DYNLL1', 'KIF4A', 'ORC6', 'G2E3', 'PHGDH', 'EZR', 'CBX5', 'SUCO', 'HNRNPH3', 'IFT74', 'HNRNPM', 'RANBP1', 'RANGAP1', 'CDKN3', 'KIAA0586', 'DHRS7', 'CEP128', 'ERH', 'VRK1', 'EMC9', 'CDC25B', 'FAM83D', 'SMARCA1', 'CMC2', 'CEP152', 'OIP5', 'MYEF2', 'SFRP1', 'EEF1D', 'HNRNPUL1', 'CARD8', 'CDK6', 'PON2', 'PTN', 'H2AFV', 'HSPB1', 'PPP1R17', 'LSM5', 'EZH2', 'RHEB', 'SMC3', 'UBE2S', 'CBX1', 'NMU', 'NEIL3', 'WHSC1', 'NCAPG', 'CCDC34', 'MDK', 'CORO1C', 'ATP5B', 'PTGES3', 'FOXM1', 'RAD51AP1', 'CDKN1B', 'TIMELESS', 'MRPL51', 'CDCA3', 'FBXO5', 'SRSF3', 'GMNN', 'QKI', 'TTK', 'BRD8', 'KIF20A', 'LMNB1', 'H2AFY', 'SMC4', 'CEP70', 'TFDP2', 'HES1', 'ECT2', 'FXR1', 'CENPA', 'GCA', 'SFPQ', 'TTF2', 'CDC20', 'PRDX1', 'STMN1', 'NEK2', 'CENPF', 'TXNDC12', 'KIF14', 'HMGN3', 'FBXL5', 'CCND2', 
+    'CNTRL', 'PHF19', 'CENPL', 'ENY2', 'EXOSC8', 'EGR1', 'TMPO', 'NCAPH', 'MND1', 'PSPC1', 'KIF18A', 'DESI2', 'GPSM2', 'ZC3H7A', 'CCDC18', 'CBX3', 'HNRNPA2B1', 'NPY', 'CALD1', 'ZWINT', 'CIT', 'CDKN2C', 'DDX39A', 'CENPK', 'NEUROD4', 'TUBA1B', 'STIL', 'HJURP', 'MORF4L2', 'CKS2', 'SNRPC', 'HIST1H1D', 'HIST1H1A', 'GLO1', 'DEK', 'MT2A', 'SOX9', 'MGME1', 'HNRNPR', 'NSRP1', 'DLGAP5', 'HP1BP3', 'KNSTRN', 'PALLD', 'FAM64A', 'MIS18BP1', 'SGOL1', 'AKAP12', 'TOP2A', 'DNAJB1', 'RAN', 'PCBD2', 'NES', 'MYH10', 'CCNA1', 'CCNB1', 'PSRC1', 'LDHA', 'CDCA8', 'AKIRIN2', 'TROAP', 'HNRNPA1', 'RNASEH2B', 'CKAP2', 'BORA', 'LMO7', 'SCRN1', 'IGF2BP3', 'CALCOCO2', 'DCAF7', 'ACTL6A', 'TRA2B', 'ODF2', 'SMC2', 'CDK5RAP2', 'ANP32B', 'DCTN3', 'ARHGEF39', 'RDX', 'NUSAP1', 'KIF23', 'CASC5', 'CENPO', 'KIF11', 'CEP55', 'KIF20B', 'BARD1', 'COX17', 'CENPE', 'PHLDA1', 'NEDD1', 'ASCL1', 'GAS2L3', 'BRCA2', 'TMBIM6', 'DIAPH3', 'TMX1', 'SERF2', 'PIF1', 'TICRR', 'PLK4', 'KIF2C', 'NUF2', 'HDGF', 'ANP32E', 'RAB13', 'ILF2', 'CNIH4', 'LBR', 'HNRNPLL', 'CALM2', 'SNRPG', 'CCDC150', 'HES6', 'FANCD2', 'CENPC', 'CCNA2', 'SFRP2', 'MYO10', 'G3BP1', 'PHIP', 'CDCA5', 'NCAPG2', 'RBMX', 'PLIN2', 'ZEB1', 'ADD3', 'MKI67', 'SESN3', 'INCENP', 'HIRIP3', 'CCT5', 'SCLT1', 'CENPU', 'CENPJ', 'MZT2B', 'SPC25', 'CENPH', 'CETN3', 'SMARCA5', 'HNRNPU', 'CEP112', 'ENAH', 'BUB3', 'BTG3', 'SKA1', 'DBI', 'TMEM237', 'VBP1', 'FBXO43', 'ATAD2', 'BUB1B', 'NRG1', 'CCNB2', 'TMSB15A', 'CDC25C', 'TAGLN2', 'MIS18A', 'PTMS', 'CALM3', 'C21orf58', 'PCNT', 'SRSF2', 'RACGAP1', 'SPC24', 'CCNF', 'ASRGL1', 'PPAP2B', 'NFIA', 'USP1', 'FUBP1', 'PEA15', 'NEUROD1', 'DCAF16', 'KIAA1524', 'EOMES', 'SGOL2', 'SMIM14', 'KIF15', 'H2AFZ', 'INTU', 'HMGB2', 'SAP30', 'MAD2L1', 'ANXA5', 'CEP44', 'ITGA2', 'STK17A', 'PTTG1', 'FABP5', 'RAD21', 'PSIP1', 'HNRNPK', 'MELK', 'SKA3', 'CEP295', 'IKBIP', 'CKB', 'CENPN', 'WEE1', 'HSP90B1', 'B2M', 'FAM111A', 'KIAA0101', 'PLK1', 'TPM4', 'TUBA1C', 'CTNNB1', 'PBK', 'HIST1H1E', 'DTYMK', 'HNRNPH1', 'CKAP2L', 'BUB1', 'DCXR', 'HNRNPA3', 'CDK1', 'UBB', 'FOS', 'EMX2', 'ARL6IP1', 'NUDCD2', 'KIF5B', 'SHCBP1', 'CHD7', 'ESCO2', 'ATF7IP', 'RHNO1', 'RRM2', 'ID4', 'ZNF24', 'DCP2', 'CKS1B', 'RNF26', 'FKBP2', 'GOLIM4', 'GNG5', 'LARP7', 'CEP135', 'RSRC1', 'UBE2C', 'CKAP5', 'BANF1', 'CCDC14', 'NR2F1', 'RUVBL1', 'TUBB6', 'ACBD7', 'COX8A', 'TYMS', 'TGIF1', 'JUN', 'HNRNPA0', 'C2orf69', 'LCORL', 'GEN1', 'SUZ12', 'APOLD1', 'AURKB', 'PENK', 'SOX2', 'ZBTB20', 'RTKN2', 'FIGN', 'KPNA2', 'CEP97', 'SKA2', 'CEP57L1', 'RUVBL2', 'PTTG1IP', 'SETD8', 'HIST1H1B', 'POU3F2', 'CDCA2', 'H1FX', 'RPS27L', 'UBALD2', 'PARPBP', 'ZFP36L1', 'MYBL1', 'NKAIN3', 'SAPCD2', 'PPP1CC', '44449', 'NAP1L1', 'HIST1H1C', 'ARHGAP11B', 'TUBB4B', 'H2AFX', 'HN1', 'HMGB1', 'XRCC6', 'XRCC2', 'ZMYM1', 'HIST1H4C', 'PCBP2', 'HES5', 'HMGN5', 'HSD17B11', 'HYLS1', 'ECI2', 'SMOC1', 'ARHGAP11A', 'HMGN2', 'CCDC152', 'TOP1', 'PRC1', 'CCDC167', 'CENPW', 'HSPA1B', 'HSPA1A', 'MZT1', 'TMSB4X', 'HMGN1', 'HLA-A', 'TRIM59', 'MXD3', 'MIR99AHG', 'DLEU2', 'LINC01158', 'CRNDE')
+
+
+  DefaultAssay(orgo_cirm43) <- 'GeneActivity'
+
+  orgo_cirm43 <- CellCycleScoring(orgo_cirm43, s.features = s.genes, g2m.features = g2m.genes, set.ident = F,search=T)
+
+  saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
+
+
+  plt<-FeaturePlot(orgo_cirm43,features=c("G2M.Score","S.Score"),cols=c("lightgrey","red"),order=T,min.cutoff="q95")
+  ggsave(plt,file="cellcycle_score.pdf",width=20)
+  system("slack -F cellcycle_score.pdf ryan_todo")
+
+  summary(orgo_cirm43$G2M.Score)
+  #    Min.  1st Qu.   Median     Mean  3rd Qu.     Max.
+  #-0.03680  0.01693  0.03996  0.04211  0.06495  0.17708
+  summary(orgo_cirm43$S.Score)
+  #    Min.  1st Qu.   Median     Mean  3rd Qu.     Max.
+  #-0.03890  0.01681  0.03824  0.04025  0.06179  0.14025
+
+  length(which(orgo_cirm43$G2M.Score > 0.1))
+  #1436
+  length(which(orgo_cirm43$G2M.Score > 0.1))
+  #827
+```
+
+{% endcapture %} {% include details.html %} 
+
+### Use given enhancer peaks
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+  library(Seurat)
+  library(Signac)
+  library(ggplot2)
+  library(ComplexHeatmap)
+  library(patchwork)
+  library(dplyr)
+  library(GenomicRanges)
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+
+  #PUBMED 31303374 Data
+  enhancer_regions<-read.csv("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/PUBMED31303374.SuppTable7.tsv",header=T,sep="\t")
+  enhancer_granges<-data.frame(seqnames=paste0("chr",enhancer_regions$enhancerchr),start=enhancer_regions$enhancerstart,end=enhancer_regions$enhancerend)
+  enhancer_granges<-makeGRangesFromDataFrame(enhancer_granges)
+  enhanc_peaks<-FeatureMatrix(orgo_cirm43@assays$peaks@fragments,enhancer_granges,process_n = 5000,sep = c("-", "-"),verbose = TRUE)
+  saveRDS(enhanc_peaks,file="orgo_cirm43.fetal.countsmatrix.Rds")
+
+  enhanc_peaks<-readRDS("orgo_cirm43.fetal.countsmatrix.Rds")
+  enhanc_peaks<-as.data.frame(enhanc_peaks)
+  enhanc_peaks[which(enhanc_peaks>0,arr.ind=T)]<-1  #binarize peaks
+  enhanc_peaks<-split(enhanc_peaks,enhancer_regions$Cluster)   #Assign peaks to cell types and split
+  names(enhanc_peaks)<-unique(enhancer_regions$Cluster)
+
+  enhanc_peak_overlap<-do.call("rbind",lapply(enhanc_peaks,colSums))
+  enhanc_peak_overlap<-as.data.frame(t(enhanc_peak_overlap))
+```
+
+{% endcapture %} {% include details.html %} 
+
+
+### Count of celltype and clusters per organoid
+Generated bar plots of cell count per organoid. 
+Also looking at FOXG1+ Expression per organoid to make sure they are forebrain specified.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+```R
+  library(Seurat)
+  library(Signac)
+  library(ggplot2)
+  library(ComplexHeatmap)
+  library(patchwork)
+  library(dplyr)
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+
+  dat<- as.data.frame(as.data.frame(orgo_cirm43@meta.data) %>% group_by(differentiation_exp,orgID,DIV,celltype,seurat_clusters,seurat_subcluster) %>% summarize(count=n()))
+  plt<-ggplot(dat,aes(x=as.factor(orgID),y=count,fill=paste(celltype,seurat_subcluster)))+geom_bar(position="stack",stat="identity")+facet_wrap(dat$differentiation_exp ~ dat$DIV,nrow=2,scale="free_x")+theme_bw()
+  ggsave(plt,file="cellcount_stacked_bar.pdf")
+  system("slack -F cellcount_stacked_bar.pdf ryan_todo")
+
+  plt<-ggplot(dat,aes(x=as.factor(orgID),y=count,fill=paste(celltype,seurat_subcluster)))+geom_bar(position="fill",stat="identity")+facet_wrap(dat$differentiation_exp ~ dat$DIV,nrow=2,scale="free_x")+theme_bw()
+  ggsave(plt,file="cellcount_perc_bar.pdf")
+  system("slack -F cellcount_perc_bar.pdf ryan_todo")
+
+
+  plt<-VlnPlot(orgo_cirm43,feat="FOXG1",group.by="orgID")+facet_wrap(orgo_cirm43$differentiation_exp ~ orgo_cirm43$DIV,nrow=2,scale="free_x")+theme_bw() #feature from gene activity
+  ggsave(plt,file="orgID_FOXG1.pdf")
+  system("slack -F orgID_FOXG1.pdf ryan_todo")
+
+  plt<-VlnPlot(orgo_cirm43,feat="SATB2",group.by="orgID")+facet_wrap(orgo_cirm43$differentiation_exp ~ orgo_cirm43$DIV,nrow=2,scale="free_x")+theme_bw() #feature from gene activity
+  ggsave(plt,file="orgID_SATB2.pdf")
+  system("slack -F orgID_SATB2.pdf ryan_todo")
+
+  #Based on this organoid 3 looks suspect, seeing where it falls in the plot
+  orgo_cirm43$suspect_organoid<-"FALSE"
+  orgo_cirm43@meta.data[orgo_cirm43@meta.data$orgID==3,]$suspect_organoid<-"TRUE"
+  plt<-DimPlot(orgo_cirm43,group.by="suspect_organoid",order=T)
+  ggsave(plt,file="orgID3.pdf")
+  system("slack -F orgID3.pdf ryan_todo")
+```
+{% endcapture %} {% include details.html %} 
+
+
 <!---
 ### Feature values from https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6544371/#SD2
 
@@ -1458,7 +1586,7 @@ library(TFBSTools)
 library(BSgenome.Hsapiens.UCSC.hg38)
 library(patchwork)
 set.seed(1234)
-
+library(dplyr)
 
 dir.create("./subcluster")
 
@@ -1467,13 +1595,12 @@ for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){cluste
 for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){system(paste0("slack -F ",paste("./subcluster/",i,"clustering.pdf",sep="_")," ryan_todo"))}
 
 
-
-
 subcluster_assignment<-function(resolution_list.=resolution_list,object_input=orgo_cirm43,celltype.x){
     #set up subset object again
     atac_sub<-readRDS(paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
     atac_sub$seurat_subcluster<-atac_sub@meta.data[,which(colnames(atac_sub@meta.data)==resolution_list[celltype.x])]
     saveRDS(atac_sub,paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
+
 }
 
 #Selected resolution based on subclustering plots
@@ -1481,6 +1608,30 @@ resolution_list<-setNames(c("peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_r
 #Seurat subcluster assignment based on resolution plots
 for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){subcluster_assignment(celltype.x=i)}
 
+#Add subcluster assignment and subcluster x and y coordinates to main Rds
+
+#Assign clustering resolution based on clustering.pdf output
+resolution_list<-setNames(c("peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.2"),c("radial_glia","intermediate_progenitor","excitatory_neuron"))
+cell_order<-row.names(orgo_cirm43@meta.data)
+celltype_list<-c("radial_glia","intermediate_progenitor","excitatory_neuron")
+
+#adding all subclustering info back into main RDS object
+orgo_cirm43$seurat_subcluster<-"NA"
+orgo_cirm43$subcluster_x<-"NA"
+orgo_cirm43$subcluster_y<-"NA"
+
+for(celltype.x in celltype_list){
+    atac_sub<-readRDS(paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
+    embedding_order<-row.names(atac_sub@reductions$umap@cell.embeddings)
+    row_order<-match(cell_order,embedding_order,nomatch=0)
+    orgo_cirm43@meta.data[match(row.names(atac_sub@meta.data),row.names(orgo_cirm43@meta.data),nomatch=0),]$seurat_subcluster<-as.character(unlist(atac_sub@meta.data[which(colnames(atac_sub@meta.data)==resolution_list[celltype.x])]))
+    orgo_cirm43@meta.data[match(row.names(atac_sub@meta.data),row.names(orgo_cirm43@meta.data),nomatch=0),]$subcluster_x<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,1])
+    orgo_cirm43@meta.data[match(row.names(atac_sub@meta.data),row.names(orgo_cirm43@meta.data),nomatch=0),]$subcluster_y<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,2])
+}
+
+as.data.frame(orgo_cirm43@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
+#na values are doublets  
+saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
 
 
 library(princurve)
@@ -1700,6 +1851,8 @@ The regulon is defined by the transcription factor (ChromVar Motif Score) and ac
   #Unname genes in the vectors
   modules<-lapply(modules,unname)
   orgo_cirm43<-AddModuleScore(orgo_cirm43,features=modules,assay="GeneActivity",name=paste0("TF_",names(modules),"_"), search=T)
+  
+
 
   #Generate Heatmap of TF ChromVar score and TF modules
   modules<-orgo_cirm43@meta.data[grepl("TF_",colnames(orgo_cirm43@meta.data))] #set up module matrix
@@ -1715,39 +1868,56 @@ The regulon is defined by the transcription factor (ChromVar Motif Score) and ac
   modules<-modules[module_tfs %in% colnames(tf_chrom)] #filter modules to chromvar matrix
   colnames(modules)<-unlist(lapply(strsplit(colnames(modules),"_"),"[",2))
   #Combine over subclusters
-  tf_chrom<-split(tf_chrom,orgo_cirm43$seurat_clusters) #group by rows to seurat clusters
-  tf_chrom<-lapply(tf_chrom,function(x) apply(x,2,mean)) #take average across group
+  tf_chrom<-split(tf_chrom,paste0(orgo_cirm43$celltype,"_",orgo_cirm43$seurat_subcluster)) #group by rows to seurat clusters
+  tf_chrom<-lapply(tf_chrom,function(x) apply(x,2,median)) #take average across group
   tf_chrom<-do.call("rbind",tf_chrom) #condense to smaller data frame
 
-  modules<-split(modules,orgo_cirm43$seurat_clusters) #group by rows to seurat clusters
-  modules<-lapply(modules,function(x) apply(x,2,mean)) #take average across group
+  modules<-split(modules,paste0(orgo_cirm43$celltype,"_",orgo_cirm43$seurat_subcluster)) #group by rows to seurat clusters
+  modules<-lapply(modules,function(x) apply(x,2,median)) #take average across group
   modules<-do.call("rbind",modules) #condense to smaller data frame
 
   modules<-t(scale(modules))
   tf_chrom<-t(scale(tf_chrom))
 
-  plt1<-Heatmap(tf_chrom,
-    column_order=c("5","3","0","2","1","4"))
-  plt2<-Heatmap(modules,
-    column_order=c("5","3","0","2","1","4"))
+  #This col order to be checked
+  col_order<-c("radial_glia_2","radial_glia_3","radial_glia_1","radial_glia_0",
+    "intermediate_progenitor_3","intermediate_progenitor_0","intermediate_progenitor_2","intermediate_progenitor_1",
+    "excitatory_neuron_2","excitatory_neuron_3","excitatory_neuron_0","excitatory_neuron_1")
+  tf_chrom<-tf_chrom[,match(col_order,colnames(tf_chrom),nomatch=0)]
+  modules<-modules[,match(col_order,colnames(modules),nomatch=0)]
+
+  plt1<-Heatmap(tf_chrom,column_order=1:ncol(tf_chrom))
+  plt2<-Heatmap(modules,column_order=1:ncol(modules))
   pdf("test.complexheatmap.pdf",height=20)
   plt1+plt2
   dev.off()
   system("slack -F test.complexheatmap.pdf ryan_todo")
+
   #Generate a tanglegram to look at gene opening before or after chromvar activity
-  pre_tang_d_train_test <- d_train_test %>% ladderize %>% # untangle %>%
-     set("branches_k_color", k = 7)
-  train_branches_colors <- get_leaves_branches_col(pre_tang_d_train_test$train)
-  pre_tang_d_train_test %>% tanglegram(fast = TRUE, color_lines = train_branches_colors)
+  library(ggdendro)
+  library(dendextend)
+  tf_chrom_dend <- tf_chrom %>% dist("maximum") %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 5)
+  modules_dend <- modules %>% dist("maximum") %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 5)
+  tang<-tanglegram(tf_chrom_dend,modules_dend) %>% untangle(method = "ladderize")
+  pdf("test.tangle.pdf",width=20)
+  tang %>% plot(main = paste("entanglement =", round(entanglement(tang), 2)))
+  dev.off()
+  system("slack -F test.tangle.pdf ryan_todo")
 
   #Cell type and state
-
+  orgo_cirm43$celltype_subclus<-paste(orgo_cirm43$celltype,orgo_cirm43$seurat_subcluster,sep="_")
+  plt<-DimPlot(orgo_cirm43,group.by=c("celltype","seurat_subcluster","celltype_subclus"))
+  ggsave(plt,file="subclus.test.pdf",width=20)
+  system("slack -F subclus.test.pdf ryan_todo")
 
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 
 
 ```
 {% endcapture %} {% include details.html %} 
+
+
+
 
 ### Analysis of ChromVAR TF motifs and Gene Activity Through Pseudotime
 
@@ -2173,7 +2343,6 @@ Decided to use a binning strategy to assess pseudotime signal.
 
 {% endcapture %} {% include details.html %} 
 
-<!--
 ## Monocle
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -2199,121 +2368,24 @@ Decided to use a binning strategy to assess pseudotime signal.
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
   cirm43_subset<-subset(orgo_cirm43,cells=which(orgo_cirm43$celltype %in% c("radial_glia","intermediate_progenitor","excitatory_neuron")))
 
-  #Rerun cistopic on subset of organoid cells
-  cistopic_processing<-function(seurat_input,prefix){
-      cistopic_counts_frmt<-seurat_input$peaks@counts #grabbing counts matrices
-      row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt)) #renaming row names to fit granges expectation of format
-      atac_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt) #set up CisTopicObjects
-      #Run warp LDA on objects
-      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(10,20:30,40),nCores=12,addModels=FALSE)
-      print("Saving cistopic models.")
-      saveRDS(atac_cistopic_models,file=paste(prefix,"CisTopicObject.Rds",sep=".")) 
-  }
-          
-  cistopic_processing(seurat_input=cirm43_subset,prefix="cirm43_subset")
-
-
-  #reading model selected RDS
-  cirm43_subset_cistopic_models<-readRDS(file="cirm43_subset.CisTopicObject.Rds")
-
-  #Setting up topic count selection
-  pdf("cirm43_subset_model_selection.pdf")
-  par(mfrow=c(1,3))
-  cirm43_subset_cistopic_models <- selectModel(cirm43_subset_cistopic_models, type='derivative')
-  dev.off()
-  system("slack -F cirm43_subset_model_selection.pdf ryan_todo")
-
-  #set topics based on derivative
-  cirm43_subset_selected_topic=27
-  cirm43_subset_cisTopicObject<-cisTopic::selectModel(cirm43_subset_cistopic_models,select=cirm43_subset_selected_topic,keepModels=T)
-
-  ####Function to include topics and umap in seurat object
-  cistopic_wrapper<-function(object_input=cirm43_subset,cisTopicObject=cirm43_subset_cisTopicObject,resolution=0.8){   
-
-
-      #run UMAP on topics
-      topic_df<-as.data.frame(cisTopicObject@selected.model$document_expects)
-      row.names(topic_df)<-paste0("Topic_",row.names(topic_df))
-      dims<-as.data.frame(uwot::umap(t(topic_df),n_components=3))
-      row.names(dims)<-colnames(topic_df)
-      colnames(dims)<-c("x","y","z")
-      dims$cellID<-row.names(dims)
-      dims<-merge(dims,object_input@meta.data,by.x="cellID",by.y="row.names")
-
-
-      #Add cell embeddings into seurat
-      cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
-      colnames(cell_embeddings)<-cisTopicObject@cell.names
-      cell_embeddings<-cell_embeddings[,colnames(cell_embeddings) %in% dims$cellID,]
-      n_topics<-nrow(cell_embeddings)
-      row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
-      cell_embeddings<-as.data.frame(t(cell_embeddings))
-
-      #Add feature loadings into seurat
-      feature_loadings<-as.data.frame(cisTopicObject@selected.model$topics)
-      row.names(feature_loadings)<-paste0("topic_",1:n_topics)
-      feature_loadings<-as.data.frame(t(feature_loadings))
-
-      #combined cistopic results (cistopic loadings and umap with seurat object)
-      cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
-      umap_dims<-as.data.frame(as.matrix(dims[2:4]))
-      colnames(umap_dims)<-c("UMAP_1","UMAP_2","UMAP_3")
-      row.names(umap_dims)<-dims$cellID
-      cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(umap_dims),assay="peaks",key="UMAP_")
-      object_input@reductions$cistopic<-cistopic_obj
-      object_input@reductions$umap<-cistopic_umap
-
-      n_topics<-ncol(Embeddings(object_input,reduction="cistopic"))
-
-      object_input <- FindNeighbors(
-        object = object_input,
-        reduction = 'cistopic',
-        dims = 1:n_topics
-      )
-      object_input <- FindClusters(
-        object = object_input,
-        verbose = TRUE,
-        resolution=resolution
-      )
-
-  return(object_input)}
-
-  cirm43_subset<-cistopic_wrapper(object_input=cirm43_subset,
-    cisTopicObject=cirm43_cisTopicObject,
-    resolution=0.5)
-
   monocle_processing<-function(prefix, seurat_input){
       atac.cds <- as.cell_data_set(seurat_input)
       atac.cds <- cluster_cells(cds = atac.cds, reduction_method = "UMAP") 
       #Read in cds from cicero processing earlier and continue processing
       atac.cds<- learn_graph(atac.cds, 
                              use_partition = F, 
+                             close_loop=F,
                              learn_graph_control=list(
-                                 minimal_branch_len=10,
+                                 minimal_branch_len=35,
                                  orthogonal_proj_tip=F,
                                  prune_graph=T))
       #plot to see nodes for anchoring
-      plt1<-plot_cells(
-                      cds = atac.cds,
-                      show_trajectory_graph = TRUE,
-                      color_cells_by="DIV",
-                      label_leaves=T,
-                      label_branch_points=F,
-                      label_roots=T)
-      plt2<-plot_cells(
-                      cds = atac.cds,
-                      show_trajectory_graph = TRUE,
-                      label_leaves=T,
-                      label_branch_points=F,
-                      label_roots=T)    
+      plt1<-plot_cells(cds = atac.cds, show_trajectory_graph = TRUE, color_cells_by="DIV", label_leaves=T, label_branch_points=F, label_roots=T) 
+      plt2<-plot_cells(cds = atac.cds, show_trajectory_graph = TRUE, label_leaves=T, label_branch_points=F, label_roots=T) 
       #Also make a plot of just node names for easier identification
       root_nodes<-as.data.frame(t(atac.cds@principal_graph_aux$UMAP$dp_mst))
       root_nodes$label<-row.names(root_nodes)
-      plt3<-ggplot(
-          root_nodes,
-          aes(x=UMAP_1,y=UMAP_2))+
-          geom_text(aes(label=label),size=3)+
-          theme_bw()
+      plt3<-ggplot(root_nodes, aes(x=UMAP_1,y=UMAP_2))+ geom_text(aes(label=label),size=3)+ theme_bw() 
       plt<-(plt1+plt2)/plt3
       ggsave(plt,file=paste(prefix,"DIV_trajectory.pdf",sep="_"),width=20)
       system(paste0("slack -F ",paste(prefix,"DIV_trajectory.pdf",sep="_")," ryan_todo"))
@@ -2323,7 +2395,7 @@ Decided to use a binning strategy to assess pseudotime signal.
   cirm43_subset.cicero<-monocle_processing(seurat_input=cirm43_subset,prefix="cirm43")
 
   #Then determine root nodes via plots and assign by order cells function.
-  cirm43.cds <- order_cells(cirm43_subset.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_253")) #Chose youngest cells as root
+  cirm43.cds <- order_cells(cirm43_subset.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_109")) #Chose youngest cells as root
 
   #Now replotting with pseudotime
   pdf("orgo_cirm43_trajectory.pseudotime.pdf")
@@ -2649,69 +2721,6 @@ I mainly just wanted to play around with network analysis a bit.
 ```R
 
 ```
-{% endcapture %} {% include details.html %} 
-
-### Cell cycle testing
-
-Seurat has a stored set of cell cycle genes that we can use to assess cell cycle signatures.
-
-[Following this.](https://satijalab.org/seurat/v3.2/cell_cycle_vignette.html)
-
-The gene lists are based on a list of cell cycle markers, from Tirosh et al, 2015.
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```R
-  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-  library(Seurat)
-  library(Signac)
-  library(plotly)
-  library(htmlwidgets)
-  library(RColorBrewer)
-
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-  s.genes <- cc.genes$s.genes
-  g2m.genes <- cc.genes$g2m.genes
-
-  s.genes
-# [1] "MCM5"     "PCNA"     "TYMS"     "FEN1"     "MCM2"     "MCM4"
-# [7] "RRM1"     "UNG"      "GINS2"    "MCM6"     "CDCA7"    "DTL"
-#[13] "PRIM1"    "UHRF1"    "MLF1IP"   "HELLS"    "RFC2"     "RPA2"
-#[19] "NASP"     "RAD51AP1" "GMNN"     "WDR76"    "SLBP"     "CCNE2"
-#[25] "UBR7"     "POLD3"    "MSH2"     "ATAD2"    "RAD51"    "RRM2"
-#[31] "CDC45"    "CDC6"     "EXO1"     "TIPIN"    "DSCC1"    "BLM"
-#[37] "CASP8AP2" "USP1"     "CLSPN"    "POLA1"    "CHAF1B"   "BRIP1"
-#[43] "E2F8"
-  g2m.genes
-# [1] "HMGB2"   "CDK1"    "NUSAP1"  "UBE2C"   "BIRC5"   "TPX2"    "TOP2A"
-# [8] "NDC80"   "CKS2"    "NUF2"    "CKS1B"   "MKI67"   "TMPO"    "CENPF"
-#[15] "TACC3"   "FAM64A"  "SMC4"    "CCNB2"   "CKAP2L"  "CKAP2"   "AURKB"
-#[22] "BUB1"    "KIF11"   "ANP32E"  "TUBB4B"  "GTSE1"   "KIF20B"  "HJURP"
-#[29] "CDCA3"   "HN1"     "CDC20"   "TTK"     "CDC25C"  "KIF2C"   "RANGAP1"
-#[36] "NCAPD2"  "DLGAP5"  "CDCA2"   "CDCA8"   "ECT2"    "KIF23"   "HMMR"
-#[43] "AURKA"   "PSRC1"   "ANLN"    "LBR"     "CKAP5"   "CENPE"   "CTCF"
-#[50] "NEK2"    "G2E3"    "GAS2L3"  "CBX5"    "CENPA"
-
-
-  DefaultAssay(orgo_cirm43) <- 'GeneActivity'
-
-  orgo_cirm43 <- CellCycleScoring(orgo_cirm43, s.features = s.genes, g2m.features = g2m.genes, set.ident = F)
-
-
-  dat<-merge(orgo_cirm43@reductions$umap@cell.embeddings,orgo_cirm43@meta.data,by="row.names") 
-    
-  #Generate 2D Plot and standalone HTML widget
-    p<-plot_ly(dat, type="scattergl", mode="markers", size=I(2),
-      x= ~UMAP_1, y= ~UMAP_2,
-      color=~Phase)
-    p <- p %>% add_markers(color=~DIV)
-
-  htmlwidgets::saveWidget(as_widget(toWebGL(p)), "cirm43_umap.html",selfcontained=TRUE)
-
-  system("slack -F cirm43_umap.html ryan_todo")
-
-```
-
 {% endcapture %} {% include details.html %} 
 
 #### Rest is commented out currently
