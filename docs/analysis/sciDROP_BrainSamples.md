@@ -762,6 +762,7 @@ system("slack -F mm10.umap.scrub.pdf sci_drop_atac")
 ```bash
  cat ./sciDROP_20K/hg38.complexity.txt ./sciDROP_20K/mm10.complexity.txt ./sciDROP_70k/hg38.complexity.txt ./sciDROP_70k/mm10.complexity.txt > complexity.txt
 ```
+
 ```R
 library(Signac)
 library(Seurat)
@@ -1280,6 +1281,7 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 ### Download data from Allen Brain-span
 For human: https://portal.brain-map.org/atlases-and-data/rnaseq/human-m1-10x
 For mouse: https://portal.brain-map.org/atlases-and-data/rnaseq/mouse-whole-cortex-and-hippocampus-10x
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
 #Human download
@@ -1299,6 +1301,9 @@ wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_mouse_ctx-hip_10
 wget https://www.dropbox.com/s/kqsy9tvsklbu7c4/allen_brain.rds?dl=0
 
 ```
+{% endcapture %} {% include details.html %} 
+
+
 ### Process Data into Seurat Object
 Following https://satijalab.org/seurat/v3.2/pbmc3k_tutorial.html
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -1421,7 +1426,7 @@ predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10")
 
 ### Differential Gene Activity through Subclusters
 
-For hg38 
+{% capture summary %} For hg38 {% endcapture %} {% capture details %}  
 
 ```R
 library(Seurat)
@@ -1582,8 +1587,9 @@ plt1
 dev.off()
 system("slack -F hg38.geneactivity.markers.heatmap.pdf ryan_todo")
 ```
+{% endcapture %} {% include details.html %} 
 
-For mm10
+{% capture summary %} For mm10 {% endcapture %} {% capture details %}  
 ```R
 library(Seurat)
 library(Signac)
@@ -1748,6 +1754,7 @@ plt1
 dev.off()
 system("slack -F mm10.geneactivity.markers.heatmap.pdf ryan_todo")
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Marker Plotting for cell type refinement
 
@@ -1931,6 +1938,10 @@ for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` mar
 
 
 ```
+
+{% endcapture %} {% include details.html %} 
+
+
 # Haven't run following code. Commented it out for now.
 
 <!--
