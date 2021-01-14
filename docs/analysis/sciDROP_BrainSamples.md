@@ -330,7 +330,7 @@ wc -l hg38.merged.bbrd.q10.500.bed
 #423832 hg38.merged.bbrd.q10.500.bed
 
 wc -l mm10.merged.bbrd.q10.500.bed
-#423832 hg38.merged.bbrd.q10.500.bed
+#308436 mm10.merged.bbrd.q10.500.bed
 
 
 scitools atac-counts -O hg38 hg38.merged.bbrd.q10.bam \

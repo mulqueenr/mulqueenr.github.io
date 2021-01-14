@@ -322,6 +322,7 @@ Using R v4.0 and Signac v1.0 for processing.
   #saving unprocessed SeuratObject
   saveRDS(orgo_atac,file="orgo_SeuratObject.Rds")
 ```
+
 {% endcapture %} {% include details.html %} 
 
 ### Plotting and updating metadata
@@ -1317,15 +1318,14 @@ Supplementary Table 7.
   library(Seurat)
   library(Signac)
   library(ggplot2)
-  library(ComplexHeatmap)
-  library(patchwork)
   library(dplyr)
   library(GenomicRanges)
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
 
   #PUBMED 31303374 Data
-  enhancer_regions<-read.csv("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/PUBMED31303374.SuppTable7.tsv",header=T,sep="\t")
+  #wget https://www.cell.com/cms/10.1016/j.neuron.2019.06.011/attachment/f8f52073-df2e-40f2-8f45-44084324796f/mmc7.csv then renamed
+  enhancer_regions<-read.csv("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/PUBMED31303374.SuppTable7.tsv",header=T,sep=",")
   enhancer_granges<-data.frame(seqnames=paste0("chr",enhancer_regions$enhancerchr),start=enhancer_regions$enhancerstart,end=enhancer_regions$enhancerend)
   enhancer_granges<-makeGRangesFromDataFrame(enhancer_granges)
   enhanc_peaks<-FeatureMatrix(orgo_cirm43@assays$peaks@fragments,enhancer_granges,process_n = 5000,sep = c("-", "-"),verbose = TRUE)
