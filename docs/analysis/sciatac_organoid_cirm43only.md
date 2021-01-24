@@ -1688,7 +1688,15 @@ prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
 
 
 ```R
- setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+ 
+```
+{% endcapture %} {% include details.html %} 
+
+
+
+```R
+
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
   library(Signac)
   library(Seurat)
@@ -1703,7 +1711,10 @@ prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
   library(JASPAR2020)
   library(TFBSTools)
 
-
+orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+orgo_cirm43<-subset(orgo_cirm43,suspect_organoid=="FALSE",)
+orgo_cirm43$cluster_ID<-paste(orgo_cirm43$celltype,orgo_cirm43$seurat_subcluster,sep="_")
+  i<-"clusterID"
 
   #define DA functions for parallelization
   #Use LR test for atac data
@@ -1714,8 +1725,8 @@ prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
           group.by = group,
           test.use = 'LR',
           latent.vars = 'nCount_peaks',
-          only.pos=T,
-          assay="peaks"
+          only.pos=T#,
+          #assay="peaks"
           )
       da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
       closest_genes <- ClosestFeature(obj,da_peaks_tmp$da_region)
@@ -1743,12 +1754,23 @@ prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
       return(da_peaks_tmp)
     }
 
-
-  for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){
-    atac_sub<-readRDS(paste("./subcluster/",i,"SeuratObject.Rds",sep="_"))
-  #Perform One vs. rest DA enrichment
-
-  write("Performing one vs. rest DA enrichment per annotation grouping supplied.", stderr())
+#define DA functions for parallelization
+#Use LR test for atac data
+da_one_v_rest_ga<-function(i,obj,group){
+    da_ga_tmp <- FindMarkers(
+        object = obj,
+        ident.1 = i,
+        group.by = group,
+        test.use = 'LR',
+        latent.vars = 'nCount_peaks',
+        only.pos=T,
+        assay="GeneActivity"
+        )
+    da_ga_tmp$da_region<-row.names(da_ga_tmp)
+    da_ga_tmp$enriched_group<-c(i)
+    da_ga_tmp$compared_group<-c("all_other_cells")
+    return(da_ga_tmp)
+  }
 
   #set up an empty list for looping through
   da_peaks<-list()
@@ -1756,18 +1778,16 @@ prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
   #Perform parallel application of DA test
   library(parallel)
 
-  n.cores=length(unique(atac_sub$seurat_subcluster))
+  n.cores=1
   da_peaks<-mclapply(
-      unique(atac_sub$seurat_subcluster),
+      unique(orgo_cirm43$cluster_ID),
       FUN=da_one_v_rest_da,
-      obj=atac_sub,
-      group="seurat_subcluster",
+      obj=orgo_cirm43,
+      group="cluster_ID",
       mc.cores=n.cores)
 
   #Merge the final data frame from the list for 1vrest DA
   da_peaks<-do.call("rbind",da_peaks)
-
-  write("Outputting One v Rest DA Table.", stderr())
   write.table(da_peaks,file=paste0(i,".onevrest.da_peaks.txt"),sep="\t",col.names=T,row.names=T,quote=F)
 
   #Plot out top peaks and associated gene name for each cluster
@@ -1784,16 +1804,14 @@ prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
 
   da_tf<-list()
   da_tf<-mclapply(
-      unique(atac_sub$seurat_subcluster),
+      unique(orgo_cirm43$cluster_ID),
       FUN=da_one_v_rest_tf,
-      obj=atac_sub,
-      group="seurat_subcluster",
+      obj=orgo_cirm43,
+      group="cluster_ID",
       mc.cores=n.cores)
 
   #Merge the final data frame from the list for 1vrest DA
   da_tf<-do.call("rbind",da_tf)
-
-  write("Outputting One v Rest DA Table.", stderr())
   write.table(da_tf,file=paste0(i,".onevrest.da_tf.txt"),sep="\t",col.names=T,row.names=T,quote=F)
 
   dat<-read.table(paste0(i,".onevrest.da_tf.txt"),header=T,sep="\t")
@@ -1811,10 +1829,49 @@ prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
   ggsave(plt,file=paste0(i,".da_tf.pdf"))
   system(paste0("slack -F ", i,".da_tf.pdf", " ryan_todo"))
 
-}
-```
-{% endcapture %} {% include details.html %} 
 
+da_ga<-list() #set up an empty list for looping through
+
+n.cores=1 #Perform parallel application of DA test
+da_ga<-mclapply(
+    unique(orgo_cirm43$cluster_ID),
+    FUN=da_one_v_rest_ga,
+    obj=orgo_cirm43,
+    group="cluster_ID",
+    mc.cores=n.cores)
+
+da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
+write.table(da_ga_df,file=paste0(i,".onevrest.da_ga.txt"),sep="\t",col.names=T,row.names=T,quote=F)
+
+  dat<-read.table(paste0(i,".onevrest.da_ga.txt"),header=T,sep="\t")
+  dat$label<-""
+  for (x in unique(dat$enriched_group)){
+    selc_genes<-row.names(dat %>% dplyr::filter(enriched_group==x) %>% dplyr::arrange(rev(desc(p_val_adj))) %>% slice(1:5))
+    dat[row.names(dat) %in% selc_genes & dat$enriched_group==x,]$label<- dat[row.names(dat) %in% selc_genes & dat$enriched_group==x,]$da_region
+  }
+
+  plt<-ggplot(dat,aes(x=avg_logFC,y=(-log(p_val)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(dat=dat,aes(label=label),force=3)+theme_bw()
+  ggsave(plt,file=paste0(i,".da_ga.pdf"))
+  system(paste0("slack -F ", i,".da_ga.pdf", " ryan_todo"))
+
+  #Cell type and state
+  #RIT1=BCL11B=CTIP2
+  plt<-FeaturePlot(orgo_cirm43,features=c("RIT1","PAX6","SOX2","FOXG1","NEUROD1",
+    "SATB2","HOPX","TNC","PPP1R17","NHLH1","NEUROD6",
+    "RELN","MEF2C","SLC1A3","GLI3","HES1","MKI67","STMN2","GADD45B","EOMES","MAP2","CALB2","MOXD1","FBXO32"
+    ),order=T,min.cutoff="q05",max.cutoff="q90",cols=c("lightgrey","red"))
+  ggsave(plt,file="subclus.test.pdf",width=20,height=20)
+  system("slack -F subclus.test.pdf ryan_todo")
+
+
+  #Cell type and state
+  plt<-DimPlot(orgo_cirm43,group.by=c("cluster_ID"))
+  ggsave(plt,file="subclus.test.pdf",width=10,height=10)
+  system("slack -F subclus.test.pdf ryan_todo")
+
+  saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
+
+```
 ### Transcription Factor Modules
 
 https://www.cell.com/neuron/pdf/S0896-6273(19)30561-6.pdf Defined waves of transcription factors active is neocoritcal mid-gestation.
@@ -1905,13 +1962,6 @@ The regulon is defined by the transcription factor (ChromVar Motif Score) and ac
   dev.off()
   system("slack -F test.tangle.pdf ryan_todo")
 
-  #Cell type and state
-  orgo_cirm43$celltype_subclus<-paste(orgo_cirm43$celltype,orgo_cirm43$seurat_subcluster,sep="_")
-  plt<-DimPlot(orgo_cirm43,group.by=c("celltype","seurat_subcluster","celltype_subclus"))
-  ggsave(plt,file="subclus.test.pdf",width=20)
-  system("slack -F subclus.test.pdf ryan_todo")
-
-  saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 
 
 ```

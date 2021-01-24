@@ -190,6 +190,10 @@ $dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_dem
 
         nrow(dat)/length(unique(dat$gem_idx)) #count of cells within unique GEMs
         #[1] 1.665256
+        gem_count<-unlist(lapply(unique(dat$gem_idx),function(x) nrow(dat[dat$gem_idx==x,])))
+            plt<-ggplot()+geom_histogram(aes(x=gem_count),binwidth=1)+theme_bw()+xlim(c(0,10))
+            ggsave(plt,file="70k.gem_count.pdf")
+            system("slack -F 70k.gem_count.pdf ryan_todo")
 
         dat$condition<-"Mix"
         dat[dat$tn5_row %in% c("A","B"),]$condition<-"Human"
@@ -252,6 +256,10 @@ $dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_dem
         #63.0   161.0   195.0   201.5   246.5   331.0   
         nrow(dat)/length(unique(dat$gem_idx)) #count of cells within unique GEMs
         #1.257456
+        gem_count<-unlist(lapply(unique(dat$gem_idx),function(x) nrow(dat[dat$gem_idx==x,])))
+        plt<-ggplot()+geom_histogram(aes(x=gem_count),binwidth=1)+theme_bw()+xlim(c(0,10))
+        ggsave(plt,file="20k.gem_count.pdf")
+        system("slack -F 20k.gem_count.pdf ryan_todo")
 
         dat$condition<-"Mix"
         dat[dat$tn5_row %in% c("A","B"),]$condition<-"Human"
@@ -1155,8 +1163,8 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
     theme_classic()+theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none")+
     facet_wrap(facets=vars(seurat_clusters),ncol=2)
     plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
-    ggsave(plt,file="hg38_umap.pdf")
-    system("slack -F hg38_umap.pdf ryan_todo")
+    ggsave(plt,file="hg38_umap.subclus.pdf")
+    system("slack -F hg38_umap.subclus.pdf ryan_todo")
 
     hg38_atac@meta.data$cluster_col<-"NA"
     hg38_atac@meta.data[match(dat$cellid,row.names(hg38_atac@meta.data),nomatch=0),]$cluster_col<-dat$cluster_col
@@ -1167,6 +1175,271 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 ```
 
 {% endcapture %} {% include details.html %} 
+
+
+### Recoloring subclusters
+```R
+    library(Signac)
+    library(Seurat)
+    library(SeuratWrappers)
+    library(ggplot2)
+    library(patchwork)
+    library(cicero)
+    library(cisTopic)
+    library(GenomeInfoDb)
+    set.seed(1234)
+    library(Matrix)
+    library(dplyr)
+    library(ggrepel)
+    library(RColorBrewer)
+    setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+    #Read in data and modify to monocle CDS file
+    #read in RDS file.
+    hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+    hg38_atac$cluster_ID<-paste(hg38_atac$seurat_clusters,hg38_atac$seurat_subcluster,sep="_")
+
+    #########Coloring and plotting human data#####################
+    dat<-as.data.frame(hg38_atac@meta.data)
+    cell_order<-row.names(dat)
+    embedding_order<-row.names(hg38_atac@reductions$umap@cell.embeddings)
+    row_order<-match(cell_order,embedding_order)
+    dat$umap_x<-as.numeric(hg38_atac@reductions$umap@cell.embeddings[row_order,1])
+    dat$umap_y<-as.numeric(hg38_atac@reductions$umap@cell.embeddings[row_order,2])
+    dat<-dat[dat$predicted_doublets=="False",]
+    dat$seurat_clusters<-as.character(dat$seurat_clusters)
+   
+    dat[dat$seurat_clusters=="0",]$cluster_col<-"#1f78b4"
+    dat[dat$seurat_clusters=="1",]$cluster_col<-"#b2df8a"
+    dat[dat$seurat_clusters=="2",]$cluster_col<-"#FDE725"
+    dat[dat$seurat_clusters=="3",]$cluster_col<-"#E31A1C"
+    dat[dat$seurat_clusters=="4",]$cluster_col<-"#6a3d9a"
+    dat[dat$seurat_clusters=="5",]$cluster_col<-"#B15928"
+    dat[dat$seurat_clusters=="6",]$cluster_col<-"#ff7f00"
+    dat[dat$seurat_clusters=="7",]$cluster_col<-"#33a02c"
+
+    seurat_clus_col<-setNames(unique(dat$cluster_col),unique(dat$seurat_clusters))
+    sort(unique(dat$cluster_ID))
+    # [1] "0_0" "0_1" "0_2" "0_3" "0_4" "0_5" "0_6" "0_7" "0_8" "1_0" "1_1" "1_2"
+    #[13] "1_3" "2_0" "2_1" "2_2" "2_3" "2_4" "2_5" "2_6" "2_7" "3_0" "3_1" "3_2"
+    #[25] "3_3" "3_4" "3_5" "3_6" "4_0" "4_1" "4_2" "4_3" "4_4" "4_5" "5_0" "5_1"
+    #[37] "5_2" "5_3" "6_0" "6_1" "6_2" "6_3" "6_4" "6_5" "6_6" "6_7" "6_8" "6_9"
+    #[49] "7_0" "7_1"
+
+    dat[dat$cluster_ID=="0_0",]$subcluster_col<-"#820933"
+    dat[dat$cluster_ID=="0_1",]$subcluster_col<-"#D84797"
+    dat[dat$cluster_ID=="0_2",]$subcluster_col<-"#D2FDFF"
+    dat[dat$cluster_ID=="0_3",]$subcluster_col<-"#26FFE6"
+    dat[dat$cluster_ID=="0_4",]$subcluster_col<-"#001427"
+    dat[dat$cluster_ID=="0_5",]$subcluster_col<-"#F4D58D"
+    dat[dat$cluster_ID=="0_6",]$subcluster_col<-"#C68866"
+    dat[dat$cluster_ID=="0_7",]$subcluster_col<-"#CCC9E7"
+    dat[dat$cluster_ID=="0_8",]$subcluster_col<-"#138A87"
+
+    dat[dat$cluster_ID=="1_0",]$subcluster_col<-"#A9F5A4"
+    dat[dat$cluster_ID=="1_1",]$subcluster_col<-"#0DA802"
+    dat[dat$cluster_ID=="1_2",]$subcluster_col<-"#ED1169"
+    dat[dat$cluster_ID=="1_3",]$subcluster_col<-"#1C3B1A"
+
+    dat[dat$cluster_ID=="2_0",]$subcluster_col<-"#B38A1B"
+    dat[dat$cluster_ID=="2_1",]$subcluster_col<-"#6B0E44"
+    dat[dat$cluster_ID=="2_2",]$subcluster_col<-"#E0BB55"
+    dat[dat$cluster_ID=="2_3",]$subcluster_col<-"#7146B3"
+    dat[dat$cluster_ID=="2_4",]$subcluster_col<-"#F896D8"
+    dat[dat$cluster_ID=="2_5",]$subcluster_col<-"#F0544F"
+    dat[dat$cluster_ID=="2_6",]$subcluster_col<-"#F63E02"
+    dat[dat$cluster_ID=="2_7",]$subcluster_col<-"#B0A3D4"
+
+    dat[dat$cluster_ID=="3_0",]$subcluster_col<-"#FAA916"
+    dat[dat$cluster_ID=="3_1",]$subcluster_col<-"#5E503F"
+    dat[dat$cluster_ID=="3_2",]$subcluster_col<-"#EDFFAB"
+    dat[dat$cluster_ID=="3_3",]$subcluster_col<-"#FFE1EA"
+    dat[dat$cluster_ID=="3_4",]$subcluster_col<-"#E952DE"
+    dat[dat$cluster_ID=="3_5",]$subcluster_col<-"#848FA5"
+    dat[dat$cluster_ID=="3_6",]$subcluster_col<-"#832161"
+
+    dat[dat$cluster_ID=="4_0",]$subcluster_col<-"#DBAD6A"
+    dat[dat$cluster_ID=="4_1",]$subcluster_col<-"#007EA7"
+    dat[dat$cluster_ID=="4_2",]$subcluster_col<-"#C191A1"
+    dat[dat$cluster_ID=="4_3",]$subcluster_col<-"#02010A"
+    dat[dat$cluster_ID=="4_4",]$subcluster_col<-"#A44A3F"
+    dat[dat$cluster_ID=="4_5",]$subcluster_col<-"#998DA0"
+
+    dat[dat$cluster_ID=="5_0",]$subcluster_col<-"#230903"
+    dat[dat$cluster_ID=="5_1",]$subcluster_col<-"#FFBFB7"
+    dat[dat$cluster_ID=="5_2",]$subcluster_col<-"#FFD447"
+    dat[dat$cluster_ID=="5_3",]$subcluster_col<-"#493657"
+
+    dat[dat$cluster_ID=="6_0",]$subcluster_col<-"#80552B"
+    dat[dat$cluster_ID=="6_1",]$subcluster_col<-"#E87909"
+    dat[dat$cluster_ID=="6_2",]$subcluster_col<-"#A85238"
+    dat[dat$cluster_ID=="6_3",]$subcluster_col<-"#F8C0C8"
+    dat[dat$cluster_ID=="6_4",]$subcluster_col<-"#ECDD7B"
+    dat[dat$cluster_ID=="6_5",]$subcluster_col<-"#F7E3AF"
+    dat[dat$cluster_ID=="6_6",]$subcluster_col<-"#E5DCC5"
+    dat[dat$cluster_ID=="6_7",]$subcluster_col<-"#B1B695"
+    dat[dat$cluster_ID=="6_8",]$subcluster_col<-"#F1D302"
+    dat[dat$cluster_ID=="6_9",]$subcluster_col<-"#000000"
+
+    dat[dat$cluster_ID=="7_0",]$subcluster_col<-"#073B3A"
+    dat[dat$cluster_ID=="7_1",]$subcluster_col<-"#0B6E4F"
+
+    seurat_subclus_col<-setNames(unique(dat$subcluster_col),unique(dat$cluster_ID))
+
+    plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
+    geom_point(alpha=0.1,size=0.5,shape=16)+
+    theme_bw()+scale_color_manual(values=seurat_clus_col)+
+    ggtitle("hg38")+
+    theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
+
+    plt_list<-ggplot(dat,aes(x=as.numeric(subcluster_x),y=as.numeric(subcluster_y),color=cluster_ID))+
+    geom_point(alpha=0.05,size=0.5,shape=16)+scale_color_manual(values=seurat_subclus_col)+
+    theme_bw()+theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none")+
+    facet_wrap(facets=vars(seurat_clusters),ncol=2)
+    plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
+    ggsave(plt,file="hg38_umap.subclus.pdf")
+    system("slack -F hg38_umap.subclus.pdf ryan_todo")
+
+    hg38_atac@meta.data$cluster_col<-"NA"
+    hg38_atac@meta.data[match(dat$cellid,row.names(hg38_atac@meta.data),nomatch=0),]$cluster_col<-dat$cluster_col
+    hg38_atac@meta.data$subcluster_col<-"NA"
+    hg38_atac@meta.data[match(dat$cellid,row.names(hg38_atac@meta.data),nomatch=0),]$subcluster_col<-dat$subcluster_col
+    saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
+
+    #########Coloring and plotting mouse data#####################
+
+    mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+    mm10_atac$cluster_ID<-paste(mm10_atac$seurat_clusters,mm10_atac$seurat_subcluster,sep="_")
+
+    dat<-as.data.frame(mm10_atac@meta.data)
+    cell_order<-row.names(dat)
+    embedding_order<-row.names(mm10_atac@reductions$umap@cell.embeddings)
+    row_order<-match(cell_order,embedding_order)
+    dat$umap_x<-as.numeric(mm10_atac@reductions$umap@cell.embeddings[row_order,1])
+    dat$umap_y<-as.numeric(mm10_atac@reductions$umap@cell.embeddings[row_order,2])
+    dat<-dat[dat$predicted_doublets=="False",]
+    dat$seurat_clusters<-as.character(dat$seurat_clusters)
+
+    dat[dat$seurat_clusters=="0",]$cluster_col<-"#A7ACD9" #granule
+    dat[dat$seurat_clusters=="1",]$cluster_col<-"#2CA58D" #granule
+    dat[dat$seurat_clusters=="2",]$cluster_col<-"#BA3B46" #inhib
+    dat[dat$seurat_clusters=="3",]$cluster_col<-"#76B041" #opc and oligo
+    dat[dat$seurat_clusters=="4",]$cluster_col<-"#639cd9" #exN
+    dat[dat$seurat_clusters=="5",]$cluster_col<-"#FCDC4D" #astro
+    dat[dat$seurat_clusters=="6",]$cluster_col<-"#EB5A0C" #inhib
+    dat[dat$seurat_clusters=="7",]$cluster_col<-"#A7754D" #micro
+    dat[dat$seurat_clusters=="8",]$cluster_col<-"#342056" #exN
+    dat[dat$seurat_clusters=="9",]$cluster_col<-"#EFC88B" #endo 
+
+    seurat_clus_col<-setNames(unique(dat$cluster_col),unique(dat$seurat_clusters))
+    sort(unique(dat$cluster_ID))
+    #[1] "0_0"  "0_1"  "1_0"  "1_1"  "1_2"  "1_3"  "2_0"  "2_1"  "2_10" "2_2"
+    #[11] "2_3"  "2_4"  "2_5"  "2_6"  "2_7"  "2_8"  "2_9"  "3_0"  "3_1"  "3_2"
+    #[21] "3_3"  "3_4"  "4_0"  "4_1"  "4_2"  "4_3"  "4_4"  "4_5"  "4_6"  "4_7"
+    #[31] "4_8"  "4_9"  "5_0"  "5_1"  "5_2"  "5_3"  "5_4"  "5_5"  "5_6"  "5_7"
+    #[41] "5_8"  "5_9"  "6_0"  "6_1"  "6_2"  "6_3"  "6_4"  "6_5"  "6_6"  "7_0"
+    #[51] "7_1"  "7_2"  "8_0"  "8_1"  "8_2"  "8_3"  "8_4"  "8_5"  "9_0"  "9_1"
+    #[61] "9_2"  "9_3"  "9_4"  "9_5"
+
+    dat[dat$cluster_ID=="0_0",]$subcluster_col<-"#5EC6F2"
+    dat[dat$cluster_ID=="0_1",]$subcluster_col<-"#BECCE6"
+    
+    dat[dat$cluster_ID=="1_0",]$subcluster_col<-"#D46F63"
+    dat[dat$cluster_ID=="1_1",]$subcluster_col<-"#68A882"
+    dat[dat$cluster_ID=="1_2",]$subcluster_col<-"#496E51"
+    dat[dat$cluster_ID=="1_3",]$subcluster_col<-"#CF5A52"
+
+    dat[dat$cluster_ID=="2_0",]$subcluster_col<-"#F5CCE8"
+    dat[dat$cluster_ID=="2_1",]$subcluster_col<-"#EC9DED"
+    dat[dat$cluster_ID=="2_2",]$subcluster_col<-"#12355B"
+    dat[dat$cluster_ID=="2_3",]$subcluster_col<-"#420039"
+    dat[dat$cluster_ID=="2_4",]$subcluster_col<-"#FF6B61"
+    dat[dat$cluster_ID=="2_5",]$subcluster_col<-"#A9A587"
+    dat[dat$cluster_ID=="2_6",]$subcluster_col<-"#6E171E"
+    dat[dat$cluster_ID=="2_7",]$subcluster_col<-"#7871AA"
+    dat[dat$cluster_ID=="2_8",]$subcluster_col<-"#533B4D"
+    dat[dat$cluster_ID=="2_9",]$subcluster_col<-"#F63E02"
+    dat[dat$cluster_ID=="2_10",]$subcluster_col<-"#92BFB1"
+
+    dat[dat$cluster_ID=="3_0",]$subcluster_col<-"#47624F"
+    dat[dat$cluster_ID=="3_1",]$subcluster_col<-"#8BA672"
+    dat[dat$cluster_ID=="3_2",]$subcluster_col<-"#76D91A"
+    dat[dat$cluster_ID=="3_3",]$subcluster_col<-"#55251D"
+    dat[dat$cluster_ID=="3_4",]$subcluster_col<-"#CA895F"
+
+    dat[dat$cluster_ID=="4_0",]$subcluster_col<-"#0975E8"
+    dat[dat$cluster_ID=="4_1",]$subcluster_col<-"#CAD5E0"
+    dat[dat$cluster_ID=="4_2",]$subcluster_col<-"#535D69"
+    dat[dat$cluster_ID=="4_3",]$subcluster_col<-"#AEECEF"
+    dat[dat$cluster_ID=="4_4",]$subcluster_col<-"#80DED9"
+    dat[dat$cluster_ID=="4_5",]$subcluster_col<-"#C6B9CD"
+    dat[dat$cluster_ID=="4_6",]$subcluster_col<-"#320A28"
+    dat[dat$cluster_ID=="4_7",]$subcluster_col<-"#820933"
+    dat[dat$cluster_ID=="4_8",]$subcluster_col<-"#D84797"
+    dat[dat$cluster_ID=="4_9",]$subcluster_col<-"#C4B1AE"
+
+    dat[dat$cluster_ID=="5_0",]$subcluster_col<-"#857A4D"
+    dat[dat$cluster_ID=="5_1",]$subcluster_col<-"#E8DFB5"
+    dat[dat$cluster_ID=="5_2",]$subcluster_col<-"#B39615"
+    dat[dat$cluster_ID=="5_3",]$subcluster_col<-"#E55812"
+    dat[dat$cluster_ID=="5_4",]$subcluster_col<-"#93032E"
+    dat[dat$cluster_ID=="5_5",]$subcluster_col<-"#FF5E5B"
+    dat[dat$cluster_ID=="5_6",]$subcluster_col<-"#5FBB97"
+    dat[dat$cluster_ID=="5_7",]$subcluster_col<-"#8DDCA4"
+    dat[dat$cluster_ID=="5_8",]$subcluster_col<-"#E0B700"
+    dat[dat$cluster_ID=="5_9",]$subcluster_col<-"#C05746"
+
+    dat[dat$cluster_ID=="6_0",]$subcluster_col<-"#F57631"
+    dat[dat$cluster_ID=="6_1",]$subcluster_col<-"#CF8259"
+    dat[dat$cluster_ID=="6_2",]$subcluster_col<-"#E6AA20"
+    dat[dat$cluster_ID=="6_3",]$subcluster_col<-"#764248"
+    dat[dat$cluster_ID=="6_4",]$subcluster_col<-"#FFC43D"
+    dat[dat$cluster_ID=="6_5",]$subcluster_col<-"#37371F"
+    dat[dat$cluster_ID=="6_6",]$subcluster_col<-"#6F1A07"
+
+    dat[dat$cluster_ID=="7_0",]$subcluster_col<-"#9C8938"
+    dat[dat$cluster_ID=="7_1",]$subcluster_col<-"#D4CB22"
+    dat[dat$cluster_ID=="7_2",]$subcluster_col<-"#9E6D18"
+
+    dat[dat$cluster_ID=="8_0",]$subcluster_col<-"#5C6F9E"
+    dat[dat$cluster_ID=="8_1",]$subcluster_col<-"#B22CF5"
+    dat[dat$cluster_ID=="8_2",]$subcluster_col<-"#6A35F0"
+    dat[dat$cluster_ID=="8_3",]$subcluster_col<-"#6689A1"
+    dat[dat$cluster_ID=="8_4",]$subcluster_col<-"#B9E6FF"
+    dat[dat$cluster_ID=="8_5",]$subcluster_col<-"#5C946E"
+    
+    dat[dat$cluster_ID=="9_0",]$subcluster_col<-"#512500"
+    dat[dat$cluster_ID=="9_1",]$subcluster_col<-"#7A6563"
+    dat[dat$cluster_ID=="9_2",]$subcluster_col<-"#042A2B"
+    dat[dat$cluster_ID=="9_3",]$subcluster_col<-"#BA5A31"
+    dat[dat$cluster_ID=="9_4",]$subcluster_col<-"#2A1A1F"
+    dat[dat$cluster_ID=="9_5",]$subcluster_col<-"#5F634F"
+
+    seurat_subclus_col<-setNames(unique(dat$subcluster_col),unique(dat$cluster_ID))
+
+    plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
+    geom_point(alpha=0.1,size=0.5,shape=16)+
+    theme_bw()+scale_color_manual(values=seurat_clus_col)+
+    ggtitle("mm10")+
+    theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
+
+
+    plt_list<-ggplot(dat,aes(x=as.numeric(subcluster_x),y=as.numeric(subcluster_y),color=cluster_ID))+
+    geom_point(alpha=0.05,size=0.5,shape=16)+scale_color_manual(values=seurat_subclus_col)+
+    theme_bw()+theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none")+
+    facet_wrap(facets=vars(seurat_clusters),ncol=2)
+    plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
+
+    ggsave(plt,file="mm10_umap.subclus.pdf")
+    system("slack -F mm10_umap.subclus.pdf ryan_todo")
+
+    mm10_atac@meta.data$cluster_col<-"NA"
+    mm10_atac@meta.data[match(dat$cellid,row.names(mm10_atac@meta.data),nomatch=0),]$cluster_col<-dat$cluster_col
+    mm10_atac@meta.data$subcluster_col<-"NA"
+    mm10_atac@meta.data[match(dat$cellid,row.names(mm10_atac@meta.data),nomatch=0),]$subcluster_col<-dat$subcluster_col
+    saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
+
+```
 
 ## Cicero for Coaccessible Networks
 
@@ -1441,6 +1714,7 @@ library(ggplot2)
 library(ggrepel)
 library(RColorBrewer)
 library(viridis)
+library(circlize)
 
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
@@ -1560,25 +1834,87 @@ system("slack -F hg38.geneactivity.heatmap.pdf ryan_todo")
 saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
 
 ###########Plotting heatmap using brainspan given markers#############################
-brainspan_markers<-c("GAD1","LHX6","ADARB2","LAMP5","VIP","PVALB","SST","SLC17A7",
-    "CUX2","RORB","THEMIS","FEZF2","CTGF","AQP4","PDGFRA","OPALIN","FYB")
 
 #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+sum_da_dend<-readRDS(file="hg38.geneactivity.dend.rds")
 dat_ga<-as.data.frame(t(as.data.frame(hg38_atac[["GeneActivity"]]@data)))
-sum_ga<-split(dat_ga,hg38_atac$cluster_ID) #group by rows to seurat clusters
+sum_ga<-split(dat_ga,hg38_atac$cluster_ID) #group by rows to seurat clusters 
 sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
 sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
-
-#sum_ga<-t(scale(sum_ga))
 sum_ga<-t(sum_ga)
 sum_ga<-sum_ga[,!endsWith(colnames(sum_ga),"NA")] #remove NA (doublet cells)
-sum_ga<-sum_ga[row.names(sum_ga) %in% unique(brainspan_markers),]
 
-plt1<-Heatmap(sum_ga,
-    cluster_columns=sum_da_dend,
+markers_limited<-   as.data.frame(rbind(
+    c("Mark","L1-6","GABAergic","GAD1"),
+    c("Mark","L1-6","GABAergic","LHX6"),
+    c("Mark","L1-6","GABAergic","ADARB2"),
+    c("Mark","L1-6","GABAergic","LAMP5"),
+    c("Mark","L1-6","GABAergic","VIP"),
+    c("Mark","L1-6","GABAergic","SVIL"),
+    c("Mark","L1-6","GABAergic","NXPH2"),
+    c("Mark","L1-6","GABAergic","SST"),
+    c("Mark","L1-6","Glutamatergic","SLC17A7"),
+    c("Mark","L1-6","Glutamatergic","HTR1F"),
+    c("Mark","L1-6","Glutamatergic","FEZF2"),
+    c("Mark","L1-6","Glutamatergic","RORB"),
+    c("Mark","L1-6","Glutamatergic","PCP4"),
+    c("Mark","L1-6","Glutamatergic","POU3F2"),
+    c("Mark","L1-6","Glutamatergic","CUX2"),
+    c("Mark","L1-6","Glutamatergic","CALB1"),
+    c("Mark","L1-6","Glutamatergic","RASGRF2"),
+    c("Mark","L1-6","Astrocyte","AQP4"),
+    c("Mark","L1-6","Astrocyte","ALDH1L1"),
+    c("Mark","L1-6","Astrocyte","GFAP"),
+    c("Mark","L1-6","OPC","PDGFRA"),
+    c("Mark","L1-6","OPC","CSPG4"),
+    c("Mark","L1-6","Oligodendrocyte","OPALIN"),
+    c("Mark","L1-6","Oligodendrocyte","PROX1"),
+    c("Mark","L1-6","Oligodendrocyte","OLIG1"),
+    c("Mark","L1-6","Oligodendrocyte","MOBP"),
+    c("Mark","L1-6","Microglia","FYB"),
+    c("Mark","L1-6","Microglia","C1QA"),
+    c("Mark","L1-6","Microglia","C1QC"),
+    c("Mark","L1-6","Endothelia","FLT1"),
+    c("Mark","L1-6","Endothelia","KDR"),
+    c("Mark","L1-6","Astrocyte","SLC1A2")
+    ))
+colnames(markers_limited)<-c("celltype","layer","marker_1","marker_2")
+
+sum_ga_sub<-sum_ga[match(markers_limited$marker_2,row.names(sum_ga),nomatch=0),]
+markers_limited<-markers_limited[match(row.names(sum_ga_sub),markers_limited$marker_2,nomatch=0),]
+
+sum_ga_sub<-t(scale(t(sum_ga_sub),center=F,scale=T))
+
+
+annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+annot<-annot[!duplicated(annot$cluster_ID),]
+annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
+annot<-annot[match(colnames(sum_ga),annot$cluster_ID),]
+annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+
+top_ha<-columnAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+                col=list(
+                    celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
+                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
+                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                        ),
+                    show_legend = c(TRUE, TRUE, FALSE))
+
+
+colfun=colorRamp2(quantile(unlist(sum_ga_sub), probs=seq(0.75,0.99,0.01)),magma(length(seq(0.75,0.99,0.01))))
+
+plt1<-Heatmap(sum_ga_sub,
+    clustering_distance_columns="euclidean",
+    clustering_distance_rows="euclidean",
+    row_order=1:nrow(sum_ga_sub),
+    column_split=annot$celltype,
+    row_split=paste(markers_limited$marker_1),
+    cluster_row_slices=F,
     top_annotation=top_ha,
+    left_annotation=rowAnnotation(df=data.frame(celltype_mark=markers_limited$marker_1)),
+    #left_annotation=rowAnnotation(df=data.frame(celltype_mark=markers$celltype,layers_mark=markers$layer)),
     col=colfun,
-    row_names_gp = gpar(fontsize = 4),
+    row_names_gp = gpar(fontsize = 7),
     column_names_gp=gpar(fontsize=3)
 )
 
@@ -1586,6 +1922,11 @@ pdf("hg38.geneactivity.markers.heatmap.pdf",height=5)
 plt1
 dev.off()
 system("slack -F hg38.geneactivity.markers.heatmap.pdf ryan_todo")
+
+
+plt<-FeaturePlot(hg38_atac,features=c("MOBP","PROX1"),order=T)
+ggsave(plt,file="test.png",width=30,height=10)
+system("slack -F test.png ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -1601,21 +1942,21 @@ library(parallel)
 library(dplyr)
 library(ggplot2)
 library(ggrepel)
+library(circlize)
+library(viridis)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 mm10_atac<-readRDS("mm10_SeuratObject.Rds")
 mm10_atac$cluster_ID<-paste(mm10_atac$seurat_clusters,mm10_atac$seurat_subcluster,sep="_")
 mm10_atac@meta.data$celltype<-"NA"
 mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="0",]$celltype<-"ExN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="1",]$celltype<-"ExN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="2",]$celltype<-"iN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="3",]$celltype<-"Oligo"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="4",]$celltype<-"iN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="5",]$celltype<-"Astro"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="1",]$celltype<-"Oligo"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="2",]$celltype<-"Astro"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="3",]$celltype<-"iN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="4",]$celltype<-"ExN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="5",]$celltype<-"Micro.PVM"
 mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="6",]$celltype<-"iN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="7",]$celltype<-"Micro.PVM"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="8",]$celltype<-"ExN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="9",]$celltype<-"Endo"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="7",]$celltype<-"OPC"
 
 mm10_atac$celltype_col<-"NA"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="iN",]$celltype_col<-"#cc3366"
@@ -1623,8 +1964,7 @@ mm10_atac@meta.data[mm10_atac@meta.data$celltype=="ExN",]$celltype_col<-"#3399cc
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Oligo",]$celltype_col<-"#66cc99"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Astro",]$celltype_col<-"#99cc99"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Micro.PVM",]$celltype_col<-"#ff6633"
-mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Endo",]$celltype_col<-"#ffcc99"
-
+mm10_atac@meta.data[mm10_atac@meta.data$celltype=="OPC",]$celltype_col<-"#ffcc99"
 #define DA functions for parallelization
 #Use LR test for atac data
 da_one_v_rest<-function(i,obj,group){
@@ -1662,14 +2002,14 @@ da_ga<-da_ga[complete.cases(da_ga),]
 da_ga<-da_ga[!endsWith(da_ga$enriched_group,"NA"),]
 
 da_ga$label<-c("")
-for (i in unique(da_ga$enriched_group)){
+for (i in unique(da_ga[startsWith(da_ga$enriched_group,"1"),]$enriched_group)){
 selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==i) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:5))$row.names
 da_ga[da_ga$row.names %in% selc_genes & da_ga$enriched_group==i,]$label<- da_ga[da_ga$row.names %in% selc_genes & da_ga$enriched_group==i,]$da_region
 }
 
-#plt<-ggplot(da_ga,aes(x=pct.1/pct.2,y=(-log(p_val_adj)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(aes(label=label,size=0.05),force=10)+theme_bw()+xlim(c(0,30))
-#ggsave(plt,file="mm10.da_ga.pdf")
-#system("slack -F mm10.da_ga.pdf ryan_todo")
+plt<-ggplot(da_ga,aes(x=pct.1/pct.2,y=(-log(p_val_adj)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(aes(label=label,size=0.05),force=10)+theme_bw()+xlim(c(0,30))
+ggsave(plt,file="mm10.da_ga.pdf")
+system("slack -F mm10.da_ga.pdf ryan_todo")
 
 #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
 dat_ga<-as.data.frame(t(as.data.frame(mm10_atac[["GeneActivity"]]@data)))
@@ -1700,7 +2040,8 @@ side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seu
                     celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
                     cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
                     subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) 
-                        ))
+                        ),
+                    show_legend = c(TRUE, TRUE,FALSE)) 
 
 bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga), labels = colnames(sum_ga)))
 
@@ -1724,35 +2065,117 @@ system("slack -F mm10.geneactivity.heatmap.pdf ryan_todo")
 
 saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
 
-###########Plotting heatmap using brainspan given markers#############################
-brainspan_markers<-c("GAD1","LHX6","ADARB2","LAMP5","VIP","PVALB","SST","SLC17A7",
-    "CUX2","RORB","THEMIS","FEZF2","CTGF","AQP4","PDGFRA","OPALIN","FYB")
-
-#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+############################################################
+#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)############
+sum_da_dend<-readRDS(file="mm10.geneactivity.dend.rds")
 dat_ga<-as.data.frame(t(as.data.frame(mm10_atac[["GeneActivity"]]@data)))
-sum_ga<-split(dat_ga,mm10_atac$cluster_ID) #group by rows to seurat clusters
+sum_ga<-split(dat_ga,mm10_atac$cluster_ID) #group by rows to seurat clusters 
 sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
 sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
-
-#sum_ga<-t(scale(sum_ga))
 sum_ga<-t(sum_ga)
 sum_ga<-sum_ga[,!endsWith(colnames(sum_ga),"NA")] #remove NA (doublet cells)
-sum_ga<-sum_ga[row.names(sum_ga) %in% unique(brainspan_markers),]
-sum_da_dend <- t(sum_ga) %>% dist() %>% hclust %>% as.dendrogram  %>% set("branches_k_color", k = 8)
 
 
-plt1<-Heatmap(sum_ga,
-    cluster_columns=sum_da_dend,
-    top_annotation=top_ha,
-    col=colorRamp2(c(0,2,4),viridis(3)),
-    row_names_gp = gpar(fontsize = 4),
+###Subset by columns and markers
+#sum_ga_sub<-sum_ga[match(markers$marker_2,row.names(sum_ga),nomatch=0),]
+#sum_ga_sub<-sum_ga_sub[!duplicated(sum_ga_sub),]
+#markers<-markers[match(row.names(sum_ga_sub),markers$marker_2,nomatch=0),]
+
+simpleCap <- function(x) {
+  s <- strsplit(x, " ")[[1]]
+  paste(toupper(substring(s, 1,1)), tolower(substring(s, 2)),
+      sep="", collapse=" ")
+}
+
+markers_limited<-   as.data.frame(rbind(
+    c("Mark","L1-6","GABAergic","GAD1"),
+    c("Mark","L1-6","GABAergic","LHX6"),
+    c("Mark","L1-6","GABAergic","ADARB2"),
+    c("Mark","L1-6","GABAergic","LAMP5"),
+    c("Mark","L1-6","GABAergic","VIP"),
+    c("Mark","L1-6","GABAergic","SVIL"),
+    c("Mark","L1-6","GABAergic","NXPH2"),
+    c("Mark","L1-6","GABAergic","SST"),
+    c("Mark","L1-6","Glutamatergic","SLC17A7"),
+    c("Mark","L1-6","Glutamatergic","HTR1F"),
+    c("Mark","L1-6","Glutamatergic","FEZF2"),
+    c("Mark","L1-6","Glutamatergic","RORB"),
+    c("Mark","L1-6","Glutamatergic","PCP4"),
+    c("Mark","L1-6","Glutamatergic","POU3F2"),
+    c("Mark","L1-6","Glutamatergic","CUX2"),
+    c("Mark","L1-6","Glutamatergic","CALB1"),
+    c("Mark","L1-6","Glutamatergic","RASGRF2"),
+    c("Mark","L1-6","Astrocyte","AQP4"),
+    c("Mark","L1-6","Astrocyte","ALDH1L1"),
+    c("Mark","L1-6","Astrocyte","GFAP"),
+    c("Mark","L1-6","Astrocyte","SLC1A2"),
+    c("Mark","L1-6","OPC","PDGFRA"),
+    c("Mark","L1-6","OPC","CSPG4"),
+    c("Mark","L1-6","Oligodendrocyte","OPALIN"),
+    c("Mark","L1-6","Oligodendrocyte","PROX1"),
+    c("Mark","L1-6","Oligodendrocyte","OLIG1"),
+    c("Mark","L1-6","Oligodendrocyte","MOBP"),
+    c("Mark","L1-6","Microglia","FYB"),
+    c("Mark","L1-6","Microglia","C1QA"),
+    c("Mark","L1-6","Microglia","C1QC"),
+    c("Mark","L1-6","Endothelia","FLT1"),
+    c("Mark","L1-6","Endothelia","KDR")
+    ))
+colnames(markers_limited)<-c("celltype","layer","marker_1","marker_2")
+
+markers_limited$marker_2<-unlist(lapply(markers_limited$marker_2,simpleCap)) # correct case
+sum_ga_sub<-sum_ga[match(markers_limited$marker_2,row.names(sum_ga),nomatch=0),]
+markers_limited<-markers_limited[match(row.names(sum_ga_sub),markers_limited$marker_2,nomatch=0),]
+
+sum_ga_sub<-t(scale(t(sum_ga_sub),center=F,scale=T))
+
+
+annot<-mm10_atac@meta.data[,c("cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype","celltype_col")] 
+annot<-annot[!duplicated(annot$cluster_ID),]
+annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
+annot<-annot[match(colnames(sum_ga),annot$cluster_ID,nomatch=0),]
+annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+annot_clus_col<-annot_clus_col[complete.cases(annot_clus_col),]
+sum_ga_sub<-sum_ga_sub[,colnames(sum_ga_sub) %in% annot$cluster_ID]
+
+celltype=setNames(unique(annot$celltype_col),unique(annot$celltype))
+cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters)))
+subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID)
+celltype<-celltype[!is.na(celltype)]
+cluster<-cluster[!is.na(cluster)]
+subcluster<-subcluster[!is.na(subcluster)]
+cluster<-cluster[!is.na(names(cluster))]
+top_ha<-columnAnnotation(df= data.frame(cluster=annot$seurat_clusters, celltype=annot$celltype), #subcluster=annot$cluster_ID,
+                col=list(celltype=celltype,cluster=cluster,subcluster=subcluster),
+                    show_legend = c(TRUE, TRUE,FALSE))  
+
+
+colfun=colorRamp2(quantile(unlist(sum_ga_sub), probs=seq(0.75,0.99,0.01)),magma(length(seq(0.75,0.99,0.01))))
+
+plt1<-Heatmap(sum_ga_sub,
+    clustering_distance_columns="euclidean",
+    clustering_distance_rows="euclidean",
+    row_order=1:nrow(sum_ga_sub),
+    column_split=unlist(lapply(strsplit(colnames(sum_ga_sub),"_"),"[",1)),
+    row_split=markers_limited$marker_1,
+    cluster_row_slices=F,
+    #top_annotation=top_ha,
+    left_annotation=rowAnnotation(df=data.frame(celltype_mark=markers_limited$marker_1)),
+    #left_annotation=rowAnnotation(df=data.frame(celltype_mark=markers$celltype,layers_mark=markers$layer)),
+    col=colfun,
+    row_names_gp = gpar(fontsize = 7),
     column_names_gp=gpar(fontsize=3)
 )
 
-pdf("mm10.geneactivity.markers.heatmap.pdf",height=20)
+pdf("mm10.geneactivity.markers.heatmap.pdf",height=5)
 plt1
 dev.off()
 system("slack -F mm10.geneactivity.markers.heatmap.pdf ryan_todo")
+
+feat<-c("Gad1","Lhx6","Adarb2","Slc17a7","Fezf2","Bcl11b","Cux2","Reln","Atoh1","Calb2","Ppp1r17","Gabra6","Prox1","Dsp")
+plt<-FeaturePlot(mm10_atac,features=feat,order=T)
+ggsave(plt,file="test.png",width=10*as.integer(length(feat)/3),height=10*as.integer(length(feat)/3),limitsize=F)
+system("slack -F test.png ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 

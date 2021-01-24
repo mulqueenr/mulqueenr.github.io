@@ -353,7 +353,7 @@ Using R v4.0 and Signac v1.0 for processing.
   setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
 
   library(cisTopic)
-  obj<-readRDS(file="tbr1_ko_moca.SeuratObject.Rds")
+  obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
 
   cistopic_processing<-function(seurat_input,prefix){
       cistopic_counts_frmt<-seurat_input$peaks@counts #grabbing counts matrices
@@ -366,19 +366,16 @@ Using R v4.0 and Signac v1.0 for processing.
   }
           
 
-  cistopic_processing(seurat_input=obj,prefix="tbr1_ko_moca")
+  cistopic_processing(seurat_input=obj,prefix="tbr1_ko")
 
-  cistopic_models<-readRDS("tbr1_ko_moca.CisTopicObject.Rds")
-
+  cistopic_models<-readRDS("tbr1_ko.CisTopicObject.Rds")
 
   #Setting up topic count selection
-  pdf("tbr1_ko_moca.cistopic_model_selection.pdf")
+  pdf("tbr1_ko.cistopic_model_selection.pdf")
   par(mfrow=c(1,3))
   cistopic_models <- selectModel(cistopic_models, type='derivative')
   dev.off()
-  system("slack -F tbr1_ko_moca.cistopic_model_selection.pdf ryan_todo")
-
-
+  system("slack -F tbr1_ko.cistopic_model_selection.pdf ryan_todo")
 
   ###############################################
   #Loop through cistopic models
@@ -392,7 +389,7 @@ Using R v4.0 and Signac v1.0 for processing.
       row.names(dims)<-colnames(topic_df)
       colnames(dims)<-c("x","y")
       dims$cellID<-row.names(dims)
-      dims<-merge(dims,object_input@meta.data,by.x="cellID",by.y="row.names")
+      dims<-merge(dims,as.data.frame(object_input@meta.data),by="cellID")
      
       #combine with seurat object    
       umap_dims<-as.data.frame(as.matrix(dims[2:3]))
@@ -420,11 +417,11 @@ Using R v4.0 and Signac v1.0 for processing.
 
 
   #set topics based on derivative
-  selected_topic=29
+  selected_topic=30
   cisTopicObject<-cisTopic::selectModel(cistopic_models,select=selected_topic,keepModels=T)
 
   #saving model selected RDS
-  saveRDS(cisTopicObject,file="tbr1_ko_moca.CisTopicObject.Rds")
+  saveRDS(cisTopicObject,file="tbr1_ko.CisTopicObject.Rds")
 
   ####Function to include topics and umap in seurat object
   cistopic_wrapper<-function(object_input=orgo_atac,cisTopicObject=orgo_cisTopicObject,resolution=0.8){   
@@ -437,7 +434,7 @@ Using R v4.0 and Signac v1.0 for processing.
       row.names(dims)<-colnames(topic_df)
       colnames(dims)<-c("x","y")
       dims$cellID<-row.names(dims)
-      dims<-merge(dims,object_input@meta.data,by.x="cellID",by.y="row.names")
+      dims<-merge(dims,object_input@meta.data,by="cellID")
 
 
       #Add cell embeddings into seurat
@@ -473,88 +470,30 @@ Using R v4.0 and Signac v1.0 for processing.
         verbose = TRUE,
         resolution=resolution)
 
-  plt<-DimPlot(object_input,group.by=c('seurat_clusters'),size=0.1)
-  ggsave(plt,file="tbr1_ko_moca.umap.png",width=20)
-  ggsave(plt,file="tbr1_ko_moca.umap.pdf",width=20)
-
-  i="tbr1_ko_moca.umap.png"
-  system(paste0("slack -F ",i," ryan_todo"))#post to ryan_todo
-         
   ###save Seurat file
-  saveRDS(object_input,file="tbr1_ko_moca.SeuratObject.Rds")
-
+  saveRDS(object_input,file="tbr1_ko.SeuratObject.Rds")
   return(object_input)}
 
   obj<-cistopic_wrapper(object_input=obj,cisTopicObject=cisTopicObject,resolution=0.5)
+  row.names(obj@meta.data)<-obj$cellID
 
+
+  plt<-DimPlot(obj,group.by=c("seurat_clusters","Developmental.Stage","line","sex","genotype"))
+  ggsave(plt,file="tbr1_ko.umap.png",width=20)
+  ggsave(plt,file="tbr1_ko.umap.pdf",width=20)
+
+  i="tbr1_ko.umap.png"
+  system(paste0("slack -F ",i," ryan_todo"))#post to ryan_todo
+         
 
 ```
 {% endcapture %} {% include details.html %} 
 
-```R
-#Plotting regions
-  library(Signac)
-  library(Seurat)
-  library(GenomeInfoDb)
-  library(ggplot2)
-  set.seed(1234)
-  library(EnsDb.Hsapiens.v86)
-  library(Matrix)
-  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
 
-  obj<-readRDS(file="tbr1_ko_moca.SeuratObject.Rds")
-
-
-#from https://science.sciencemag.org/content/364/6440/eaav2522.long
-marker_list<-NULL
-marker_list[["early"]]<-c("Sox2","Eomes","Tbr2","Neurod2") #eomes and tbr2 are the same
-marker_list[["deep_layer"]]<-c("Sox5","Bcl11b","Fezf2")
-marker_list[["superficial_layer"]]<-c("Rorb","Pou3f2","Cux1")
-marker_list[["astro"]]<-c("Gfap")
-marker_list[["inhib"]]<-c("Gad2")
-marker_list[["ren"]]<-c("Hes5","Neurod6","Dlx5","Apoe","Gata1")
-saveRDS(marker_list,"grosscelltype_markerlist.rds")
-
-
-#Now setting up for mm10 
-region_check<-function(i,object=obj){
-    return(nrow(as.data.frame(LookupGeneCoords(object=object,gene=gene_list[i]))))
-    }
-
-marker_plot<-function(j,k=celltype_name,l=obj,m="mm10_tbr1_moca",n="seurat_clusters"){
-    plt<-CoveragePlot(
-        object = l,
-        region = j,
-        group.by=n,
-        extend.upstream = 5000,
-        extend.downstream = 5000,
-        ncol = 1
-    )
-    pdf(paste0("./marker_sets/",m,k,"_",j,"_genebody_accessibility.pdf"))
-    print(plt)
-    dev.off()
-}
-
-mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
-marker_list<-readRDS("grosscelltype_markerlist.rds")
-
-dir.create("marker_sets")
-
-for (x in 1:length(marker_list)){
-    gene_list<-marker_list[[x]]
-    gene_list<-gene_list[as.numeric(unlist(lapply(1:length(gene_list),FUN=region_check)))==1]
-    celltype_name<-names(marker_list)[x]
-    mclapply(gene_list,FUN=marker_plot,k=celltype_name,mc.cores=20) 
-}
-
-
-#For concatenating cell types into a single scrollable pdf
-#celltype=`ls mm10*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
-#for i in $celltype ; do convert `echo mm10_${i}_*genebody_accessibility.pdf` markerset_mm10_*${i}.pdf; done
-
-```
 
 ### Plotting and updating metadata
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #renaming annot for simplified annotation file making
@@ -608,14 +547,18 @@ for (x in 1:length(marker_list)){
   saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
   write.table(obj@meta.data,file="summary_statistics_per_cell.tsv",col.names=T,row.names=T,sep="\t",quote=F)
 
-  plt<-DimPlot(obj,split.by=c("line"),size=0.1)
+  plt<-DimPlot(obj,group.by="sex")
   ggsave(plt,file="tbr1_ko.umap.png",width=20)
   ggsave(plt,file="tbr1_ko.umap.pdf",width=20)
   system("slack -F tbr1_ko.umap.pdf ryan_todo")
 
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Statistics on cell reads
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 
 ```R
   library(Signac)
@@ -626,29 +569,157 @@ for (x in 1:length(marker_list)){
   library(EnsDb.Hsapiens.v86)
   library(Matrix)
   library(dplyr)
-  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
+  obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
+
 
   #Add FRIP to meta data
-  frip<-read.table("orgo.500.fracOnTarget.values")
+  frip<-read.table("tbr1_ko.filt.500.fracOnTarget.values")
   colnames(frip)<-c("cellID","frip")
-  orgo_atac$FRIP<-frip[match(orgo_atac$cellID,frip$cellID,),]$frip
-  orgo_cirm43$FRIP<-frip[match(orgo_cirm43$cellID,frip$cellID,),]$frip
-  orgo_cirm87$FRIP<-frip[match(orgo_cirm87$cellID,frip$cellID,),]$frip
-  orgo_atac<-saveRDS(orgo_atac,"orgo_SeuratObject.Rds")
-  orgo_cirm43<-saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
+  obj$FRIP<-frip[match(obj$cellID,frip$cellID,),]$frip
+  saveRDS(obj,"tbr1_ko.SeuratObject.Rds")
 
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+  #cat plate10.complexity.txt plate2.complexity.txt plate1.complexity.txt > complexity.txt
+  compl<-read.table("complexity.txt")
+  colnames(compl)<-c("roworder","cellID","total_reads","unique_reads","percent_unique")
+  obj$total_reads<-compl[match(obj$cellID,compl$cellID,),]$total_reads
+  obj$unique_reads<-compl[match(obj$cellID,compl$cellID,),]$unique_reads
+  obj$percent_unique<-compl[match(obj$cellID,compl$cellID,),]$percent_unique
+  saveRDS(obj,"tbr1_ko.SeuratObject.Rds")
 
   #Cluster summaries
-  dat<-orgo_cirm43@meta.data
+  dat<-obj@meta.data
   dat_sum<-as.data.frame(dat %>% 
-  group_by(differentiation_exp,DIV,treatment,seurat_clusters) %>% 
-  summarize(mean=mean(uniq_reads),sd=sd(uniq_reads),median=median(uniq_reads),mean_FRIP=mean(FRIP),cell_count=n(),organoid_count=length(unique(orgID))))
-  write.table(dat_sum,"cirm43_cluster_summary_statistics.tsv",col.names=T,row.names=T,quote=F,sep="\t")
+  group_by(Developmental.Stage, line,genotype) %>% 
+  summarize(mean_reads=mean(unique_reads),sd_reads=sd(unique_reads),median_reads=median(unique_reads),mean_FRIP=mean(FRIP),cell_count=n(),sample_count=length(unique(Sample_ID))))
+  write.table(dat_sum,"tbr1ko_summary_statistics.tsv",col.names=T,row.names=T,quote=F,sep="\t")
 
-  system("slack -F cirm43_cluster_summary_statistics.tsv ryan_todo")
+  plt<-ggplot(dat,aes(x=paste(line,Developmental.Stage),y=FRIP,color=genotype))+geom_jitter(size=0.5)+geom_boxplot(outlier.shape=NA)+theme_bw()+xlab("Line, DevStage")
+  ggsave(plt,file="frip_values.pdf",width=10)
+  system("slack -F frip_values.pdf ryan_todo")
+
+
+  plt<-ggplot(dat,aes(x=paste(line,Developmental.Stage),y=log10(unique_reads),color=genotype))+geom_jitter(size=0.5)+geom_boxplot(outlier.shape=NA)+theme_bw()+xlab("Line, DevStage")+ylab("Log10 Unique Reads")
+  ggsave(plt,file="unique_reads.pdf",width=10)
+  system("slack -F unique_reads.pdf ryan_todo")
 ```
+{% endcapture %} {% include details.html %} 
+
+## Cicero for Coaccessible Networks
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+  library(Signac)
+  library(Seurat)
+  library(SeuratWrappers)
+  library(ggplot2)
+  library(patchwork)
+  library(monocle3)
+  library(cicero)
+  library(EnsDb.Mmusculus.v79)
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
+
+  obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
+
+  #Cicero processing function
+  cicero_processing<-function(object_input=obj,prefix="tbr_ko"){
+
+      #Generate CDS format from Seurat object
+      atac.cds <- as.cell_data_set(object_input,group_by="seurat_clusters")
+
+      # convert to CellDataSet format and make the cicero object
+      print("Making Cicero format CDS file")
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
+      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+      atac.cicero<-readRDS(paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+
+      genome <- seqlengths(object_input) # get the chromosome sizes from the Seurat object
+      genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
+      
+      print("Running Cicero to generate connections.")
+      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
+      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+      
+      print("Generating CCANs")
+      ccans <- generate_ccans(conns) # generate ccans
+      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+      
+      print("Adding CCAN links into Seurat Object and Returning.")
+      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
+      Links(object_input) <- links
+      return(object_input)
+  }
+
+  obj<-cicero_processing(object_input=obj,prefix="tbr1_ko")
+  saveRDS(obj,"tbr1_ko.SeuratObject.GA.Rds")
+  obj<-readRDS("tbr1_ko.SeuratObject.GA.Rds")
+  
+  # generate unnormalized gene activity matrix
+  # gene annotation sample
+  annotation_generation<-function(ensdb_obj){
+      annotations <- GetGRangesFromEnsDb(ensdb = ensdb_obj)
+      pos <-as.data.frame(annotations,row.names=NULL)
+      pos$chromosome<-paste0("chr",pos$seqnames)
+      pos$gene<-pos$gene_id
+      pos <- subset(pos, strand == "+")
+      pos <- pos[order(pos$start),] 
+      pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
+      pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
+      neg <-as.data.frame(annotations,row.names=NULL)
+      neg$chromosome<-paste0("chr",neg$seqnames)
+      neg$gene<-neg$gene_id
+      neg <- subset(neg, strand == "-")
+      neg <- neg[order(neg$start,decreasing=TRUE),] 
+      neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
+      neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
+      gene_annotation<- rbind(pos, neg)
+      gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
+      names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
+      return(gene_annotation)
+    }
+
+    mm10_annotation<-annotation_generation(ensdb_obj=EnsDb.Mmusculus.v79)
+
+  geneactivity_processing<-function(cds_input,conns_input,prefix,gene_annotation){
+      atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
+      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
+      saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
+  }
+
+  #mm10
+  conns<-as.data.frame(readRDS("tbr1_ko_atac_cicero_conns.Rds"))
+  geneactivity_processing(cds_input=as.cell_data_set(obj,group_by="seurat_clusters"),conns_input=conns,prefix="tbr_ko",gene_annotation=mm10_annotation)
+
+  cicero_gene_activities<-readRDS("tbr_ko.unnorm_GA.Rds")  #Read in unnormalized GA
+  cicero_gene_activities<-cicero_gene_activities[2:nrow(cicero_gene_activities),] #first feature is empy
+  obj[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
+  obj <- NormalizeData(object = obj,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(obj$nCount_peaks))  # normalize
+  saveRDS(obj,"tbr1_ko.SeuratObject.Rds")
+
+
+simpleCap <- function(x) {
+  s <- strsplit(x, " ")[[1]]
+  paste(toupper(substring(s, 1,1)), tolower(substring(s, 2)),
+      sep="", collapse=" ")
+}
+
+markers<-c("Rit1","Tbr1","Cux1"
+    )
+markers<-unlist(lapply(markers,simpleCap)) # correct case
+
+plt<-FeaturePlot(obj,features=markers,order=T,min.cutoff="q05",max.cutoff="q99",cols=c("lightgrey","red"))
+ggsave(plt,file="tbr1_ko.markers.test.pdf",width=20,height=20)
+system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
+
+plt<-VlnPlot(obj,features=markers)
+ggsave(plt,file="tbr1_ko.markers.test.pdf",width=20,height=20)
+system("slack -F tbr1_ko.markers.test.pdf ryan_todo"
+
+
+```
+{% endcapture %} {% include details.html %} 
+
 
 <!---
 
