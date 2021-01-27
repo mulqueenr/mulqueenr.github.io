@@ -282,13 +282,19 @@ Using R v4.0 and Signac v1.0 for processing.
   library(Matrix)
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
-  # make counts matrix from sparse matrix
-  IN<-as.matrix(read.table("orgo.500.counts.sparseMatrix.values.gz"))
+
+  read_in_sparse<-function(x){ #x is character file prefix followed by .bbrd.q10.500.counts.sparseMatrix.values.gz
+  IN<-as.matrix(read.table(paste0(x,".counts.sparseMatrix.values.gz")))
   IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
-  COLS<-read.table("orgo.500.counts.sparseMatrix.cols.gz")
+  COLS<-read.table(paste0(x,".counts.sparseMatrix.cols.gz"))
   colnames(IN)<-COLS$V1
-  ROWS<-read.table("orgo.500.counts.sparseMatrix.rows.gz")
+  ROWS<-read.table(paste0(x,".counts.sparseMatrix.rows.gz"))
   row.names(IN)<-ROWS$V1
+  writeMM(IN,file=paste0(x,".counts.mtx")) #this is to generate counts matrices in scrublet friendly format
+  return(IN)
+  }
+
+  orgo_counts<-read_in_sparse("orgo.500") # make counts matrix from sparse matrix
 
   #Read in fragment path for coverage plots
   orgo_fragment.path="./orgo.fragments.tsv.gz"
@@ -1292,7 +1298,7 @@ Supplementary Table 7.
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 
 
-  plt<-FeaturePlot(orgo_cirm43,features=c("G2M.Score","S.Score"),cols=c("lightgrey","red"),order=T,min.cutoff="q95")
+  plt<-FeaturePlot(orgo_cirm43,features=c("G2M.Score","S.Score"),cols=c("lightgrey","red"),order=T,min.cutoff="q90")
   ggsave(plt,file="cellcycle_score.pdf",width=20)
   system("slack -F cellcycle_score.pdf ryan_todo")
 
@@ -1374,6 +1380,10 @@ Also looking at FOXG1+ Expression per organoid to make sure they are forebrain s
   system("slack -F orgID_FOXG1.pdf ryan_todo")
 
   plt<-VlnPlot(orgo_cirm43,feat="SATB2",group.by="orgID")+facet_wrap(orgo_cirm43$differentiation_exp ~ orgo_cirm43$DIV,nrow=2,scale="free_x")+theme_bw() #feature from gene activity
+  ggsave(plt,file="orgID_SATB2.pdf")
+  system("slack -F orgID_SATB2.pdf ryan_todo")
+
+  plt<-VlnPlot(orgo_cirm43,feat="CUX1",group.by="cluster_ID")+facet_wrap(orgo_cirm43$differentiation_exp ~ orgo_cirm43$DIV,nrow=2,scale="free_x")+theme_bw() #feature from gene activity
   ggsave(plt,file="orgID_SATB2.pdf")
   system("slack -F orgID_SATB2.pdf ryan_todo")
 
@@ -1649,13 +1659,13 @@ dims<-cbind(dims,atac_sub@meta.data[cellid_subset,])
 dims$prcurve<-prcurve_out$lambda[cellid_subset]
 
 plt1<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
-  geom_point(aes(color=as.factor(DIV)),size=0.1)+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
+  geom_point(aes(color=as.factor(DIV)),size=0.1)#+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
 
 plt2<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
-  geom_point(aes(color=seurat_subcluster),size=0.1)+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
+  geom_point(aes(color=seurat_subcluster),size=0.1)#+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
 
 plt3<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
-  geom_point(aes(color=as.numeric(prcurve)),size=0.1)+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
+  geom_point(aes(color=as.numeric(prcurve)),size=0.1)#+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
 plt<-(plt1+plt2)/(plt3)
 
 ggsave(plt,file=paste(i,"prcurve.pdf",sep="."))
@@ -1678,8 +1688,14 @@ i="intermediate_progenitor";subclusters<-c("0","1","2")
 atac_sub<-readRDS("_intermediate_progenitor_SeuratObject.Rds")
 prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
 
+i="excitatory_neuron";subclusters<-c("0","1","2","3","4")
+atac_sub<-readRDS("_excitatory_neuron_SeuratObject.Rds")
+prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
+
 ```
 {% endcapture %} {% include details.html %} 
+
+
 
 
 ### Differential Accessibility between subclusters
@@ -1688,15 +1704,8 @@ prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
 
 
 ```R
- 
-```
-{% endcapture %} {% include details.html %} 
 
-
-
-```R
-
-setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
   library(Signac)
   library(Seurat)
@@ -1711,9 +1720,9 @@ setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_fina
   library(JASPAR2020)
   library(TFBSTools)
 
-orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-orgo_cirm43<-subset(orgo_cirm43,suspect_organoid=="FALSE",)
-orgo_cirm43$cluster_ID<-paste(orgo_cirm43$celltype,orgo_cirm43$seurat_subcluster,sep="_")
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+  orgo_cirm43<-subset(orgo_cirm43,suspect_organoid=="FALSE",)
+  orgo_cirm43$cluster_ID<-paste(orgo_cirm43$celltype,orgo_cirm43$seurat_subcluster,sep="_")
   i<-"clusterID"
 
   #define DA functions for parallelization
@@ -1856,27 +1865,97 @@ write.table(da_ga_df,file=paste0(i,".onevrest.da_ga.txt"),sep="\t",col.names=T,r
 
   #Cell type and state
   #RIT1=BCL11B=CTIP2
-  plt<-FeaturePlot(orgo_cirm43,features=c("RIT1","PAX6","SOX2","FOXG1","NEUROD1",
-    "SATB2","HOPX","TNC","PPP1R17","NHLH1","NEUROD6",
-    "RELN","MEF2C","SLC1A3","GLI3","HES1","MKI67","STMN2","GADD45B","EOMES","MAP2","CALB2","MOXD1","FBXO32"
-    ),order=T,min.cutoff="q05",max.cutoff="q90",cols=c("lightgrey","red"))
-  ggsave(plt,file="subclus.test.pdf",width=20,height=20)
-  system("slack -F subclus.test.pdf ryan_todo")
+  plt<-FeaturePlot(orgo_cirm43,features=c("FOXG1",#forebrain
+    "SOX2","PAX6","HES1","HOPX","VIM","GFAP","TNC","GPX3", #RG
+    "MOXD1", #vRG
+    "NEUROG1","EOMES","PPP1R17","PTPRZ1","NEUROD4",
+    "SLC17A7","NEUROD6","RIT1","TBR1","SLA","NHLH1",
+    "DLX2","DLX1","LHX6","GAD1",
+    "NEUROD1",
+    "SATB2","CUX1","RELN","MEF2C",
+    "SLC1A3","GLI3","MKI67","STMN2","GADD45B","MAP2","CALB2","FBXO32",
+    "PGK1","GORASP2" #stress
+    ),order=T,min.cutoff="q25",cols=c("lightgrey","red"))
+  ggsave(plt,file="subclus.markers.png",width=20,height=30)
+  system("slack -F subclus.markers.png ryan_todo")
 
+  tfList <- getMatrixByID(JASPAR2020, ID=row.names(orgo_cirm43@assays$chromvar@data)) 
+  row.names(orgo_cirm43@assays$chromvar@data)<- unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
+  DefaultAssay(orgo_cirm43)<-"chromvar"
+
+  plt<-FeaturePlot(orgo_cirm43,features=c("FOXG1",#forebrain
+    "SOX2","PAX6","HES1", #RG #vRG
+    "NEUROG1","EOMES","BCL11B","TBR1","NHLH1",
+    "LHX6","BHLE22","POU2F1",
+    "NEUROD1","CUX2","MEF2C",
+    "ASCL1","CUX1","FOXP2","LHX6","REST"
+    ),order=T,min.cutoff=2,cols=c("white","blue"))
+  ggsave(plt,file="subclus.tfmarkers.png",width=10,height=10)
+  system("slack -F subclus.tfmarkers.png ryan_todo")
+
+  DefaultAssay(orgo_cirm43)<-"peaks"
+
+  cov_markers<-c("DLX1","CUX1","SATB2","FOXG1","SOX2","PAX6","EOMES","TBR1","RIT1","MEF2C")
+  for (i in cov_markers){
+  plt<-CoveragePlot(object=orgo_cirm43,region=i,group.by="cluster_ID",show.bulk=T,extend.upstream=5000,extend.downstream=5000,scale.factor=1)
+  ggsave(plt,file="subclus.region.png",width=10,height=20)
+  system("slack -F subclus.region.png ryan_todo")
+  }
+
+#Summarize organoid ID / cluster ID
+  library(ComplexHeatmap)
+  library(reshape2)
+  library(circlize)
+  dat<-as.data.frame(orgo_cirm43@meta.data) %>% group_by(orgID,DIV,differentiation_exp,cluster_ID) %>% summarize(count=n())
+  dat_cast<-dcast(dat,paste(orgID,DIV,differentiation_exp)~cluster_ID,value.var="count",fill=0)
+  write.table(dat_cast,"cluster_ID.counts.perogID.tsv",col.names=T,row.names=F,sep="\t",quote=F)
+  system("slack -F cluster_ID.counts.perogID.tsv ryan_todo")
+  row.names(dat_cast)<-dat_cast[,1]
+  dat_cast<-dat_cast[,2:ncol(dat_cast)]
+  dat_cast<-dat_cast/rowSums(dat_cast)
+  write.table(dat_cast,"cluster_ID.perc.perogID.tsv",col.names=T,row.names=F,sep="\t",quote=F)
+  system("slack -F cluster_ID.perc.perogID.tsv ryan_todo")
+
+
+  annot<-row.names(dat_cast)
+  annot<-rowAnnotation(df= data.frame(DIV=unlist(lapply(strsplit(annot," "),"[",2)),
+                                      diff=unlist(lapply(strsplit(annot," "),"[",3))),
+                col=list(diff=setNames(
+                        c("#e41a1c","#377eb8"),
+                        unique(unlist(lapply(strsplit(annot," "),"[",3)))),
+                        DIV=setNames(
+                        viridis(length(unique(unlist(lapply(strsplit(annot," "),"[",2))))),
+                        unique(unlist(lapply(strsplit(annot," "),"[",2))))
+                        )
+                )
+
+  colfun=colorRamp2(c(0,0.5,1),rev(c("#081d58","#c7e9b4","#ffffff")))
+
+
+  plt<-Heatmap(dat_cast,left_annotation=annot,col=colfun)
+  pdf("subclus_cellproportion.pdf")
+  plt
+  dev.off()
+  system("slack -F subclus_cellproportion.pdf ryan_todo")
 
   #Cell type and state
   plt<-DimPlot(orgo_cirm43,group.by=c("cluster_ID"))
-  ggsave(plt,file="subclus.test.pdf",width=10,height=10)
+  ggsave(plt,file="subclus.test.pdf",width=10)
   system("slack -F subclus.test.pdf ryan_todo")
+
+
 
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 
 ```
+{% endcapture %} {% include details.html %} 
+
 ### Transcription Factor Modules
 
 https://www.cell.com/neuron/pdf/S0896-6273(19)30561-6.pdf Defined waves of transcription factors active is neocoritcal mid-gestation.
 Supplementary table 8 details this. We looked at these in both gene activity and transcription factor motif accessibility where available.
 The regulon is defined by the transcription factor (ChromVar Motif Score) and acts on the listed genes (Gene Activity Score). We can then relate these regulons within our subclusters to that of the human mid-gestational data (Supp table 9).
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
@@ -2774,5 +2853,4 @@ I mainly just wanted to play around with network analysis a bit.
 ```
 {% endcapture %} {% include details.html %} 
 
-#### Rest is commented out currently
 

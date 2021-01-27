@@ -37,9 +37,21 @@ scitools fastq-dump-10x -V \
 -j 20K_S3_L003_I2_001.fastq.gz \
 -o sciDROP_20K -R $FASTQ_DIR &
 
+#Also including the 10% of 20k library loading which was done in house
+FASTQ_DIR="/home/groups/oroaklab/fastq/201007_NS500556_0428_AHGFMMAFX2"
+cd $FASTQ_DIR
+ #no -V option since seq chem is different on nextseq
+scitools fastq-dump-10x \
+-1 Undetermined_S0_R1_001.fastq.gz \
+-2 Undetermined_S0_R2_001.fastq.gz \
+-i Undetermined_S0_I1_001.fastq.gz \
+-j Undetermined_S0_I2_001.fastq.gz \
+-o sciDROP_20k_10perc -R $FASTQ_DIR &
+
 #Files automatically output to a directory with the prefix as the directory name
 sciDROP_20K_demux="/home/groups/oroaklab/demultiplex/sciDROP_20K"
 sciDROP_70k_demux="/home/groups/oroaklab/demultiplex/sciDROP_70k"
+sciDROP_20k_10perc_demux="/home/groups/oroaklab/demultiplex/sciDROP_20k_10perc"
 
 #Aligning fastq reads to a concatenated human and mouse genome with bwa-mem scitools wrapper
 #Using a setting in scitools to sort by cellID (-n) this will decrease the memory footprint for duplicate removal later
@@ -53,10 +65,17 @@ sciDROP_70k \
 $sciDROP_70k_demux/sciDROP_70k.1.fq.gz \
 $sciDROP_70k_demux/sciDROP_70k.2.fq.gz &
 
+scitools fastq-align -m 5G -n -t 20 -r 20 hg38mm10 \
+sciDROP_20k_10perc \
+$sciDROP_20k_10perc_demux/sciDROP_20k_10perc.1.fq.gz \
+$sciDROP_20k_10perc_demux/sciDROP_20k_10perc.2.fq.gz &
+
 #Remove duplicates based on cellID, chromosome and start sites per read
 #using the name sorted (-n) barcode based removal of duplicates
 scitools bam-rmdup -n -t 12 sciDROP_70k.nsrt.bam 
 scitools bam-rmdup -n -t 12 sciDROP_20k.nsrt.bam 
+scitools bam-rmdup -n -t 12 sciDROP_20k_10perc.nsrt.bam
+#combine 20k_10perc with novaseq data
 
 #Run a barnyard comparison for the duplicate removal bams
 #Counts read alignments based on chromosomes and plots
@@ -308,12 +327,12 @@ sciDROP_20k_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_
 sciDROP_70k_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_70k"
 
 #Split fastq files based on barnyard analysis
-scitools split-fastq -A $sciDROP_20k_dir/species.annot $sciDROP_20k_dir/sciDROP_20K.1.fq.gz $sciDROP_20k_dir/sciDROP_20K.2.fq.gz &
+scitools split-fastq -A $sciDROP_20k_dir/species.annot $sciDROP_20k_dir/sciDROP_20K.1.merge.fq.gz $sciDROP_20k_dir/sciDROP_20K.2.merge.fq.gz &
 scitools split-fastq -A $sciDROP_70k_dir/species.annot $sciDROP_70k_dir/sciDROP_70k.1.fq.gz $sciDROP_70k_dir/sciDROP_70k.2.fq.gz &
 
 #Realign fastq files to proper genome
-scitools fastq-align -t 10 -r 10 -n hg38 hg38 $sciDROP_20k_dir/species.Human.1.fq.gz $sciDROP_20k_dir/species.Human.2.fq.gz &
-scitools fastq-align -t 10 -r 10 -n mm10 mm10 $sciDROP_20k_dir/species.Mouse.1.fq.gz $sciDROP_20k_dir/species.Mouse.2.fq.gz &
+scitools fastq-align -t 20 -r 20 -n hg38 hg38 $sciDROP_20k_dir/species.Human.1.fq.gz $sciDROP_20k_dir/species.Human.2.fq.gz &
+scitools fastq-align -t 20 -r 20 -n mm10 mm10 $sciDROP_20k_dir/species.Mouse.1.fq.gz $sciDROP_20k_dir/species.Mouse.2.fq.gz &
 
 scitools fastq-align -t 20 -r 20 -n hg38 hg38 $sciDROP_70k_dir/species.Human.1.fq.gz $sciDROP_70k_dir/species.Human.2.fq.gz &
 scitools fastq-align -t 20 -r 20 -n mm10 mm10 $sciDROP_70k_dir/species.Mouse.1.fq.gz $sciDROP_70k_dir/species.Mouse.2.fq.gz &
@@ -776,7 +795,7 @@ library(Signac)
 library(Seurat)
 library(ggplot2)
 library(patchwork)
-
+library(ComplexHeatmap)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
@@ -823,6 +842,32 @@ plt2<-ggplot(hg38_atac@meta.data[hg38_atac@meta.data$predicted_doublets=="False"
 ggsave(plt1+plt2,file="mm10.hg38.complexity.2d.pdf")
 system("slack -F mm10.hg38.complexity.2d.pdf ryan_todo")
 
+#Looking for experiment bias
+plt1<-DimPlot(hg38_atac,group.by="pcr_idx")
+plt2<-DimPlot(mm10_atac,group.by="pcr_idx")
+ggsave(plt1+plt2,file="mm10.hg38.i7idx.pdf",limitsize=F,width=15,height=10)
+system("slack -F mm10.hg38.i7idx.pdf ryan_todo")
+
+#looking like a strong experiment bias, checking topic bias
+side_ha<-rowAnnotation(df= data.frame(experiment=hg38_atac$pcr_idx),
+                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(hg38_atac$pcr_idx))))
+pdf("hg38.i7idx.heatmap.pdf")
+plt<-Heatmap(hg38_atac@reductions$cistopic@cell.embeddings,
+    left_annotation=side_ha, show_row_names=F,show_column_names=F)
+plt
+dev.off()
+system("slack -F hg38.i7idx.heatmap.pdf ryan_todo")
+
+
+#looking like a strong experiment bias, checking topic bias
+side_ha<-rowAnnotation(df= data.frame(experiment=mm10_atac$pcr_idx),
+                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(mm10_atac$pcr_idx))))
+pdf("mm10.i7idx.heatmap.pdf")
+plt<-Heatmap(mm10_atac@reductions$cistopic@cell.embeddings,
+    left_annotation=side_ha,show_row_names=F,show_column_names=F)
+plt
+dev.off()
+system("slack -F mm10.i7idx.heatmap.pdf ryan_todo")
 
 #hard coded these numbers just because i had them for a meeting
 cell_count_75k<-data.frame(count=c(10040,18985,170,12663-(141+19),19530-(484+50),141+19,484+50),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("75k"))
@@ -1697,6 +1742,66 @@ predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10")
 
 {% endcapture %} {% include details.html %} 
 
+
+### Looks like there is a bias in the data going to integrate with harmony
+{% capture summary %} For hg38 {% endcapture %} {% capture details %}  
+
+```R
+library(Seurat)
+library(Signac)
+library(ggplot2)
+
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+
+plt<-DimPlot(hg38_atac,group.by="pcr_idx")
+ggsave(plt,file="hg38.pcridx.png")
+
+plt<-DimPlot(mm10_atac,group.by="pcr_idx")
+ggsave(plt,file="mm10.pcridx.png")
+
+hg38_1<-subset(hg38_atac,pcr_idx=="CAGAGAGG")
+hg38_2<-subset(hg38_atac,pcr_idx=="CGTACTAG")
+hg38_3<-subset(hg38_atac,pcr_idx=="CTCTCTAC")
+
+anchors <- FindIntegrationAnchors(
+  object.list = c(hg38_1,hg38_2,hg38_3),
+  anchor.features = rownames(hg38_1),
+  assay = c("peaks","peaks","peaks"),
+  k.filter = NA
+)
+
+
+# integrate data and create a new merged object
+integrated <- IntegrateData(
+  anchorset = anchors,
+  weight.reduction = hg38_1[['cistopic']],
+  dims = 2:30,
+  preserve.order = TRUE
+)
+
+###TO BE UPDATED
+
+# we now have a "corrected" TF-IDF matrix, and can run LSI again on this corrected matrix
+integrated <- RunSVD(
+  object = integrated,
+  n = 30,
+  reduction.name = 'integratedLSI'
+)
+
+integrated <- RunUMAP(
+  object = integrated,
+  dims = 2:30,
+  reduction = 'integratedLSI'
+)
+
+###
+
+```
+
+{% endcapture %} {% include details.html %} 
+
 ### Differential Gene Activity through Subclusters
 
 {% capture summary %} For hg38 {% endcapture %} {% capture details %}  
@@ -1885,7 +1990,6 @@ markers_limited<-markers_limited[match(row.names(sum_ga_sub),markers_limited$mar
 
 sum_ga_sub<-t(scale(t(sum_ga_sub),center=F,scale=T))
 
-
 annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
 annot<-annot[!duplicated(annot$cluster_ID),]
 annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
@@ -1923,10 +2027,6 @@ plt1
 dev.off()
 system("slack -F hg38.geneactivity.markers.heatmap.pdf ryan_todo")
 
-
-plt<-FeaturePlot(hg38_atac,features=c("MOBP","PROX1"),order=T)
-ggsave(plt,file="test.png",width=30,height=10)
-system("slack -F test.png ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -1947,24 +2047,27 @@ library(viridis)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 mm10_atac<-readRDS("mm10_SeuratObject.Rds")
-mm10_atac$cluster_ID<-paste(mm10_atac$seurat_clusters,mm10_atac$seurat_subcluster,sep="_")
 mm10_atac@meta.data$celltype<-"NA"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="0",]$celltype<-"ExN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="1",]$celltype<-"Oligo"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="2",]$celltype<-"Astro"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="3",]$celltype<-"iN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="0",]$celltype<-"Gran"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="1",]$celltype<-"Gran"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="2",]$celltype<-"iN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="3",]$celltype<-"OPC_Olig"
 mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="4",]$celltype<-"ExN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="5",]$celltype<-"Micro.PVM"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="5",]$celltype<-"Astro"
 mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="6",]$celltype<-"iN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="7",]$celltype<-"OPC"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="7",]$celltype<-"Micro.PVM"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="8",]$celltype<-"ExN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="9",]$celltype<-"Endo"
 
 mm10_atac$celltype_col<-"NA"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="iN",]$celltype_col<-"#cc3366"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="ExN",]$celltype_col<-"#3399cc"
-mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Oligo",]$celltype_col<-"#66cc99"
+mm10_atac@meta.data[mm10_atac@meta.data$celltype=="OPC_Olig",]$celltype_col<-"#66cc99"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Astro",]$celltype_col<-"#99cc99"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Micro.PVM",]$celltype_col<-"#ff6633"
-mm10_atac@meta.data[mm10_atac@meta.data$celltype=="OPC",]$celltype_col<-"#ffcc99"
+mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Endo",]$celltype_col<-"#A52A2A"
+mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Gran",]$celltype_col<-"#4B0082"
+
 #define DA functions for parallelization
 #Use LR test for atac data
 da_one_v_rest<-function(i,obj,group){
@@ -1985,7 +2088,7 @@ da_one_v_rest<-function(i,obj,group){
 
 da_ga<-list() #set up an empty list for looping through
 
-n.cores=10 #Perform parallel application of DA test
+n.cores=5 #Perform parallel application of DA test
 da_ga<-mclapply(
     unique(mm10_atac$cluster_ID),
     FUN=da_one_v_rest,
@@ -1998,11 +2101,10 @@ write.table(da_ga_df,file="mm10.onevrest.da_ga.txt",sep="\t",col.names=T,row.nam
 
 #Plot out top ga for each cluster
 da_ga<-read.csv(file="mm10.onevrest.da_ga.txt",head=T,sep="\t",row.names=NULL)
-da_ga<-da_ga[complete.cases(da_ga),]
 da_ga<-da_ga[!endsWith(da_ga$enriched_group,"NA"),]
 
 da_ga$label<-c("")
-for (i in unique(da_ga[startsWith(da_ga$enriched_group,"1"),]$enriched_group)){
+for (i in unique(da_ga$enriched_group)){
 selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==i) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:5))$row.names
 da_ga[da_ga$row.names %in% selc_genes & da_ga$enriched_group==i,]$label<- da_ga[da_ga$row.names %in% selc_genes & da_ga$enriched_group==i,]$da_region
 }
@@ -2043,7 +2145,7 @@ side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seu
                         ),
                     show_legend = c(TRUE, TRUE,FALSE)) 
 
-bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga), labels = colnames(sum_ga)))
+#bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga), labels = colnames(sum_ga)))
 
 colfun=colorRamp2(quantile(unlist(sum_ga), probs=c(0.5,0.90,0.95)),rev(c("#fff7f3","#fcc5c0","#3f007d")))
 plt1<-Heatmap(sum_ga,
@@ -2119,8 +2221,15 @@ markers_limited<-   as.data.frame(rbind(
     c("Mark","L1-6","Microglia","C1QA"),
     c("Mark","L1-6","Microglia","C1QC"),
     c("Mark","L1-6","Endothelia","FLT1"),
-    c("Mark","L1-6","Endothelia","KDR")
+    c("Mark","L1-6","Endothelia","KDR"),
+    c("Mark","L1-6","PyrCA1","Crym"),
+    c("Mark","L1-6","PyrCA1","Neurod6"),
+    c("Mark","L1-6","PyrCA1","Gria1"),
+    c("Mark","L1-6","PyrCA1","Cpne6"),
+    c("Mark","L1-6","PyrCA1","Tspan13"),
+    c("Mark","L1-6","PyrCA1","Grm5")
     ))
+
 colnames(markers_limited)<-c("celltype","layer","marker_1","marker_2")
 
 markers_limited$marker_2<-unlist(lapply(markers_limited$marker_2,simpleCap)) # correct case
@@ -2171,6 +2280,7 @@ pdf("mm10.geneactivity.markers.heatmap.pdf",height=5)
 plt1
 dev.off()
 system("slack -F mm10.geneactivity.markers.heatmap.pdf ryan_todo")
+
 
 feat<-c("Gad1","Lhx6","Adarb2","Slc17a7","Fezf2","Bcl11b","Cux2","Reln","Atoh1","Calb2","Ppp1r17","Gabra6","Prox1","Dsp")
 plt<-FeaturePlot(mm10_atac,features=feat,order=T)
