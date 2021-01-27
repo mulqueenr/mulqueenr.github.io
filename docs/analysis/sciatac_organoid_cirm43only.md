@@ -308,7 +308,7 @@ Using R v4.0 and Signac v1.0 for processing.
 
   #Generate ChromatinAssay Objects
   orgo_chromatinassay <- CreateChromatinAssay(
-    counts = IN,
+    counts = orgo_counts,
     genome="hg38",
     min.cells = 1,
     annotation=annotations,
@@ -323,13 +323,70 @@ Using R v4.0 and Signac v1.0 for processing.
   )
 
   #Meta.data to be updated after clustering
-
-
   #saving unprocessed SeuratObject
   saveRDS(orgo_atac,file="orgo_SeuratObject.Rds")
 ```
-
 {% endcapture %} {% include details.html %} 
+
+
+
+### Perform Scrublet on Data to Ensure Single-cells
+
+Code from tutorial here.[https://github.com/AllonKleinLab/scrublet/blob/master/examples/scrublet_basics.ipynb]
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```bash
+  #using a conda environment set up by ARSN
+  source /home/groups/oroaklab/nishida/scitools_env/bin/activate
+```
+
+```python
+#Installing scrublet
+#pip install scrublet
+import scrublet as scr
+import scipy.io
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+from scipy.sparse import coo_matrix
+import gzip
+import pandas as pd
+
+#Load the raw counts matrix as a scipy sparse matrix with cells as rows and genes as columns.
+input_dir = '/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis/'
+
+#Perform on hg38 cells
+counts_matrix = scipy.io.mmread(input_dir + 'orgo.500.counts.mtx').T.tocsc() #generated during the initialization of the Seurat Object
+
+peaks= np.array(gzip.open(input_dir+'orgo.500.counts.sparseMatrix.rows.gz', 'rt').read().split()) #This is read in to check that our data frame is in the correct orientation
+cellid= gzip.open(input_dir+'orgo.500.counts.sparseMatrix.cols.gz', 'rt').read().split() #This is read in to check that our data frame is in the correct orientation
+print('Counts matrix shape: {} rows, {} columns'.format(counts_matrix.shape[0], counts_matrix.shape[1]))
+print('Number of genes in gene list: {}'.format(len(peaks)))
+#Run scrublet
+scrub = scr.Scrublet(counts_matrix, expected_doublet_rate=0.05)
+#Preprocessing...
+#Simulating doublets...
+#Embedding transcriptomes using PCA...
+#Calculating doublet scores...
+#Automatically set threshold at doublet score = 0.07
+#Detected doublet rate = 31.1%
+#Estimated detectable doublet fraction = 60.5%
+#Overall doublet rate:
+#        Expected   = 5.0%
+#        Estimated  = 51.4%
+#Elapsed time: 785.7 seconds
+
+doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2, 
+                                                          min_cells=3, 
+                                                          min_gene_variability_pctl=85, 
+                                                          n_prin_comps=30)
+
+df = pd.DataFrame({'cellid':cellid, 'doublet_scores':doublet_scores,'predicted_doublets':predicted_doublets})
+df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
+```
+{% endcapture %} {% include details.html %} 
+
 
 ### Plotting and updating metadata
 
@@ -348,7 +405,8 @@ Using R v4.0 and Signac v1.0 for processing.
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
   #Set up annotation summaries to contain the same information, in same column order
-  first_annot_append<-read.table("first_prep_summary_statistics_per_cell.tsv",header=T)
+  first_annot_append<-read.table("first_prep_summary_statistics_per_cell.tsv",header=T) 
+  #reorder for consistent metadata
   first_annot_append<-first_annot_append[c("cellID",
                                            "tn5_plate",
                                            "column","row",
@@ -379,6 +437,7 @@ Using R v4.0 and Signac v1.0 for processing.
   annot_append<-rbind(first_annot_append,second_annot_append)
   #orgID and prep need to be accounted for to get unique organoids (there are duplicates in orgID)
 
+  #Add original cluster information
   original_cluster<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/180703_sciATAC_Organoids/NatureLetterData/cellID_fullcharacterization.txt",header=T)
   original_cluster$cellID<-paste0(original_cluster$cellID,"_1")
   original_cluster<-original_cluster[c("cellID","Phenograph_Cluster")]
@@ -387,19 +446,40 @@ Using R v4.0 and Signac v1.0 for processing.
   orgo_atac<-readRDS(file="orgo_SeuratObject.Rds")
   orgo_atac@meta.data$cellID<-row.names(orgo_atac@meta.data)
 
+  #Add scrublet info
+  orgo_scrub<-read.table("orgo.scrublet.tsv",header=T) #read in scrublet
+
+  #Add complexity info
+  compl_1<-read.table("source_fastq/preprocessing_files/orgo_prep1_1.complexity.txt",head=F)
+  colnames(compl_1)<-c("cellID","total_reads","unique_reads","percent_unique_reads")
+  compl_1$cellID<-paste0(compl_1$cellID,"_1")
+  compl_2<-read.table("source_fastq/preprocessing_files/orgo_prep2_1.complexity.txt",head=F)
+  colnames(compl_2)<-c("cellID","total_reads","unique_reads","percent_unique_reads")
+  compl_2$cellID<-paste0(compl_2$cellID,"_2")
+  compl_3<-read.table("source_fastq/preprocessing_files/orgo_prep2_2.complexity.txt",head=F)
+  colnames(compl_3)<-c("cellID","total_reads","unique_reads","percent_unique_reads")
+  compl_3$cellID<-paste0(compl_3$cellID,"_3")
+  compl<-rbind(compl_1,compl_2,compl_3)
+
+  #Add TSS enrichment value
+  tss_enrich<-read.table("orgo.ID.TSSenrich.value",header=F)
+  colnames(tss_enrich)<-c("cellID","tss_enrichment")
+
   annot<-as.data.frame(orgo_atac@meta.data)
   annot<-merge(annot,annot_append,by="cellID",all.x=T)
   annot<-merge(annot,original_cluster,by="cellID",all.x=T)
+  annot<-merge(annot,orgo_scrub,by.x="cellID",by.y="cellid",all.x=T)
+  annot<-merge(annot,compl,by="cellID",all.x=T)
+  annot<-merge(annot,tss_enrich,by="cellID",all.x=T)
   row.names(annot)<-annot$cellID
 
   orgo_atac@meta.data<-annot
-  saveRDS(orgo_atac,file="orgo_SeuratObject.Rds")
-  write.table(annot,file="merged_summary_statistics_per_cell.tsv",col.names=T,row.names=T,sep="\t",quote=F)
+  saveRDS(orgo_atac,file="orgo_SeuratObject.Rds") #all cells no filter
+  write.table(as.data.frame(orgo_atac@meta.data),file="summary_statistics_per_cell.tsv",col.names=T,row.names=T,sep="\t",quote=F)
 
   #excluding differentiation experiment 4
-  orgo_atac<-subset(orgo_atac,differentiation_exp %in% c("5","7"))
-  orgo_cirm43<-subset(orgo_atac,cell_line=="CIRM43")
-
+  orgo_atac<-subset(orgo_atac, differentiation_exp %in% c("5","7"))
+  orgo_cirm43<-subset(orgo_atac,cell_line=="CIRM43") #just cirm43 cell line and two differentiations
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ```
 {% endcapture %} {% include details.html %} 
