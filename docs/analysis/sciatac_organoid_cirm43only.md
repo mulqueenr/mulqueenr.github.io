@@ -450,33 +450,36 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   orgo_scrub<-read.table("orgo.scrublet.tsv",header=T) #read in scrublet
 
   #Add complexity info
-  compl_1<-read.table("source_fastq/preprocessing_files/orgo_prep1_1.complexity.txt",head=F)
-  colnames(compl_1)<-c("cellID","total_reads","unique_reads","percent_unique_reads")
-  compl_1$cellID<-paste0(compl_1$cellID,"_1")
-  compl_2<-read.table("source_fastq/preprocessing_files/orgo_prep2_1.complexity.txt",head=F)
-  colnames(compl_2)<-c("cellID","total_reads","unique_reads","percent_unique_reads")
-  compl_2$cellID<-paste0(compl_2$cellID,"_2")
-  compl_3<-read.table("source_fastq/preprocessing_files/orgo_prep2_2.complexity.txt",head=F)
-  colnames(compl_3)<-c("cellID","total_reads","unique_reads","percent_unique_reads")
-  compl_3$cellID<-paste0(compl_3$cellID,"_3")
-  compl<-rbind(compl_1,compl_2,compl_3)
+  #compl_1<-read.table("source_fastq/preprocessing_files/orgo_prep1_1.complexity.txt",head=F)
+  #colnames(compl_1)<-c("cellID","total_reads","unique_reads","percent_unique_reads")
+  #compl_1$cellID<-paste0(compl_1$cellID,"_1")
+  #compl_2<-read.table("source_fastq/preprocessing_files/orgo_prep2_1.complexity.txt",head=F)
+  #colnames(compl_2)<-c("cellID","total_reads","unique_reads","percent_unique_reads")
+  #compl_2$cellID<-paste0(compl_2$cellID,"_2")
+  #compl_3<-read.table("source_fastq/preprocessing_files/orgo_prep2_2.complexity.txt",head=F)
+  #colnames(compl_3)<-c("cellID","total_reads","unique_reads","percent_unique_reads")
+  #compl_3$cellID<-paste0(compl_3$cellID,"_3")
+  #compl<-rbind(compl_1,compl_2,compl_3)
 
   #Add TSS enrichment value
   tss_enrich<-read.table("orgo.ID.TSSenrich.value",header=F)
   colnames(tss_enrich)<-c("cellID","tss_enrichment")
 
+  #merge all data frames
   annot<-as.data.frame(orgo_atac@meta.data)
   annot<-merge(annot,annot_append,by="cellID",all.x=T)
   annot<-merge(annot,original_cluster,by="cellID",all.x=T)
   annot<-merge(annot,orgo_scrub,by.x="cellID",by.y="cellid",all.x=T)
-  annot<-merge(annot,compl,by="cellID",all.x=T)
+  #annot<-merge(annot,compl,by="cellID",all.x=T)
   annot<-merge(annot,tss_enrich,by="cellID",all.x=T)
   row.names(annot)<-annot$cellID
-
   orgo_atac@meta.data<-annot
-  saveRDS(orgo_atac,file="orgo_SeuratObject.Rds") #all cells no filter
-  write.table(as.data.frame(orgo_atac@meta.data),file="summary_statistics_per_cell.tsv",col.names=T,row.names=T,sep="\t",quote=F)
 
+  #Add FRIP to meta data
+  frip<-read.table("orgo.500.fracOnTarget.values")
+  colnames(frip)<-c("cellID","frip")
+  orgo_cirm43$FRIP<-frip[match(orgo_cirm43$cellID,frip$cellID,),]$frip
+  
   #excluding differentiation experiment 4
   orgo_atac<-subset(orgo_atac, differentiation_exp %in% c("5","7"))
   orgo_cirm43<-subset(orgo_atac,cell_line=="CIRM43") #just cirm43 cell line and two differentiations
@@ -496,9 +499,10 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   set.seed(1234)
   library(EnsDb.Hsapiens.v86)
   library(Matrix)
+  library(cisTopic)
+
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
-  library(cisTopic)
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
 
   cistopic_processing<-function(seurat_input,prefix){
@@ -513,7 +517,6 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
           
 
   cistopic_processing(seurat_input=orgo_cirm43,prefix="orgo_cirm43")
-
   cirm43_cistopic_models<-readRDS("orgo_cirm43.CisTopicObject.Rds")
 
 
@@ -559,13 +562,14 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
                      models_input=cirm43_cistopic_models)
   plt_list<-wrap_plots(plt_list)
   ggsave(plt_list,file="cirm43.umap_multipleTopicModels_clustering.png",height=20,width=60,limitsize=FALSE)
+  system("slack -F cirm43.umap_multipleTopicModels_clustering.png ryan_todo")
 
   ###############################################
 
 
 
   #set topics based on derivative
-  cirm43_selected_topic=27
+  cirm43_selected_topic=28
   cirm43_cisTopicObject<-cisTopic::selectModel(cirm43_cistopic_models,select=cirm43_selected_topic,keepModels=T)
 
   #saving model selected RDS
@@ -621,17 +625,9 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
 
   return(object_input)}
 
-  orgo_cirm43<-cistopic_wrapper(object_input=orgo_cirm43,cisTopicObject=cirm43_cisTopicObject,resolution=0.15)
+  orgo_cirm43<-cistopic_wrapper(object_input=orgo_cirm43,cisTopicObject=cirm43_cisTopicObject,resolution=0.05)
+  saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")   ###save Seurat file
 
-  plt<-DimPlot(orgo_cirm43,group.by=c('DIV','cell_line','prep','orgID','differentiation_exp','seurat_clusters','original_cluster'),size=0.1)
-  ggsave(plt,file="cirm43.umap.png",width=15)
-  ggsave(plt,file="cirm43.umap.pdf",width=15)
-
-  i="cirm43.umap.png"
-  system(paste0("slack -F ",i," ryan_todo"))#post to ryan_todo
-         
-  ###save Seurat file
-  saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -651,16 +647,6 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
 
-  #Add FRIP to meta data
-  frip<-read.table("orgo.500.fracOnTarget.values")
-  colnames(frip)<-c("cellID","frip")
-  orgo_atac$FRIP<-frip[match(orgo_atac$cellID,frip$cellID,),]$frip
-  orgo_cirm43$FRIP<-frip[match(orgo_cirm43$cellID,frip$cellID,),]$frip
-  orgo_cirm87$FRIP<-frip[match(orgo_cirm87$cellID,frip$cellID,),]$frip
-  orgo_atac<-saveRDS(orgo_atac,"orgo_SeuratObject.Rds")
-  orgo_cirm43<-saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
-
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
 
   #Cluster summaries
   dat<-orgo_cirm43@meta.data
@@ -669,6 +655,14 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   summarize(count=n()))
 
   write.table(dat_sum,"cirm43_cluster_summary_statistics.tsv",col.names=T,row.names=T,quote=F,sep="\t")
+
+
+  plt<-DimPlot(orgo_cirm43,group.by=c('DIV','cell_line','prep','orgID','differentiation_exp','seurat_clusters','original_cluster'),size=0.1)
+  ggsave(plt,file="cirm43.umap.png",width=15,height=15,limitsize=F)
+  ggsave(plt,file="cirm43.umap.pdf",width=15,height=15,limitsize=F)
+
+  plt<-FeaturePlot(orgo_cirm43)
+  system(paste0("slack -F cirm43.umap.png ryan_todo"))#post to ryan_todo
 
   system("slack -F cirm43_cluster_summary_statistics.tsv ryan_todo")
 ```

@@ -354,10 +354,10 @@ scitools callpeaks hg38.merged.bbrd.q10.bam &
 scitools callpeaks mm10.merged.bbrd.q10.bam &
 
 wc -l hg38.merged.bbrd.q10.500.bed
-#423832 hg38.merged.bbrd.q10.500.bed
+#332864 hg38.merged.bbrd.q10.500.bed
 
 wc -l mm10.merged.bbrd.q10.500.bed
-#308436 mm10.merged.bbrd.q10.500.bed
+#256912 mm10.merged.bbrd.q10.500.bed
 
 
 scitools atac-counts -O hg38 hg38.merged.bbrd.q10.bam \
