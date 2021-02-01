@@ -479,7 +479,7 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   frip<-read.table("orgo.500.fracOnTarget.values")
   colnames(frip)<-c("cellID","frip")
   orgo_cirm43$FRIP<-frip[match(orgo_cirm43$cellID,frip$cellID,),]$frip
-  
+
   #excluding differentiation experiment 4
   orgo_atac<-subset(orgo_atac, differentiation_exp %in% c("5","7"))
   orgo_cirm43<-subset(orgo_atac,cell_line=="CIRM43") #just cirm43 cell line and two differentiations
@@ -626,12 +626,116 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   return(object_input)}
 
   orgo_cirm43<-cistopic_wrapper(object_input=orgo_cirm43,cisTopicObject=cirm43_cisTopicObject,resolution=0.05)
+
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")   ###save Seurat file
 
 ```
 {% endcapture %} {% include details.html %} 
 
-### Statistics on cell reads
+
+### Cicero for Coaccessible Networks
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+  library(Signac)
+  library(Seurat)
+  library(SeuratWrappers)
+  library(ggplot2)
+  library(patchwork)
+  library(monocle3)
+  library(cicero)
+  library(EnsDb.Hsapiens.v86)
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+
+  #Cicero processing function
+  cicero_processing<-function(object_input=orgo_atac,prefix="orgo_atac"){
+
+      #Generate CDS format from Seurat object
+      atac.cds <- as.cell_data_set(object_input,group_by="seurat_clusters")
+
+      # convert to CellDataSet format and make the cicero object
+      print("Making Cicero format CDS file")
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
+      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+      
+      genome <- seqlengths(object_input) # get the chromosome sizes from the Seurat object
+      genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
+      
+      print("Running Cicero to generate connections.")
+      conns <- run_cicero(atac.cicero, genomic_coords = genome.df, sample_num = 10) # run cicero
+      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+      
+      print("Generating CCANs")
+      ccans <- generate_ccans(conns) # generate ccans
+      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+      
+      print("Adding CCAN links into Seurat Object and Returning.")
+      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
+      Links(object_input) <- links
+      return(object_input)
+  }
+
+
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+
+  orgo_cirm43<-cicero_processing(object_input=orgo_cirm43,prefix="orgo_cirm43")
+
+  saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
+
+  # generate unnormalized gene activity matrix
+  # gene annotation sample
+  hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+
+  pos <-as.data.frame(hg38_annotations,row.names=NULL)
+  pos$chromosome<-paste0("chr",pos$seqnames)
+  pos$gene<-pos$gene_id
+  pos <- subset(pos, strand == "+")
+  pos <- pos[order(pos$start),] 
+  pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
+  pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
+
+  neg <-as.data.frame(hg38_annotations,row.names=NULL)
+  neg$chromosome<-paste0("chr",neg$seqnames)
+  neg$gene<-neg$gene_id
+  neg <- subset(neg, strand == "-")
+  neg <- neg[order(neg$start,decreasing=TRUE),] 
+  neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
+  neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
+
+  gene_annotation<- rbind(pos, neg)
+  gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
+  names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
+
+  geneactivity_processing<-function(cds_input,conns_input,prefix){
+      atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
+      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
+      saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
+  }
+
+  conns<-as.data.frame(readRDS("orgo_cirm43_atac_cicero_conns.Rds"))
+  orgo_cirm43.cicero<-readRDS("orgo_cirm43_atac_cicero_cds.Rds")
+  geneactivity_processing(cds_input=as.cell_data_set(orgo_cirm43,group_by="seurat_clusters"),conns_input=conns,prefix="cirm43_atac")
+
+  #These can be added to the seurat object as a new assay later
+
+  #Read in unnormalized GA
+  cicero_gene_activities<-readRDS("cirm43_atac.unnorm_GA.Rds")
+  orgo_cirm43[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
+
+  # normalize
+  orgo_cirm43 <- NormalizeData(
+    object = orgo_cirm43,
+    assay = 'GeneActivity',
+    normalization.method = 'LogNormalize',
+    scale.factor = median(orgo_cirm43$nCount_peaks)
+  )
+  saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
+```
+{% endcapture %} {% include details.html %} 
+
+
+### Plotting and filtering cells
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -644,27 +748,331 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   library(EnsDb.Hsapiens.v86)
   library(Matrix)
   library(dplyr)
+  library(patchwork)
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-
 
   #Cluster summaries
   dat<-orgo_cirm43@meta.data
   dat_sum<-as.data.frame(dat %>% 
   group_by(orgID,seurat_clusters,differentiation_exp,DIV) %>% 
   summarize(count=n()))
-
   write.table(dat_sum,"cirm43_cluster_summary_statistics.tsv",col.names=T,row.names=T,quote=F,sep="\t")
 
+  #Setting doublets as those in top 5% of doublet_score
+  threshold_number<-as.numeric(quantile(x=orgo_cirm43@meta.data$doublet_scores,prob=0.95))
+  orgo_cirm43$predicted_doublets<-"False"
+  orgo_cirm43@meta.data[as.numeric(orgo_cirm43@meta.data$doublet_scores)>=threshold_number,]$predicted_doublets<-"True"
 
-  plt<-DimPlot(orgo_cirm43,group.by=c('DIV','cell_line','prep','orgID','differentiation_exp','seurat_clusters','original_cluster'),size=0.1)
-  ggsave(plt,file="cirm43.umap.png",width=15,height=15,limitsize=F)
-  ggsave(plt,file="cirm43.umap.pdf",width=15,height=15,limitsize=F)
+  #Testing organoids for proper forebrain differentiation
+  plt<-VlnPlot(orgo_cirm43,feature="FOXG1",group.by="orgID",log=T)+facet_wrap(orgo_cirm43$differentiation_exp ~ orgo_cirm43$DIV,nrow=2,scale="free_x")+theme_bw()
+  ggsave(plt,file="cirm43.foxg1.pdf",width=12,height=15,limitsize=F)
+  system("slack -F cirm43.foxg1.pdf ryan_todo")#post to ryan_todo
+  #Based on this excluding organoid 3 from diff exp 5 (low foxg1 signal so failure to differentiate)
 
-  plt<-FeaturePlot(orgo_cirm43)
+  #Testing organoids for tss enrichment
+  plt<-ggplot()+geom_histogram(aes(x=orgo_cirm43$tss_enrichment),bins=100)+theme_minimal()
+  ggsave(plt,file="cirm43.tssenrich.pdf")
+  system("slack -F cirm43.tssenrich.pdf ryan_todo")#post to ryan_todo
+  #filtering out cells with less than 1 for tss enrichment
+
+  orgo_cirm43$pass_qc<-"True"
+  orgo_cirm43@meta.data[(orgo_cirm43@meta.data$orgID==3 & orgo_cirm43@meta.data$differentiation_exp==5),]$pass_qc<-"False"
+  orgo_cirm43@meta.data[(orgo_cirm43@meta.data$predicted_doublets=="True"),]$pass_qc<-"False"
+  orgo_cirm43@meta.data[(orgo_cirm43@meta.data$tss_enrichment<1.5),]$pass_qc<-"False"
+
+  #table(orgo_cirm43$pass_qc)
+
+  #False  True
+  # 3389 32436
+
+  orgo_cirm43$uniq_orgID<-paste(orgo_cirm43$differentiation_exp,orgo_cirm43$orgID,sep="_")
+  orgo_cirm43$log10_uniq_reads<-log10(orgo_cirm43$uniq_reads)
+  plt1<-DimPlot(orgo_cirm43,group.by=c('DIV','prep','orgID',"treatment",'differentiation_exp','seurat_clusters','predicted_doublets','pass_qc'),size=0.1)
+
+  plt2<-FeaturePlot(orgo_cirm43,feat=c("doublet_scores","FRIP","tss_enrichment","log10_uniq_reads"),col=c("white","red"),pt.size=0.1,order=T,ncol=3)
+  plt<-plt1/plt2
+  ggsave(plt,file="cirm43.umap.png",width=12,height=15,limitsize=F)
+  ggsave(plt,file="cirm43.umap.pdf",width=12,height=15,limitsize=F)
+
   system(paste0("slack -F cirm43.umap.png ryan_todo"))#post to ryan_todo
+  saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
 
-  system("slack -F cirm43_cluster_summary_statistics.tsv ryan_todo")
+```
+{% endcapture %} {% include details.html %} 
+
+
+### Subclustering of celltypes and Pseudotime Trajectories
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+```R
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  library(Seurat)
+  library(Signac)
+  library(GenomeInfoDb)
+  library(ggplot2)
+  set.seed(1234)
+  library(EnsDb.Hsapiens.v86)
+  library(Matrix)
+  library(cicero)
+  library(SeuratWrappers)
+  library(ComplexHeatmap)
+  library(JASPAR2020)
+  library(TFBSTools)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(patchwork)
+  library(cisTopic)
+  library(chromVAR)
+  library(dplyr)
+  library(princurve)
+
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+  orgo_cirm43<-subset(orgo_cirm43,pass_qc=="True")
+
+  #Focus on "radial_glia","intermediate_progenitor","excitatory_neuron"
+
+  #Rerun cistopic on subset of organoid cells
+  cistopic_processing<-function(seurat_input,prefix){
+      cistopic_counts_frmt<-seurat_input$peaks@counts #grabbing counts matrices
+      row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt)) #renaming row names to fit granges expectation of format
+      atac_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt) #set up CisTopicObjects
+      #Run warp LDA on objects
+      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(10,20:30),nCores=11,addModels=FALSE)
+      print("Saving cistopic models.")
+      saveRDS(atac_cistopic_models,file=paste(prefix,"CisTopicObject.Rds",sep=".")) 
+  }
+          
+  lapply(unique(orgo_cirm43$seurat_clusters), function(i) {
+    cirm43_subset<-subset(orgo_cirm43,cells=which(orgo_cirm43$seurat_clusters == i))
+    cistopic_processing(seurat_input=cirm43_subset,prefix=i)} )
+
+  for (i in unique(orgo_cirm43$seurat_clusters)){
+    #Setting up topic count selection
+    atac_cistopic_models <-readRDS(paste(i,"CisTopicObject.Rds",sep="."))
+    pdf(paste(i,"CisTopicObject_model_selection.pdf",sep="."))
+    par(mfrow=c(1,3))
+    atac_cistopic_models <- selectModel(atac_cistopic_models, type='derivative')
+    dev.off()
+    system(paste0("slack -F ",paste(i,"CisTopicObject_model_selection.pdf",sep=".")," ryan_todo"))}
+
+  #set topics based on derivative
+  topic_counts<-setNames(c(27,27,22,27),c("3","0","1","2"))
+
+  topicmodel_list<-setNames(c(27,27,22,27), paste(c("3","0","1","2"),"CisTopicObject.Rds",sep="."))
+
+#UMAP Projection and clustering on selected cistopic model
+clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=orgo_cirm43,celltype.x,topiccount_list.=topic_counts){
+    #set up subset object again
+    atac_sub<-subset(object_input,cells=which(orgo_cirm43$seurat_clusters == celltype.x)) 
+    #select_topic
+    models_input<-readRDS(paste(celltype.x,"CisTopicObject.Rds",sep="."))
+    cisTopicObject<-cisTopic::selectModel(models_input,select=topiccount_list.[celltype.x],keepModels=F)
+    
+    #perform UMAP on topics
+    topic_df<-as.data.frame(cisTopicObject@selected.model$document_expects)
+    row.names(topic_df)<-paste0("Topic_",row.names(topic_df))
+    dims<-as.data.frame(uwot::umap(t(topic_df),n_components=2))
+    row.names(dims)<-colnames(topic_df)
+    colnames(dims)<-c("x","y")
+    dims$cellID<-row.names(dims)
+    dims<-merge(dims,object_input@meta.data,by.x="cellID",by.y="row.names")
+
+    #get cell embeddings
+    cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
+    colnames(cell_embeddings)<-cisTopicObject@cell.names
+    n_topics<-nrow(cell_embeddings)
+    row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
+    cell_embeddings<-as.data.frame(t(cell_embeddings))
+    
+    #get feature loadings
+    feature_loadings<-as.data.frame(cisTopicObject@selected.model$topics)
+    row.names(feature_loadings)<-paste0("topic_",1:n_topics)
+    feature_loadings<-as.data.frame(t(feature_loadings))
+    
+    #combine with seurat object for celltype seuratobject  
+    cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
+    umap_dims<-as.data.frame(as.matrix(dims[2:3]))
+    colnames(umap_dims)<-c("UMAP_1","UMAP_2")
+    row.names(umap_dims)<-dims$cellID
+    cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(umap_dims),assay="peaks",key="UMAP_")
+    atac_sub@reductions$cistopic<-cistopic_obj
+    atac_sub@reductions$umap<-cistopic_umap
+    #finally recluster
+    n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic"))
+    #Clustering with multiple resolutions to account for different celltype complexities
+    atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics)
+    atac_sub <- FindClusters(object = atac_sub,resolution=0.1)
+    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.2)
+    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.5)
+    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.9)
+    
+    saveRDS(atac_sub,paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
+    plt<-DimPlot(atac_sub,group.by=c('peaks_snn_res.0.1','peaks_snn_res.0.2','peaks_snn_res.0.5','peaks_snn_res.0.9'))
+    ggsave(plt,file=paste("./subcluster/",celltype.x,"clustering.pdf",sep="_"))
+    system(paste0("slack -F ",paste("./subcluster/",celltype.x,"clustering.pdf",sep="_")," ryan_todo"))
+
+}
+
+dir.create("./subcluster")
+
+lapply(unique(orgo_cirm43$seurat_clusters), function(i) {clustering_loop(celltype.x=i)})
+
+for (i in unique(orgo_cirm43$seurat_clusters)){system(paste0("slack -F ",paste("./subcluster/",i,"clustering.pdf",sep="_")," ryan_todo"))}
+
+
+subcluster_assignment<-function(resolution_list.=resolution_list,object_input=orgo_cirm43,celltype.x){
+    #set up subset object again
+    atac_sub<-readRDS(paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
+    atac_sub$seurat_subcluster<-atac_sub@meta.data[,which(colnames(atac_sub@meta.data)==resolution_list[celltype.x])]
+    saveRDS(atac_sub,paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
+
+}
+
+#Selected resolution based on subclustering plots
+resolution_list<-setNames(c("peaks_snn_res.0.1","peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.1"),unique(orgo_cirm43$seurat_clusters))
+#Seurat subcluster assignment based on resolution plots
+for (i in unique(orgo_cirm43$seurat_clusters)){subcluster_assignment(celltype.x=i)}
+
+#Add subcluster assignment and subcluster x and y coordinates to main Rds
+#Assign clustering resolution based on clustering.pdf output
+cell_order<-row.names(orgo_cirm43@meta.data)
+celltype_list<-unique(orgo_cirm43$seurat_clusters)
+
+#adding all subclustering info back into main RDS object
+orgo_cirm43$seurat_subcluster<-"NA"
+orgo_cirm43$subcluster_x<-"NA"
+orgo_cirm43$subcluster_y<-"NA"
+
+for(celltype.x in celltype_list){
+    atac_sub<-readRDS(paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
+    embedding_order<-row.names(atac_sub@reductions$umap@cell.embeddings)
+    row_order<-match(cell_order,embedding_order,nomatch=0)
+    orgo_cirm43@meta.data[match(row.names(atac_sub@meta.data),row.names(orgo_cirm43@meta.data),nomatch=0),]$seurat_subcluster<-as.character(unlist(atac_sub@meta.data[which(colnames(atac_sub@meta.data)==resolution_list[celltype.x])]))
+    orgo_cirm43@meta.data[match(row.names(atac_sub@meta.data),row.names(orgo_cirm43@meta.data),nomatch=0),]$subcluster_x<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,1])
+    orgo_cirm43@meta.data[match(row.names(atac_sub@meta.data),row.names(orgo_cirm43@meta.data),nomatch=0),]$subcluster_y<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,2])
+}
+
+as.data.frame(orgo_cirm43@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
+#   seurat_clusters seurat_subcluster count
+# 1                0                 0  5739
+# 2                0                 1  5261
+# 3                0                 2  1615
+# 4                0                 3  1588
+# 5                0                 4   577
+# 6                1                 0  3408
+# 7                1                 1  2697
+# 8                1                 2  2470
+# 9                1                 3  2291
+# 10               1                 4  1839
+# 11               1                 5  1536
+# 12               2                 0  1286
+# 13               2                 1  1228
+# 14               2                 2   271
+# 15               3                 0   630
+
+  #set up unique cluster IDs by cluster and subcluster
+  orgo_cirm43$cluster_ID<-paste(orgo_cirm43$seurat_clusters,orgo_cirm43$seurat_subcluster,sep="_")
+saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
+
+
+
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis/subcluster")
+
+
+##### NOT RUN YET #######
+prin_curve<-function(celltype.x=i,atac_sub,subcluster_list){
+cellid_subset<-row.names(atac_sub@meta.data)[atac_sub$seurat_subcluster %in% subcluster_list]
+dims<-atac_sub@reductions$umap@cell.embeddings[cellid_subset,]
+prcurve_out<-principal_curve(dims)
+dims<-cbind(dims,atac_sub@meta.data[cellid_subset,])
+dims$prcurve<-prcurve_out$lambda[cellid_subset]
+
+plt1<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
+  geom_point(aes(color=as.factor(DIV)),size=0.1)#+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
+
+plt2<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
+  geom_point(aes(color=seurat_subcluster),size=0.1)#+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
+
+plt3<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
+  geom_point(aes(color=as.numeric(prcurve)),size=0.1)#+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
+plt<-(plt1+plt2)/(plt3)
+
+ggsave(plt,file=paste(i,"prcurve.pdf",sep="."))
+system(paste0("slack -F ",paste(i,"prcurve.pdf",sep=".")," ryan_todo"))
+saveRDS(prcurve_out,file=paste(i,"prcurve.Rds",sep="."))
+atac_sub@meta.data$prcurve<-NA
+atac_sub@meta.data[cellid_subset,]$prcurve<-dims$prcurve
+
+plt<-FeaturePlot(atac_sub,feature="prcurve")
+ggsave(plt,file=paste(i,"prcurve.seurat.pdf",sep="."))
+system(paste0("slack -F ",paste(i,"prcurve.seurat.pdf",sep=".")," ryan_todo"))
+saveRDS(atac_sub,paste("",i,"SeuratObject.Rds",sep="_"))
+}
+
+i="radial_glia";subclusters<-c("3","1","0")
+atac_sub<-readRDS("_radial_glia_SeuratObject.Rds")
+prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
+
+i="intermediate_progenitor";subclusters<-c("0","1","2")
+atac_sub<-readRDS("_intermediate_progenitor_SeuratObject.Rds")
+prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
+
+i="excitatory_neuron";subclusters<-c("0","1","2","3","4")
+atac_sub<-readRDS("_excitatory_neuron_SeuratObject.Rds")
+prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
+
+```
+{% endcapture %} {% include details.html %} 
+
+### ChromVar for Transcription Factor Motifs
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+  library(Signac)
+  library(Seurat)
+  library(JASPAR2020)
+  library(TFBSTools)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(patchwork)
+  set.seed(1234)
+
+  #lowerign cores to be used by chromvar to 10
+  library(BiocParallel)
+  register(MulticoreParam(10))
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+
+  #Read in data and modify to monocle CDS file
+  #read in RDS file.
+
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+  orgo_cirm43<-subset(orgo_cirm43,pass_qc=="True")
+  # Get a list of motif position frequency matrices from the JASPAR database
+  pfm <- getMatrixSet(
+    x = JASPAR2020,
+    opts = list(species =9606, all_versions = FALSE))
+
+  # Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
+  motif.matrix <- CreateMotifMatrix(
+    features = granges(orgo_cirm43),
+    pwm = pfm,
+    genome = 'hg38',
+    use.counts = FALSE)
+
+  # Create a new Mofif object to store the results
+  motif <- CreateMotifObject(
+    data = motif.matrix,
+    pwm = pfm)
+
+  # Add the Motif object to the assays and run ChromVar
+  ###CIRM43###
+  orgo_cirm43 <- SetAssayData(
+    object = orgo_cirm43,
+    assay = 'peaks',
+    slot = 'motifs',
+    new.data = motif)
+  orgo_cirm43 <- RegionStats(object = orgo_cirm43, genome = BSgenome.Hsapiens.UCSC.hg38)
+  orgo_cirm43 <- RunChromVAR( object = orgo_cirm43,genome = BSgenome.Hsapiens.UCSC.hg38)
+  saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -687,6 +1095,7 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   library(dplyr)
 
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+
 
   #Perform One vs. rest DA enrichment
 
@@ -742,12 +1151,12 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   #Perform parallel application of DA test
   library(parallel)
 
-  n.cores=length(unique(orgo_cirm43@meta.data$seurat_clusters))
+  n.cores=length(unique(orgo_cirm43$cluster_ID))
   cirm43_da_peaks<-mclapply(
-      unique(orgo_cirm43@meta.data$seurat_clusters),
+      unique(orgo_cirm43$cluster_ID),
       FUN=da_one_v_rest,
       obj=orgo_cirm43,
-      group="seurat_clusters",
+      group="cluster_ID",
       mc.cores=n.cores)
 
   #Merge the final data frame from the list for 1vrest DA
@@ -856,57 +1265,6 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
 
 {% endcapture %} {% include details.html %} 
 
-### ChromVar for Transcription Factor Motifs
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```R
-  library(Signac)
-  library(Seurat)
-  library(JASPAR2020)
-  library(TFBSTools)
-  library(BSgenome.Hsapiens.UCSC.hg38)
-  library(patchwork)
-  set.seed(1234)
-
-  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-
-  #Read in data and modify to monocle CDS file
-  #read in RDS file.
-
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-
-  # Get a list of motif position frequency matrices from the JASPAR database
-  pfm <- getMatrixSet(
-    x = JASPAR2020,
-    opts = list(species =9606, all_versions = FALSE))
-
-  # Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
-  motif.matrix <- CreateMotifMatrix(
-    features = granges(orgo_atac),
-    pwm = pfm,
-    genome = 'hg38',
-    use.counts = FALSE)
-
-  # Create a new Mofif object to store the results
-  motif <- CreateMotifObject(
-    data = motif.matrix,
-    pwm = pfm)
-
-
-  # Add the Motif object to the assays and run ChromVar
-  ###CIRM43###
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-  orgo_cirm43 <- SetAssayData(
-    object = orgo_cirm43,
-    assay = 'peaks',
-    slot = 'motifs',
-    new.data = motif)
-  orgo_cirm43 <- RegionStats(object = orgo_cirm43, genome = BSgenome.Hsapiens.UCSC.hg38)
-  orgo_cirm43 <- RunChromVAR( object = orgo_cirm43,genome = BSgenome.Hsapiens.UCSC.hg38)
-  saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
-```
-{% endcapture %} {% include details.html %} 
 
 ### Differential Motif Accessibility
 
@@ -1036,106 +1394,6 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
 ```
 {% endcapture %} {% include details.html %} 
 
-### Cicero for Coaccessible Networks
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```R
-  library(Signac)
-  library(Seurat)
-  library(SeuratWrappers)
-  library(ggplot2)
-  library(patchwork)
-  library(monocle3)
-  library(cicero)
-  library(EnsDb.Hsapiens.v86)
-  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-
-  #Cicero processing function
-  cicero_processing<-function(object_input=orgo_atac,prefix="orgo_atac"){
-
-      #Generate CDS format from Seurat object
-      atac.cds <- as.cell_data_set(object_input,group_by="seurat_clusters")
-
-      # convert to CellDataSet format and make the cicero object
-      print("Making Cicero format CDS file")
-      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
-      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
-      
-      genome <- seqlengths(object_input) # get the chromosome sizes from the Seurat object
-      genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
-      
-      print("Running Cicero to generate connections.")
-      conns <- run_cicero(atac.cicero, genomic_coords = genome.df, sample_num = 10) # run cicero
-      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
-      
-      print("Generating CCANs")
-      ccans <- generate_ccans(conns) # generate ccans
-      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
-      
-      print("Adding CCAN links into Seurat Object and Returning.")
-      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
-      Links(object_input) <- links
-      return(object_input)
-  }
-
-
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-
-  orgo_cirm43<-cicero_processing(object_input=orgo_cirm43,prefix="orgo_cirm43")
-
-  saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
-
-  # generate unnormalized gene activity matrix
-  # gene annotation sample
-  hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
-
-  pos <-as.data.frame(hg38_annotations,row.names=NULL)
-  pos$chromosome<-paste0("chr",pos$seqnames)
-  pos$gene<-pos$gene_id
-  pos <- subset(pos, strand == "+")
-  pos <- pos[order(pos$start),] 
-  pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
-  pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
-
-  neg <-as.data.frame(hg38_annotations,row.names=NULL)
-  neg$chromosome<-paste0("chr",neg$seqnames)
-  neg$gene<-neg$gene_id
-  neg <- subset(neg, strand == "-")
-  neg <- neg[order(neg$start,decreasing=TRUE),] 
-  neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
-  neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
-
-  gene_annotation<- rbind(pos, neg)
-  gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
-  names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
-
-  geneactivity_processing<-function(cds_input,conns_input,prefix){
-      atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
-      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
-      saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
-  }
-
-  conns<-as.data.frame(readRDS("orgo_cirm43_atac_cicero_conns.Rds"))
-  orgo_cirm43.cicero<-readRDS("orgo_cirm43_atac_cicero_cds.Rds")
-  geneactivity_processing(cds_input=as.cell_data_set(orgo_cirm43,group_by="seurat_clusters"),conns_input=conns,prefix="cirm43_atac")
-
-  #These can be added to the seurat object as a new assay later
-
-  #Read in unnormalized GA
-  cicero_gene_activities<-readRDS("cirm43_atac.unnorm_GA.Rds")
-  orgo_cirm43[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
-
-  # normalize
-  orgo_cirm43 <- NormalizeData(
-    object = orgo_cirm43,
-    assay = 'GeneActivity',
-    normalization.method = 'LogNormalize',
-    scale.factor = median(orgo_cirm43$nCount_peaks)
-  )
-  saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
-```
-{% endcapture %} {% include details.html %} 
 
 ## Organoid Cell type analysis
 
@@ -1557,217 +1815,6 @@ library(ggplot2)
 ```
 {% endcapture %} {% include details.html %} 
 
-### Subclustering of celltypes and Pseudotime Trajectories
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-```R
-  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-  library(Seurat)
-  library(Signac)
-  library(GenomeInfoDb)
-  library(ggplot2)
-  set.seed(1234)
-  library(EnsDb.Hsapiens.v86)
-  library(Matrix)
-  library(cicero)
-  library(SeuratWrappers)
-  library(ComplexHeatmap)
-  library(JASPAR2020)
-  library(TFBSTools)
-  library(BSgenome.Hsapiens.UCSC.hg38)
-  library(patchwork)
-  library(cisTopic)
-
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-  #Focus on "radial_glia","intermediate_progenitor","excitatory_neuron"
-
-  #Rerun cistopic on subset of organoid cells
-  cistopic_processing<-function(seurat_input,prefix){
-      cistopic_counts_frmt<-seurat_input$peaks@counts #grabbing counts matrices
-      row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt)) #renaming row names to fit granges expectation of format
-      atac_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt) #set up CisTopicObjects
-      #Run warp LDA on objects
-      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(10,20:30),nCores=11,addModels=FALSE)
-      print("Saving cistopic models.")
-      saveRDS(atac_cistopic_models,file=paste(prefix,"CisTopicObject.Rds",sep=".")) 
-  }
-          
-  for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){
-    cirm43_subset<-subset(orgo_cirm43,cells=which(orgo_cirm43$celltype == i))
-    cistopic_processing(seurat_input=cirm43_subset,prefix=i)}
-
-  for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){
-    #Setting up topic count selection
-    atac_cistopic_models <-readRDS(paste(i,"CisTopicObject.Rds",sep="."))
-    pdf(paste(i,"CisTopicObject_model_selection.pdf",sep="."))
-    par(mfrow=c(1,3))
-    atac_cistopic_models <- selectModel(atac_cistopic_models, type='derivative')
-    dev.off()
-    system(paste0("slack -F ",paste(i,"CisTopicObject_model_selection.pdf",sep=".")," ryan_todo"))}
-
-  #set topics based on derivative
-  topic_counts<-setNames(c(24,30,22),c("radial_glia","intermediate_progenitor","excitatory_neuron"))
-
-  topicmodel_list<-setNames(c("radial_glia","intermediate_progenitor","excitatory_neuron"), paste(c("radial_glia","intermediate_progenitor","excitatory_neuron"),"CisTopicObject.Rds",sep="."))
-
-#UMAP Projection and clustering on selected cistopic model
-clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=orgo_cirm43,celltype.x,topiccount_list.=topic_counts){
-    #set up subset object again
-    atac_sub<-subset(object_input,cells=which(orgo_cirm43$celltype == celltype.x)) 
-    #select_topic
-    models_input<-readRDS(paste(celltype.x,"CisTopicObject.Rds",sep="."))
-    cisTopicObject<-cisTopic::selectModel(models_input,select=topiccount_list.[celltype.x],keepModels=F)
-    
-    #perform UMAP on topics
-    topic_df<-as.data.frame(cisTopicObject@selected.model$document_expects)
-    row.names(topic_df)<-paste0("Topic_",row.names(topic_df))
-    dims<-as.data.frame(uwot::umap(t(topic_df),n_components=2))
-    row.names(dims)<-colnames(topic_df)
-    colnames(dims)<-c("x","y")
-    dims$cellID<-row.names(dims)
-    dims<-merge(dims,object_input@meta.data,by.x="cellID",by.y="row.names")
-
-    #get cell embeddings
-    cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
-    colnames(cell_embeddings)<-cisTopicObject@cell.names
-    n_topics<-nrow(cell_embeddings)
-    row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
-    cell_embeddings<-as.data.frame(t(cell_embeddings))
-    
-    #get feature loadings
-    feature_loadings<-as.data.frame(cisTopicObject@selected.model$topics)
-    row.names(feature_loadings)<-paste0("topic_",1:n_topics)
-    feature_loadings<-as.data.frame(t(feature_loadings))
-    
-    #combine with seurat object for celltype seuratobject  
-    cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
-    umap_dims<-as.data.frame(as.matrix(dims[2:3]))
-    colnames(umap_dims)<-c("UMAP_1","UMAP_2")
-    row.names(umap_dims)<-dims$cellID
-    cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(umap_dims),assay="peaks",key="UMAP_")
-    atac_sub@reductions$cistopic<-cistopic_obj
-    atac_sub@reductions$umap<-cistopic_umap
-    #finally recluster
-    n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic"))
-    #Clustering with multiple resolutions to account for different celltype complexities
-    atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics)
-    atac_sub <- FindClusters(object = atac_sub,resolution=0.1)
-    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.2)
-    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.5)
-    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.9)
-    
-    saveRDS(atac_sub,paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
-    plt<-DimPlot(atac_sub,group.by=c('peaks_snn_res.0.1','peaks_snn_res.0.2','peaks_snn_res.0.5','peaks_snn_res.0.9'))
-    ggsave(plt,file=paste("./subcluster/",celltype.x,"clustering.pdf",sep="_"))
-    system(paste0("slack -F ",paste("./subcluster/",celltype.x,"clustering.pdf",sep="_")," ryan_todo"))
-
-}
-
-library(Signac)
-library(chromVAR)
-library(Signac)
-library(Seurat)
-library(JASPAR2020)
-library(TFBSTools)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(patchwork)
-set.seed(1234)
-library(dplyr)
-
-dir.create("./subcluster")
-
-for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){clustering_loop(celltype.x=i)}
-
-for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){system(paste0("slack -F ",paste("./subcluster/",i,"clustering.pdf",sep="_")," ryan_todo"))}
-
-
-subcluster_assignment<-function(resolution_list.=resolution_list,object_input=orgo_cirm43,celltype.x){
-    #set up subset object again
-    atac_sub<-readRDS(paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
-    atac_sub$seurat_subcluster<-atac_sub@meta.data[,which(colnames(atac_sub@meta.data)==resolution_list[celltype.x])]
-    saveRDS(atac_sub,paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
-
-}
-
-#Selected resolution based on subclustering plots
-resolution_list<-setNames(c("peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.2"),c("radial_glia","intermediate_progenitor","excitatory_neuron"))
-#Seurat subcluster assignment based on resolution plots
-for (i in c("radial_glia","intermediate_progenitor","excitatory_neuron")){subcluster_assignment(celltype.x=i)}
-
-#Add subcluster assignment and subcluster x and y coordinates to main Rds
-
-#Assign clustering resolution based on clustering.pdf output
-resolution_list<-setNames(c("peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.2"),c("radial_glia","intermediate_progenitor","excitatory_neuron"))
-cell_order<-row.names(orgo_cirm43@meta.data)
-celltype_list<-c("radial_glia","intermediate_progenitor","excitatory_neuron")
-
-#adding all subclustering info back into main RDS object
-orgo_cirm43$seurat_subcluster<-"NA"
-orgo_cirm43$subcluster_x<-"NA"
-orgo_cirm43$subcluster_y<-"NA"
-
-for(celltype.x in celltype_list){
-    atac_sub<-readRDS(paste("./subcluster/",celltype.x,"SeuratObject.Rds",sep="_"))
-    embedding_order<-row.names(atac_sub@reductions$umap@cell.embeddings)
-    row_order<-match(cell_order,embedding_order,nomatch=0)
-    orgo_cirm43@meta.data[match(row.names(atac_sub@meta.data),row.names(orgo_cirm43@meta.data),nomatch=0),]$seurat_subcluster<-as.character(unlist(atac_sub@meta.data[which(colnames(atac_sub@meta.data)==resolution_list[celltype.x])]))
-    orgo_cirm43@meta.data[match(row.names(atac_sub@meta.data),row.names(orgo_cirm43@meta.data),nomatch=0),]$subcluster_x<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,1])
-    orgo_cirm43@meta.data[match(row.names(atac_sub@meta.data),row.names(orgo_cirm43@meta.data),nomatch=0),]$subcluster_y<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,2])
-}
-
-as.data.frame(orgo_cirm43@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
-#na values are doublets  
-saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
-
-
-library(princurve)
-library(ggplot2)
-library(patchwork)
-setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis/subcluster")
-
-
-prin_curve<-function(celltype.x=i,atac_sub,subcluster_list){
-cellid_subset<-row.names(atac_sub@meta.data)[atac_sub$seurat_subcluster %in% subcluster_list]
-dims<-atac_sub@reductions$umap@cell.embeddings[cellid_subset,]
-prcurve_out<-principal_curve(dims)
-dims<-cbind(dims,atac_sub@meta.data[cellid_subset,])
-dims$prcurve<-prcurve_out$lambda[cellid_subset]
-
-plt1<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
-  geom_point(aes(color=as.factor(DIV)),size=0.1)#+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
-
-plt2<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
-  geom_point(aes(color=seurat_subcluster),size=0.1)#+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
-
-plt3<-ggplot(as.data.frame(dims),aes(x=UMAP_1,y=UMAP_2))+
-  geom_point(aes(color=as.numeric(prcurve)),size=0.1)#+geom_line(dat=as.data.frame(prcurve_out$s),aes(x=UMAP_1,y=UMAP_2))
-plt<-(plt1+plt2)/(plt3)
-
-ggsave(plt,file=paste(i,"prcurve.pdf",sep="."))
-system(paste0("slack -F ",paste(i,"prcurve.pdf",sep=".")," ryan_todo"))
-saveRDS(prcurve_out,file=paste(i,"prcurve.Rds",sep="."))
-atac_sub@meta.data$prcurve<-NA
-atac_sub@meta.data[cellid_subset,]$prcurve<-dims$prcurve
-
-plt<-FeaturePlot(atac_sub,feature="prcurve")
-ggsave(plt,file=paste(i,"prcurve.seurat.pdf",sep="."))
-system(paste0("slack -F ",paste(i,"prcurve.seurat.pdf",sep=".")," ryan_todo"))
-saveRDS(atac_sub,paste("",i,"SeuratObject.Rds",sep="_"))
-}
-
-i="radial_glia";subclusters<-c("3","1","0")
-atac_sub<-readRDS("_radial_glia_SeuratObject.Rds")
-prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
-
-i="intermediate_progenitor";subclusters<-c("0","1","2")
-atac_sub<-readRDS("_intermediate_progenitor_SeuratObject.Rds")
-prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
-
-i="excitatory_neuron";subclusters<-c("0","1","2","3","4")
-atac_sub<-readRDS("_excitatory_neuron_SeuratObject.Rds")
-prin_curve(celltype.x=i,subcluster_list=subclusters,atac_sub=atac_sub)
-
-```
-{% endcapture %} {% include details.html %} 
 
 
 
