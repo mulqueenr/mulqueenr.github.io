@@ -149,7 +149,7 @@ h1, h2, h3, h4, h5, h6 {
   visibility: hidden;
   overflow-y: auto;
   font-family: "PT Sans", Helvetica, Arial, sans-serif;
-  font-size: .875rem; /* 15px */
+  font-size: .65rem; /* 15px */ /*/ was .865*/
   color: rgba(255,255,255,.6);
   background-color: #202020;
   -webkit-transition: all .3s ease-in-out;

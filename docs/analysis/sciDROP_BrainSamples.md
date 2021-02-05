@@ -397,7 +397,7 @@ bgzip="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda
 #human processing
 input_bam="hg38.merged.bbrd.q10.bam"
 output_name=${input_bam::-13}
-samtools view --threads 10 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=30 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz; wait ;
+samtools view --threads 10 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=10 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz; wait ;
 $tabix -p bed $output_name.fragments.tsv.gz &
 #mouse processing
 input_bam="mm10.merged.bbrd.q10.bam"
@@ -524,38 +524,40 @@ import pandas as pd
 input_dir = '/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/'
 
 #Perform scrublet on mm10 cells
-    counts_matrix = scipy.io.mmread(input_dir + 'mm10.counts.mtx').T.tocsc() #generated during the initialization of the Seurat Object
+counts_matrix = scipy.io.mmread(input_dir + 'mm10.counts.mtx').T.tocsc() #generated during the initialization of the Seurat Object
 
-    peaks= np.array(gzip.open(input_dir+'mm10.counts.sparseMatrix.rows.gz', 'rt').read().split()) #This is read in to check that our data frame is in the correct orientation
-    cellid= gzip.open(input_dir+'mm10.counts.sparseMatrix.cols.gz', 'rt').read().split() #This is read in to check that our data frame is in the correct orientation
-    print('Counts matrix shape: {} rows, {} columns'.format(counts_matrix.shape[0], counts_matrix.shape[1]))
-    print('Number of genes in gene list: {}'.format(len(peaks)))
-    #Run scrublet
-    scrub = scr.Scrublet(counts_matrix, expected_doublet_rate=0.05)
-    #Run the default pipeline, which includes:
-    #Doublet simulation
-    #Normalization, gene filtering, rescaling, PCA
-    #Doublet score calculation
-    #Doublet score threshold detection and doublet calling
-    doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2, 
-                                                              min_cells=3, 
-                                                              min_gene_variability_pctl=85, 
-                                                              n_prin_comps=30)
+peaks= np.array(gzip.open(input_dir+'mm10.counts.sparseMatrix.rows.gz', 'rt').read().split()) #This is read in to check that our data frame is in the correct orientation
+cellid= gzip.open(input_dir+'mm10.counts.sparseMatrix.cols.gz', 'rt').read().split() #This is read in to check that our data frame is in the correct orientation
+print('Counts matrix shape: {} rows, {} columns'.format(counts_matrix.shape[0], counts_matrix.shape[1]))
+print('Number of genes in gene list: {}'.format(len(peaks)))
+#Run scrublet
+scrub = scr.Scrublet(counts_matrix, expected_doublet_rate=0.05)
+#Run the default pipeline, which includes:
+#Doublet simulation
+#Normalization, gene filtering, rescaling, PCA
+#Doublet score calculation
+#Doublet score threshold detection and doublet calling
+doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2, 
+                                                          min_cells=3, 
+                                                          min_gene_variability_pctl=85, 
+                                                          n_prin_comps=30)
 
     """
-    Simulating doublets...
-    Embedding transcriptomes using PCA...
-    Calculating doublet scores...
-    Automatically set threshold at doublet score = 0.37
-    Detected doublet rate = 2.0%
-    Estimated detectable doublet fraction = 53.6%
-    Overall doublet rate:
-            Expected   = 5.0%
-            Estimated  = 3.7%
-    Elapsed time: 1072.8 seconds
+Preprocessing...
+Simulating doublets...
+Embedding transcriptomes using PCA...
+Calculating doublet scores...
+Automatically set threshold at doublet score = 0.40
+Detected doublet rate = 1.7%
+Estimated detectable doublet fraction = 39.2%
+Overall doublet rate:
+        Expected   = 5.0%
+        Estimated  = 4.3%
+Elapsed time: 705.7 seconds
+
     """
-    df = pd.DataFrame({'cellid':cellid, 'doublet_scores':doublet_scores,'predicted_doublets':predicted_doublets})
-    df.to_csv('mm10.scrublet.tsv', index=False, sep="\t")
+df = pd.DataFrame({'cellid':cellid, 'doublet_scores':doublet_scores,'predicted_doublets':predicted_doublets})
+df.to_csv('mm10.scrublet.tsv', index=False, sep="\t")
 
 #Perform on hg38 cells
 counts_matrix = scipy.io.mmread(input_dir + 'hg38.counts.mtx').T.tocsc() #generated during the initialization of the Seurat Object
@@ -575,12 +577,51 @@ doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2,
                                                           min_cells=3, 
                                                           min_gene_variability_pctl=85, 
                                                           n_prin_comps=30)
+"""
+Preprocessing...
+Simulating doublets...
+Embedding transcriptomes using PCA...
+Calculating doublet scores...
+Automatically set threshold at doublet score = 0.56
+Detected doublet rate = 0.5%
+Estimated detectable doublet fraction = 34.1%
+Overall doublet rate:
+        Expected   = 5.0%
+        Estimated  = 1.5%
+Elapsed time: 498.8 seconds
+"""
 
 df = pd.DataFrame({'cellid':cellid, 'doublet_scores':doublet_scores,'predicted_doublets':predicted_doublets})
 df.to_csv('hg38.scrublet.tsv', index=False, sep="\t")
 ```
 {% endcapture %} {% include details.html %} 
 
+
+## Filtering to just a single lane for now
+Need to figure out best way to integration of data later
+
+```R
+library(cisTopic)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(EnsDb.Mmusculus.v79)
+library(Matrix)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+#Saved all cells files as hg38_SeuratObject.allcells.Rds and mm10_SeuratObject.allcells.Rds
+hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+hg38_atac<-subset(hg38_atac, cells=row.names(hg38_atac@meta.data[which(hg38_atac$pcr_idx!="CGTACTAG"),]))
+saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
+
+mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+mm10_atac<-subset(mm10_atac, cells=row.names(mm10_atac@meta.data[which(mm10_atac$pcr_idx!="CGTACTAG"),]))
+saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
+
+```
 ## Running Initial Clustering of Cells
 Using CisTopic for Dimensionality reduction and UMAP for projection.
 
@@ -599,7 +640,6 @@ library(Matrix)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
-
 hg38_cistopic_counts_frmt<-hg38_atac$peaks@counts
 
 #renaming row names to fit granges expectation of format
@@ -609,7 +649,7 @@ row.names(hg38_cistopic_counts_frmt)<-sub("-", ":", row.names(hg38_cistopic_coun
 hg38_atac_cistopic<-cisTopic::createcisTopicObject(hg38_cistopic_counts_frmt)
 
 #Run warp LDA on objects
-hg38_atac_cistopic_models<-cisTopic::runWarpLDAModels(hg38_atac_cistopic,topic=c(10,20,22,24,26,28,30),nCores=7,addModels=FALSE)
+hg38_atac_cistopic_models<-cisTopic::runWarpLDAModels(hg38_atac_cistopic,topic=c(22,24,26,28,30),nCores=5,addModels=FALSE)
 
 #Saving all models for posterity
 saveRDS(hg38_atac_cistopic_models,file="hg38_CisTopicObject.Rds")
@@ -619,7 +659,7 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 mm10_cistopic_counts_frmt<-mm10_atac$peaks@counts
 row.names(mm10_cistopic_counts_frmt)<-sub("-", ":", row.names(mm10_cistopic_counts_frmt))
 mm10_atac_cistopic<-cisTopic::createcisTopicObject(mm10_cistopic_counts_frmt)
-mm10_atac_cistopic_models<-cisTopic::runWarpLDAModels(mm10_atac_cistopic,topic=c(10,20,22,24,26,28,30),nCores=7,addModels=FALSE)
+mm10_atac_cistopic_models<-cisTopic::runWarpLDAModels(mm10_atac_cistopic,topic=c(24,26,28,30),nCores=4,addModels=FALSE)
 saveRDS(mm10_atac_cistopic_models,file="mm10_CisTopicObject.Rds")
 
 mm10_atac_cistopic_models<-readRDS(file="mm10_CisTopicObject.Rds")
@@ -641,7 +681,7 @@ system("slack -F mm10_atac_model_selection.pdf ryan_todo")
 
 #set topics based on derivative
 #selected topics subject to change
-mm10_selected_topic=26
+mm10_selected_topic=30
 hg38_selected_topic=28
 mm10_cisTopicObject<-cisTopic::selectModel(mm10_atac_cistopic_models,select=mm10_selected_topic,keepModels=F)
 hg38_cisTopicObject<-cisTopic::selectModel(hg38_atac_cistopic_models,select=hg38_selected_topic,keepModels=F)
@@ -763,21 +803,21 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
 #Plotting 2d projection and clusters
 
-plt<-DimPlot(hg38_atac,group.by=c('seurat_clusters','predicted_doublets'))
+plt<-DimPlot(hg38_atac,group.by=c('seurat_clusters','predicted_doublets',"pcr_idx"))
 ggsave(plt,file="hg38.umap.pdf",width=10)
-system("slack -F hg38.umap.pdf sci_drop_atac")
+system("slack -F hg38.umap.pdf ryan_todo")
 
-plt<-DimPlot(mm10_atac,group.by=c('seurat_clusters','predicted_doublets'))
+plt<-DimPlot(mm10_atac,group.by=c('seurat_clusters','predicted_doublets',"pcr_idx"))
 ggsave(plt,file="mm10.umap.pdf",width=10)
-system("slack -F mm10.umap.pdf sci_drop_atac")
+system("slack -F mm10.umap.pdf ryan_todo")
 
 plt<-FeaturePlot(hg38_atac,feature=c('doublet_scores'))
 ggsave(plt,file="hg38.umap.scrub.pdf")
-system("slack -F hg38.umap.scrub.pdf sci_drop_atac")
+system("slack -F hg38.umap.scrub.pdf ryan_todo")
 
 plt<-FeaturePlot(mm10_atac,feature=c('doublet_scores'))
 ggsave(plt,file="mm10.umap.scrub.pdf")
-system("slack -F mm10.umap.scrub.pdf sci_drop_atac")
+system("slack -F mm10.umap.scrub.pdf ryan_todo")
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -796,33 +836,29 @@ library(Seurat)
 library(ggplot2)
 library(patchwork)
 library(ComplexHeatmap)
+library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
 mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 compl<-read.table(file="complexity.txt",header=F)
-colnames(compl)<-c("row_carryover","cellID","total_reads","unique_reads","percent_uniq")
-hg38_atac$total_reads<-0
-hg38_atac@meta.data[match(row.names(hg38_atac@meta.data),compl$cellID,nomatch=0),]$total_reads<-compl[match(compl$cellID,row.names(hg38_atac@meta.data),nomatch=0),]$total_reads
-hg38_atac$unique_reads<-0
-hg38_atac@meta.data[match(row.names(hg38_atac@meta.data),compl$cellID,nomatch=0),]$unique_reads<-compl[match(compl$cellID,row.names(hg38_atac@meta.data),nomatch=0),]$unique_reads
-hg38_atac$percent_uniq<-0
-hg38_atac@meta.data[match(row.names(hg38_atac@meta.data),compl$cellID,nomatch=0),]$percent_uniq<-compl[match(compl$cellID,row.names(hg38_atac@meta.data),nomatch=0),]$percent_uniq
-hg38_atac@meta.data<-hg38_atac@meta.data[nchar(row.names(hg38_atac@meta.data))==32,]
+colnames(compl)<-c("row_carryover","cellid","total_reads","unique_reads","percent_uniq")
+row.names(compl)<-compl$cellid
+
+hg38_atac <- AddMetaData(object = hg38_atac, col="total_reads",metadata = setNames(compl$total_reads,row.names(compl)))
+hg38_atac <- AddMetaData(object = hg38_atac, col="unique_reads",metadata = setNames(compl$unique_reads,row.names(compl)))
+hg38_atac <- AddMetaData(object = hg38_atac, col="percent_uniq",metadata = setNames(compl$percent_uniq,row.names(compl)))
 hg38_atac$pcr_idx<-substr(hg38_atac$cellid,1,8)
 hg38_atac$gem_idx<-substr(hg38_atac$cellid,9,24)
 hg38_atac$tn5_idx<-substr(hg38_atac$cellid,25,32)
 
-mm10_atac$total_reads<-0
-mm10_atac@meta.data[match(row.names(mm10_atac@meta.data),compl$cellID,nomatch=0),]$total_reads<-compl[match(compl$cellID,row.names(mm10_atac@meta.data),nomatch=0),]$total_reads
-mm10_atac$unique_reads<-0
-mm10_atac@meta.data[match(row.names(mm10_atac@meta.data),compl$cellID,nomatch=0),]$unique_reads<-compl[match(compl$cellID,row.names(mm10_atac@meta.data),nomatch=0),]$unique_reads
-mm10_atac$percent_uniq<-0
-mm10_atac@meta.data[match(row.names(mm10_atac@meta.data),compl$cellID,nomatch=0),]$percent_uniq<-compl[match(compl$cellID,row.names(mm10_atac@meta.data),nomatch=0),]$percent_uniq
-mm10_atac@meta.data<-mm10_atac@meta.data[nchar(row.names(mm10_atac@meta.data))==32,]
+mm10_atac <- AddMetaData(object = mm10_atac, col="total_reads",metadata = setNames(compl$total_reads,row.names(compl)))
+mm10_atac <- AddMetaData(object = mm10_atac, col="unique_reads",metadata = setNames(compl$unique_reads,row.names(compl)))
+mm10_atac <- AddMetaData(object = mm10_atac, col="percent_uniq",metadata = setNames(compl$percent_uniq,row.names(compl)))
 mm10_atac$pcr_idx<-substr(mm10_atac$cellid,1,8)
 mm10_atac$gem_idx<-substr(mm10_atac$cellid,9,24)
 mm10_atac$tn5_idx<-substr(mm10_atac$cellid,25,32)
+
 
 saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
 saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
@@ -843,31 +879,38 @@ ggsave(plt1+plt2,file="mm10.hg38.complexity.2d.pdf")
 system("slack -F mm10.hg38.complexity.2d.pdf ryan_todo")
 
 #Looking for experiment bias
-plt1<-DimPlot(hg38_atac,group.by="pcr_idx")
-plt2<-DimPlot(mm10_atac,group.by="pcr_idx")
-ggsave(plt1+plt2,file="mm10.hg38.i7idx.pdf",limitsize=F,width=15,height=10)
-system("slack -F mm10.hg38.i7idx.pdf ryan_todo")
+#plt1<-DimPlot(hg38_atac,group.by=c("pcr_idx","seurat_clusters"))
+#plt2<-DimPlot(mm10_atac,group.by="pcr_idx")
+#ggsave(plt1,file="hg38.i7idx.pdf",limitsize=F,width=10)
+#system("slack -F hg38.i7idx.pdf ryan_todo")
+
+#Correcting bias with harmony
+#harm_mat<-HarmonyMatrix(hg38_atac@reductions$cistopic@cell.embeddings, hg38_atac@meta.data$experiment,do_pca=FALSE,nclust=8)
+#hg38_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
+#hg38_atac<-RunUMAP(hg38_atac, reduction = "harmony",dims=1:ncol(hg38_atac@reductions$harmony))
+#hg38_atac <- FindNeighbors(object = hg38_atac,reduction = 'harmony')
+#hg38_atac <- FindClusters(object = hg38_atac,verbose = TRUE,resolution=0.05 )#targetting roughly 8 communities
 
 #looking like a strong experiment bias, checking topic bias
-side_ha<-rowAnnotation(df= data.frame(experiment=hg38_atac$pcr_idx),
-                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(hg38_atac$pcr_idx))))
-pdf("hg38.i7idx.heatmap.pdf")
-plt<-Heatmap(hg38_atac@reductions$cistopic@cell.embeddings,
-    left_annotation=side_ha, show_row_names=F,show_column_names=F)
-plt
-dev.off()
-system("slack -F hg38.i7idx.heatmap.pdf ryan_todo")
+#side_ha<-rowAnnotation(df= data.frame(experiment=hg38_atac$pcr_idx),
+#                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(hg38_atac$pcr_idx))))
+#pdf("hg38.i7idx.heatmap.pdf")
+#plt<-Heatmap(hg38_atac@reductions$cistopic@cell.embeddings,
+#    left_annotation=side_ha, show_row_names=F,show_column_names=F)
+#plt
+#dev.off()
+#system("slack -F hg38.i7idx.heatmap.pdf ryan_todo")
 
 
 #looking like a strong experiment bias, checking topic bias
-side_ha<-rowAnnotation(df= data.frame(experiment=mm10_atac$pcr_idx),
-                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(mm10_atac$pcr_idx))))
-pdf("mm10.i7idx.heatmap.pdf")
-plt<-Heatmap(mm10_atac@reductions$cistopic@cell.embeddings,
-    left_annotation=side_ha,show_row_names=F,show_column_names=F)
-plt
-dev.off()
-system("slack -F mm10.i7idx.heatmap.pdf ryan_todo")
+#side_ha<-rowAnnotation(df= data.frame(experiment=mm10_atac$pcr_idx),
+#                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(mm10_atac$pcr_idx))))
+#pdf("mm10.i7idx.heatmap.pdf")
+#plt<-Heatmap(mm10_atac@reductions$cistopic@cell.embeddings,
+#    left_annotation=side_ha,show_row_names=F,show_column_names=F)
+#plt
+#dev.off()
+#system("slack -F mm10.i7idx.heatmap.pdf ryan_todo")
 
 #hard coded these numbers just because i had them for a meeting
 cell_count_75k<-data.frame(count=c(10040,18985,170,12663-(141+19),19530-(484+50),141+19,484+50),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("75k"))
@@ -1003,14 +1046,14 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
 
     #Running cistopic subclustering on all identified cell types
     lapply(celltype_list, function(i){atac_sub<-subset(hg38_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="hg38")})
-    
+
     topicmodel_list<-paste("./subcluster/",species,celltype_list,".CisTopicObject.Rds",sep="_")
 
     #determine model count to use for each cell type
     for (i in paste("./subcluster/",species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
 
     #selecting topics based on derivative, making a named vector, note some of these seem to suggest a topic count over 28, but were artificially capped
-    topic_count_list<-setNames(c(27,26,25,26,28,25,28,28),celltype_list)
+    topic_count_list<-setNames(c(27,28,25,26,28,28,26),celltype_list)
     names(topic_count_list)<-celltype_list
 
     #Running clustering loop
@@ -1025,8 +1068,8 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     hg38_atac$subcluster_y<-"NA"
 
     #Assign clustering resolution based on clustering.pdf output
-    resolution_list<-setNames(c("peaks_snn_res.0.1","peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.2",
-        "peaks_snn_res.0.2","peaks_snn_res.0.5","peaks_snn_res.0.1","peaks_snn_res.0.1"),celltype_list)
+    resolution_list<-setNames(c("peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.2","peaks_snn_res.0.2",
+        "peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.2"),celltype_list)
     cell_order<-row.names(hg38_atac@meta.data)
 
     for(celltype.x in celltype_list){
@@ -1042,27 +1085,28 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     #na values are doublets  
     saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
 
-#mm10
+    #mm10
     #Set up variables
     species="mm10"
     celltype_list<-unique(mm10_atac$seurat_clusters)
 
     #Running cistopic subclustering on all identified cell types
-    lapply(celltype_list, function(i){atac_sub<-subset(mm10_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="mm10")})
+    #####DOING CUSTERS 1:4 to START, CLEARING MEMORY THEN DOING AGAIN
+    lapply(celltype_list[4:length(celltype_list)], function(i){atac_sub<-subset(mm10_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="mm10")})
     
     #determine model count to use for each cell type
     for (i in paste("./subcluster/",species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
     topicmodel_list<-paste("./subcluster/",species,celltype_list,".CisTopicObject.Rds",sep="_")
 
     #selecting topics based on derivative, making a named vector 
-    topic_count_list<-setNames(c(25,26,25,27,28,26,25,24,24,28),celltype_list)
+    topic_count_list<-setNames(c(24,24,24,27,25,27,24,27,28),celltype_list)
     names(topic_count_list)<-celltype_list
 
     #Running clustering loop
     for (i in celltype_list){clustering_loop(object_input=mm10_atac,celltype.x=i)}
 
     #selecting resolution by plots 
-    for (i in celltype_list){system(paste0("slack -F ",paste(species,i,"clustering.pdf",sep="_")," ryan_todo"))}
+    for (i in celltype_list){system(paste0("slack -F ",paste("./subcluster/",species,i,"clustering.pdf",sep="_")," ryan_todo"))}
 
     #adding all subclustering info back into main RDS object
     mm10_atac$seurat_subcluster<-"NA"
@@ -1070,8 +1114,8 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     mm10_atac$subcluster_y<-"NA"
 
     #Assign clustering resolution based on clustering.pdf output
-    resolution_list<-setNames(c("peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.2",
-        "peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.1"),celltype_list)
+    resolution_list<-setNames(c("peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.1",
+        "peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.1"),celltype_list)
     cell_order<-row.names(mm10_atac@meta.data)
 
     for(celltype.x in celltype_list){
@@ -1092,137 +1136,11 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
 {% endcapture %} {% include details.html %} 
 
 
-### Plot Data and Subclusters
+### Recoloring subclusters
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
-```R
 
-library(Signac)
-library(Seurat)
-library(SeuratWrappers)
-library(ggplot2)
-library(patchwork)
-library(cicero)
-library(cisTopic)
-library(GenomeInfoDb)
-set.seed(1234)
-library(Matrix)
-library(dplyr)
-library(ggrepel)
-library(RColorBrewer)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
-
-#Read in data and modify to monocle CDS file
-#read in RDS file.
-hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
-mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
-
-#plotting mm10 umap and subclusters
-    dat<-as.data.frame(mm10_atac@meta.data)
-    cell_order<-row.names(dat)
-    embedding_order<-row.names(mm10_atac@reductions$umap@cell.embeddings)
-    row_order<-match(cell_order,embedding_order)
-
-    dat$umap_x<-as.numeric(mm10_atac@reductions$umap@cell.embeddings[row_order,1])
-    dat$umap_y<-as.numeric(mm10_atac@reductions$umap@cell.embeddings[row_order,2])
-    dat<-dat[dat$predicted_doublets=="False",]
-
-    cols<-brewer.pal(n = length(unique(dat$seurat_clusters)), name = "Spectral");names(cols)<-unique(dat$seurat_clusters) #clusters
-    cols_df<-data.frame(seurat_clusters=names(cols),cluster_col=cols)
-    dat<-merge(dat,cols_df,by="seurat_clusters")
-    dat$subcluster_col<-NA
-
-    col_profile<-c("PuOr","RdGy","Oranges","YlOrBr","RdYlGn","PiYG","BuGn","Blues","BuPu","Purples")
-    names(col_profile)<-c("4","2","3","1","0","6","5","8","9","7")
-
-    for (x in 1:length(col_profile)){
-        print(col_profile[x])
-        cols_temp<-brewer.pal(n = length(unique(dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster)), name = as.character(col_profile[x]))
-        subcluster_member_count<-length(unique(dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster))
-        if(length(cols_temp) != subcluster_member_count){cols_temp<-cols_temp[1:subcluster_member_count]}
-        cols_temp_df<-data.frame(seurat_subcluster=unique(dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster),
-                        subcluster_col=cols_temp)
-        subclus_order<-dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster
-        dat[dat$seurat_clusters==names(col_profile[x]),]$subcluster_col<-cols_temp_df[match(subclus_order,cols_temp_df$seurat_subcluster),]$subcluster_col
-    }
-
-    plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
-    geom_point(alpha=0.1,size=0.5,shape=16)+
-    theme_bw()+scale_color_manual(values=levels(as.factor(dat$cluster_col)))+
-    ggtitle("mm10")+
-    theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
-
-    plt_list<-ggplot(dat,aes(x=as.numeric(subcluster_x),y=as.numeric(subcluster_y),color=as.factor(subcluster_col)))+
-    geom_point(alpha=0.1,size=0.05,shape=16)+scale_color_manual(values=levels(as.factor(dat$subcluster_col)))+
-    theme_classic()+theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none")+
-    facet_wrap(facets=vars(seurat_clusters),ncol=2)
-    plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
-    ggsave(plt,file="mm10_umap.pdf")
-    system("slack -F mm10_umap.pdf ryan_todo")
-
-    mm10_atac@meta.data$cluster_col<-"NA"
-    mm10_atac@meta.data[match(dat$cellid,row.names(mm10_atac@meta.data),nomatch=0),]$cluster_col<-dat$cluster_col
-    mm10_atac@meta.data$subcluster_col<-"NA"
-    mm10_atac@meta.data[match(dat$cellid,row.names(mm10_atac@meta.data),nomatch=0),]$subcluster_col<-dat$subcluster_col
-    saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
-
-
-#plotting hg38 umap and subclusters
-    dat<-as.data.frame(hg38_atac@meta.data)
-    cell_order<-row.names(dat)
-    embedding_order<-row.names(hg38_atac@reductions$umap@cell.embeddings)
-    row_order<-match(cell_order,embedding_order)
-
-    dat$umap_x<-as.numeric(hg38_atac@reductions$umap@cell.embeddings[row_order,1])
-    dat$umap_y<-as.numeric(hg38_atac@reductions$umap@cell.embeddings[row_order,2])
-    dat<-dat[dat$predicted_doublets=="False",]
-
-    cols<-brewer.pal(n = length(unique(dat$seurat_clusters)), name = "Spectral");names(cols)<-unique(dat$seurat_clusters) #clusters
-    cols_df<-data.frame(seurat_clusters=names(cols),cluster_col=cols)
-    dat<-merge(dat,cols_df,by="seurat_clusters")
-    dat$subcluster_col<-NA
-
-    col_profile<-c("YlOrRd","Oranges","PuOr","YlGn","Greens","PRGn","PuBuGn","PuBu")
-    names(col_profile)<-c("0","5","1","3","2","6","7","4")
-
-    for (x in 1:length(col_profile)){
-        print(col_profile[x])
-        cols_temp<-brewer.pal(n = length(unique(dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster)), name = as.character(col_profile[x]))
-        subcluster_member_count<-length(unique(dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster))
-        if(length(cols_temp) != subcluster_member_count){cols_temp<-cols_temp[1:subcluster_member_count]}
-        cols_temp_df<-data.frame(seurat_subcluster=unique(dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster),
-                        subcluster_col=cols_temp)
-        subclus_order<-dat[dat$seurat_clusters==names(col_profile[x]),]$seurat_subcluster
-        dat[dat$seurat_clusters==names(col_profile[x]),]$subcluster_col<-cols_temp_df[match(subclus_order,cols_temp_df$seurat_subcluster),]$subcluster_col
-    }
-
-    plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
-    geom_point(alpha=0.1,size=0.5,shape=16)+
-    theme_bw()+scale_color_manual(values=levels(as.factor(dat$cluster_col)))+
-    ggtitle("hg38")+
-    theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
-
-    plt_list<-ggplot(dat,aes(x=as.numeric(subcluster_x),y=as.numeric(subcluster_y),color=as.factor(subcluster_col)))+
-    geom_point(alpha=0.1,size=0.05,shape=16)+scale_color_manual(values=levels(as.factor(dat$subcluster_col)))+
-    theme_classic()+theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none")+
-    facet_wrap(facets=vars(seurat_clusters),ncol=2)
-    plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
-    ggsave(plt,file="hg38_umap.subclus.pdf")
-    system("slack -F hg38_umap.subclus.pdf ryan_todo")
-
-    hg38_atac@meta.data$cluster_col<-"NA"
-    hg38_atac@meta.data[match(dat$cellid,row.names(hg38_atac@meta.data),nomatch=0),]$cluster_col<-dat$cluster_col
-    hg38_atac@meta.data$subcluster_col<-"NA"
-    hg38_atac@meta.data[match(dat$cellid,row.names(hg38_atac@meta.data),nomatch=0),]$subcluster_col<-dat$subcluster_col
-    saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
-
-```
-
-{% endcapture %} {% include details.html %} 
-
-
-### Recoloring subclusters
 ```R
     library(Signac)
     library(Seurat)
@@ -1254,6 +1172,7 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
     dat<-dat[dat$predicted_doublets=="False",]
     dat$seurat_clusters<-as.character(dat$seurat_clusters)
    
+    dat$cluster_col<-"NULL"
     dat[dat$seurat_clusters=="0",]$cluster_col<-"#1f78b4"
     dat[dat$seurat_clusters=="1",]$cluster_col<-"#b2df8a"
     dat[dat$seurat_clusters=="2",]$cluster_col<-"#FDE725"
@@ -1261,7 +1180,6 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
     dat[dat$seurat_clusters=="4",]$cluster_col<-"#6a3d9a"
     dat[dat$seurat_clusters=="5",]$cluster_col<-"#B15928"
     dat[dat$seurat_clusters=="6",]$cluster_col<-"#ff7f00"
-    dat[dat$seurat_clusters=="7",]$cluster_col<-"#33a02c"
 
     seurat_clus_col<-setNames(unique(dat$cluster_col),unique(dat$seurat_clusters))
     sort(unique(dat$cluster_ID))
@@ -1271,6 +1189,7 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
     #[37] "5_2" "5_3" "6_0" "6_1" "6_2" "6_3" "6_4" "6_5" "6_6" "6_7" "6_8" "6_9"
     #[49] "7_0" "7_1"
 
+    dat$subcluster_col<-"NULL"
     dat[dat$cluster_ID=="0_0",]$subcluster_col<-"#820933"
     dat[dat$cluster_ID=="0_1",]$subcluster_col<-"#D84797"
     dat[dat$cluster_ID=="0_2",]$subcluster_col<-"#D2FDFF"
@@ -1289,11 +1208,6 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
     dat[dat$cluster_ID=="2_0",]$subcluster_col<-"#B38A1B"
     dat[dat$cluster_ID=="2_1",]$subcluster_col<-"#6B0E44"
     dat[dat$cluster_ID=="2_2",]$subcluster_col<-"#E0BB55"
-    dat[dat$cluster_ID=="2_3",]$subcluster_col<-"#7146B3"
-    dat[dat$cluster_ID=="2_4",]$subcluster_col<-"#F896D8"
-    dat[dat$cluster_ID=="2_5",]$subcluster_col<-"#F0544F"
-    dat[dat$cluster_ID=="2_6",]$subcluster_col<-"#F63E02"
-    dat[dat$cluster_ID=="2_7",]$subcluster_col<-"#B0A3D4"
 
     dat[dat$cluster_ID=="3_0",]$subcluster_col<-"#FAA916"
     dat[dat$cluster_ID=="3_1",]$subcluster_col<-"#5E503F"
@@ -1302,32 +1216,20 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
     dat[dat$cluster_ID=="3_4",]$subcluster_col<-"#E952DE"
     dat[dat$cluster_ID=="3_5",]$subcluster_col<-"#848FA5"
     dat[dat$cluster_ID=="3_6",]$subcluster_col<-"#832161"
+    dat[dat$cluster_ID=="3_7",]$subcluster_col<-"#B0A3D4"
 
     dat[dat$cluster_ID=="4_0",]$subcluster_col<-"#DBAD6A"
     dat[dat$cluster_ID=="4_1",]$subcluster_col<-"#007EA7"
     dat[dat$cluster_ID=="4_2",]$subcluster_col<-"#C191A1"
     dat[dat$cluster_ID=="4_3",]$subcluster_col<-"#02010A"
-    dat[dat$cluster_ID=="4_4",]$subcluster_col<-"#A44A3F"
-    dat[dat$cluster_ID=="4_5",]$subcluster_col<-"#998DA0"
 
     dat[dat$cluster_ID=="5_0",]$subcluster_col<-"#230903"
     dat[dat$cluster_ID=="5_1",]$subcluster_col<-"#FFBFB7"
     dat[dat$cluster_ID=="5_2",]$subcluster_col<-"#FFD447"
     dat[dat$cluster_ID=="5_3",]$subcluster_col<-"#493657"
+    dat[dat$cluster_ID=="5_4",]$subcluster_col<-"#B1B695"
 
     dat[dat$cluster_ID=="6_0",]$subcluster_col<-"#80552B"
-    dat[dat$cluster_ID=="6_1",]$subcluster_col<-"#E87909"
-    dat[dat$cluster_ID=="6_2",]$subcluster_col<-"#A85238"
-    dat[dat$cluster_ID=="6_3",]$subcluster_col<-"#F8C0C8"
-    dat[dat$cluster_ID=="6_4",]$subcluster_col<-"#ECDD7B"
-    dat[dat$cluster_ID=="6_5",]$subcluster_col<-"#F7E3AF"
-    dat[dat$cluster_ID=="6_6",]$subcluster_col<-"#E5DCC5"
-    dat[dat$cluster_ID=="6_7",]$subcluster_col<-"#B1B695"
-    dat[dat$cluster_ID=="6_8",]$subcluster_col<-"#F1D302"
-    dat[dat$cluster_ID=="6_9",]$subcluster_col<-"#000000"
-
-    dat[dat$cluster_ID=="7_0",]$subcluster_col<-"#073B3A"
-    dat[dat$cluster_ID=="7_1",]$subcluster_col<-"#0B6E4F"
 
     seurat_subclus_col<-setNames(unique(dat$subcluster_col),unique(dat$cluster_ID))
 
@@ -1485,6 +1387,8 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
     saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
 ```
+{% endcapture %} {% include details.html %} 
+
 
 ## Cicero for Coaccessible Networks
 
@@ -1534,6 +1438,7 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
   hg38_atac<-readRDS("hg38_SeuratObject.Rds")
   hg38_atac<-cicero_processing(object_input=hg38_atac,prefix="hg38")
   saveRDS(hg38_atac,"hg38_SeuratObject.GA.Rds")
+  hg38_atac<-readRDS("hg38_SeuratObject.GA.Rds")
 
   mm10_atac<-readRDS("mm10_SeuratObject.Rds")
   mm10_atac<-cicero_processing(object_input=mm10_atac,prefix="mm10")
@@ -1652,27 +1557,27 @@ system("slack -F allen_brainspan_humancortex.dimplot.pdf ryan_todo")
 saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
 
 #Mouse
-# setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse")
-# meta_data<-read.csv("metadata.csv",header=T)
-# row.names(meta_data)<-meta_data$sample_name
-# counts<-read.csv("matrix.csv",header=T,row.names=1,nrows=100000) #this is 1million cells, i think 10% of that will be fine, hopefully they are evenly distributed
-# brainspan <- CreateSeuratObject(counts = as.data.frame(t(counts)), project = "brainspain", min.cells = 3, min.features = 500, meta.data=meta_data)
-# saveRDS(brainspan, file = "allen_brainspan_mouse.rds")
-# brainspan <- NormalizeData(brainspan, normalization.method = "LogNormalize", scale.factor = 10000)
-# brainspan <- FindVariableFeatures(brainspan, selection.method = "vst", nfeatures = 2000)
-# all.genes <- rownames(brainspan)
-# brainspan <- ScaleData(brainspan, features = all.genes)
-# brainspan <- RunPCA(brainspan, features = VariableFeatures(object = brainspan))
-# plt<-ElbowPlot(brainspan)
-# ggsave(plt,file="allen_brainspan_mouse.elbowplot.pdf")
-# system("slack -F allen_brainspan_mouse.elbowplot.pdf ryan_todo")
-# brainspan <- FindNeighbors(brainspan, dims = 1:15)
-# brainspan <- FindClusters(brainspan, resolution = 0.5)
-# brainspan <- RunUMAP(brainspan, dims = 1:15)
-# plt<-DimPlot(brainspan, reduction = "umap",group.by=c("class_label","subclass_label"))
-# ggsave(plt,file="allen_brainspan_mouse.dimplot.pdf",width=30)
-# system("slack -F allen_brainspan_mouse.dimplot.pdf ryan_todo")
-# saveRDS(brainspan, file = "allen_brainspan_mouse.rds")
+ setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse")
+ meta_data<-read.csv("metadata.csv",header=T)
+ row.names(meta_data)<-meta_data$sample_name
+ counts<-read.csv("matrix.csv",header=T,row.names=1,nrows=100000) #this is 1million cells, i think 10% of that will be fine, hopefully they are evenly distributed
+ brainspan <- CreateSeuratObject(counts = as.data.frame(t(counts)), project = "brainspain", min.cells = 3, min.features = 500, meta.data=meta_data)
+ saveRDS(brainspan, file = "allen_brainspan_mouse.rds")
+ brainspan <- NormalizeData(brainspan, normalization.method = "LogNormalize", scale.factor = 10000)
+ brainspan <- FindVariableFeatures(brainspan, selection.method = "vst", nfeatures = 2000)
+ all.genes <- rownames(brainspan)
+ brainspan <- ScaleData(brainspan, features = all.genes)
+ brainspan <- RunPCA(brainspan, features = VariableFeatures(object = brainspan))
+ plt<-ElbowPlot(brainspan)
+ ggsave(plt,file="allen_brainspan_mouse.elbowplot.pdf")
+ system("slack -F allen_brainspan_mouse.elbowplot.pdf ryan_todo")
+ brainspan <- FindNeighbors(brainspan, dims = 1:15)
+ brainspan <- FindClusters(brainspan, resolution = 0.5)
+ brainspan <- RunUMAP(brainspan, dims = 1:15)
+ plt<-DimPlot(brainspan, reduction = "umap",group.by=c("class_label","subclass_label"))
+ ggsave(plt,file="allen_brainspan_mouse.dimplot.pdf",width=30)
+ system("slack -F allen_brainspan_mouse.dimplot.pdf ryan_todo")
+ saveRDS(brainspan, file = "allen_brainspan_mouse.rds")
 
 
 
@@ -1725,13 +1630,13 @@ predict_celltype<-function(object,brainspan,prefix){
     system(paste0("slack -F ",prefix,".complexheatmap.pdf ryan_todo"))
 }
 
-hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+hg38_atac<-readRDS("hg38.SeuratObject.Rds")
 brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
 predict_celltype(object=hg38_atac,brainspan=brainspan.,prefix="hg38")
 
 #Mouse using smaller data set that is whole brain
-mm10_atac<-readRDS("mm10_SeuratObject.Rds")
-brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse_10x/allen_brain.rds")
+mm10_atac<-readRDS("mm10.SeuratObject.Rds")
+brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse/allen_brain.rds")
 brainspan. <- FindVariableFeatures(object = brainspan.,nfeatures = 5000)
 brainspan.@meta.data$subclass_label<-brainspan.@meta.data$subclass #setting shared column names
 brainspan.@meta.data$class_label<-brainspan.@meta.data$class
