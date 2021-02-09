@@ -597,6 +597,109 @@ df.to_csv('hg38.scrublet.tsv', index=False, sep="\t")
 {% endcapture %} {% include details.html %} 
 
 
+### Add library complexity data to RDS files.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```bash
+ cat ./sciDROP_20K/hg38.complexity.txt ./sciDROP_20K/mm10.complexity.txt ./sciDROP_70k/hg38.complexity.txt ./sciDROP_70k/mm10.complexity.txt > complexity.txt
+```
+
+```R
+library(Signac)
+library(Seurat)
+library(ggplot2)
+library(patchwork)
+library(ComplexHeatmap)
+library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+compl<-read.table(file="complexity.txt",header=F)
+colnames(compl)<-c("row_carryover","cellid","total_reads","unique_reads","percent_uniq")
+row.names(compl)<-compl$cellid
+
+hg38_atac$cellid<-row.names(hg38_atac@meta.data)
+hg38_atac <- AddMetaData(object = hg38_atac, col="total_reads",metadata = setNames(compl$total_reads,row.names(compl)))
+hg38_atac <- AddMetaData(object = hg38_atac, col="unique_reads",metadata = setNames(compl$unique_reads,row.names(compl)))
+hg38_atac <- AddMetaData(object = hg38_atac, col="percent_uniq",metadata = setNames(compl$percent_uniq,row.names(compl)))
+hg38_atac$pcr_idx<-substr(hg38_atac$cellid,1,8)
+hg38_atac$gem_idx<-substr(hg38_atac$cellid,9,24)
+hg38_atac$tn5_idx<-substr(hg38_atac$cellid,25,32)
+
+mm10_atac <- AddMetaData(object = mm10_atac, col="total_reads",metadata = setNames(compl$total_reads,row.names(compl)))
+mm10_atac <- AddMetaData(object = mm10_atac, col="unique_reads",metadata = setNames(compl$unique_reads,row.names(compl)))
+mm10_atac <- AddMetaData(object = mm10_atac, col="percent_uniq",metadata = setNames(compl$percent_uniq,row.names(compl)))
+mm10_atac$pcr_idx<-substr(mm10_atac$cellid,1,8)
+mm10_atac$gem_idx<-substr(mm10_atac$cellid,9,24)
+mm10_atac$tn5_idx<-substr(mm10_atac$cellid,25,32)
+
+
+saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
+saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
+
+plt1<-ggplot(mm10_atac@meta.data[mm10_atac@meta.data$predicted_doublets=="False",], aes(x=as.numeric(percent_uniq), y=log10(as.numeric(unique_reads))) ) +
+  stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
+  scale_fill_distiller(palette= "Spectral", direction=-1) +
+  scale_x_continuous(expand = c(0, 0),limits=c(0,100)) +
+  scale_y_continuous(expand = c(0, 0),limits=c(3,6)) +
+  theme(legend.position='none')
+plt2<-ggplot(hg38_atac@meta.data[hg38_atac@meta.data$predicted_doublets=="False",], aes(x=as.numeric(percent_uniq), y=log10(as.numeric(unique_reads))) ) +
+  stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
+  scale_fill_distiller(palette= "Spectral", direction=-1) +
+  scale_x_continuous(expand = c(0, 0),limits=c(0,100)) +
+  scale_y_continuous(expand = c(0, 0),limits=c(3,6)) +
+  theme(legend.position='none')
+ggsave(plt1+plt2,file="mm10.hg38.complexity.2d.pdf")
+system("slack -F mm10.hg38.complexity.2d.pdf ryan_todo")
+
+#Looking for experiment bias
+#plt1<-DimPlot(hg38_atac,group.by=c("pcr_idx","seurat_clusters"))
+#plt2<-DimPlot(mm10_atac,group.by="pcr_idx")
+#ggsave(plt1,file="hg38.i7idx.pdf",limitsize=F,width=10)
+#system("slack -F hg38.i7idx.pdf ryan_todo")
+
+#Correcting bias with harmony
+#harm_mat<-HarmonyMatrix(hg38_atac@reductions$cistopic@cell.embeddings, hg38_atac@meta.data$experiment,do_pca=FALSE,nclust=8)
+#hg38_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
+#hg38_atac<-RunUMAP(hg38_atac, reduction = "harmony",dims=1:ncol(hg38_atac@reductions$harmony))
+#hg38_atac <- FindNeighbors(object = hg38_atac,reduction = 'harmony')
+#hg38_atac <- FindClusters(object = hg38_atac,verbose = TRUE,resolution=0.05 )#targetting roughly 8 communities
+
+#looking like a strong experiment bias, checking topic bias
+#side_ha<-rowAnnotation(df= data.frame(experiment=hg38_atac$pcr_idx),
+#                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(hg38_atac$pcr_idx))))
+#pdf("hg38.i7idx.heatmap.pdf")
+#plt<-Heatmap(hg38_atac@reductions$cistopic@cell.embeddings,
+#    left_annotation=side_ha, show_row_names=F,show_column_names=F)
+#plt
+#dev.off()
+#system("slack -F hg38.i7idx.heatmap.pdf ryan_todo")
+
+
+#looking like a strong experiment bias, checking topic bias
+#side_ha<-rowAnnotation(df= data.frame(experiment=mm10_atac$pcr_idx),
+#                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(mm10_atac$pcr_idx))))
+#pdf("mm10.i7idx.heatmap.pdf")
+#plt<-Heatmap(mm10_atac@reductions$cistopic@cell.embeddings,
+#    left_annotation=side_ha,show_row_names=F,show_column_names=F)
+#plt
+#dev.off()
+#system("slack -F mm10.i7idx.heatmap.pdf ryan_todo")
+
+#hard coded these numbers just because i had them for a meeting
+cell_count_75k<-data.frame(count=c(10040,18985,170,12663-(141+19),19530-(484+50),141+19,484+50),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("75k"))
+cell_count_20k<-data.frame(count=c(3001,6572,24,3703-(27),5841-(449),27,449),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("20k"))
+cell_count<-rbind(cell_count_75k,cell_count_20k)
+plt<-ggplot(cell_count,aes(x=loading,y=count,fill=factor(names,levels=rev(c("mus","hum","by_h","by_m","by_mix","scrub_h","scrub_m")))))+geom_bar(position="stack",stat="identity")
+ggsave(plt,file="mm10.hg38.cellcount.pdf")
+system("slack -F mm10.hg38.cellcount.pdf ryan_todo")
+
+```
+
+{% endcapture %} {% include details.html %} 
+
 ## Filtering to just a single lane for now
 Need to figure out best way to integration of data later
 
@@ -820,108 +923,6 @@ ggsave(plt,file="mm10.umap.scrub.pdf")
 system("slack -F mm10.umap.scrub.pdf ryan_todo")
 
 ```
-{% endcapture %} {% include details.html %} 
-
-### Add library complexity data to RDS files.
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```bash
- cat ./sciDROP_20K/hg38.complexity.txt ./sciDROP_20K/mm10.complexity.txt ./sciDROP_70k/hg38.complexity.txt ./sciDROP_70k/mm10.complexity.txt > complexity.txt
-```
-
-```R
-library(Signac)
-library(Seurat)
-library(ggplot2)
-library(patchwork)
-library(ComplexHeatmap)
-library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
-setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
-
-hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
-mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
-compl<-read.table(file="complexity.txt",header=F)
-colnames(compl)<-c("row_carryover","cellid","total_reads","unique_reads","percent_uniq")
-row.names(compl)<-compl$cellid
-
-hg38_atac <- AddMetaData(object = hg38_atac, col="total_reads",metadata = setNames(compl$total_reads,row.names(compl)))
-hg38_atac <- AddMetaData(object = hg38_atac, col="unique_reads",metadata = setNames(compl$unique_reads,row.names(compl)))
-hg38_atac <- AddMetaData(object = hg38_atac, col="percent_uniq",metadata = setNames(compl$percent_uniq,row.names(compl)))
-hg38_atac$pcr_idx<-substr(hg38_atac$cellid,1,8)
-hg38_atac$gem_idx<-substr(hg38_atac$cellid,9,24)
-hg38_atac$tn5_idx<-substr(hg38_atac$cellid,25,32)
-
-mm10_atac <- AddMetaData(object = mm10_atac, col="total_reads",metadata = setNames(compl$total_reads,row.names(compl)))
-mm10_atac <- AddMetaData(object = mm10_atac, col="unique_reads",metadata = setNames(compl$unique_reads,row.names(compl)))
-mm10_atac <- AddMetaData(object = mm10_atac, col="percent_uniq",metadata = setNames(compl$percent_uniq,row.names(compl)))
-mm10_atac$pcr_idx<-substr(mm10_atac$cellid,1,8)
-mm10_atac$gem_idx<-substr(mm10_atac$cellid,9,24)
-mm10_atac$tn5_idx<-substr(mm10_atac$cellid,25,32)
-
-
-saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
-saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
-
-plt1<-ggplot(mm10_atac@meta.data[mm10_atac@meta.data$predicted_doublets=="False",], aes(x=as.numeric(percent_uniq), y=log10(as.numeric(unique_reads))) ) +
-  stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
-  scale_fill_distiller(palette= "Spectral", direction=-1) +
-  scale_x_continuous(expand = c(0, 0),limits=c(0,100)) +
-  scale_y_continuous(expand = c(0, 0),limits=c(3,6)) +
-  theme(legend.position='none')
-plt2<-ggplot(hg38_atac@meta.data[hg38_atac@meta.data$predicted_doublets=="False",], aes(x=as.numeric(percent_uniq), y=log10(as.numeric(unique_reads))) ) +
-  stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
-  scale_fill_distiller(palette= "Spectral", direction=-1) +
-  scale_x_continuous(expand = c(0, 0),limits=c(0,100)) +
-  scale_y_continuous(expand = c(0, 0),limits=c(3,6)) +
-  theme(legend.position='none')
-ggsave(plt1+plt2,file="mm10.hg38.complexity.2d.pdf")
-system("slack -F mm10.hg38.complexity.2d.pdf ryan_todo")
-
-#Looking for experiment bias
-#plt1<-DimPlot(hg38_atac,group.by=c("pcr_idx","seurat_clusters"))
-#plt2<-DimPlot(mm10_atac,group.by="pcr_idx")
-#ggsave(plt1,file="hg38.i7idx.pdf",limitsize=F,width=10)
-#system("slack -F hg38.i7idx.pdf ryan_todo")
-
-#Correcting bias with harmony
-#harm_mat<-HarmonyMatrix(hg38_atac@reductions$cistopic@cell.embeddings, hg38_atac@meta.data$experiment,do_pca=FALSE,nclust=8)
-#hg38_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
-#hg38_atac<-RunUMAP(hg38_atac, reduction = "harmony",dims=1:ncol(hg38_atac@reductions$harmony))
-#hg38_atac <- FindNeighbors(object = hg38_atac,reduction = 'harmony')
-#hg38_atac <- FindClusters(object = hg38_atac,verbose = TRUE,resolution=0.05 )#targetting roughly 8 communities
-
-#looking like a strong experiment bias, checking topic bias
-#side_ha<-rowAnnotation(df= data.frame(experiment=hg38_atac$pcr_idx),
-#                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(hg38_atac$pcr_idx))))
-#pdf("hg38.i7idx.heatmap.pdf")
-#plt<-Heatmap(hg38_atac@reductions$cistopic@cell.embeddings,
-#    left_annotation=side_ha, show_row_names=F,show_column_names=F)
-#plt
-#dev.off()
-#system("slack -F hg38.i7idx.heatmap.pdf ryan_todo")
-
-
-#looking like a strong experiment bias, checking topic bias
-#side_ha<-rowAnnotation(df= data.frame(experiment=mm10_atac$pcr_idx),
-#                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(mm10_atac$pcr_idx))))
-#pdf("mm10.i7idx.heatmap.pdf")
-#plt<-Heatmap(mm10_atac@reductions$cistopic@cell.embeddings,
-#    left_annotation=side_ha,show_row_names=F,show_column_names=F)
-#plt
-#dev.off()
-#system("slack -F mm10.i7idx.heatmap.pdf ryan_todo")
-
-#hard coded these numbers just because i had them for a meeting
-cell_count_75k<-data.frame(count=c(10040,18985,170,12663-(141+19),19530-(484+50),141+19,484+50),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("75k"))
-cell_count_20k<-data.frame(count=c(3001,6572,24,3703-(27),5841-(449),27,449),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("20k"))
-cell_count<-rbind(cell_count_75k,cell_count_20k)
-plt<-ggplot(cell_count,aes(x=loading,y=count,fill=factor(names,levels=rev(c("mus","hum","by_h","by_m","by_mix","scrub_h","scrub_m")))))+geom_bar(position="stack",stat="identity")
-ggsave(plt,file="mm10.hg38.cellcount.pdf")
-system("slack -F mm10.hg38.cellcount.pdf ryan_todo")
-
-```
-
 {% endcapture %} {% include details.html %} 
 
 
@@ -1183,12 +1184,10 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
 
     seurat_clus_col<-setNames(unique(dat$cluster_col),unique(dat$seurat_clusters))
     sort(unique(dat$cluster_ID))
-    # [1] "0_0" "0_1" "0_2" "0_3" "0_4" "0_5" "0_6" "0_7" "0_8" "1_0" "1_1" "1_2"
-    #[13] "1_3" "2_0" "2_1" "2_2" "2_3" "2_4" "2_5" "2_6" "2_7" "3_0" "3_1" "3_2"
-    #[25] "3_3" "3_4" "3_5" "3_6" "4_0" "4_1" "4_2" "4_3" "4_4" "4_5" "5_0" "5_1"
-    #[37] "5_2" "5_3" "6_0" "6_1" "6_2" "6_3" "6_4" "6_5" "6_6" "6_7" "6_8" "6_9"
-    #[49] "7_0" "7_1"
-
+    # [1] "0_0"  "0_1"  "0_2"  "0_3"  "0_4"  "0_5"  "0_6"  "0_7"  "0_8"  "0_NA"
+    #[11] "1_0"  "1_1"  "1_2"  "1_3"  "1_NA" "2_0"  "2_1"  "2_2"  "3_0"  "3_1"
+    #[21] "3_2"  "3_3"  "3_4"  "3_5"  "3_6"  "3_7"  "3_NA" "4_0"  "4_1"  "4_2"
+    #[31] "4_3"  "4_NA" "5_0"  "5_1"  "5_2"  "5_3"  "5_4"  "5_NA" "6_0"  "6_NA"
     dat$subcluster_col<-"NULL"
     dat[dat$cluster_ID=="0_0",]$subcluster_col<-"#820933"
     dat[dat$cluster_ID=="0_1",]$subcluster_col<-"#D84797"
@@ -1231,6 +1230,8 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
 
     dat[dat$cluster_ID=="6_0",]$subcluster_col<-"#80552B"
 
+    dat<-dat[!endsWith(dat$cluster_ID,"NA"),]
+
     seurat_subclus_col<-setNames(unique(dat$subcluster_col),unique(dat$cluster_ID))
 
     plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
@@ -1267,6 +1268,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     dat<-dat[dat$predicted_doublets=="False",]
     dat$seurat_clusters<-as.character(dat$seurat_clusters)
 
+    dat$cluster_col<-"NA"
     dat[dat$seurat_clusters=="0",]$cluster_col<-"#A7ACD9" #granule
     dat[dat$seurat_clusters=="1",]$cluster_col<-"#2CA58D" #granule
     dat[dat$seurat_clusters=="2",]$cluster_col<-"#BA3B46" #inhib
@@ -1276,43 +1278,39 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     dat[dat$seurat_clusters=="6",]$cluster_col<-"#EB5A0C" #inhib
     dat[dat$seurat_clusters=="7",]$cluster_col<-"#A7754D" #micro
     dat[dat$seurat_clusters=="8",]$cluster_col<-"#342056" #exN
-    dat[dat$seurat_clusters=="9",]$cluster_col<-"#EFC88B" #endo 
 
     seurat_clus_col<-setNames(unique(dat$cluster_col),unique(dat$seurat_clusters))
     sort(unique(dat$cluster_ID))
-    #[1] "0_0"  "0_1"  "1_0"  "1_1"  "1_2"  "1_3"  "2_0"  "2_1"  "2_10" "2_2"
-    #[11] "2_3"  "2_4"  "2_5"  "2_6"  "2_7"  "2_8"  "2_9"  "3_0"  "3_1"  "3_2"
-    #[21] "3_3"  "3_4"  "4_0"  "4_1"  "4_2"  "4_3"  "4_4"  "4_5"  "4_6"  "4_7"
-    #[31] "4_8"  "4_9"  "5_0"  "5_1"  "5_2"  "5_3"  "5_4"  "5_5"  "5_6"  "5_7"
-    #[41] "5_8"  "5_9"  "6_0"  "6_1"  "6_2"  "6_3"  "6_4"  "6_5"  "6_6"  "7_0"
-    #[51] "7_1"  "7_2"  "8_0"  "8_1"  "8_2"  "8_3"  "8_4"  "8_5"  "9_0"  "9_1"
-    #[61] "9_2"  "9_3"  "9_4"  "9_5"
+# [1] "0_0" "1_0" "1_1" "1_2" "1_3" "1_4" "1_5" "1_6" "1_7" "1_8" "2_0" "2_1"
+#[13] "2_2" "2_3" "2_4" "2_5" "3_0" "3_1" "3_2" "3_3" "4_0" "4_1" "4_2" "4_3"
+#[25] "4_4" "4_5" "5_0" "5_1" "5_2" "5_3" "5_4" "5_5" "5_6" "6_0" "6_1" "7_0"
+#[37] "7_1" "7_2" "7_3" "7_4" "8_0"
 
+
+    dat$subcluster_col<-"NA"
     dat[dat$cluster_ID=="0_0",]$subcluster_col<-"#5EC6F2"
-    dat[dat$cluster_ID=="0_1",]$subcluster_col<-"#BECCE6"
     
     dat[dat$cluster_ID=="1_0",]$subcluster_col<-"#D46F63"
     dat[dat$cluster_ID=="1_1",]$subcluster_col<-"#68A882"
     dat[dat$cluster_ID=="1_2",]$subcluster_col<-"#496E51"
     dat[dat$cluster_ID=="1_3",]$subcluster_col<-"#CF5A52"
+    dat[dat$cluster_ID=="1_4",]$subcluster_col<-"#F5CCE8"
+    dat[dat$cluster_ID=="1_5",]$subcluster_col<-"#EC9DED"
+    dat[dat$cluster_ID=="1_6",]$subcluster_col<-"#12355B"
+    dat[dat$cluster_ID=="1_7",]$subcluster_col<-"#420039"
+    dat[dat$cluster_ID=="1_8",]$subcluster_col<-"#FF6B61"
 
-    dat[dat$cluster_ID=="2_0",]$subcluster_col<-"#F5CCE8"
-    dat[dat$cluster_ID=="2_1",]$subcluster_col<-"#EC9DED"
-    dat[dat$cluster_ID=="2_2",]$subcluster_col<-"#12355B"
-    dat[dat$cluster_ID=="2_3",]$subcluster_col<-"#420039"
-    dat[dat$cluster_ID=="2_4",]$subcluster_col<-"#FF6B61"
-    dat[dat$cluster_ID=="2_5",]$subcluster_col<-"#A9A587"
-    dat[dat$cluster_ID=="2_6",]$subcluster_col<-"#6E171E"
-    dat[dat$cluster_ID=="2_7",]$subcluster_col<-"#7871AA"
-    dat[dat$cluster_ID=="2_8",]$subcluster_col<-"#533B4D"
-    dat[dat$cluster_ID=="2_9",]$subcluster_col<-"#F63E02"
-    dat[dat$cluster_ID=="2_10",]$subcluster_col<-"#92BFB1"
+    dat[dat$cluster_ID=="2_0",]$subcluster_col<-"#A9A587"
+    dat[dat$cluster_ID=="2_1",]$subcluster_col<-"#6E171E"
+    dat[dat$cluster_ID=="2_2",]$subcluster_col<-"#7871AA"
+    dat[dat$cluster_ID=="2_3",]$subcluster_col<-"#533B4D"
+    dat[dat$cluster_ID=="2_4",]$subcluster_col<-"#F63E02"
+    dat[dat$cluster_ID=="2_5",]$subcluster_col<-"#92BFB1"
 
     dat[dat$cluster_ID=="3_0",]$subcluster_col<-"#47624F"
     dat[dat$cluster_ID=="3_1",]$subcluster_col<-"#8BA672"
     dat[dat$cluster_ID=="3_2",]$subcluster_col<-"#76D91A"
     dat[dat$cluster_ID=="3_3",]$subcluster_col<-"#55251D"
-    dat[dat$cluster_ID=="3_4",]$subcluster_col<-"#CA895F"
 
     dat[dat$cluster_ID=="4_0",]$subcluster_col<-"#0975E8"
     dat[dat$cluster_ID=="4_1",]$subcluster_col<-"#CAD5E0"
@@ -1320,10 +1318,6 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     dat[dat$cluster_ID=="4_3",]$subcluster_col<-"#AEECEF"
     dat[dat$cluster_ID=="4_4",]$subcluster_col<-"#80DED9"
     dat[dat$cluster_ID=="4_5",]$subcluster_col<-"#C6B9CD"
-    dat[dat$cluster_ID=="4_6",]$subcluster_col<-"#320A28"
-    dat[dat$cluster_ID=="4_7",]$subcluster_col<-"#820933"
-    dat[dat$cluster_ID=="4_8",]$subcluster_col<-"#D84797"
-    dat[dat$cluster_ID=="4_9",]$subcluster_col<-"#C4B1AE"
 
     dat[dat$cluster_ID=="5_0",]$subcluster_col<-"#857A4D"
     dat[dat$cluster_ID=="5_1",]$subcluster_col<-"#E8DFB5"
@@ -1332,35 +1326,20 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     dat[dat$cluster_ID=="5_4",]$subcluster_col<-"#93032E"
     dat[dat$cluster_ID=="5_5",]$subcluster_col<-"#FF5E5B"
     dat[dat$cluster_ID=="5_6",]$subcluster_col<-"#5FBB97"
-    dat[dat$cluster_ID=="5_7",]$subcluster_col<-"#8DDCA4"
-    dat[dat$cluster_ID=="5_8",]$subcluster_col<-"#E0B700"
-    dat[dat$cluster_ID=="5_9",]$subcluster_col<-"#C05746"
 
     dat[dat$cluster_ID=="6_0",]$subcluster_col<-"#F57631"
     dat[dat$cluster_ID=="6_1",]$subcluster_col<-"#CF8259"
-    dat[dat$cluster_ID=="6_2",]$subcluster_col<-"#E6AA20"
-    dat[dat$cluster_ID=="6_3",]$subcluster_col<-"#764248"
-    dat[dat$cluster_ID=="6_4",]$subcluster_col<-"#FFC43D"
-    dat[dat$cluster_ID=="6_5",]$subcluster_col<-"#37371F"
-    dat[dat$cluster_ID=="6_6",]$subcluster_col<-"#6F1A07"
 
     dat[dat$cluster_ID=="7_0",]$subcluster_col<-"#9C8938"
     dat[dat$cluster_ID=="7_1",]$subcluster_col<-"#D4CB22"
     dat[dat$cluster_ID=="7_2",]$subcluster_col<-"#9E6D18"
+    dat[dat$cluster_ID=="7_3",]$subcluster_col<-"#5C6F9E"
+    dat[dat$cluster_ID=="7_4",]$subcluster_col<-"#B22CF5"
 
-    dat[dat$cluster_ID=="8_0",]$subcluster_col<-"#5C6F9E"
-    dat[dat$cluster_ID=="8_1",]$subcluster_col<-"#B22CF5"
-    dat[dat$cluster_ID=="8_2",]$subcluster_col<-"#6A35F0"
-    dat[dat$cluster_ID=="8_3",]$subcluster_col<-"#6689A1"
-    dat[dat$cluster_ID=="8_4",]$subcluster_col<-"#B9E6FF"
-    dat[dat$cluster_ID=="8_5",]$subcluster_col<-"#5C946E"
-    
-    dat[dat$cluster_ID=="9_0",]$subcluster_col<-"#512500"
-    dat[dat$cluster_ID=="9_1",]$subcluster_col<-"#7A6563"
-    dat[dat$cluster_ID=="9_2",]$subcluster_col<-"#042A2B"
-    dat[dat$cluster_ID=="9_3",]$subcluster_col<-"#BA5A31"
-    dat[dat$cluster_ID=="9_4",]$subcluster_col<-"#2A1A1F"
-    dat[dat$cluster_ID=="9_5",]$subcluster_col<-"#5F634F"
+    dat[dat$cluster_ID=="8_0",]$subcluster_col<-"#6A35F0"
+  
+
+    dat<-dat[!endsWith(dat$cluster_ID,"NA"),]
 
     seurat_subclus_col<-setNames(unique(dat$subcluster_col),unique(dat$cluster_ID))
 
@@ -1484,7 +1463,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
   cicero_gene_activities<-readRDS("hg38.unnorm_GA.Rds")  #Read in unnormalized GA
   hg38_atac[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
   hg38_atac <- NormalizeData(object = hg38_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(hg38_atac$nCount_peaks))  # normalize
-  saveRDS(hg38_atac,"hg38.SeuratObject.Rds")
+  saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
 
 
   #mm10
@@ -1494,7 +1473,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
   cicero_gene_activities<-cicero_gene_activities[2:nrow(cicero_gene_activities),] #first feature is empy
   mm10_atac[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
   mm10_atac <- NormalizeData(object = mm10_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(mm10_atac$nCount_peaks))  # normalize
-  saveRDS(mm10_atac,"mm10.SeuratObject.Rds")
+  saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
 
 
 ```
@@ -1628,18 +1607,17 @@ predict_celltype<-function(object,brainspan,prefix){
     plt1
     dev.off()
     system(paste0("slack -F ",prefix,".complexheatmap.pdf ryan_todo"))
+
 }
 
-hg38_atac<-readRDS("hg38.SeuratObject.Rds")
+hg38_atac<-readRDS("hg38_SeuratObject.Rds")
 brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
 predict_celltype(object=hg38_atac,brainspan=brainspan.,prefix="hg38")
 
 #Mouse using smaller data set that is whole brain
-mm10_atac<-readRDS("mm10.SeuratObject.Rds")
-brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse/allen_brain.rds")
+mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse/allen_brainspan_mouse.rds")
 brainspan. <- FindVariableFeatures(object = brainspan.,nfeatures = 5000)
-brainspan.@meta.data$subclass_label<-brainspan.@meta.data$subclass #setting shared column names
-brainspan.@meta.data$class_label<-brainspan.@meta.data$class
 predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10")
 
 
@@ -1647,64 +1625,85 @@ predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10")
 
 {% endcapture %} {% include details.html %} 
 
+### Add TF Motif Usage through ChromVAR
 
-### Looks like there is a bias in the data going to integrate with harmony
-{% capture summary %} For hg38 {% endcapture %} {% capture details %}  
+### ChromVar for Transcription Factor Motifs
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
-library(Seurat)
-library(Signac)
-library(ggplot2)
+  library(Signac)
+  library(Seurat)
+  library(JASPAR2020)
+  library(TFBSTools)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(BSgenome.Mmusculus.UCSC.mm10)
+  library(patchwork)
+  set.seed(1234)
+
+  #lowerign cores to be used by chromvar to 10
+  library(BiocParallel)
+  register(MulticoreParam(5))
 
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
 hg38_atac<-readRDS("hg38_SeuratObject.Rds")
 mm10_atac<-readRDS("mm10_SeuratObject.Rds")
 
-plt<-DimPlot(hg38_atac,group.by="pcr_idx")
-ggsave(plt,file="hg38.pcridx.png")
+  #Read in data and modify to monocle CDS file
+  #read in RDS file.
 
-plt<-DimPlot(mm10_atac,group.by="pcr_idx")
-ggsave(plt,file="mm10.pcridx.png")
+  # Get a list of motif position frequency matrices from the JASPAR database
+  pfm <- getMatrixSet(
+    x = JASPAR2020,
+    opts = list(species =9606, all_versions = FALSE))
 
-hg38_1<-subset(hg38_atac,pcr_idx=="CAGAGAGG")
-hg38_2<-subset(hg38_atac,pcr_idx=="CGTACTAG")
-hg38_3<-subset(hg38_atac,pcr_idx=="CTCTCTAC")
+  # Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
+  motif.matrix.hg38 <- CreateMotifMatrix(
+    features = granges(hg38_atac[["peaks"]]),
+    pwm = pfm,
+    genome = 'hg38',
+    use.counts = FALSE)
 
-anchors <- FindIntegrationAnchors(
-  object.list = c(hg38_1,hg38_2,hg38_3),
-  anchor.features = rownames(hg38_1),
-  assay = c("peaks","peaks","peaks"),
-  k.filter = NA
-)
+  motif.matrix.mm10 <- CreateMotifMatrix(
+    features = granges(mm10_atac[["peaks"]]),
+    pwm = pfm,
+    genome = 'mm10',
+    use.counts = FALSE)
 
+  # Create a new Mofif object to store the results
+  motif.hg38 <- CreateMotifObject(
+    data = motif.matrix.hg38,
+    pwm = pfm)
 
-# integrate data and create a new merged object
-integrated <- IntegrateData(
-  anchorset = anchors,
-  weight.reduction = hg38_1[['cistopic']],
-  dims = 2:30,
-  preserve.order = TRUE
-)
+  motif.mm10 <- CreateMotifObject(
+    data = motif.matrix.mm10,
+    pwm = pfm)
+  # Add the Motif object to the assays and run ChromVar
 
-###TO BE UPDATED
+  #for human
+   hg38_atac <- SetAssayData(
+    object = hg38_atac,
+    assay = 'peaks',
+    slot = 'motifs',
+    new.data = motif.hg38)
 
-# we now have a "corrected" TF-IDF matrix, and can run LSI again on this corrected matrix
-integrated <- RunSVD(
-  object = integrated,
-  n = 30,
-  reduction.name = 'integratedLSI'
-)
+  hg38_atac <- RegionStats(object = hg38_atac, genome = BSgenome.Hsapiens.UCSC.hg38)
+  hg38_atac <- RunChromVAR( object = hg38_atac,genome = BSgenome.Hsapiens.UCSC.hg38)
+  saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
 
-integrated <- RunUMAP(
-  object = integrated,
-  dims = 2:30,
-  reduction = 'integratedLSI'
-)
+  #mouse
+   mm10_atac <- SetAssayData(
+    object = mm10_atac,
+    assay = 'peaks',
+    slot = 'motifs',
+    new.data = motif.mm10)
 
-###
+  mm10_atac <- RegionStats(object = mm10_atac, genome = BSgenome.Mmusculus.UCSC.mm10)
+  mm10_atac <- RunChromVAR( object = mm10_atac,genome = BSgenome.Mmusculus.UCSC.mm10)
+  saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
 ```
-
 {% endcapture %} {% include details.html %} 
 
 ### Differential Gene Activity through Subclusters
@@ -1712,10 +1711,14 @@ integrated <- RunUMAP(
 {% capture summary %} For hg38 {% endcapture %} {% capture details %}  
 
 ```R
-library(Seurat)
+  library(JASPAR2020)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  #library(Seurat)
 library(Signac)
 library(ggplot2)
 library(ComplexHeatmap)
+  #library(TFBSTools)
+
 library(ggdendro)
 library(dendextend)
 library(parallel)
@@ -1734,11 +1737,10 @@ hg38_atac$celltype<-"NA"
 hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==0,]$celltype<-"ExN"
 hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==1,]$celltype<-"Oligo"
 hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==2,]$celltype<-"Astro"
-hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==3,]$celltype<-"iN"
-hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==4,]$celltype<-"ExN"
-hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==5,]$celltype<-"Micro.PVM"
-hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==6,]$celltype<-"iN"
-hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==7,]$celltype<-"OPC"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==3,]$celltype<-"Micro.PVM"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==4,]$celltype<-"iN"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==5,]$celltype<-"iN"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==6,]$celltype<-"OPC"
 hg38_atac$celltype_col<-"NA"
 hg38_atac@meta.data[hg38_atac@meta.data$celltype=="iN",]$celltype_col<-"#cc3366"
 hg38_atac@meta.data[hg38_atac@meta.data$celltype=="ExN",]$celltype_col<-"#3399cc"
@@ -1747,9 +1749,14 @@ hg38_atac@meta.data[hg38_atac@meta.data$celltype=="Astro",]$celltype_col<-"#99cc
 hg38_atac@meta.data[hg38_atac@meta.data$celltype=="Micro.PVM",]$celltype_col<-"#ff6633"
 hg38_atac@meta.data[hg38_atac@meta.data$celltype=="OPC",]$celltype_col<-"#ffcc99"
 
+saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
+
+
+#Clusters to test
+cluster_to_test<-names(table(hg38_atac$cluster_ID)[table(hg38_atac$cluster_ID)>50 & !endsWith(names(table(hg38_atac$cluster_ID)),"NA")])
 #define DA functions for parallelization
 #Use LR test for atac data
-da_one_v_rest<-function(i,obj,group){
+da_one_v_rest<-function(i,obj,group,assay.="GeneActivity"){
     da_ga_tmp <- FindMarkers(
         object = obj,
         ident.1 = i,
@@ -1757,7 +1764,7 @@ da_one_v_rest<-function(i,obj,group){
         test.use = 'LR',
         latent.vars = 'nCount_peaks',
         only.pos=T,
-        assay="GeneActivity"
+        assay=assay.
         )
     da_ga_tmp$da_region<-row.names(da_ga_tmp)
     da_ga_tmp$enriched_group<-c(i)
@@ -1767,31 +1774,46 @@ da_one_v_rest<-function(i,obj,group){
 
 da_ga<-list() #set up an empty list for looping through
 
-n.cores=20 #Perform parallel application of DA test
+n.cores=10 #Perform parallel application of DA test
 da_ga<-mclapply(
-    unique(hg38_atac$cluster_ID),
+    cluster_to_test,
     FUN=da_one_v_rest,
     obj=hg38_atac,
     group="cluster_ID",
+    assay.="GeneActivity",
     mc.cores=n.cores)
 
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
 write.table(da_ga_df,file="hg38.onevrest.da_ga.txt",sep="\t",col.names=T,row.names=T,quote=F)
 
+da_ga<-list() #set up an empty list for looping through
+
+n.cores=10 #Perform parallel application of DA test
+da_ga<-mclapply(
+    cluster_to_test,
+    FUN=da_one_v_rest,
+    obj=hg38_atac,
+    group="cluster_ID",
+    assay.="chromvar",
+    mc.cores=n.cores)
+
+da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
+#To convert JASPAR ID TO TF NAME
+da_ga_df$tf_name <- unlist(lapply(unlist(lapply(da_ga_df$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
+write.table(da_ga_df,file="hg38.onevrest.da_chromvar.txt",sep="\t",col.names=T,row.names=T,quote=F)
+
+
 #Plot out top ga for each cluster
 da_ga<-read.csv(file="hg38.onevrest.da_ga.txt",head=T,sep="\t",row.names=NULL)
+da_ga$gene_name<-da_ga$da_region
 da_ga<-da_ga[complete.cases(da_ga),]
 da_ga<-da_ga[!endsWith(da_ga$enriched_group,"NA"),]
 
-da_ga$label<-c("")
-for (i in unique(da_ga$enriched_group)){
-selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==i) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:5))$row.names
-da_ga[da_ga$row.names %in% selc_genes & da_ga$enriched_group==i,]$label<- da_ga[da_ga$row.names %in% selc_genes & da_ga$enriched_group==i,]$da_region
+da_ga$label<-""
+for (x in unique(da_ga$enriched_group)){
+selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:3))$da_region
+da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$label<- da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$da_region
 }
-
-#plt<-ggplot(da_ga,aes(x=pct.1/pct.2,y=(-log(p_val_adj)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(aes(label=label,size=0.05),force=10)+theme_bw()+xlim(c(0,30))
-#ggsave(plt,file="hg38.da_ga.pdf")
-#system("slack -F hg38.da_ga.pdf ryan_todo")
 
 #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
 dat_ga<-as.data.frame(t(as.data.frame(hg38_atac[["GeneActivity"]]@data)))
@@ -1803,16 +1825,18 @@ sum_ga<-t(scale(sum_ga))
 sum_ga<-sum_ga[,!endsWith(colnames(sum_ga),"NA")] #remove NA (doublet cells)
 
 #cluster by all marker genes
-sum_da_dend <- scale(t(sum_ga)) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 8)
-saveRDS(sum_da_dend,file="hg38.geneactivity.dend.rds")
+sum_da_dend <- t(sum_ga) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 8)
+saveRDS(sum_da_dend,file="hg38.geneactivity.dend.rds") 
+
 
 sum_ga<-sum_ga[row.names(sum_ga) %in% unique(da_ga$label),]
 
 annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+annot<-annot[!(annot$subcluster_col=="NA"),]
 annot<-annot[!duplicated(annot$cluster_ID),]
 annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
 annot<-annot[match(colnames(sum_ga),annot$cluster_ID),]
-sum_ga<-t(sum_ga)
+sum_ga_plot<-t(sum_ga)
 
 annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
 
@@ -1823,10 +1847,10 @@ side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seu
                     subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
                         ))
 
-bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga), labels = colnames(sum_ga)))
+bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga_plot), labels = colnames(sum_ga_plot)))
 
-colfun=colorRamp2(quantile(unlist(sum_ga), probs=c(0.5,0.90,0.95)),c("#081d58","#c7e9b4","#ffffd9"))
-plt1<-Heatmap(sum_ga,
+colfun=colorRamp2(quantile(unlist(sum_ga_plot), probs=c(0.5,0.90,0.95)),magma(3))
+plt1<-Heatmap(sum_ga_plot,
     cluster_rows=sum_da_dend,
     left_annotation=side_ha,
     col=colfun,
@@ -1836,7 +1860,7 @@ plt1<-Heatmap(sum_ga,
     column_names_rot=90
 )
 
-pdf("hg38.geneactivity.heatmap.pdf",height=4,width=20)
+pdf("hg38.geneactivity.heatmap.pdf",height=20,width=20)
 plt1
 dev.off()
 system("slack -F hg38.geneactivity.heatmap.pdf ryan_todo")
@@ -1888,7 +1912,7 @@ markers_limited<-   as.data.frame(rbind(
     c("Mark","L1-6","Endothelia","KDR"),
     c("Mark","L1-6","Astrocyte","SLC1A2")
     ))
-colnames(markers_limited)<-c("celltype","layer","marker_1","marker_2")
+colnames(markers_limited)<-c("celltype","layer","marker_1","marker_2") #i decided to ignore layer markers so made them all L1-6
 
 sum_ga_sub<-sum_ga[match(markers_limited$marker_2,row.names(sum_ga),nomatch=0),]
 markers_limited<-markers_limited[match(row.names(sum_ga_sub),markers_limited$marker_2,nomatch=0),]
@@ -1896,6 +1920,7 @@ markers_limited<-markers_limited[match(row.names(sum_ga_sub),markers_limited$mar
 sum_ga_sub<-t(scale(t(sum_ga_sub),center=F,scale=T))
 
 annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+annot<-annot[!(annot$subcluster_col=="NA"),]
 annot<-annot[!duplicated(annot$cluster_ID),]
 annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
 annot<-annot[match(colnames(sum_ga),annot$cluster_ID),]
@@ -1910,7 +1935,7 @@ top_ha<-columnAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$s
                     show_legend = c(TRUE, TRUE, FALSE))
 
 
-colfun=colorRamp2(quantile(unlist(sum_ga_sub), probs=seq(0.75,0.99,0.01)),magma(length(seq(0.75,0.99,0.01))))
+colfun=colorRamp2(quantile(unlist(sum_ga_plot), probs=c(0.5,0.90,0.95)),magma(3))
 
 plt1<-Heatmap(sum_ga_sub,
     clustering_distance_columns="euclidean",
@@ -1932,6 +1957,83 @@ plt1
 dev.off()
 system("slack -F hg38.geneactivity.markers.heatmap.pdf ryan_todo")
 
+
+
+########################Plot out top TF for each cluster###################
+da_tf<-read.csv(file="hg38.onevrest.da_chromvar.txt",head=T,sep="\t",row.names=NULL)
+da_tf$gene_name<-da_tf$da_region
+da_tf<-da_tf[complete.cases(da_tf),]
+da_tf<-da_tf[!endsWith(da_tf$enriched_group,"NA"),]
+
+da_tf$label<-""
+for (x in unique(da_tf$enriched_group)){
+selc_genes<-as.data.frame(da_tf %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:3))$tf_name
+da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$label<- da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$tf_name
+}
+
+#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+dat_tf<-as.data.frame(t(as.data.frame(hg38_atac[["chromvar"]]@data)))
+sum_tf<-split(dat_tf,hg38_atac$cluster_ID) #group by rows to seurat clusters
+sum_tf<-lapply(sum_tf,function(x) apply(x,2,mean)) #take average across group
+sum_tf<-do.call("rbind",sum_tf) #condense to smaller data frame
+
+sum_tf<-t(scale(sum_tf))
+sum_tf<-sum_tf[,!endsWith(colnames(sum_tf),"NA")] #remove NA (doublet cells)
+
+#clustered by all marker genes ga
+sum_da_dend<-readRDS(file="hg38.geneactivity.dend.rds") 
+
+
+sum_tf<-sum_tf[row.names(sum_tf) %in% unique(da_tf[da_tf$label!="",]$da_region),]
+row.names(sum_tf)<-da_tf[match(row.names(sum_tf),da_tf$da_region,nomatch=0),]$tf_name
+annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+annot<-annot[!(annot$subcluster_col=="NA"),]
+annot<-annot[!duplicated(annot$cluster_ID),]
+annot<-annot[annot$cluster_ID %in% colnames(sum_tf),]
+annot<-annot[match(colnames(sum_tf),annot$cluster_ID),]
+sum_tf_plot<-t(sum_tf)
+
+annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+
+side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+                col=list(
+                    celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
+                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
+                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                        ))
+
+bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_tf_plot), labels = colnames(sum_tf_plot)))
+
+colfun=colorRamp2(quantile(unlist(sum_tf_plot), probs=c(0.5,0.90,0.95)),cividis(3))
+plt1<-Heatmap(sum_tf_plot,
+    cluster_rows=sum_da_dend,
+    left_annotation=side_ha,
+    col=colfun,
+    #bottom_annotation=bottom_ha,
+    column_names_gp = gpar(fontsize = 8),
+    row_names_gp=gpar(fontsize=7),
+    column_names_rot=90
+)
+
+plt1<-draw(plt1)
+
+
+pdf("hg38.tf.heatmap.pdf",height=20,width=20)
+draw(plt1)
+dev.off()
+system("slack -F hg38.tf.heatmap.pdf ryan_todo")
+
+#Plot motifs alongside chromvar plot
+library(ggplot2)
+library(patchwork)
+
+motif_order<-names(hg38_atac@assays$peaks@motifs@motif.names[match(colnames(sum_tf_plot)[column_order(plt1)],unlist(hg38_atac@assays$peaks@motifs@motif.names),nomatch=0)])
+plt<-MotifPlot(object = hg38_atac,motifs = motif_order,ncol=1)+theme_void()+theme(strip.text = element_blank())
+
+ggsave(plt,file="hg38.tf.heatmap.motif.pdf",height=100,width=2,limitsize=F)
+system("slack -F hg38.tf.heatmap.motif.pdf ryan_todo")
+
+
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -1949,33 +2051,40 @@ library(ggplot2)
 library(ggrepel)
 library(circlize)
 library(viridis)
+  library(JASPAR2020)
+  library(TFBSTools)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(BSgenome.Mmusculus.UCSC.mm10)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 mm10_atac<-readRDS("mm10_SeuratObject.Rds")
 mm10_atac@meta.data$celltype<-"NA"
 mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="0",]$celltype<-"Gran"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="1",]$celltype<-"Gran"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="2",]$celltype<-"iN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="3",]$celltype<-"OPC_Olig"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="4",]$celltype<-"ExN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="1",]$celltype<-"iN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="2",]$celltype<-"ExN"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="3",]$celltype<-"Oligo"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="4",]$celltype<-"iN"
 mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="5",]$celltype<-"Astro"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="6",]$celltype<-"iN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="7",]$celltype<-"Micro.PVM"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="8",]$celltype<-"ExN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="9",]$celltype<-"Endo"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="6",]$celltype<-"Endo"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="7",]$celltype<-"Endo"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="8",]$celltype<-"Unknown"
 
 mm10_atac$celltype_col<-"NA"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="iN",]$celltype_col<-"#cc3366"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="ExN",]$celltype_col<-"#3399cc"
-mm10_atac@meta.data[mm10_atac@meta.data$celltype=="OPC_Olig",]$celltype_col<-"#66cc99"
+mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Oligo",]$celltype_col<-"#66cc99"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Astro",]$celltype_col<-"#99cc99"
-mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Micro.PVM",]$celltype_col<-"#ff6633"
+mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Unknown",]$celltype_col<-"#ff6633"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Endo",]$celltype_col<-"#A52A2A"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Gran",]$celltype_col<-"#4B0082"
 
+saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
+
+#Clusters to test
+cluster_to_test<-names(table(mm10_atac$cluster_ID)[table(mm10_atac$cluster_ID)>50 & !endsWith(names(table(mm10_atac$cluster_ID)),"NA")])
 #define DA functions for parallelization
 #Use LR test for atac data
-da_one_v_rest<-function(i,obj,group){
+da_one_v_rest<-function(i,obj,group,assay.="GeneActivity"){
     da_ga_tmp <- FindMarkers(
         object = obj,
         ident.1 = i,
@@ -1983,7 +2092,7 @@ da_one_v_rest<-function(i,obj,group){
         test.use = 'LR',
         latent.vars = 'nCount_peaks',
         only.pos=T,
-        assay="GeneActivity"
+        assay=assay.
         )
     da_ga_tmp$da_region<-row.names(da_ga_tmp)
     da_ga_tmp$enriched_group<-c(i)
@@ -1995,28 +2104,45 @@ da_ga<-list() #set up an empty list for looping through
 
 n.cores=5 #Perform parallel application of DA test
 da_ga<-mclapply(
-    unique(mm10_atac$cluster_ID),
+    cluster_to_test,
     FUN=da_one_v_rest,
     obj=mm10_atac,
     group="cluster_ID",
+    assay.="GeneActivity",
     mc.cores=n.cores)
 
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
 write.table(da_ga_df,file="mm10.onevrest.da_ga.txt",sep="\t",col.names=T,row.names=T,quote=F)
 
+da_ga<-list() #set up an empty list for looping through
+
+n.cores=5 #Perform parallel application of DA test
+da_ga<-mclapply(
+    cluster_to_test,
+    FUN=da_one_v_rest,
+    obj=mm10_atac,
+    group="cluster_ID",
+    assay.="chromvar",
+    mc.cores=n.cores)
+
+da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
+#To convert JASPAR ID TO TF NAME
+da_ga_df$tf_name <- unlist(lapply(unlist(lapply(da_ga_df$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
+write.table(da_ga_df,file="mm10.onevrest.da_chromvar.txt",sep="\t",col.names=T,row.names=T,quote=F)
+
+
+
 #Plot out top ga for each cluster
 da_ga<-read.csv(file="mm10.onevrest.da_ga.txt",head=T,sep="\t",row.names=NULL)
+da_ga$gene_name<-da_ga$da_region
+da_ga<-da_ga[complete.cases(da_ga),]
 da_ga<-da_ga[!endsWith(da_ga$enriched_group,"NA"),]
 
-da_ga$label<-c("")
-for (i in unique(da_ga$enriched_group)){
-selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==i) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:5))$row.names
-da_ga[da_ga$row.names %in% selc_genes & da_ga$enriched_group==i,]$label<- da_ga[da_ga$row.names %in% selc_genes & da_ga$enriched_group==i,]$da_region
+da_ga$label<-""
+for (x in unique(da_ga$enriched_group)){
+selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:3))$da_region
+da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$label<- da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$da_region
 }
-
-plt<-ggplot(da_ga,aes(x=pct.1/pct.2,y=(-log(p_val_adj)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(aes(label=label,size=0.05),force=10)+theme_bw()+xlim(c(0,30))
-ggsave(plt,file="mm10.da_ga.pdf")
-system("slack -F mm10.da_ga.pdf ryan_todo")
 
 #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
 dat_ga<-as.data.frame(t(as.data.frame(mm10_atac[["GeneActivity"]]@data)))
@@ -2028,17 +2154,18 @@ sum_ga<-t(scale(sum_ga))
 sum_ga<-sum_ga[,!endsWith(colnames(sum_ga),"NA")] #remove NA (doublet cells)
 
 #cluster by all marker genes
-sum_da_dend <- scale(t(sum_ga)) %>% dist() %>% hclust %>% as.dendrogram %>%  ladderize  %>% set("branches_k_color", k = 8)
-saveRDS(sum_da_dend,file="mm10.geneactivity.dend.rds")
+sum_da_dend <- t(sum_ga) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 8)
+saveRDS(sum_da_dend,file="mm10.geneactivity.dend.rds") 
+
 
 sum_ga<-sum_ga[row.names(sum_ga) %in% unique(da_ga$label),]
 
-annot<-mm10_atac@meta.data[,c("cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype", "celltype_col")] 
+annot<-mm10_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+annot<-annot[!(annot$subcluster_col=="NA"),]
 annot<-annot[!duplicated(annot$cluster_ID),]
 annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
 annot<-annot[match(colnames(sum_ga),annot$cluster_ID),]
-annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
-sum_ga<-t(sum_ga)
+sum_ga_plot<-t(sum_ga)
 
 annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
 
@@ -2046,14 +2173,13 @@ side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seu
                 col=list(
                     celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
                     cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
-                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) 
-                        ),
-                    show_legend = c(TRUE, TRUE,FALSE)) 
+                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                        ))
 
-#bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga), labels = colnames(sum_ga)))
+bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga_plot), labels = colnames(sum_ga_plot)))
 
-colfun=colorRamp2(quantile(unlist(sum_ga), probs=c(0.5,0.90,0.95)),rev(c("#fff7f3","#fcc5c0","#3f007d")))
-plt1<-Heatmap(sum_ga,
+colfun=colorRamp2(quantile(unlist(sum_ga_plot), probs=c(0.5,0.90,0.95)),magma(3))
+plt1<-Heatmap(sum_ga_plot,
     cluster_rows=sum_da_dend,
     left_annotation=side_ha,
     col=colfun,
@@ -2063,15 +2189,10 @@ plt1<-Heatmap(sum_ga,
     column_names_rot=90
 )
 
-
 pdf("mm10.geneactivity.heatmap.pdf",height=4,width=20)
 plt1
 dev.off()
 system("slack -F mm10.geneactivity.heatmap.pdf ryan_todo")
-
-
-saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
-
 ############################################################
 #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)############
 sum_da_dend<-readRDS(file="mm10.geneactivity.dend.rds")
@@ -2081,7 +2202,6 @@ sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
 sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
 sum_ga<-t(sum_ga)
 sum_ga<-sum_ga[,!endsWith(colnames(sum_ga),"NA")] #remove NA (doublet cells)
-
 
 ###Subset by columns and markers
 #sum_ga_sub<-sum_ga[match(markers$marker_2,row.names(sum_ga),nomatch=0),]
@@ -2144,7 +2264,8 @@ markers_limited<-markers_limited[match(row.names(sum_ga_sub),markers_limited$mar
 sum_ga_sub<-t(scale(t(sum_ga_sub),center=F,scale=T))
 
 
-annot<-mm10_atac@meta.data[,c("cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype","celltype_col")] 
+annot<-mm10_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+annot<-annot[!(annot$subcluster_col=="NA"),]
 annot<-annot[!duplicated(annot$cluster_ID),]
 annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
 annot<-annot[match(colnames(sum_ga),annot$cluster_ID,nomatch=0),]
@@ -2164,16 +2285,16 @@ top_ha<-columnAnnotation(df= data.frame(cluster=annot$seurat_clusters, celltype=
                     show_legend = c(TRUE, TRUE,FALSE))  
 
 
-colfun=colorRamp2(quantile(unlist(sum_ga_sub), probs=seq(0.75,0.99,0.01)),magma(length(seq(0.75,0.99,0.01))))
+colfun=colorRamp2(quantile(unlist(sum_ga_plot), probs=c(0.5,0.90,0.95)),magma(3))
 
 plt1<-Heatmap(sum_ga_sub,
     clustering_distance_columns="euclidean",
     clustering_distance_rows="euclidean",
     row_order=1:nrow(sum_ga_sub),
-    column_split=unlist(lapply(strsplit(colnames(sum_ga_sub),"_"),"[",1)),
+    column_split=annot$celltype,
     row_split=markers_limited$marker_1,
     cluster_row_slices=F,
-    #top_annotation=top_ha,
+    top_annotation=top_ha,
     left_annotation=rowAnnotation(df=data.frame(celltype_mark=markers_limited$marker_1)),
     #left_annotation=rowAnnotation(df=data.frame(celltype_mark=markers$celltype,layers_mark=markers$layer)),
     col=colfun,
@@ -2181,10 +2302,75 @@ plt1<-Heatmap(sum_ga_sub,
     column_names_gp=gpar(fontsize=3)
 )
 
+
 pdf("mm10.geneactivity.markers.heatmap.pdf",height=5)
 plt1
 dev.off()
 system("slack -F mm10.geneactivity.markers.heatmap.pdf ryan_todo")
+
+
+#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+dat_tf<-as.data.frame(t(as.data.frame(mm10_atac[["chromvar"]]@data)))
+sum_tf<-split(dat_tf,mm10_atac$cluster_ID) #group by rows to seurat clusters
+sum_tf<-lapply(sum_tf,function(x) apply(x,2,mean)) #take average across group
+sum_tf<-do.call("rbind",sum_tf) #condense to smaller data frame
+
+sum_tf<-t(scale(sum_tf))
+sum_tf<-sum_tf[,!endsWith(colnames(sum_tf),"NA")] #remove NA (doublet cells)
+
+#clustered by all marker genes ga
+sum_da_dend<-readRDS(file="mm10.geneactivity.dend.rds") 
+
+
+sum_tf<-sum_tf[row.names(sum_tf) %in% unique(da_tf[da_tf$label!="",]$da_region),]
+row.names(sum_tf)<-da_tf[match(row.names(sum_tf),da_tf$da_region,nomatch=0),]$tf_name
+annot<-mm10_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+annot<-annot[!(annot$subcluster_col=="NA"),]
+annot<-annot[!duplicated(annot$cluster_ID),]
+annot<-annot[annot$cluster_ID %in% colnames(sum_tf),]
+annot<-annot[match(colnames(sum_tf),annot$cluster_ID),]
+sum_tf_plot<-t(sum_tf)
+
+annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+
+side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+                col=list(
+                    celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
+                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
+                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                        ))
+
+bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_tf_plot), labels = colnames(sum_tf_plot)))
+
+colfun=colorRamp2(quantile(unlist(sum_tf_plot), probs=c(0.5,0.90,0.95)),cividis(3))
+plt1<-Heatmap(sum_tf_plot,
+    cluster_rows=sum_da_dend,
+    left_annotation=side_ha,
+    col=colfun,
+    #bottom_annotation=bottom_ha,
+    column_names_gp = gpar(fontsize = 8),
+    row_names_gp=gpar(fontsize=7),
+    column_names_rot=90
+)
+
+plt1<-draw(plt1)
+
+
+pdf("mm10.tf.heatmap.pdf",height=20,width=20)
+plt1
+dev.off()
+system("slack -F mm10.tf.heatmap.pdf ryan_todo")
+
+
+#Plot motifs alongside chromvar plot
+library(ggplot2)
+library(patchwork)
+
+
+motif_order<-names(hg38_atac@assays$peaks@motifs@motif.names[match(colnames(sum_tf_plot)[column_order(plt1)],unlist(hg38_atac@assays$peaks@motifs@motif.names),nomatch=0)])
+plt<-MotifPlot(object = hg38_atac,motifs = motif_order,ncol=1)+theme_void()+theme(strip.text = element_blank())
+ggsave(plt,file="mm10.tf.heatmap.motif.pdf",height=100,width=2,limitsize=F)
+system("slack -F mm10.tf.heatmap.motif.pdf ryan_todo")
 
 
 feat<-c("Gad1","Lhx6","Adarb2","Slc17a7","Fezf2","Bcl11b","Cux2","Reln","Atoh1","Calb2","Ppp1r17","Gabra6","Prox1","Dsp")
@@ -2374,6 +2560,66 @@ celltype=`ls hg38*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}
 for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` markerset_hg38_${i}.pdf; done
 
 
+
+```
+
+{% endcapture %} {% include details.html %} 
+
+
+### Looks like there is a bias in the data going to integrate with harmony
+{% capture summary %} For hg38 {% endcapture %} {% capture details %}  
+
+```R
+library(Seurat)
+library(Signac)
+library(ggplot2)
+
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+
+plt<-DimPlot(hg38_atac,group.by="pcr_idx")
+ggsave(plt,file="hg38.pcridx.png")
+
+plt<-DimPlot(mm10_atac,group.by="pcr_idx")
+ggsave(plt,file="mm10.pcridx.png")
+
+hg38_1<-subset(hg38_atac,pcr_idx=="CAGAGAGG")
+hg38_2<-subset(hg38_atac,pcr_idx=="CGTACTAG")
+hg38_3<-subset(hg38_atac,pcr_idx=="CTCTCTAC")
+
+anchors <- FindIntegrationAnchors(
+  object.list = c(hg38_1,hg38_2,hg38_3),
+  anchor.features = rownames(hg38_1),
+  assay = c("peaks","peaks","peaks"),
+  k.filter = NA
+)
+
+
+# integrate data and create a new merged object
+integrated <- IntegrateData(
+  anchorset = anchors,
+  weight.reduction = hg38_1[['cistopic']],
+  dims = 2:30,
+  preserve.order = TRUE
+)
+
+###TO BE UPDATED
+
+# we now have a "corrected" TF-IDF matrix, and can run LSI again on this corrected matrix
+integrated <- RunSVD(
+  object = integrated,
+  n = 30,
+  reduction.name = 'integratedLSI'
+)
+
+integrated <- RunUMAP(
+  object = integrated,
+  dims = 2:30,
+  reduction = 'integratedLSI'
+)
+
+###
 
 ```
 
