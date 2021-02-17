@@ -1,7 +1,7 @@
 ---
 title: Tbr1 Mouse Knockout
 layout: analysis
-author: Ryan Mulqueen
+author: Ryan Mulqueen and Marissa Co
 permalink: /tbr1/
 category: sciATAC
 ---
