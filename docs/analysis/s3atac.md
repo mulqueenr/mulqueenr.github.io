@@ -281,14 +281,15 @@ ggsave("s3atac_bulk_TSS.pdf")
 ## Tabix fragment file generation
 
 
-- Column Number  Name    Description
+Tabix file format is a tab separated multicolumn data structure.
 
-- 1 chrom   Reference genome chromosome of fragment
-- 2 chromStart  Adjusted start position of fragment on chromosome.
-- 3 chromEnd    Adjusted end position of fragment on chromosome. The end position is exclusive, so represents the position immediately following the fragment interval.
-- 4 barcode The 10x cell barcode of this fragment. This corresponds to the CB tag attached to the corresponding BAM file records for this fragment.
-- 5 duplicateCount  The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeqT instrument are excluded from this count.
-
+| Column Number | Name | Description |
+|:--------|:-------:|:--------|
+|1 |chrom |  Reference genome chromosome of fragment |
+|2 |chromStart | Adjusted start position of fragment on chromosome. |
+|3 |chromEnd   | Adjusted end position of fragment on chromosome. The end position is exclusive, so represents the position immediately following the fragment interval. |
+|4 |barcode | The 10x (or sci) cell barcode of this fragment. This corresponds to the CB tag attached to the corresponding BAM file records for this fragment. |
+|5 |duplicateCount |The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeq instrument are excluded from this count. |
 
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
