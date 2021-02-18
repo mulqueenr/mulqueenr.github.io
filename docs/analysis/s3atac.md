@@ -50,6 +50,7 @@ This notebook is a continuation of "s3 Preprocessing to Bam files" and details t
 {% endcapture %} {% include details.html %} 
 
 
+### List of starting files
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
@@ -64,7 +65,7 @@ s3atac_barnyard.bbrd.q10.filt.barnyard_cells.plot.png  s3atac_barnyard.bbrd.q10.
 ```
 {% endcapture %} {% include details.html %} 
 
-### R processing to generate a list of cellIDs which are >95% human or >95% mouse
+# R processing to generate a list of cellIDs which are >95% human or >95% mouse
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -176,7 +177,7 @@ write.table(dat,file="barnyard_full_cell_summary.tsv",sep="\t",quote=F,col.names
 {% endcapture %} {% include details.html %} 
 
 
-### Analysis of barnyard output
+## Analysis of barnyard output
 
 Split Human and mouse cells at the fastq level based on the barnyard output. Then processed in parallel.
 
@@ -258,7 +259,7 @@ scitools isize mm10.bbrd.q10.bam &
 ```
 {% endcapture %} {% include details.html %} 
 
-### Plotting TSS Enrichment
+## Plotting TSS Enrichment
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -320,18 +321,22 @@ for i in *bbrd.q10.bam ; do scitools bam-addrg $i & done &
 
 #cellID is few enough that there are no IO errors, split by RG
 #for i in s3gcc_crc_H.filt.RG.bam s3wgs_crc4442_E.filt.RG.bam  s3wgs_crc4442_F.filt.RG.bam  s3wgs_crc4671_G.filt.RG.bam  s3wgs_gm12878_B.filt.RG.bam; do samtools split -@20 -f './single_cell_projections/%*_%!.%.' $i ; done & #perform samtools split on RG (cellIDs)
-for i in *bbrd.q10.RG.bam; do samtools split -@20 -f './single_cell_splits/%*_%!.%.' $i ; done & #perform samtools split on RG (cellIDs)
+for i in *bbrd.q10.RG.bam; do samtools split -@20 -f './single_cell_splits/%*_%!.full.%.' $i ; done & #perform samtools split on RG (cellIDs)
 
 cd single_cell_splits
 #Subsample by percentage
 for j in 2 4 6 8;
-  do for i in mm10*bam; 
-    do samtools view -@ 10 -h -s 0.${j} $i > ${i::-4}.${j}0perc.bam ;done ; done & 
+  do for i in *.full.bam; 
+    do samtools view -@ 10 -h -s 0.${j} $i > ${i::-9}.${j}0perc.bam ;done ; done & 
 
 #Subsample by read count
 for j in 1000 5000 10000 25000;
-for i in ./single_cell_splits/mm10*bam; do ((samtools view -H $i) & (samtools view $i | shuf -n $j -) | samtools view -bS - > ${i::-4}.${j}.bam ; done; done & 
+for i in mm10*bam; do ((samtools view -H $i) & (samtools view $i | shuf -n $j -) | samtools view -bS - > ${i::-9}.${j}.bam ; done; done & 
+
 #remove bam files that dont hit the subsample amount
+for j in 1000 5000 10000 25000;
+for i in mm10*${j}.bam;
+do if (`samtools view $i | wc -l` < j); then rm -f $i; fi; done &
 
 #perform parallelized insert size analysis in deduplicated single cell bams
 cd ./single_cell_splits
@@ -426,7 +431,7 @@ for bulk in bam_bulk:
 ```
 --->
 
-## Comparison of s3ATAC adult mouse brain reads with available data sets
+# Comparison of s3ATAC adult mouse brain reads with available data sets
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -528,7 +533,7 @@ for (j in unique(dat$assay)){
 
 # s3 ATAC Full Processing
 
-### Generating Seurat Objects
+## Generating Seurat Objects
 
 Using R v4.0.0 and Signac v1.0
 
@@ -1015,8 +1020,6 @@ write.table(dat_mm10,file="mm10_cell_summary.txt",col.names=T,row.names=T,sep="\
 {% endcapture %} {% include details.html %} 
 
 ## Adding gene activity matrix to ATAC processing
-
-
 ### Cicero for co-accessible sites and gene activity score generation
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -1230,6 +1233,8 @@ saveRDS(marker_list,"grosscelltype_markerlist.rds")
 ```
 {% endcapture %} {% include details.html %} 
 
+## Plot Cell Type Markers
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
@@ -1329,7 +1334,7 @@ for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` mar
 ```
 {% endcapture %} {% include details.html %} 
 
-### Differential Accessibillity on Clusters
+# Differential Accessibillity on Clusters
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -1550,7 +1555,7 @@ saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
 ```
 {% endcapture %} {% include details.html %} 
 
-# Output Data
+## Output Data
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -1625,7 +1630,7 @@ system("slack -F projected_readcount.pdf s3")
 ```
 {% endcapture %} {% include details.html %} 
 
-# Subclustering of Cell Types
+## Subclustering of Cell Types
 Starting with human cells
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
