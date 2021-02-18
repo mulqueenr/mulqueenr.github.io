@@ -10,6 +10,8 @@ category: sciATAC
 
 ## BCL File Locations
 
+TEST BY MARISSA
+
 For a test run we got about 10% of the run pool after PCR amplification of two plates.
 
 Full breakdown of experimental setup is located [here.](https://docs.google.com/spreadsheets/d/1Px1OAE8vIi3GUXPny7OaVvYJHgGESCp4fyZKnLWW0UE/edit#gid=823628902)
