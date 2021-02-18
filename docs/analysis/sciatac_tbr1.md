@@ -255,6 +255,19 @@ Plate Prep  Plate   Reads Devoted
 
 ```
 
+   plate_name cell_count median_uniq_reads mean_uniq_reads mean_percent_uniq
+   <chr>           <int>             <dbl>           <dbl>             <dbl>
+ 1 plate1           3887            22143           31404.              90.7
+ 2 plate10          5682            11712           20431.              93.1
+ 3 plate11          4124            27138.          41738.              86.9
+ 4 plate13          3970            19556           30665.              90.0
+ 5 plate2           5965            10998           17785.              93.8
+ 6 plate3           4601            15122           22041.              92.2
+ 7 plate4           4219            18567           26743.              91.8
+ 8 plate5           3861            16097           27445.              88.6
+ 9 plate6           2484             4360.           9001.              89.7
+10 plate7           4713            17300           25658.              91.4
+11 plate8           3537            23041           35603.              89.1
 
 
 ```bash
