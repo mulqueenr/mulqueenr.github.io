@@ -310,6 +310,37 @@ $tabix -p bed $output_name.fragments.tsv.gz &
 {% endcapture %} {% include details.html %} 
 
 ## Downsampling of BAM Files
+
+```bash
+
+mkdir single_cell_splits
+
+#Add read group for cellID specific splitting
+for i in *bbrd.q10.bam ; do scitools bam-addrg $i & done &
+
+#cellID is few enough that there are no IO errors, split by RG
+#for i in s3gcc_crc_H.filt.RG.bam s3wgs_crc4442_E.filt.RG.bam  s3wgs_crc4442_F.filt.RG.bam  s3wgs_crc4671_G.filt.RG.bam  s3wgs_gm12878_B.filt.RG.bam; do samtools split -@20 -f './single_cell_projections/%*_%!.%.' $i ; done & #perform samtools split on RG (cellIDs)
+for i in *bbrd.q10.RG.bam; do samtools split -@20 -f './single_cell_splits/%*_%!.%.' $i ; done & #perform samtools split on RG (cellIDs)
+
+cd single_cell_splits
+#Subsample by percentage
+for j in 2 4 6 8;
+  do for i in mm10*bam; 
+    do samtools view -@ 10 -h -s 0.${j} $i > ${i::-4}.${j}0perc.bam ;done ; done & 
+
+#Subsample by read count
+for j in 1000 5000 10000 25000;
+for i in ./single_cell_splits/mm10*bam; do ((samtools view -H $i) & (samtools view $i | shuf -n $j -) | samtools view -bS - > ${i::-4}.${j}.bam ; done; done & 
+#remove bam files that dont hit the subsample amount
+
+#perform parallelized insert size analysis in deduplicated single cell bams
+cd ./single_cell_splits
+
+#Sort single cell bam files
+find . -type f -name '*.bam' | parallel -j 20 samtools sort -o {}.sorted.bam {} &
+
+````
+<!--
 ```python
 import glob
 import pysam
@@ -340,7 +371,7 @@ def read_pair_generator(bam):
             del read_dict[qname]
 
 bam_dir="/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/" #working directory
-bam_bulk=["hg38.RG.bam"] #list of bam files
+bam_bulk=["mm10.bbrd.q10.bam"] #list of bam files
 subset_count=[1000,5000,10000,20000,50000]
 #Takes read 1 and read 2 paired by query name with the above function
 #then rounds read 1 and read 2 starts to the nearest 1mb and takes that as the bin (drops the 6 0s for the bin names)
@@ -370,7 +401,7 @@ start_time = time.time() #And set up a timer
 for bulk in bam_bulk:
   for count_no in subset_count:
     filt_cellID=[]
-    for (key, value) in total_count.items():    # Check if key is even then add pair to new dictionary
+    for (key, value) in total_count.items(): #check cellIDs (divide by 2 for total read count)
       if value >= count_no:
        filt_cellID += key
     species=bulk.split(".")[0]
@@ -378,21 +409,22 @@ for bulk in bam_bulk:
     with pysam.AlignmentFile(species+"."+str(count_no)+".bam", "wb", header=bam.header) as outf:
       for read1, read2 in read_pair_generator(bam): #set paired reads together #for read in bam.fetch(until_eof=True): #
           if read1 is not None and read2 is not None: #remove reads which dont pair
-          i+=1
-          if i % 100000 == 0:
-              print("Processed "+str(i)+" reads in "+str(time.time()-start_time)+" seconds.")
-          cellid_out=read1.query_name.split(":")[0] #assign read to cellID
-          if cellid_out in filt_cellID:
-            if cellid_out not in out_dict: #add any new cellIDs
-              out_dict[cellid_out]=0 #build out dict
-            out_dict[cellid_out]+=1
-            if out_dict[cellid_out] <= count_no/2: #check cellIDs (divide by 2 for total read count)
-              null=outf.write(read1)
-              null=outf.write(read2)
-  outf.close()
-  print("Generated "+species+"."+str(count_no)+".bam"+"\n")
+            i+=1
+            if i % 100000 == 0:
+                print("Processed "+str(i)+" reads in "+str(time.time()-start_time)+" seconds.")
+            cellid_out=read1.query_name.split(":")[0] #assign read to cellID
+            if cellid_out in filt_cellID:
+              if cellid_out not in out_dict: #add any new cellIDs
+                out_dict[cellid_out]=0 #build out dict
+              out_dict[cellid_out]+=1
+              if out_dict[cellid_out] <= count_no: #check cellIDs
+                null=outf.write(read1)
+                null=outf.write(read2)
+    outf.close()
+    print("Generated "+species+"."+str(count_no)+".bam"+"\n")
           
 ```
+--->
 
 ## Comparison of s3ATAC adult mouse brain reads with available data sets
 
