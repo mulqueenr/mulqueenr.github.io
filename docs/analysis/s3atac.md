@@ -312,6 +312,9 @@ $tabix -p bed $output_name.fragments.tsv.gz &
 
 ## Downsampling of BAM Files
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+
 ```bash
 
 mkdir single_cell_splits
@@ -319,9 +322,23 @@ mkdir single_cell_splits
 #Add read group for cellID specific splitting
 for i in *bbrd.q10.bam ; do scitools bam-addrg $i & done &
 
-#cellID is few enough that there are no IO errors, split by RG
-#for i in s3gcc_crc_H.filt.RG.bam s3wgs_crc4442_E.filt.RG.bam  s3wgs_crc4442_F.filt.RG.bam  s3wgs_crc4671_G.filt.RG.bam  s3wgs_gm12878_B.filt.RG.bam; do samtools split -@20 -f './single_cell_projections/%*_%!.%.' $i ; done & #perform samtools split on RG (cellIDs)
-for i in *bbrd.q10.RG.bam; do samtools split -@20 -f './single_cell_splits/%*_%!.full.%.' $i ; done & #perform samtools split on RG (cellIDs)
+#mm10 is small enough to split as is
+samtools split -@20 -f './single_cell_splits/%*_%!.full.%.' mm10.bbrd.q10.RG.bam & #perform samtools split on RG (cellIDs)
+
+#for human too many cells for simultaneous splitting, going to make two temp bam files with limited RG headers
+samtools view -H hg38.bbrd.q10.RG.bam | grep "^@RG" | awk '{split($2,a,":"); print a[2]}' | split --lines=500 --additional-suffix=".cellID.subset.temp.cellID.list" #split RG into 500 cell chunks
+for i in *.cellID.subset.temp.cellID.list; do outname=${i::-26} ; scitools bam-filter -L $i -O hg38.bbrd.q10.RG.${outname}.temp hg38.bbrd.q10.RG.bam; done & #split bam files by RG lists
+
+#samtools split opens as many IO streams as rg in header, so need to fix headers with just rg in new split bams
+#reheader bam files
+for i in *.cellID.subset.temp.cellID.list; 
+  do outname=${i::-26} ; 
+  samtools view -H hg38.bbrd.q10.RG.${outname}.temp.filt.bam | grep -v "^@RG" - > temp.header;
+  awk 'OFS="\t" {print "@RG","ID:"$1,"SM:"$1,"LB:"$i,"PL:SCI"}' $i >> temp.header ;
+  samtools reheader -c "cat temp.header" hg38.bbrd.q10.RG.${outname}.temp.filt.bam > hg38.bbrd.q10.RG.${outname}.temp.rehead.bam; done &
+
+#finally split out single cells
+for i in *temp.rehead.bam; do samtools split -@20 -f './single_cell_splits/%*_%!.full.%.' $i; done & #perform samtools split on RG (cellIDs)
 
 cd single_cell_splits
 #Subsample by percentage
@@ -331,11 +348,11 @@ for j in 2 4 6 8;
 
 #Subsample by read count
 for j in 1000 5000 10000 25000;
-for i in mm10*bam; do ((samtools view -H $i) & (samtools view $i | shuf -n $j -) | samtools view -bS - > ${i::-9}.${j}.bam ; done; done & 
+for i in *full.bam; do ((samtools view -H $i) & (samtools view $i | shuf -n $j -) | samtools view -bS - > ${i::-9}.${j}.bam ; done; done & 
 
 #remove bam files that dont hit the subsample amount
 for j in 1000 5000 10000 25000;
-for i in mm10*${j}.bam;
+for i in *${j}.bam;
 do if (`samtools view $i | wc -l` < j); then rm -f $i; fi; done &
 
 #perform parallelized insert size analysis in deduplicated single cell bams
@@ -345,6 +362,10 @@ cd ./single_cell_splits
 find . -type f -name '*.bam' | parallel -j 20 samtools sort -o {}.sorted.bam {} &
 
 ````
+
+{% endcapture %} {% include details.html %} 
+
+
 <!--
 ```python
 import glob
