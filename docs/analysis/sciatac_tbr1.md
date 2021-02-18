@@ -10,8 +10,6 @@ category: sciATAC
 
 ## BCL File Locations
 
-TEST BY MARISSA
-
 For a test run we got about 10% of the run pool after PCR amplification of two plates.
 
 Full breakdown of experimental setup is located [here.](https://docs.google.com/spreadsheets/d/1Px1OAE8vIi3GUXPny7OaVvYJHgGESCp4fyZKnLWW0UE/edit#gid=823628902)
@@ -23,7 +21,7 @@ Full breakdown of experimental setup is located [here.](https://docs.google.com/
   #First Test Run (Two PCR Plates)
   /home/groups/oroaklab/seq/madbum/201116_NS500556_0437_AH72CMAFX2
   #Second Test Run (Three PCR Plates, processed an additional frozen plate)
-  /home/groups/oroaklab/seq/madbum/201203_NS500556_0442_AH7FJGBGXG]$
+  /home/groups/oroaklab/seq/madbum/201203_NS500556_0442_AH7FJGBGXG
 
 
 ```
@@ -213,6 +211,53 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
   scitools plot-complexity plate2.complexity.txt &
 
 
+  ##Checking plates and sequencing depth
+  #Count of reads per plate
+  for j in /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210212_secondplates \
+    /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates;
+    do for i in ${j}/*Plate*1.fq.gz;
+    do echo $i `zcat $i | grep "^@" - | wc -l` ; done ; done &
+
+  #Complexity for all plates
+  cd /home/groups/oroaklab/adey_lab/projects/tbr1_mus
+  for j in /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210212_secondplates \
+    /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates;
+    do for i in ${j}/plate*.complexity.txt;
+    do awk 'OFS="\t" { split(FILENAME,a,"/");split(a[9],b,"[.]"); print $2,$3,$4,$5,b[1]}' $i ; done; done > firstandsecondsetplates.complexity.txt
+```
+{% endcapture %} {% include details.html %} 
+
+Reads per plate
+
+Plate Prep  Plate   Reads Devoted
+210212_secondplates Plate_11  129213990
+210212_secondplates Plate_13  85242513
+210212_secondplates Plate_3 69656977
+210212_secondplates Plate_4 76915941
+210212_secondplates Plate_5 77743124
+210212_secondplates Plate_6 17561992
+210212_secondplates Plate_7 83652013
+210212_secondplates Plate_8 90351664
+201117_firstplates  Plate_10  78801321
+201117_firstplates  Plate_1 85746573
+201117_firstplates  Plate_2 70776718
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+
+```R
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus")
+  dat<-read.table("firstandsecondsetplates.complexity.txt",sep="\t",header=F)\
+  colnames(dat)<-c("cellID","total_reads","unique_reads","percent_uniq","plate_name")
+  dat<-dat[dat$unique_reads>=1000,]
+  library(dplyr)
+  dat %>% group_by(plate_name) %>% summarize(cell_count=n(),median_uniq_reads=median(unique_reads),mean_uniq_reads=mean(unique_reads),mean_percent_uniq=mean(percent_uniq))
+
+```
+
+
+
+```bash
   #Combine bam files and filter
   scitools bam-merge tbr1_ko.bam plate1.bbrd.q10.bam plate2.bbrd.q10.bam plate10.bbrd.q10.bam &
   #Filter bam
@@ -238,9 +283,6 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
 ```
 {% endcapture %} {% include details.html %} 
 
-
-
-
 ### Tabix fragment file generation
 
 
@@ -253,7 +295,6 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
 - 5 duplicateCount  The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeqT instrument are excluded from this count.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
-
 
 ```bash
   #Organoid processing
