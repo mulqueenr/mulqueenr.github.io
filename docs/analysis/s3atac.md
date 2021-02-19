@@ -348,24 +348,292 @@ for j in 2 4 6 8;
 
 #Subsample by read count
 for j in 1000 5000 10000 25000;
-for i in *full.bam; do ((samtools view -H $i) & (samtools view $i | shuf -n $j -) | samtools view -bS - > ${i::-9}.${j}.bam ; done; done & 
+do for i in *full.bam; do ((samtools view -H $i) & (samtools view -@ 10 $i | shuf -n $j)) | samtools view -@ 10 -bS - > ${i::-9}.${j}.bam ; done; done & 
 
 #remove bam files that dont hit the subsample amount
 for j in 1000 5000 10000 25000;
-for i in *${j}.bam;
-do if (`samtools view $i | wc -l` < j); then rm -f $i; fi; done &
+do for i in *${j}.bam;
+do readcount=`samtools view $i | wc -l`;
+if (("$readcount" < "$j")) ; then rm -f $i; fi; done; done &
 
-#perform parallelized insert size analysis in deduplicated single cell bams
-cd ./single_cell_splits
+#merge bam files together and remove single-cell bams for readability
+#splitting tmp_list again to reduce IO then merging all
+for i in hg38 mm10; 
+  do for j in 20perc 40perc 60perc 80perc 1000 5000 10000 25000; 
+    do ls ${i}*${j}.bam > tmp_list.txt; #generate temporary list
+    split -l 500 --additional-suffix=.${i}.${j}.tmp_list.txt tmp_list.txt; #split list into -l lines (cells)
+    for k in *.${i}.${j}.tmp_list.txt;
+      do tmp_name=(${k//./ })
+      samtools merge -@ 30 -b $k ${i}.${tmp_name[0]}.tmp.${j}.merged.bam; #first stage merging of 500 cells each
+    done;
+    samtools merge -@ 30 ${i}.${j}.merged.bam `ls ${i}.*.tmp.${j}.merged.bam`; #second stage merging
+      done ; done &
 
-#Sort single cell bam files
-find . -type f -name '*.bam' | parallel -j 20 samtools sort -o {}.sorted.bam {} &
+#remove single cell files
+rm -rf *perc.bam &
+rm -rf *0.bam &
+rm -rf *full.bam &
+rm -rf /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits/*tmp_list.txt
+rm -rf /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits/*tmp*bam
+
+
+for i in *merged.bam;
+do scitools callpeaks $i & done &
+
+#  40782 hg38.10000.merged.500.bed
+#    3173 hg38.1000.merged.500.bed
+#   75744 hg38.20perc.merged.500.bed
+#   64892 hg38.25000.merged.500.bed
+#  137381 hg38.40perc.merged.500.bed
+#   94585 hg38.5000.merged.500.bed
+#  184420 hg38.60perc.merged.500.bed
+#  221442 hg38.80perc.merged.500.bed
+#   16732 mm10.10000.merged.500.bed
+#     519 mm10.1000.merged.500.bed
+#   36837 mm10.20perc.merged.500.bed
+#   26208 mm10.25000.merged.500.bed
+#   71047 mm10.40perc.merged.500.bed
+#   41218 mm10.5000.merged.500.bed
+#   99236 mm10.60perc.merged.500.bed
+#  154911 mm10.80perc.merged.500.bed
+
+for i in hg38*bam;
+do scitools atac-count -O ${i::-4} $i ../hg38.bbrd.q10.500.bed & done &
+
+for i in mm10*bam;
+do scitools atac-count -O ${i:-4} $i ../mm10.bbrd.q10.500.bed & done &
 
 ````
 
 {% endcapture %} {% include details.html %} 
 
+Generate Seurat Objects of downsampled data.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(EnsDb.Mmusculus.v79)
+library(Matrix)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits")
+
+hg38_subset_bams<-c("hg38.10000.merged",
+"hg38.1000.merged",
+"hg38.20perc.merged",
+"hg38.25000.merged",
+"hg38.40perc.merged",
+"hg38.5000.merged",
+"hg38.60perc.merged",
+"hg38.80perc.merged")
+mm10_subset_bams<-c("mm10.10000.merged.bam",
+"mm10.1000.merged.bam",
+"mm10.20perc.merged.bam",
+"mm10.25000.merged.bam",
+"mm10.40perc.merged.bam",
+"mm10.5000.merged.bam",
+"mm10.60perc.merged.bam",
+"mm10.80perc.merged.bam")
+
+make_seurat_object<-function(x,genome="hg38"){
+IN<-as.matrix(read.table(paste0(x,".counts.sparseMatrix.values.gz")))
+IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
+COLS<-read.table(paste0(x,".counts.sparseMatrix.cols.gz"))
+colnames(IN)<-COLS$V1
+ROWS<-read.table(paste0(x,".counts.sparseMatrix.rows.gz"))
+row.names(IN)<-ROWS$V1
+counts_mat<-IN # make counts matrix from sparse matrix
+
+# extract gene annotations from EnsDb
+if(genome=="hg38"){
+annotations<-GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+} else {
+annotations<-GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+}
+
+# change to UCSC style
+seqlevelsStyle(annotations) <- 'UCSC'
+genome(annotations) <- genome
+
+#Generate ChromatinAssay Objects
+chromatinassay <- CreateChromatinAssay(
+  counts = counts_mat,
+  genome=genome,
+  min.cells = 1,
+  annotation=annotations,
+  sep=c("_","_"))
+
+#Create Seurat Objects
+atac <- CreateSeuratObject(
+  counts = chromatinassay,
+  assay = "peaks")
+#saving unprocessed SeuratObjects
+saveRDS(atac,file=paste0(x,"_SeuratObject.Rds"))
+}
+
+lapply(hg38_subset_bams,make_seurat_object)
+lapply(mm10_subset_bams,make_seurat_object,genome="mm10")
+
+```
+{% endcapture %} {% include details.html %} 
+
+Perform cisTopic on each subset seurat object
+
+```R
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(patchwork)
+library(cicero)
+library(cisTopic)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(Matrix)
+library(JASPAR2020)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+set.seed(1234)
+library(dplyr)
+library(ggrepel)
+
+#Read in data and modify to monocle CDS file
+#read in RDS file.
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits")
+
+
+######FUNCTIONS#####
+cistopic_generation<-function(x,subset_obj,species="hg38"){
+#Perform cistopic on subclusters of data 
+    atac_sub<-subset(x,subset=celltype==subset_obj) 
+    cistopic_counts_frmt<-atac_sub$peaks@counts
+    row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
+    sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
+    sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(5,10,20:30),nCores=12,addModels=FALSE)
+    saveRDS(sub_cistopic_models,file=paste(species,subset_obj,".CisTopicObject.Rds",sep="_"))
+
+    pdf(paste(species,subset_obj,"_model_selection.pdf",sep="_"))
+    par(mfrow=c(3,3))
+    sub_cistopic_models <- selectModel(sub_cistopic_models, type='maximum')
+    sub_cistopic_models <- selectModel(sub_cistopic_models, type='perplexity')
+    sub_cistopic_models<- selectModel(sub_cistopic_models, type='derivative')
+    dev.off()
+    }
+
+#UMAP Projection and clustering on selected cistopic model
+clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_atac,subset_obj,topiccount_list.=topic_count_list){
+    #set up subset object again
+    atac_sub<-subset(object_input,subset=celltype==subset_obj) 
+    #select_topic
+    models_input<-readRDS(paste(species,subset_obj,".CisTopicObject.Rds",sep="_"))
+    cisTopicObject<-cisTopic::selectModel(models_input,select=topiccount_list.[subset_obj],keepModels=F)
+    
+    #perform UMAP on topics
+    topic_df<-as.data.frame(cisTopicObject@selected.model$document_expects)
+    row.names(topic_df)<-paste0("Topic_",row.names(topic_df))
+    dims<-as.data.frame(uwot::umap(t(topic_df),n_components=2))
+    row.names(dims)<-colnames(topic_df)
+    colnames(dims)<-c("x","y")
+    dims$cellID<-row.names(dims)
+    dims<-merge(dims,object_input@meta.data,by.x="cellID",by.y="row.names")
+
+    #get cell embeddings
+    cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
+    colnames(cell_embeddings)<-cisTopicObject@cell.names
+    n_topics<-nrow(cell_embeddings)
+    row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
+    cell_embeddings<-as.data.frame(t(cell_embeddings))
+    
+    #get feature loadings
+    feature_loadings<-as.data.frame(cisTopicObject@selected.model$topics)
+    row.names(feature_loadings)<-paste0("topic_",1:n_topics)
+    feature_loadings<-as.data.frame(t(feature_loadings))
+    
+    #combine with seurat object for celltype seuratobject  
+    cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
+    umap_dims<-as.data.frame(as.matrix(dims[2:3]))
+    colnames(umap_dims)<-c("UMAP_1","UMAP_2")
+    row.names(umap_dims)<-dims$cellID
+    cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(umap_dims),assay="peaks",key="UMAP_")
+    atac_sub@reductions$cistopic<-cistopic_obj
+    atac_sub@reductions$umap<-cistopic_umap
+    #finally recluster
+    n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic"))
+    #Clustering with multiple resolutions to account for different celltype complexities
+    atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics)
+    atac_sub <- FindClusters(object = atac_sub,resolution=0.1)
+    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.2)
+    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.5)
+    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.9)
+    
+    saveRDS(atac_sub,paste(species,subset_obj,"SeuratObject.Rds",sep="_"))
+    plt<-DimPlot(atac_sub,group.by=c('peaks_snn_res.0.1','peaks_snn_res.0.2','peaks_snn_res.0.5','peaks_snn_res.0.9'))
+    ggsave(plt,file=paste(species,subset_obj,"clustering.pdf",sep="_"))
+}
+
+
+
+
+####################################
+### Processing ###
+#hg38
+    #Set up variables
+    seurat_objects<-list.files(pattern="SeuratObject.Rds$")
+    hg38_objects<-seurat_objects[grepl(seurat_objects,pattern="^hg38")]
+    species="hg38"
+
+    #Running cistopic subclustering on all identified cell types
+    lapply(hg38_objects,function(i) cistopic_generation)
+    topicmodel_list<-paste(species,celltype_list,".CisTopicObject.Rds",sep="_")
+
+    #determine model count to use for each cell type
+    for (i in paste(species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
+
+    #selecting topics based on derivative, making a named vector 
+    topic_count_list<-c(25,22,24,27,24,22)
+    names(topic_count_list)<-celltype_list
+
+    #Running clustering loop
+    for (i in celltype_list){clustering_loop(object_input=hg38_atac,celltype.x=i)}
+
+    #selecting resolution by plots
+    for (i in celltype_list){system(paste0("slack -F ",paste(species,i,"clustering.pdf",sep="_")," ryan_todo"))}
+
+    #Set up named vector for clustering resolution, based on umap plot with multiple clustering resolutions
+    resolution_list<-c(0.5,0.2,0.9,0.5,0.5,0.9)
+    names(resolution_list)<-celltype_list
+    
+#mm10
+    #Set up variables
+    species="mm10"
+    celltype_list<-unique(mm10_atac$celltype)
+
+    
+    #Running cistopic subclustering on all identified cell types
+    for (i in celltype_list){cistopic_generation(x=mm10_atac,celltype.x=i,species="mm10")}
+    topicmodel_list<-paste(species,celltype_list,".CisTopicObject.Rds",sep="_")
+
+    #determine model count to use for each cell type
+    for (i in paste(species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
+
+    #selecting topics based on derivative, making a named vector 
+    topic_count_list<-c(28,22,23,28,28,22)
+    names(topic_count_list)<-celltype_list
+
+    #Running clustering loop
+    for (i in celltype_list){clustering_loop(object_input=hg38_atac,celltype.x=i)}
+
+    #selecting resolution by plots
+    for (i in celltype_list){system(paste0("slack -F ",paste(species,i,"clustering.pdf",sep="_")," ryan_todo"))}
+
+```
 <!--
 ```python
 import glob
