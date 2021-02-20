@@ -483,6 +483,8 @@ lapply(mm10_subset_bams,make_seurat_object,genome="mm10")
 
 Perform cisTopic on each subset seurat object
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```R
 library(Signac)
 library(Seurat)
@@ -512,7 +514,7 @@ setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3a
 ######FUNCTIONS#####
 cistopic_generation<-function(x,subset_obj,species="hg38"){
 #Perform cistopic on subclusters of data 
-    atac_sub<-subset(x,subset=celltype==subset_obj) 
+    atac_sub<-readRDS(x) 
     cistopic_counts_frmt<-atac_sub$peaks@counts
     row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
     sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
@@ -530,7 +532,7 @@ cistopic_generation<-function(x,subset_obj,species="hg38"){
 #UMAP Projection and clustering on selected cistopic model
 clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_atac,subset_obj,topiccount_list.=topic_count_list){
     #set up subset object again
-    atac_sub<-subset(object_input,subset=celltype==subset_obj) 
+    atac_sub<-readRDS(x) 
     #select_topic
     models_input<-readRDS(paste(species,subset_obj,".CisTopicObject.Rds",sep="_"))
     cisTopicObject<-cisTopic::selectModel(models_input,select=topiccount_list.[subset_obj],keepModels=F)
@@ -567,14 +569,9 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     #finally recluster
     n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic"))
     #Clustering with multiple resolutions to account for different celltype complexities
-    atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics)
-    atac_sub <- FindClusters(object = atac_sub,resolution=0.1)
-    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.2)
-    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.5)
-    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.9)
-    
+
     saveRDS(atac_sub,paste(species,subset_obj,"SeuratObject.Rds",sep="_"))
-    plt<-DimPlot(atac_sub,group.by=c('peaks_snn_res.0.1','peaks_snn_res.0.2','peaks_snn_res.0.5','peaks_snn_res.0.9'))
+    plt<-DimPlot(atac_sub)
     ggsave(plt,file=paste(species,subset_obj,"clustering.pdf",sep="_"))
 }
 
@@ -586,30 +583,30 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
 #hg38
     #Set up variables
     seurat_objects<-list.files(pattern="SeuratObject.Rds$")
+    topics_generated<-list.files(pattern="model_selection.pdf$")
     hg38_objects<-seurat_objects[grepl(seurat_objects,pattern="^hg38")]
+    hg38_object_list<-unlist(lapply(strsplit(hg38_objects,"[.]"),"[",2))
     species="hg38"
 
     #Running cistopic subclustering on all identified cell types
-    lapply(hg38_objects,function(i) cistopic_generation)
-    topicmodel_list<-paste(species,celltype_list,".CisTopicObject.Rds",sep="_")
+    lapply(hg38_objects[6:length(hg38_objects)], function(i) {cistopic_generation(x=i,subset_obj=unlist(lapply(strsplit(i,"[.]"),"[",2)))})
+    topicmodel_list<-paste(species,hg38_object_list,".CisTopicObject.Rds",sep="_")
 
     #determine model count to use for each cell type
-    for (i in paste(species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
+    for (i in paste(species,hg38_object_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
 
     #selecting topics based on derivative, making a named vector 
     topic_count_list<-c(25,22,24,27,24,22)
-    names(topic_count_list)<-celltype_list
+    names(topic_count_list)<-hg38_object_list
 
     #Running clustering loop
-    for (i in celltype_list){clustering_loop(object_input=hg38_atac,celltype.x=i)}
+    lapply(hg38_objects,function(i) {clustering_loop(object_input=i,subset_obj=unlist(lapply(strsplit(i,"[.]"),"[",2)))})
 
     #selecting resolution by plots
-    for (i in celltype_list){system(paste0("slack -F ",paste(species,i,"clustering.pdf",sep="_")," ryan_todo"))}
+    for (i in celltype_list){system(paste0("slack -F ",paste(species,hg38_object_list,"clustering.pdf",sep="_")," ryan_todo"))}
 
-    #Set up named vector for clustering resolution, based on umap plot with multiple clustering resolutions
-    resolution_list<-c(0.5,0.2,0.9,0.5,0.5,0.9)
-    names(resolution_list)<-celltype_list
-    
+    #need to add cluster meta data from full file for analysis
+
 #mm10
     #Set up variables
     species="mm10"
@@ -634,6 +631,8 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     for (i in celltype_list){system(paste0("slack -F ",paste(species,i,"clustering.pdf",sep="_")," ryan_todo"))}
 
 ```
+{% endcapture %} {% include details.html %} 
+
 <!--
 ```python
 import glob
