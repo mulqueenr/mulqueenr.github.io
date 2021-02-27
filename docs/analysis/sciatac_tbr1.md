@@ -229,18 +229,19 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
 
 Reads per plate
 
-Plate Prep  Plate   Reads Devoted
-210212_secondplates Plate_11  129213990
-210212_secondplates Plate_13  85242513
-210212_secondplates Plate_3 69656977
-210212_secondplates Plate_4 76915941
-210212_secondplates Plate_5 77743124
-210212_secondplates Plate_6 17561992
-210212_secondplates Plate_7 83652013
-210212_secondplates Plate_8 90351664
-201117_firstplates  Plate_10  78801321
-201117_firstplates  Plate_1 85746573
-201117_firstplates  Plate_2 70776718
+| Plate Prep  | Plate   | Reads Devoted |
+|:--------|:--------|:--------|
+| 210212_secondplates | Plate_11 | 129213990 |
+| 210212_secondplates | Plate_13 | 85242513 |
+| 210212_secondplates | Plate_3 | 69656977 |
+| 210212_secondplates | Plate_4 | 76915941 |
+| 210212_secondplates | Plate_5 | 77743124 |
+| 210212_secondplates | Plate_6 | 17561992 |
+| 210212_secondplates | Plate_7 | 83652013 |
+| 210212_secondplates | Plate_8 | 90351664 |
+| 201117_firstplates  | Plate_10 | 78801321 |
+| 201117_firstplates  | Plate_1 | 85746573 |
+| 201117_firstplates  | Plate_2 | 70776718 |
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -255,20 +256,21 @@ Plate Prep  Plate   Reads Devoted
 
 ```
 
-   plate_name cell_count median_uniq_reads mean_uniq_reads mean_percent_uniq
-   <chr>           <int>             <dbl>           <dbl>             <dbl>
- 1 plate1           3887            22143           31404.              90.7
- 2 plate10          5682            11712           20431.              93.1
- 3 plate11          4124            27138.          41738.              86.9
- 4 plate13          3970            19556           30665.              90.0
- 5 plate2           5965            10998           17785.              93.8
- 6 plate3           4601            15122           22041.              92.2
- 7 plate4           4219            18567           26743.              91.8
- 8 plate5           3861            16097           27445.              88.6
- 9 plate6           2484             4360.           9001.              89.7
-10 plate7           4713            17300           25658.              91.4
-11 plate8           3537            23041           35603.              89.1
+| plate_name | cell_count | median_uniq_reads | mean_uniq_reads | mean_percent_uniq |
+|:--------|:--------|:--------|:--------|:--------|
+| plate1 | 3887 | 22143 | 31404 | 90.7 |
+| plate10 | 5682 | 11712 | 20431 | 93.1 |
+| plate11 | 4124 | 27138 | 41738 | 86.9 |
+| plate13 | 3970 | 19556 | 30665 | 90.0 |
+| plate2 | 5965 | 10998 | 17785 | 93.8 |
+| plate3 | 4601 | 15122 | 22041 | 92.2 |
+| plate4 | 4219 | 18567 | 26743 | 91.8 |
+| plate5 | 3861 | 16097 | 27445 | 88.6 |
+| plate6 | 2484 | 4360 | 9001 | 89.7 |
+| plate7 | 4713 | 17300 | 25658 | 91.4 |
+| plate8 | 3537 | 23041 | 35603 | 89.1 |
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   #Combine bam files and filter
