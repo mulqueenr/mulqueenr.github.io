@@ -255,6 +255,8 @@ Reads per plate
   dat %>% group_by(plate_name) %>% summarize(cell_count=n(),median_uniq_reads=median(unique_reads),mean_uniq_reads=mean(unique_reads),mean_percent_uniq=mean(percent_uniq))
 
 ```
+{% endcapture %} {% include details.html %} 
+
 
 | plate_name | cell_count | median_uniq_reads | mean_uniq_reads | mean_percent_uniq |
 |:--------|:--------|:--------|:--------|:--------|
@@ -663,6 +665,7 @@ Using R v4.0 and Signac v1.0 for processing.
   ggsave(plt,file="unique_reads.pdf",width=10)
   system("slack -F unique_reads.pdf ryan_todo")
 ```
+
 {% endcapture %} {% include details.html %} 
 
 ## Cicero for Coaccessible Networks
@@ -778,6 +781,7 @@ system("slack -F tbr1_ko.markers.test.pdf ryan_todo"
 
 
 ```
+
 {% endcapture %} {% include details.html %} 
 
 
