@@ -847,17 +847,43 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   #False  True
   # 3389 32436
 
-  orgo_cirm43$uniq_orgID<-paste(orgo_cirm43$differentiation_exp,orgo_cirm43$orgID,sep="_")
+  orgo_cirm43$uniq_orgID<-paste(orgo_cirm43$differentiation_exp,orgo_cirm43$DIV,orgo_cirm43$orgID,sep=" ")
   orgo_cirm43$log10_uniq_reads<-log10(orgo_cirm43$uniq_reads)
-  plt1<-DimPlot(orgo_cirm43,group.by=c('DIV','prep','orgID',"treatment",'differentiation_exp','seurat_clusters','predicted_doublets','pass_qc'),size=0.1)
+
+  plt1<-DimPlot(orgo_cirm43,group.by=c('DIV','prep','uniq_orgID',"treatment",'differentiation_exp','seurat_clusters','predicted_doublets','pass_qc'),size=0.1)
+  plt1<-DimPlot(orgo_cirm43,group.by=c('uniq_orgID'),size=0.1)
 
   plt2<-FeaturePlot(orgo_cirm43,feat=c("doublet_scores","tss_enrichment","log10_uniq_reads"),col=c("white","red"),pt.size=0.1,order=T,ncol=3)
-  plt<-plt1/plt2
+  plt<-plt1
   ggsave(plt,file="cirm43.umap.png",width=12,height=15,limitsize=F)
-  ggsave(plt,file="cirm43.umap.pdf",width=12,height=15,limitsize=F)
+  ggsave(plt,file="cirm43.umap.pdf",limitsize=F)
 
   system(paste0("slack -F cirm43.umap.pdf ryan_todo"))#post to ryan_todo
+
+
+
   saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
+
+
+
+  orgo_cirm43<-subset(orgo_cirm43,differentiation_exp=="5")
+  orgo_cirm43<-subset(orgo_cirm43,DIV=="90")
+  plt1<-DimPlot(orgo_cirm43,group.by=c('treatment'),size=0.1)
+  ggsave(plt1,file="cirm43.pitstop.pdf",limitsize=F)
+
+  library(dplyr)
+  data.frame(orgo_cirm43@meta.data) %>% group_by(treatment) %>% summarize(mean=mean(uniq_reads))
+  #    treatment       mean
+  #  <chr>          <dbl>
+  #1 No            13672.
+  #2 Pitstop2      31248.
+  #3 Pitstop2_Digi 33298.
+
+
+  anova(x=orgo_cirm43$uniq_reads,y=orgo_cirm43$treatment)
+  system(paste0("slack -F cirm43.pitstop.pdf ryan_todo"))#post to ryan_todo
+
+
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -1451,7 +1477,31 @@ Following https://satijalab.org/signac/articles/integration.html?q=liftover#prep
 
   hg19_to_hg38<-rtracklayer::import.chain("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/hg19ToHg38.over.chain")
   fetal_atac<-readRDS("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/cerebrum_filtered.seurat.for_website.RDS")
+  plt<-DimPlot(fetal_atac,group.by=c("cell_type","sex","day_of_pregnancy"))
+  ggsave(plt,file="fetal_umap.pdf",width=30)
+  system('slack -F fetal_umap.pdf ryan_todo')
+
+
+  #from this filtering out cells to just RG and excitatory neurons
+  fetal_atac<-subset(fetal_atac,cells=colnames(fetal_atac)[which(fetal_atac$cell_type %in% c("Excitatory neurons","Cerebrum_Unknown.3"))])
+
+  plt<-FeaturePlot(fetal_atac,features=c("FOXG1",#forebrain
+    "SOX2","PAX6","HES1","HOPX","VIM","GFAP","TNC","GPX3", #RG
+    "MOXD1", #vRG
+    "NEUROG1","EOMES","PPP1R17","PTPRZ1","NEUROD4",
+    "SLC17A7","NEUROD6","RIT1","TBR1","SLA","NHLH1",
+    "DLX2","DLX1","LHX6","GAD1",
+    "NEUROD1",
+    "SATB2","CUX1","RELN","MEF2C",
+    "SLC1A3","GLI3","MKI67","STMN2","GADD45B","MAP2","CALB2","FBXO32",
+    "PGK1","GORASP2" #stress
+    ),order=T,min.cutoff="q25",cols=c("lightgrey","red"))
+  ggsave(plt,file="fetal_umap.markers.pdf",width=30,height=30)
+  system('slack -F fetal_umap.markers.pdf ryan_todo')
+
+  saveRDS(fetal_atac,"/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/cerebrum_subset.RDS")
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+
 
   sci_peaks_hg19 <- StringToGRanges(regions = rownames(fetal_atac@assays$peaks@counts), sep = c("-", "-"))
   sci_peaks_hg38 <- rtracklayer::liftOver(x = sci_peaks_hg19, chain = hg19_to_hg38)
@@ -1488,6 +1538,165 @@ combined <- merge(
 )
 
 saveRDS(combined,"orgo_primary.integration.SeuratObject.Rds")
+```
+
+Adding chromVAR scores to fetal atlas for comparison
+```R
+ library(Signac)
+  library(Seurat)
+  library(JASPAR2020)
+  library(TFBSTools)
+  library(GenomicRanges)
+  library(BSgenome.Hsapiens.UCSC.hg19)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(patchwork)
+  set.seed(1234)
+
+  #lowerign cores to be used by chromvar to 10
+  library(BiocParallel)
+  register(MulticoreParam(10))
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  combined<-readRDS(file="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/cerebrum_subset.RDS")
+
+  DefaultAssay(combined)<-"peaks"
+  # Get a list of motif position frequency matrices from the JASPAR database
+  pfm <- getMatrixSet(
+    x = JASPAR2020,
+    opts = list(species =9606, all_versions = FALSE))
+
+  # Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
+  feat<-row.names(combined@assays$peaks)
+  feat_dat<-data.frame(chr=unlist(lapply(strsplit(feat,"-"),"[",1)),
+    start=unlist(lapply(strsplit(feat,"-"),"[",2)),
+    end=unlist(lapply(strsplit(feat,"-"),"[",3)))
+  motif.matrix <- CreateMotifMatrix(
+    features = makeGRangesFromDataFrame(feat_dat),
+    pwm = pfm,
+    genome = 'hg38',
+    use.counts = FALSE)
+
+  # Create a new Mofif object to store the results
+  motif <- CreateMotifObject(
+    data = motif.matrix,
+    pwm = pfm)
+
+  # Add the Motif object to the assays and run ChromVar
+  combined[["peaks_chromvar"]]<-CreateChromatinAssay(counts=combined[["peaks"]]@counts)
+  combined <- SetAssayData(
+    object = combined,
+    assay = 'peaks_chromvar',
+    slot = 'motifs',
+    new.data = motif)
+  DefaultAssay(combined)<-"peaks_chromvar"
+  combined <- RegionStats(object = combined, genome = BSgenome.Hsapiens.UCSC.hg19)
+  combined <- RunChromVAR( object = combined,genome = BSgenome.Hsapiens.UCSC.hg19)
+  saveRDS(combined,file="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/cerebrum_subset.RDS")
+
+
+```
+
+Differetial chromvar TF and peaks used 
+```R
+
+  library(Signac)
+  library(Seurat)
+  library(JASPAR2020)
+  library(TFBSTools)
+  library(GenomicRanges)
+  library(BSgenome.Hsapiens.UCSC.hg19)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(patchwork)
+  set.seed(1234)
+
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  fetal_atac<-readRDS("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/cerebrum_filtered.seurat.for_website.RDS")
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+
+  #Read in data and modify to monocle CDS file
+  #read in RDS file.
+  combined<-readRDS("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/cerebrum_subset.RDS")
+  orgo_cirm43_metdat<-as.data.frame(orgo_cirm43@meta.data)
+  row.names(orgo_cirm43_metdat)<-paste0("orgo_",row.names(orgo_cirm43_metdat))
+  orgo_cirm43_metdat<-orgo_cirm43_metdat[c("nCount_peaks","DIV","seurat_clusters")]
+  colnames(orgo_cirm43_metdat)<-c("nCount_peaks","devtime","seurat_clusters")
+  orgo_cirm43_metdat$seurat_clusters<-paste0("orgo_",orgo_cirm43_metdat$seurat_clusters)
+  fetal_atac_metdat<-as.data.frame(fetal_atac@meta.data)
+  row.names(fetal_atac_metdat)<-paste0("fetal_",row.names(fetal_atac_metdat))
+  fetal_atac_metdat<-fetal_atac_metdat[c("nCount_peaks","day_of_pregnancy","seurat_clusters")]
+  colnames(fetal_atac_metdat)<-c("nCount_peaks","devtime","seurat_clusters")
+  fetal_atac_metdat$seurat_clusters<-paste0("fetal_",fetal_atac_metdat$seurat_clusters)
+
+  metdat<-rbind(orgo_cirm43_metdat,fetal_atac_metdat)
+  combined<-AddMetaData(combined,metdat)
+
+  da_one_v_one<-function(i,obj,group,j_list,assay.="peaks",logfc.threshold.=0.25){
+      i<-as.character(i)
+      da_tmp_2<-list()
+      for (j in j_list){
+          if ( i != j){
+          if (substr(i,0,3)!=substr(j,0,3)){
+          da_peaks_tmp <- FindMarkers(
+              object = obj,
+              ident.1 = i,
+              ident.2 = j,
+              group.by = group,
+              test.use = 'LR',
+              latent.vars = 'nCount_peaks',
+              only.pos=T,
+              assay=assay.,
+              logfc.threshold=logfc.threshold.
+              )
+          da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
+          if(assay.=="peaks"){
+          #closest_genes <- ClosestFeature(obj,da_peaks_tmp$da_region)
+          #da_peaks_tmp<-cbind(da_peaks_tmp,closest_genes)
+          }
+          da_peaks_tmp$enriched_group<-c(i)
+          da_peaks_tmp$compared_group<-c(j)
+          da_tmp_2[[paste(i,j)]]<-da_peaks_tmp
+          }
+      }
+      }
+      return(da_tmp_2)
+    }
+
+
+  #set up an empty list for looping through
+  da_peaks<-list()
+
+  #Perform parallel application of DA test
+  library(parallel)
+
+  n.cores=8
+  da_peaks<-mclapply(
+      unique(combined$seurat_clusters),
+      FUN=da_one_v_one,
+      obj=combined,
+      group="seurat_clusters",
+      j_list=unique(combined$seurat_clusters),
+      mc.cores=n.cores)
+  #Merge the final data frame from the list for 1vrest DA
+  da_peaks<-do.call("rbind",do.call("rbind",da_peaks))
+  i<-"primary_orgo.combined"
+  write.table(da_peaks,file=paste0(i,".onevone.da_peaks.txt"),sep="\t",col.names=T,row.names=T,quote=F)
+ 
+  n.cores=1
+  da_tf<-mclapply(
+      unique(combined$seurat_clusters),
+      FUN=da_one_v_one,
+      obj=combined,
+      group="seurat_clusters",
+      j_list=unique(combined$seurat_clusters),
+      assay.="chromvar",
+      mc.cores=n.cores)
+  #Merge the final data frame from the list for 1vrest DA
+  da_tf<-do.call("rbind",do.call("rbind",da_tf))
+  i<-"primary_orgo.combined"
+  write.table(da_tf,file=paste0(i,".onevone.da_tf.txt"),sep="\t",col.names=T,row.names=T,quote=F)
+ 
+  nrow(da_tf %>% filter(p_val_adj<0.05) %>% filter(compared_group=="orgo_0") %>% filter(enriched_group=="fetal_0"))
+
+
 ```
 Now Clustering together with cistopic and using harmony to integrate
 
@@ -1605,7 +1814,7 @@ saveRDS(combined,"orgo_primary.integration.SeuratObject.Rds")
 
 
 
-### Differential Gene Activity through Subclusters
+### Differential Gene Activity through Clusters
 
 {% capture summary %} For orgo cirm43 {% endcapture %} {% capture details %}  
 
@@ -1717,14 +1926,167 @@ da_ga_df<-rbind(list_0,list_1,list_2,list_3,list_4,list_5,list_6,list_7,list_8) 
 write.table(da_ga_df,file="orgo_cirm43.onevrest.da_tfmodules.txt",sep="\t",col.names=T,row.names=T,quote=F)
 
 
+
+```
+{% endcapture %} {% include details.html %} 
+
+
+
+### Differential Accessibility between Clusters (one v one)
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+
+```R
+
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+
+  library(Signac)
+  library(Seurat)
+#  library(GenomeInfoDb)
+  library(ggplot2)
+  set.seed(1234)
+  library(EnsDb.Hsapiens.v86)
+#  library(parallel)
+  library(ggplot2)
+#  library(ggrepel)
+  library(dplyr)
+#  library(JASPAR2020)
+#  library(TFBSTools)
+#  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(patchwork)
+#  library(parallel) 
+#  library(zoo)
+#  library(reshape2)
+#  library(ape)
+#  library(ggdendro)
+#  library(dendextend)
+  library(circlize)
+#  library(dendsort)
+  library(RColorBrewer)
+  library(viridis)
+  library(dplyr)
+
+
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+  orgo_cirm43<-subset(orgo_cirm43,pass_qc=="True")
+
+  da_one_v_one<-function(i,obj,group,j_list,assay.="peaks",logfc.threshold.=0.25){
+      i<-as.character(i)
+      da_tmp_2<-list()
+      for (j in j_list){
+          if ( i != j){
+          da_peaks_tmp <- FindMarkers(
+              object = obj,
+              ident.1 = i,
+              ident.2 = j,
+              group.by = group,
+              test.use = 'LR',
+              latent.vars = 'nCount_peaks',
+              only.pos=T,
+              assay=assay.,
+              logfc.threshold=logfc.threshold.
+              )
+          da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
+          if(assay.=="peaks"){
+          closest_genes <- ClosestFeature(obj,da_peaks_tmp$da_region)
+          da_peaks_tmp<-cbind(da_peaks_tmp,closest_genes)
+          }
+          da_peaks_tmp$enriched_group<-c(i)
+          da_peaks_tmp$compared_group<-c(j)
+          da_tmp_2[[paste(i,j)]]<-da_peaks_tmp
+          }
+      }
+      return(da_tmp_2)
+    }
+
+
+  #set up an empty list for looping through
+  da_peaks<-list()
+
+  #Perform parallel application of DA test
+  library(parallel)
+
+  n.cores=8
+  da_peaks<-mclapply(
+      unique(orgo_cirm43$seurat_clusters),
+      FUN=da_one_v_one,
+      obj=orgo_cirm43,
+      group="seurat_clusters",
+      j_list=unique(orgo_cirm43$seurat_clusters),
+      mc.cores=n.cores)
+  #Merge the final data frame from the list for 1vrest DA
+  da_peaks<-do.call("rbind",do.call("rbind",da_peaks))
+  i<-"orgo_cirm43"
+  write.table(da_peaks,file=paste0(i,".onevone.da_peaks.txt"),sep="\t",col.names=T,row.names=T,quote=F)
+
+
+  da_tf<-list()
+  da_tf<-mclapply(
+      unique(orgo_cirm43$seurat_clusters),
+      FUN=da_one_v_one,
+      obj=orgo_cirm43,
+      group="seurat_clusters",
+      assay.="chromvar",
+      j_list=unique(orgo_cirm43$seurat_clusters),
+      mc.cores=n.cores)
+  #Merge the final data frame from the list for 1vrest DA
+  da_tf<-do.call("rbind",do.call("rbind",da_tf))
+  da_tf$da_tf <- unlist(lapply(unlist(lapply(da_tf$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
+  write.table(da_tf,file=paste0(i,".onevone.da_tf.txt"),sep="\t",col.names=T,row.names=T,quote=F)
+
+  da_ga<-list()
+  da_ga<-mclapply(
+      unique(orgo_cirm43$seurat_clusters),
+      FUN=da_one_v_one,
+      obj=orgo_cirm43,
+      group="seurat_clusters",
+      assay.="GeneActivity",
+      j_list=unique(orgo_cirm43$seurat_clusters),
+      mc.cores=n.cores)
+  #Merge the final data frame from the list for 1vrest DA
+  da_ga<-do.call("rbind",do.call("rbind",da_ga))
+  write.table(da_ga,file=paste0(i,".onevone.ga_tf.txt"),sep="\t",col.names=T,row.names=T,quote=F)
+
+  da_tfmod<-list()
+  da_tfmod<-mclapply(
+      unique(orgo_cirm43$seurat_clusters),
+      FUN=da_one_v_one,
+      obj=orgo_cirm43,
+      group="seurat_clusters",
+      assay.="TF_modules",
+      j_list=unique(orgo_cirm43$seurat_clusters),
+      logfc.threshold.=0,
+      mc.cores=n.cores)
+  #Merge the final data frame from the list for 1vrest DA
+  da_tfmod<-do.call("rbind",do.call("rbind",da_tfmod))
+  write.table(da_tfmod,file=paste0(i,".onevone.tfmodule_tf.txt"),sep="\t",col.names=T,row.names=T,quote=F)
+
+
+  da_module<-list()
+  da_module<-mclapply(
+      unique(orgo_cirm43$seurat_clusters),
+      FUN=da_one_v_one,
+      obj=orgo_cirm43,
+      group="seurat_clusters",
+      assay.="Bhaduri_modules",
+      j_list=unique(orgo_cirm43$seurat_clusters),
+      logfc.threshold.=0,
+      mc.cores=n.cores)
+  #Merge the final data frame from the list for 1vrest DA
+  da_module<-do.call("rbind",do.call("rbind",da_module))
+  write.table(da_module,file=paste0(i,".onevone.tfmodules.txt"),sep="\t",col.names=T,row.names=T,quote=F)
+
+
+####################### PLOTTING ##########################################
 #Plot out top ga for each cluster
-da_ga<-read.csv(file="orgo_cirm43.onevrest.da_ga.txt",head=T,sep="\t",row.names=NULL)
+da_ga<-read.csv(file="orgo_cirm43.onevone.ga_tf.txt",head=T,sep="\t",row.names=NULL)
 da_ga$gene_name<-da_ga$da_region
 da_ga<-da_ga[complete.cases(da_ga),]
 
 da_ga$label<-""
 for (x in unique(da_ga$enriched_group)){
-selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val))) %>% slice(1:5))$da_region
+selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==x)  %>% filter(p_val < 0.05) %>% arrange(rev(desc(p_val))) %>% slice(1:10))$da_region
 da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$label<- da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$da_region
 }
 
@@ -1741,14 +2103,15 @@ sum_ga<-sum_ga[row.names(sum_ga) %in% unique(da_ga$label),]
 sum_da_dend <- t(sum_ga) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 8)
 saveRDS(sum_da_dend,file="orgo_cirm43.geneactivity.dend.rds") 
 
-
-sum_ga_plot<-t(sum_ga)
-
-colfun=colorRamp2(quantile(unlist(sum_ga_plot), probs=c(0.5,0.90,0.95)),magma(3))
+sum_ga_plot<-na.omit(t(sum_ga))
+clus_order<-c("7","6","0","3","1","2","5","4")
+sum_ga_plot<-sum_ga_plot[clus_order,]
+colfun=colorRamp2(quantile(unlist(sum_ga_plot), probs=c(0.5,0.75,0.9),na.rm=T),magma(3))
 plt1<-Heatmap(sum_ga_plot,
     #cluster_rows=sum_da_dend,
     #left_annotation=side_ha,
     col=colfun,
+    row_order=1:nrow(sum_ga_plot),
     #bottom_annotation=bottom_ha,
     column_names_gp = gpar(fontsize = 8),
     row_names_gp=gpar(fontsize=7),
@@ -1760,17 +2123,15 @@ plt1
 dev.off()
 system("slack -F orgo_cirm43.geneactivity.heatmap.pdf ryan_todo")
 
-saveRDS(orgo_cirm43,"orgo_cirm43_SeuratObject.Rds")
 
 ########################Plot out top TF for each cluster###################
-da_tf<-read.csv(file="orgo_cirm43.onevrest.da_chromvar.txt",head=T,sep="\t",row.names=NULL)
-da_tf$gene_name<-da_tf$da_region
+da_tf<-read.csv(file="orgo_cirm43.onevone.da_tf.txt",head=T,sep="\t",row.names=NULL)
+da_tf$tf_name<-da_tf$da_tf
 da_tf<-da_tf[complete.cases(da_tf),]
-da_tf<-da_tf[!endsWith(da_tf$enriched_group,"NA"),]
 
 da_tf$label<-""
 for (x in unique(da_tf$enriched_group)){
-selc_genes<-as.data.frame(da_tf %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val))) %>% slice(1:3))$tf_name
+selc_genes<-as.data.frame(da_tf %>% filter(enriched_group==x)  %>% filter(p_val < 0.05) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:10))$tf_name
 da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$label<- da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$tf_name
 }
 
@@ -1789,13 +2150,16 @@ sum_da_dend<-readRDS(file="orgo_cirm43.geneactivity.dend.rds")
 
 sum_tf<-sum_tf[row.names(sum_tf) %in% unique(da_tf[da_tf$label!="",]$da_region),]
 row.names(sum_tf)<-da_tf[match(row.names(sum_tf),da_tf$da_region,nomatch=0),]$tf_name
-sum_tf_plot<-t(sum_tf)
+sum_tf_plot<-na.omit(t(sum_tf))
+clus_order<-c("7","6","0","3","1","2","5","4")
+sum_tf_plot<-sum_tf_plot[clus_order,]
 
-colfun=colorRamp2(quantile(unlist(sum_tf_plot), probs=c(0.5,0.90,0.95)),cividis(3))
+colfun=colorRamp2(quantile(unlist(sum_tf_plot), probs=c(0.5,0.75,0.95)),cividis(3))
 plt1<-Heatmap(sum_tf_plot,
     #cluster_rows=sum_da_dend,
     #left_annotation=side_ha,
     col=colfun,
+    row_order=1:nrow(sum_tf_plot),
     #bottom_annotation=bottom_ha,
     column_names_gp = gpar(fontsize = 8),
     row_names_gp=gpar(fontsize=7),
@@ -1821,17 +2185,61 @@ ggsave(plt,file="orgo_cirm43.tf.heatmap.motif.pdf",height=100,width=2,limitsize=
 system("slack -F orgo_cirm43.tf.heatmap.motif.pdf ryan_todo")
 
 
+#Plot out top tf modules for each cluster
+da_tfmod<-read.csv(file="orgo_cirm43.onevone.tfmodule_tf.txt",head=T,sep="\t",row.names=NULL)
+da_tfmod$gene_name<-unlist(lapply(strsplit(da_tfmod$da_region,"-"),"[",2))
+da_tfmod<-da_tfmod[complete.cases(da_tfmod),]
+
+da_tfmod$label<-""
+for (x in unique(da_tfmod$enriched_group)){
+selc_genes<-as.data.frame(da_tfmod %>% filter(enriched_group==x) %>% filter(p_val < 0.05) %>% arrange(rev(desc(p_val))) %>% slice(1:10))$da_region
+da_tfmod[da_tfmod$da_region %in% selc_genes & da_tfmod$enriched_group==x,]$label<- da_tfmod[da_tfmod$da_region %in% selc_genes & da_tfmod$enriched_group==x,]$da_region
+}
+
+#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+dat_tfmod<-as.data.frame(t(as.data.frame(orgo_cirm43[["TF_modules"]]@data)))
+sum_tfmod<-split(dat_tfmod,orgo_cirm43$seurat_clusters) #group by rows to seurat clusters
+sum_tfmod<-lapply(sum_tfmod,function(x) apply(x,2,mean)) #take average across group
+sum_tfmod<-do.call("rbind",sum_tfmod) #condense to smaller data frame
+
+sum_tfmod<-t(scale(sum_tfmod))
+sum_tfmod<-sum_tfmod[row.names(sum_tfmod) %in% unique(da_tfmod$label),]
+
+#cluster by all marker genes
+sum_da_dend <- t(sum_tfmod) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 8)
+saveRDS(sum_da_dend,file="orgo_cirm43.tfmodule.dend.rds") 
+
+sum_tfmod_plot<-na.omit(t(sum_tfmod))
+clus_order<-c("7","6","0","3","1","2","5","4")
+sum_tfmod_plot<-sum_tfmod_plot[clus_order,]
+colfun=colorRamp2(quantile(unlist(sum_tfmod_plot), probs=c(0.5,0.75,0.9),na.rm=T),c("#253494","#41b6c4","#ffffd9"))
+plt1<-Heatmap(sum_tfmod_plot,
+    #cluster_rows=sum_da_dend,
+    #left_annotation=side_ha,
+    col=colfun,
+    row_order=1:nrow(sum_tfmod_plot),
+    #bottom_annotation=bottom_ha,
+    column_names_gp = gpar(fontsize = 8),
+    row_names_gp=gpar(fontsize=7),
+    column_names_rot=90
+)
+
+pdf("orgo_cirm43.tfmodule.heatmap.pdf",height=20,width=20)
+plt1
+dev.off()
+system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
+
+
 ```
 {% endcapture %} {% include details.html %} 
 
 
-
-### Differential Accessibility between subclusters
+### Performing GREAT on DA peaks
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
-
 ```R
+  #mkdir GREAT_analysis
 
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
@@ -1841,242 +2249,77 @@ system("slack -F orgo_cirm43.tf.heatmap.motif.pdf ryan_todo")
   library(ggplot2)
   set.seed(1234)
   library(EnsDb.Hsapiens.v86)
-  library(parallel)
-  library(ggplot2)
-  library(ggrepel)
-  library(dplyr)
-  library(JASPAR2020)
-  library(TFBSTools)
+  library(Matrix)
 
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-  orgo_cirm43<-subset(orgo_cirm43,pass_qc=="True",)
-  i<-"seurat_clusters"
 
-  #define DA functions for parallelization
-  #Use LR test for atac data
-  da_one_v_rest_da<-function(i,obj,group){
-      da_peaks_tmp <- FindMarkers(
-          object = obj,
-          ident.1 = i,
-          group.by = group,
-          test.use = 'LR',
-          latent.vars = 'nCount_peaks',
-          only.pos=T#,
-          #assay="peaks"
-          )
-      da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
-      closest_genes <- ClosestFeature(obj,da_peaks_tmp$da_region)
-      da_peaks_tmp<-cbind(da_peaks_tmp,closest_genes)
-      da_peaks_tmp$enriched_group<-c(i)
-      da_peaks_tmp$compared_group<-c("all_other_cells")
-      return(da_peaks_tmp)
-    }
+  #To perform GREAT on peaks for enrichment per cluster
+  write("Performing GREAT on all enriched sites per annotation group", stderr())
+  library(rGREAT)
 
-  #define DA functions for parallelization
-  #Use LR test for atac data
-  da_one_v_rest_tf<-function(i,obj,group){
-      da_peaks_tmp <- FindMarkers(
-          object = obj,
-          ident.1 = i,
-          group.by = group,
-          test.use = 'LR',
-          latent.vars = 'nCount_peaks',
-          only.pos=T,
-          assay="chromvar"
-          )
-      da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
-      da_peaks_tmp$enriched_group<-c(i)
-      da_peaks_tmp$compared_group<-c("all_other_cells")
-      return(da_peaks_tmp)
-    }
+  #format data as bed file all seurat objects have the same peak list
+  write("Preparing Background Set as all called peaks.", stderr())
+  orgo_bg_bed<-do.call("rbind",strsplit(unlist(orgo_cirm43@assays$peaks@counts@Dimnames[1]),"[-]"))
+  orgo_bg_bed<-as.data.frame(orgo_bg_bed)
+  colnames(orgo_bg_bed)<-c("chr","start","end")
+  orgo_bg_bed$start<-as.numeric(as.character(orgo_bg_bed$start))
+  orgo_bg_bed$end<-as.numeric(as.character(orgo_bg_bed$end))
 
-#define DA functions for parallelization
-#Use LR test for atac data
-da_one_v_rest_ga<-function(i,obj,group){
-    da_ga_tmp <- FindMarkers(
-        object = obj,
-        ident.1 = i,
-        group.by = group,
-        test.use = 'LR',
-        latent.vars = 'nCount_peaks',
-        only.pos=T,
-        assay="GeneActivity"
-        )
-    da_ga_tmp$da_region<-row.names(da_ga_tmp)
-    da_ga_tmp$enriched_group<-c(i)
-    da_ga_tmp$compared_group<-c("all_other_cells")
-    return(da_ga_tmp)
+  cirm43_da_peaks<-read.table("orgo_cirm43.onevone.da_peaks.txt",header=T)
+
+  write("Beginning loop through all annotation groups.", stderr())
+
+  great_processing<-function(enriched_group_input,peak_dataframe,prefix){
+      #subset bed file to peaks enriched in input group
+      orgo_bed<-as.data.frame(do.call("rbind",strsplit(peak_dataframe[peak_dataframe$enriched_group==enriched_group_input,]$da_region,"-")))
+      colnames(orgo_bed)<-c("chr","start","end")
+      orgo_bed$start<-as.numeric(as.character(orgo_bed$start))
+      orgo_bed$end<-as.numeric(as.character(orgo_bed$end))
+      
+      #run GREAT using all peaks as background
+      write(paste("Using",nrow(orgo_bed), "DA peaks from",enriched_group_input), stderr())
+      job = submitGreatJob(orgo_bed,orgo_bg_bed,species="hg38",request_interval=30)
+      tb = getEnrichmentTables(job, ontology = c("GO Molecular Function", "GO Biological Process","GO Cellular Component"))
+      tb = getEnrichmentTables(job, category = c("GO","Phenotype","Genes"))
+      #Plot gene association
+      pdf(paste0("./GREAT_analysis/",prefix,"_DApeaks_",enriched_group_input,".GeneAssociation.pdf"))
+      plotRegionGeneAssociationGraphs(job)
+      dev.off()
+
+      for (j in 1:length(names(tb))){
+            write(paste("Outputting DA GREAT Analysis for", enriched_group_input, as.character(names(tb))[j]), stderr())
+            tabl_name<-gsub(" ","",as.character(names(tb))[j])
+            write.table(as.data.frame(tb[[j]]),file=paste0("./GREAT_analysis/",prefix,"_DApeaks_",enriched_group_input,".",tabl_name,".txt"),sep="\t",col.names=T,row.names=T,quote=F)
+        }
   }
 
-  #set up an empty list for looping through
-  da_peaks<-list()
-
-  #Perform parallel application of DA test
   library(parallel)
-
-  n.cores=5
-  da_peaks<-mclapply(
-      unique(orgo_cirm43$seurat_clusters),
-      FUN=da_one_v_rest_da,
-      obj=orgo_cirm43,
-      group="seurat_clusters",
-      mc.cores=n.cores)
-
-  #Merge the final data frame from the list for 1vrest DA
-  da_peaks<-do.call("rbind",da_peaks)
-  write.table(da_peaks,file=paste0(i,".onevrest.da_peaks.txt"),sep="\t",col.names=T,row.names=T,quote=F)
-
-  #Plot out top peaks and associated gene name for each cluster
-  dat<-read.table(paste0(i,".onevrest.da_peaks.txt"),header=T,sep="\t")
-  dat$label<-""
-  for (x in unique(dat$enriched_group)){
-    selc_genes<-row.names(dat %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:5))
-    dat[row.names(dat) %in% selc_genes & dat$enriched_group==x,]$label<- dat[row.names(dat) %in% selc_genes & dat$enriched_group==x,]$gene_name
-  }
-
-  plt<-ggplot(dat,aes(x=avg_logFC,y=(-log(p_val_adj)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(aes(label=label),force=10)+theme_bw()+xlim(c(0,20))
-  ggsave(plt,file=paste0(i,".da_peaks.pdf"))
-  system(paste0("slack -F ", i,".da_peaks.pdf", " ryan_todo"))
-
-  da_tf<-list()
-  da_tf<-mclapply(
-      unique(orgo_cirm43$cluster_ID),
-      FUN=da_one_v_rest_tf,
-      obj=orgo_cirm43,
-      group="cluster_ID",
-      mc.cores=n.cores)
-
-  #Merge the final data frame from the list for 1vrest DA
-  da_tf<-do.call("rbind",da_tf)
-  write.table(da_tf,file=paste0(i,".onevrest.da_tf.txt"),sep="\t",col.names=T,row.names=T,quote=F)
-
-  dat<-read.table(paste0(i,".onevrest.da_tf.txt"),header=T,sep="\t")
-
-  #To convert JASPAR ID TO TF NAME
-  dat$da_tf <- unlist(lapply(unlist(lapply(dat$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
-  write.table(dat,file=paste0(i,".onevrest.da_tf.txt"),sep="\t",col.names=T,row.names=T,quote=F)
-  dat$label<-""
-  for (x in unique(dat$enriched_group)){
-    selc_genes<-row.names(dat %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:5))
-    dat[row.names(dat) %in% selc_genes & dat$enriched_group==x,]$label<- dat[row.names(dat) %in% selc_genes & dat$enriched_group==x,]$da_tf
-  }
-
-  plt<-ggplot(dat,aes(x=avg_logFC,y=(-log(p_val)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(dat=dat,aes(label=label),force=3)+theme_bw()
-  ggsave(plt,file=paste0(i,".da_tf.pdf"))
-  system(paste0("slack -F ", i,".da_tf.pdf", " ryan_todo"))
-
-
-da_ga<-list() #set up an empty list for looping through
-
-n.cores=1 #Perform parallel application of DA test
-da_ga<-mclapply(
-    unique(orgo_cirm43$cluster_ID),
-    FUN=da_one_v_rest_ga,
-    obj=orgo_cirm43,
-    group="cluster_ID",
-    mc.cores=n.cores)
-
-da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
-write.table(da_ga_df,file=paste0(i,".onevrest.da_ga.txt"),sep="\t",col.names=T,row.names=T,quote=F)
-
-  dat<-read.table(paste0(i,".onevrest.da_ga.txt"),header=T,sep="\t")
-  dat$label<-""
-  for (x in unique(dat$enriched_group)){
-    selc_genes<-row.names(dat %>% dplyr::filter(enriched_group==x) %>% dplyr::arrange(rev(desc(p_val_adj))) %>% slice(1:5))
-    dat[row.names(dat) %in% selc_genes & dat$enriched_group==x,]$label<- dat[row.names(dat) %in% selc_genes & dat$enriched_group==x,]$da_region
-  }
-
-  plt<-ggplot(dat,aes(x=avg_logFC,y=(-log(p_val)),color=as.factor(enriched_group)))+geom_point(aes(alpha=0.1))+geom_label_repel(dat=dat,aes(label=label),force=3)+theme_bw()
-  ggsave(plt,file=paste0(i,".da_ga.pdf"))
-  system(paste0("slack -F ", i,".da_ga.pdf", " ryan_todo"))
-
-  #Cell type and state
-  #RIT1=BCL11B=CTIP2
-  plt<-FeaturePlot(orgo_cirm43,features=c("FOXG1",#forebrain
-    "SOX2","PAX6","HES1","HOPX","VIM","GFAP","TNC","GPX3", #RG
-    "MOXD1", #vRG
-    "NEUROG1","EOMES","PPP1R17","PTPRZ1","NEUROD4",
-    "SLC17A7","NEUROD6","RIT1","TBR1","SLA","NHLH1",
-    "DLX2","DLX1","LHX6","GAD1",
-    "NEUROD1",
-    "SATB2","CUX1","RELN","MEF2C",
-    "SLC1A3","GLI3","MKI67","STMN2","GADD45B","MAP2","CALB2","FBXO32",
-    "PGK1","GORASP2" #stress
-    ),order=T,min.cutoff="q25",cols=c("lightgrey","red"))
-  ggsave(plt,file="subclus.markers.png",width=20,height=30)
-  system("slack -F subclus.markers.png ryan_todo")
-
-  tfList <- getMatrixByID(JASPAR2020, ID=row.names(orgo_cirm43@assays$chromvar@data)) 
-  row.names(orgo_cirm43@assays$chromvar@data)<- unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
-  DefaultAssay(orgo_cirm43)<-"chromvar"
-
-  plt<-FeaturePlot(orgo_cirm43,features=c("FOXG1",#forebrain
-    "SOX2","PAX6","HES1", #RG #vRG
-    "NEUROG1","EOMES","BCL11B","TBR1","NHLH1",
-    "LHX6","BHLE22","POU2F1",
-    "NEUROD1","CUX2","MEF2C",
-    "ASCL1","CUX1","FOXP2","LHX6","REST"
-    ),order=T,min.cutoff=2,cols=c("white","blue"))
-  ggsave(plt,file="subclus.tfmarkers.png",width=10,height=10)
-  system("slack -F subclus.tfmarkers.png ryan_todo")
-
-  DefaultAssay(orgo_cirm43)<-"peaks"
-
-  cov_markers<-c("DLX1","CUX1","SATB2","FOXG1","SOX2","PAX6","EOMES","TBR1","RIT1","MEF2C")
-  for (i in cov_markers){
-  plt<-CoveragePlot(object=orgo_cirm43,region=i,group.by="cluster_ID",show.bulk=T,extend.upstream=5000,extend.downstream=5000,scale.factor=1)
-  ggsave(plt,file="subclus.region.png",width=10,height=20)
-  system("slack -F subclus.region.png ryan_todo")
-  }
-
-#Summarize organoid ID / cluster ID
-  library(ComplexHeatmap)
-  library(reshape2)
-  library(circlize)
-  dat<-as.data.frame(orgo_cirm43@meta.data) %>% group_by(orgID,DIV,differentiation_exp,cluster_ID) %>% summarize(count=n())
-  dat_cast<-dcast(dat,paste(orgID,DIV,differentiation_exp)~cluster_ID,value.var="count",fill=0)
-  write.table(dat_cast,"cluster_ID.counts.perogID.tsv",col.names=T,row.names=F,sep="\t",quote=F)
-  system("slack -F cluster_ID.counts.perogID.tsv ryan_todo")
-  row.names(dat_cast)<-dat_cast[,1]
-  dat_cast<-dat_cast[,2:ncol(dat_cast)]
-  dat_cast<-dat_cast/rowSums(dat_cast)
-  write.table(dat_cast,"cluster_ID.perc.perogID.tsv",col.names=T,row.names=F,sep="\t",quote=F)
-  system("slack -F cluster_ID.perc.perogID.tsv ryan_todo")
-
-
-  annot<-row.names(dat_cast)
-  annot<-rowAnnotation(df= data.frame(DIV=unlist(lapply(strsplit(annot," "),"[",2)),
-                                      diff=unlist(lapply(strsplit(annot," "),"[",3))),
-                col=list(diff=setNames(
-                        c("#e41a1c","#377eb8"),
-                        unique(unlist(lapply(strsplit(annot," "),"[",3)))),
-                        DIV=setNames(
-                        viridis(length(unique(unlist(lapply(strsplit(annot," "),"[",2))))),
-                        unique(unlist(lapply(strsplit(annot," "),"[",2))))
-                        )
-                )
-
-  colfun=colorRamp2(c(0,0.5,1),rev(c("#081d58","#c7e9b4","#ffffff")))
-
-
-  plt<-Heatmap(dat_cast,left_annotation=annot,col=colfun)
-  pdf("subclus_cellproportion.pdf")
-  plt
-  dev.off()
-  system("slack -F subclus_cellproportion.pdf ryan_todo")
-
-  #Cell type and state
-  plt<-DimPlot(orgo_cirm43,group.by=c("cluster_ID"))
-  ggsave(plt,file="subclus.test.pdf",width=10)
-  system("slack -F subclus.test.pdf ryan_todo")
-
-
-
-  saveRDS(orgo_cirm43,file="orgo_cirm43.filt.SeuratObject.Rds")
-
+  mclapply(unique(cirm43_da_peaks$enriched_group), FUN=great_processing, peak_dataframe=cirm43_da_peaks,prefix="cirm43",mc.cores=1)
 ```
+
 {% endcapture %} {% include details.html %} 
 
+## Check Accelerated Regions
+```R
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  library(Signac)
+  library(GenomicRanges)
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+  har<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/nCHAR.txt",header=T)  
+  length(unique(findOverlaps(query = makeGRangesFromDataFrame(har), subject = granges(orgo_cirm43))@to))
+  #152/2745 #all human accelerated regions
+
+  har<-har[har$enhancer_activity=="Yes",]
+
+  length(unique(findOverlaps(query = makeGRangesFromDataFrame(har), subject = granges(orgo_cirm43))@to))
+  #54/773 #predicted enhancer activity
+
+  har<-har[!(har$predicted_tissue_activity %in% c("N/A","limb","heart;limb","other")),]
+  length(unique(findOverlaps(query = makeGRangesFromDataFrame(har), subject = granges(orgo_cirm43))@to))
+  #18/288 #predicted brain/neural tube activity
+
+
+```
 
 ## Monocle
 
@@ -2111,14 +2354,14 @@ write.table(da_ga_df,file=paste0(i,".onevrest.da_ga.txt"),sep="\t",col.names=T,r
   orgo_cirm43_sub<-subset(orgo_cirm43_sub,cells=row.names(orgo_cirm43_sub@meta.data)[which(orgo_cirm43_sub$DIV %in% c("30","60","90"))]) 
 
   orgo_cirm43_sub@meta.data<-orgo_cirm43_sub@meta.data[sort(row.names(orgo_cirm43_sub@meta.data)),] #as.cell_data_set assumes abc sorted cell ids
-  rg_sub<-subset(orgo_cirm43_sub,cells=row.names(orgo_cirm43_sub@meta.data)[which(orgo_cirm43_sub$seurat_clusters %in% c("6","0","3"))])
+  rg_sub<-subset(orgo_cirm43_sub,cells=row.names(orgo_cirm43_sub@meta.data)[which(orgo_cirm43_sub$seurat_clusters %in% c("6","0"))])
   exN_sub<-subset(orgo_cirm43_sub,cells=row.names(orgo_cirm43_sub@meta.data)[which(orgo_cirm43_sub$seurat_clusters %in% c("1","2","5"))])
 
-  monocle_processing<-function(prefix, seurat_input){
+  monocle_processing<-function(prefix, seurat_input,min_branch=10){
       atac.cds <- as.cell_data_set(seurat_input)
       atac.cds <- cluster_cells(cds = atac.cds, reduction_method = "UMAP",k=10) 
       #Read in cds from cicero processing earlier and continue processing
-      atac.cds<- learn_graph(atac.cds, learn_graph_control=list(minimal_branch_len=10))
+      atac.cds<- learn_graph(atac.cds, use_partition=F,close_loop=F,learn_graph_control=list(minimal_branch_len=min_branch))
       #plot to see nodes for anchoring
       plt1<-plot_cells(cds = atac.cds, show_trajectory_graph = TRUE, color_cells_by="DIV", label_leaves=T, label_branch_points=F, label_roots=T) 
       plt2<-plot_cells(cds = atac.cds, show_trajectory_graph = TRUE, color_cells_by="seurat_clusters",label_leaves=T, label_branch_points=F, label_roots=T) 
@@ -2132,9 +2375,9 @@ write.table(da_ga_df,file=paste0(i,".onevrest.da_ga.txt"),sep="\t",col.names=T,r
       return(atac.cds)
   }
   #Define pseudotime from peak accessibility for all cells
-    orgo_cirm43.cicero<-monocle_processing(seurat_input=orgo_cirm43_sub,prefix="orgo_cirm43")
+    orgo_cirm43.cicero<-monocle_processing(seurat_input=orgo_cirm43_sub,prefix="orgo_cirm43",min_branch=20)
     #Then determine root nodes via plots and assign by order cells function.
-    orgo_cirm43.cds <- order_cells(orgo_cirm43.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_9")) #Chose youngest cells as root
+    orgo_cirm43.cds <- order_cells(orgo_cirm43.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_446")) #Chose youngest cells as root
     saveRDS(orgo_cirm43.cds,"cirm43.pseudotime.monoclecds.Rds")
     
     pdf("orgo_cirm43_trajectory.pseudotime.pdf")
@@ -2153,27 +2396,27 @@ write.table(da_ga_df,file=paste0(i,".onevrest.da_ga.txt"),sep="\t",col.names=T,r
    #Now do pseudotime ordering on excitatory neuron subclustering
      exN.cicero<-monocle_processing(seurat_input=exN_sub,prefix="ExN")
      #Then determine root nodes via plots and assign by order cells function.
-     exN.cds <- order_cells(exN.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_96"))  #Chose youngest cells as root
-     saveRDS(exN.cds,"./subcluster/excitatory_neuron.pseudotime.monoclecds.Rds")
+     exN.cds <- order_cells(exN.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_366"))  #Chose youngest cells as root
+     saveRDS(exN.cds,"excitatory_neuron.pseudotime.monoclecds.Rds")
 
      #Now replotting with pseudotime
-     pdf("./subcluster/exN_trajectory.pseudotime.pdf")
+     pdf("exN_trajectory.pseudotime.pdf")
      plot_cells(cds = exN.cds,show_trajectory_graph = TRUE,color_cells_by = "pseudotime")
      dev.off()
-     system("slack -F ./subcluster/exN_trajectory.pseudotime.pdf ryan_todo")
+     system("slack -F exN_trajectory.pseudotime.pdf ryan_todo")
 
      orgo_cirm43 <- AddMetaData(object = orgo_cirm43, metadata = exN.cds@principal_graph_aux@listData$UMAP$pseudotime,col.name="pseudotime_exN")
 
-   #Now do pseudotime ordering on radial glia subclustering
-     rg.cicero<-monocle_processing(seurat_input=rg_sub,prefix="RG")
+ #  #Now do pseudotime ordering on radial glia subclustering
+     rg.cicero<-monocle_processing(seurat_input=rg_sub,prefix="RG",min_branch=35)
      #Then determine root nodes via plots and assign by order cells function.
-     rg.cds <- order_cells(rg.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_54")) #Chose youngest cells as root
-     saveRDS(rg.cds,"./subcluster/radial_glia.pseudotime.monoclecds.Rds")
+     rg.cds <- order_cells(rg.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_12")) #Chose youngest cells as root
+     saveRDS(rg.cds,"radial_glia.pseudotime.monoclecds.Rds")
 
-     pdf("./subcluster/RG_trajectory.pseudotime.pdf")
+     pdf("RG_trajectory.pseudotime.pdf")
      plot_cells(cds = rg.cds,show_trajectory_graph = TRUE,color_cells_by = "pseudotime")
      dev.off()
-     system("slack -F ./subcluster/RG_trajectory.pseudotime.pdf ryan_todo")
+     system("slack -F RG_trajectory.pseudotime.pdf ryan_todo")
 
      orgo_cirm43 <- AddMetaData(object = orgo_cirm43, metadata = rg.cds@principal_graph_aux@listData$UMAP$pseudotime,col.name="pseudotime_rg")
    
@@ -2228,6 +2471,11 @@ setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_fina
   pData(tf_module.cds)$Pseudotime <- pseudotime(cds) 
 
   #using peak accessibility projection for all pseudotime analysis
+  #colData(cds)$Size_Factor<-colData(cds)$nCount_peaks
+  #cds_pr_test_res <- graph_test(cds, neighbor_graph="principal_graph", cores=ncores,reduction_method="UMAP")
+  #nrow(cds_pr_test_res %>% filter(q_value<0.1))
+  #saveRDS(cds_pr_test_res,paste0(prefix,"_pseudotime.peaks.rds"))
+
   chromvar.cds@principal_graph$UMAP<-cds@principal_graph$UMAP
   chromvar.cds@principal_graph_aux$UMAP<-cds@principal_graph_aux$UMAP
   reducedDims(chromvar.cds)[["UMAP"]]<-reducedDims(cds)[["UMAP"]]
@@ -2255,11 +2503,6 @@ setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_fina
   nrow(geneactivity_cds_pr_test_res %>% filter(q_value<0.05))
   saveRDS(geneactivity_cds_pr_test_res,paste0(prefix,"_pseudotime.geneactivity.rds"))
 
-  #colData(cds)$Size_Factor<-colData(cds)$nCount_peaks
-  #accessibility_cds_pr_test_res <- graph_test(cds, neighbor_graph="principal_graph", cores=ncores,reduction_method="UMAP")
-  #nrow(accessibility_cds_pr_test_res %>% filter(q_value<0.05))
-  #saveRDS(accessibility_cds_pr_test_res,paste0(prefix,"_pseudotime.accessibility.rds"))
-
 }
 
 
@@ -2269,15 +2512,12 @@ setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_fina
   orgo_cirm43@meta.data<-orgo_cirm43@meta.data[sort(row.names(orgo_cirm43@meta.data)),] #as.cell_data_set assumes abc sorted cell ids
   in_cds<-readRDS("cirm43.pseudotime.monoclecds.Rds")
   in_cds<-in_cds[,row.names(colData(in_cds)) %in% row.names(orgo_cirm43@meta.data)] #exclude earliest cells not fitting into trajectory
-  pseudotime_statistics(seurat.object=orgo_cirm43,cds=in_cds,prefix="orgo_cirm43",ncores=10)
+  pseudotime_statistics(seurat.object=orgo_cirm43,cds=in_cds,prefix="orgo_cirm43",ncores=5)
 
   # #Need to add TF modules to subset cell objects
-  # rg<-readRDS("./subcluster/_1_SeuratObject.Rds")
-  # rg.cds<-readRDS("./subcluster/radial_glia.pseudotime.monoclecds.Rds")
-  # rg <- subset(rg, cells=row.names(orgo_cirm43@meta.data))
-  # rg[['TF_modules']] <- subset(orgo_cirm43, cells=row.names(rg@meta.data))[['TF_modules']] 
-  # rg.cds<-rg.cds[,row.names(colData(rg.cds)) %in% row.names(rg@meta.data)] #exclude earliest cells not fitting into trajectory
-  # pseudotime_statistics(seurat.object=rg,cds=rg.cds,prefix="./subcluster/rg",ncores=10)
+  rg.cds<-readRDS("radial_glia.pseudotime.monoclecds.Rds")
+  rg<-subset(orgo_cirm43,cells=colnames(rg.cds))
+   pseudotime_statistics(seurat.object=rg,cds=rg.cds,prefix="RG",ncores=10)
 
 
   # exN<-readRDS("./subcluster/_0_SeuratObject.Rds")
@@ -2369,12 +2609,13 @@ Decided to use a binning strategy to assess pseudotime signal.
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-  atac_sub<-orgo_cirm43
-  plt1<-FeaturePlot(atac_sub,feature=c("pseudotime_allcells"),order=T)
-  plt2<-DimPlot(atac_sub,group.by="seurat_clusters")
+    atac_sub<-orgo_cirm43
+    plt1<-FeaturePlot(atac_sub,feature=c("pseudotime_allcells"),order=T)
+    plt2<-FeaturePlot(atac_sub,feature=c("pseudotime_rg"),order=T)
+    plt3<-DimPlot(atac_sub,group.by="seurat_clusters")
 
-  ggsave(plt1/plt2,file="test_orgo_cirm43_trajectory.pseudotime.pdf")
-  system("slack -F test_orgo_cirm43_trajectory.pseudotime.pdf ryan_todo")
+    ggsave(plt1/plt2/plt3,file="test_orgo_cirm43_trajectory.pseudotime.pdf")
+    system("slack -F test_orgo_cirm43_trajectory.pseudotime.pdf ryan_todo")
 
 
   chromvar_motifs_per_bin<-function(x){
@@ -2497,21 +2738,13 @@ Decided to use a binning strategy to assess pseudotime signal.
         saveRDS(tfmod_mean,file=paste0(prefix,".pseudotime_tfmodules.rds"))
 
         #filter data by significant changes over pseudotime
-        #chromvar_cds_pr_test_res<-readRDS(paste0(monocle_prefix,"_pseudotime.chromvar.rds"))
-        #motif_mean<-motif_mean[(chromvar_cds_pr_test_res %>% filter(q_value < 0.05))$tf_name,]
+        chromvar_cds_pr_test_res<-readRDS(paste0(monocle_prefix,"_pseudotime.chromvar.rds"))
         #OR
         ###Filter by top 10% variances
         # calculate variance per column
         motif_mean<-readRDS(paste0(prefix,".pseudotime_chromVARmotifs.rds"))
-        variances <- apply(X=motif_mean, MARGIN=1, FUN=var)
-        # sort variance, grab index of the first 2
-        sorted <- sort(variances, decreasing=TRUE, index.return=TRUE)$ix[1:round(nrow(motif_mean)/4)] # get top 25%
-        motif_mean <- motif_mean[sorted,]
-
-        # use that to subset the original data
+        motif_mean<-motif_mean[row.names(motif_mean) %in% (chromvar_cds_pr_test_res %>% filter(q_value < 0.1))$tf_name,] # use that to subset the original data
         motif_mean<-na.omit(t(scale(t(motif_mean))))
-        tfmod_mean<-na.omit(t(scale(t(tfmod_mean))))
-        ga_mean<-na.omit(t(scale(t(ga_mean))))
 
         ####build up tangleogram by matching row names
         motif_mean<-motif_mean[!duplicated(unlist(lapply(strsplit(row.names(motif_mean),'[(:]'),"[",1))),] #remove similar motifs
@@ -2532,10 +2765,10 @@ Decided to use a binning strategy to assess pseudotime signal.
         #dend_ga <- ga_sub %>% match_order_by_labels(dend_ga)
         #dends_motif_ga <- dendlist(dend_motif,dend_ga)
 
-        colfun=colorRamp2(c(0,1,2),cividis(3))
+        colfun=colorRamp2(quantile(unlist(motif_mean),c(0.25,0.5,0.9)),cividis(3))
         motif_sub<-motif_mean[order(unlist(lapply(1:nrow(motif_mean),function(x) which(motif_mean[x,]==max(motif_mean[x,]))))),]
         plt<-Heatmap(motif_mean,
-        column_order=1:ncol(motif_sub),
+        column_order=1:ncol(motif_mean),
         bottom_annotation=ha_barplots,
         cluster_rows=hc_motif,
         row_names_gp = gpar(fontsize = 3),
@@ -2549,25 +2782,24 @@ Decided to use a binning strategy to assess pseudotime signal.
         dev.off()
         system(paste0("slack -F ",prefix,".pseudotime.chromvar.heatmap.pdf"," ryan_todo"))
 
+        ga_mean<-readRDS(paste0(prefix,".pseudotime_geneactivity.rds"))
+        ga_cds_pr_test_res<-readRDS(paste0(monocle_prefix,"_pseudotime.geneactivity.rds"))
+        ga_mean<-ga_mean[row.names(ga_mean) %in% row.names(ga_cds_pr_test_res %>% filter(q_value < 0.01)),] # use that to subset the original data
+
+        ga_mean<-na.omit(scale(ga_mean))
+
         hc_ga <- ga_mean %>% dist() %>% hclust("centroid") 
         k_waves_ga<-hc_ga %>% find_k(2:10)
         hc_ga<- color_branches(as.dendrogram(hc_ga),k=k_waves_ga$k)
         hc_ga<- ladderize(hc_ga,right=T)
 
-        ga_mean<-readRDS(paste0(prefix,".pseudotime_geneactivity.rds"))
-        variances <- apply(X=ga_mean, MARGIN=1, FUN=var)
-        # sort variance, grab index of the first 2
-        sorted <- sort(variances, decreasing=TRUE, index.return=TRUE)$ix[1:100]
-        ga_mean <- ga_mean[sorted,]
-        ga_mean<-na.omit(t(scale(t(ga_mean))))
-
         ga_mean<-ga_mean[order(unlist(lapply(1:nrow(ga_mean),function(x) which(ga_mean[x,]==max(ga_mean[x,]))))),]
-        colfun=colorRamp2(quantile(unlist(ga_mean),c(0,0.5,0.8)),magma(3))
+        colfun=colorRamp2(quantile(unlist(ga_mean),c(0,0.5,0.9)),magma(3))
         plt<-Heatmap(ga_mean,
         column_order=1:ncol(ga_mean),
         bottom_annotation=ha_barplots,
-        row_order=1:nrow(ga_mean),
-        #cluster_rows=hc_ga,
+        #row_order=1:nrow(ga_mean),
+        cluster_rows=hc_ga,
         row_names_gp = gpar(fontsize = 3),
         column_names_gp = gpar(fontsize = 3),
         show_column_names=T,
@@ -2612,6 +2844,10 @@ Decided to use a binning strategy to assess pseudotime signal.
     orgo_cirm43<-subset(orgo_cirm43,cells=row.names(orgo_cirm43@meta.data)[which(!is.na(orgo_cirm43$pseudotime_allcells))])
     plot_over_pseudotime(object=orgo_cirm43,pseudotime="pseudotime_allcells",bincount=25,
       prefix="orgo_cirm43",monocle_prefix="orgo_cirm43")
+
+    atac_sub<-subset(orgo_cirm43,cells=row.names(orgo_cirm43@meta.data)[which(!is.na(orgo_cirm43$pseudotime_rg))])
+    plot_over_pseudotime(object=atac_sub,pseudotime="pseudotime_rg",bincount=25,
+      prefix="rg",monocle_prefix="rg")
 
 
 ```
@@ -3799,70 +4035,6 @@ saveRDS(orgo_cirm43,"orgo_cirm43.filt.SeuratObject.Rds")
 ```
 {% endcapture %} {% include details.html %} 
 
-### Performing GREAT on DA peaks
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```R
-  #mkdir GREAT_analysis
-
-  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-
-  library(Signac)
-  library(Seurat)
-  library(GenomeInfoDb)
-  library(ggplot2)
-  set.seed(1234)
-  library(EnsDb.Hsapiens.v86)
-  library(Matrix)
-
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-
-  #To perform GREAT on peaks for enrichment per cluster
-  write("Performing GREAT on all enriched sites per annotation group", stderr())
-  library(rGREAT)
-
-  #format data as bed file all seurat objects have the same peak list
-  write("Preparing Background Set as all called peaks.", stderr())
-  orgo_bg_bed<-do.call("rbind",strsplit(unlist(orgo_cirm43@assays$peaks@counts@Dimnames[1]),"[-]"))
-  orgo_bg_bed<-as.data.frame(orgo_bg_bed)
-  colnames(orgo_bg_bed)<-c("chr","start","end")
-  orgo_bg_bed$start<-as.numeric(as.character(orgo_bg_bed$start))
-  orgo_bg_bed$end<-as.numeric(as.character(orgo_bg_bed$end))
-
-  cirm43_da_peaks<-read.table("cirm43.onevrest.da_peaks.txt",header=T)
-
-  write("Beginning loop through all annotation groups.", stderr())
-
-  great_processing<-function(enriched_group_input,peak_dataframe,prefix){
-      #subset bed file to peaks enriched in input group
-      orgo_bed<-as.data.frame(do.call("rbind",strsplit(peak_dataframe[peak_dataframe$enriched_group==enriched_group_input,]$da_region,"-")))
-      colnames(orgo_bed)<-c("chr","start","end")
-      orgo_bed$start<-as.numeric(as.character(orgo_bed$start))
-      orgo_bed$end<-as.numeric(as.character(orgo_bed$end))
-      
-      #run GREAT using all peaks as background
-      write(paste("Using",nrow(orgo_bed), "DA peaks from",enriched_group_input), stderr())
-      job = submitGreatJob(orgo_bed,orgo_bg_bed,species="hg38",request_interval=30)
-      tb = getEnrichmentTables(job, ontology = c("GO Molecular Function", "GO Biological Process","GO Cellular Component"))
-      tb = getEnrichmentTables(job, category = c("GO","Phenotype","Genes"))
-      #Plot gene association
-      pdf(paste0("./GREAT_analysis/",prefix,"_DApeaks_",enriched_group_input,".GeneAssociation.pdf"))
-      plotRegionGeneAssociationGraphs(job)
-      dev.off()
-
-      for (j in 1:length(names(tb))){
-            write(paste("Outputting DA GREAT Analysis for", enriched_group_input, as.character(names(tb))[j]), stderr())
-            tabl_name<-gsub(" ","",as.character(names(tb))[j])
-            write.table(as.data.frame(tb[[j]]),file=paste0("./GREAT_analysis/",prefix,"_DApeaks_",enriched_group_input,".",tabl_name,".txt"),sep="\t",col.names=T,row.names=T,quote=F)
-        }
-  }
-
-  library(parallel)
-  mclapply(unique(cirm43_da_peaks$enriched_group), FUN=great_processing, peak_dataframe=cirm43_da_peaks,prefix="cirm43",mc.cores=10)
-```
-
-{% endcapture %} {% include details.html %} 
 
 
 ### Differential Motif Accessibility
