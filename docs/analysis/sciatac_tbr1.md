@@ -28,6 +28,7 @@ Full breakdown of experimental setup is located [here.](https://docs.google.com/
 ```
 {% endcapture %} {% include details.html %} 
 
+
 ## BCL to FASTQ Conversion
 For this we use a wrapper function NextSeq2fastq which wraps around bcl2fastq (v2.19). The wrapper is just to make it easier, since it infers where the run folder and output folders are based on our directory structure on the clusters. 
 
@@ -91,6 +92,7 @@ We use a scitools function which is a perl script to do this. This demultiplexer
 
 {% endcapture %} {% include details.html %} 
 
+
 This will output to:
 ```bash
  /home/groups/oroaklab/demultiplex/201116_NS500556_0437_AH72CMAFX2
@@ -117,6 +119,7 @@ I then set up a working directory and moved the properly assigned reads.
 ```
 {% endcapture %} {% include details.html %} 
 
+
 {% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
 
 ```bash
@@ -132,6 +135,7 @@ I then set up a working directory and moved the properly assigned reads.
 ```
 {% endcapture %} {% include details.html %}
 
+
 {% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
 
 ```bash
@@ -142,6 +146,7 @@ I then set up a working directory and moved the properly assigned reads.
   /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210224_thirdplates
 ```
 {% endcapture %} {% include details.html %}
+
 
 ### Generation of thorough annotation file and all meta data per cell 
 
@@ -178,6 +183,7 @@ Plate_2+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,CB
 ```
 {% endcapture %} {% include details.html %} 
 
+
 {% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
 
 ``` bash
@@ -205,6 +211,7 @@ Plate_13+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,G
 ```
 {% endcapture %} {% include details.html %}
 
+
 {% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
 
 ``` bash
@@ -225,6 +232,7 @@ Plate_14+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,H
 > thirdplates.annot
 ```
 {% endcapture %} {% include details.html %}
+
 
 ### Splitting out our reads from the demultiplexed fastqs
 
@@ -251,6 +259,7 @@ tbr1.2.fq.gz &
 ```
 {% endcapture %} {% include details.html %} 
 
+
 {% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
 
 ```bash
@@ -273,6 +282,7 @@ scitools fastq-split -X -A secondplates.annot \
 ```
 {% endcapture %} {% include details.html %}
 
+
 {% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
 
 ```bash
@@ -287,6 +297,7 @@ scitools fastq-split -X -A thirdplates.annot \
 #Annot: Plate_9, count = 112807352
 ```
 {% endcapture %} {% include details.html %}
+
 
 ## Alignment
 
@@ -305,6 +316,7 @@ We use another scitools function for convenience. It wraps bwa mem. We will use 
   scitools fastq-align -t 10 -r 10 mm10 plate2 firstplates.Plate_2.1.fq.gz firstplates.Plate_2.2.fq.gz &
 ```
 {% endcapture %} {% include details.html %} 
+
 
 {% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
 
@@ -328,6 +340,7 @@ We use another scitools function for convenience. It wraps bwa mem. We will use 
 ```
 {% endcapture %} {% include details.html %}
 
+
 {% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
 
 ```bash
@@ -343,6 +356,7 @@ We use another scitools function for convenience. It wraps bwa mem. We will use 
   scitools fastq-align -t 10 -r 10 mm10 plate14 thirdplates.Plate_14.1.fq.gz thirdplates.Plate_14.2.fq.gz &
 ```
 {% endcapture %} {% include details.html %}
+
 
 ## Removal of Duplicate Reads
 
@@ -364,6 +378,7 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
   scitools plot-complexity plate2.complexity.txt &
 ```
 {% endcapture %} {% include details.html %}
+
 
 {% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
 
@@ -396,6 +411,7 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
   scitools plot-complexity plate13.complexity.txt &
 ```
 {% endcapture %} {% include details.html %}
+
 
 {% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
 
@@ -433,6 +449,7 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
   scitools plot-complexity plate14.complexity.txt &
 ```
 {% endcapture %} {% include details.html %}
+
 
 ## Checking Plates and Sequencing Depth
 
@@ -491,6 +508,7 @@ Make combined complexity file for all plates.
 ```
 {% endcapture %} {% include details.html %}
 
+
 Make table in R with cell counts, median and mean unique reads per cell, and mean percent unique reads per cell.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -504,6 +522,7 @@ Make table in R with cell counts, median and mean unique reads per cell, and mea
   dat %>% group_by(plate_name) %>% summarize(cell_count=n(),median_uniq_reads=median(unique_reads),mean_uniq_reads=mean(unique_reads),mean_percent_uniq=mean(percent_uniq))
 ```
 {% endcapture %} {% include details.html %}
+
 
 | plate_name | cell_count | median_uniq_reads | mean_uniq_reads | mean_percent_uniq |
 |:--------|:--------|:--------|:--------|:--------|
@@ -522,7 +541,7 @@ Make table in R with cell counts, median and mean unique reads per cell, and mea
 | plate13 | 3970 | 19556 | 30665 | 90.0 |
 | plate14 | 4307 | 22072 | 33249 | 89.0 |
 
-## Merge All BAM Files and Filter
+## Merging All BAM Files and Filtering
 
 {% capture summary %} Code {% endcapture %} {% capture details %}
 
@@ -557,6 +576,7 @@ Make table in R with cell counts, median and mean unique reads per cell, and mea
 ```
 {% endcapture %} {% include details.html %}
 
+
 Based on the complexity plot we filtered the merged BAM file to exclude cells with <1000 unique reads per cell.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}
@@ -566,6 +586,7 @@ Based on the complexity plot we filtered the merged BAM file to exclude cells wi
   scitools bam-filter -N 1000 tbr1_ko.bam
 ```
 {% endcapture %} {% include details.html %}
+ 
  
 ## Peak Calling and TSS Enrichment
  
@@ -589,6 +610,7 @@ Based on the complexity plot we filtered the merged BAM file to exclude cells wi
   scitools bam-tssenrich tbr1_ko.filt.bam mm10 &
 ```
 {% endcapture %} {% include details.html %} 
+
 
 ## Tabix Fragment File Generation
 
@@ -615,6 +637,7 @@ Tabix file format is a tab separated multicolumn data structure.
 ```
 {% endcapture %} {% include details.html %} 
 
+
 # sciATAC Full Processing in R
 
 ## Generating Seurat Objects
@@ -634,11 +657,11 @@ Using R v4.0 and Signac v1.0 for processing.
   setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
 
   #Make counts matrix from sparse matrix
-  IN<-as.matrix(read.table("tbr1_ko.counts.sparseMatrix.values.gz"))
+  IN<-as.matrix(read.table("tbr1_ko.filt.500.counts.sparseMatrix.values.gz"))
   IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
-  COLS<-read.table("tbr1_ko.counts.sparseMatrix.cols.gz")
+  COLS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.cols.gz")
   colnames(IN)<-COLS$V1
-  ROWS<-read.table("tbr1_ko.counts.sparseMatrix.rows.gz")
+  ROWS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.rows.gz")
   row.names(IN)<-ROWS$V1
 
   #Read in fragment path for coverage plots
@@ -675,6 +698,7 @@ Using R v4.0 and Signac v1.0 for processing.
 ```
 {% endcapture %} {% include details.html %} 
 
+
 ## Performing cisTopic and UMAP
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -702,7 +726,6 @@ Using R v4.0 and Signac v1.0 for processing.
       saveRDS(atac_cistopic_models,file=paste(prefix,"CisTopicObject.Rds",sep=".")) 
   }
           
-
   cistopic_processing(seurat_input=obj,prefix="tbr1_ko")
 
   cistopic_models<-readRDS("tbr1_ko.CisTopicObject.Rds")
@@ -827,7 +850,6 @@ Using R v4.0 and Signac v1.0 for processing.
 {% endcapture %} {% include details.html %} 
 
 
-
 ### Plotting and updating metadata
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -892,6 +914,7 @@ Using R v4.0 and Signac v1.0 for processing.
 ```
 {% endcapture %} {% include details.html %} 
 
+
 ### Statistics on cell reads
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -942,6 +965,7 @@ Using R v4.0 and Signac v1.0 for processing.
 ```
 
 {% endcapture %} {% include details.html %} 
+
 
 ## Cicero for Coaccessible Networks
 
