@@ -730,7 +730,7 @@ Using R v4.0 and Signac v1.0 for processing.
       atac_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt) #set up CisTopicObjects
       #Run warp LDA on objects
       #atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(10,20,22,24,26,28,30,40),nCores=8,addModels=FALSE)
-      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(32,34,36,38),nCores=4,addModels=FALSE)   
+      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(29,31,32,33,34,35,36,38),nCores=7,addModels=FALSE)   
       print("Saving cistopic models.")
       saveRDS(atac_cistopic_models,file=paste(prefix,"CisTopicObject.Rds",sep=".")) 
   }

@@ -1,8 +1,8 @@
 ---
-title: s3WGS Analysis
-layout: analysis
+title: s3GCC Analysis
+layout: s3data
 author: Ryan Mulqueen
-permalink: /s3wgs/
+permalink: /s3gcc/
 category: s3processing
 ---
 

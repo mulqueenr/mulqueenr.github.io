@@ -2250,6 +2250,7 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
   set.seed(1234)
   library(EnsDb.Hsapiens.v86)
   library(Matrix)
+  library(GenomicRanges)
 
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
 
@@ -2264,21 +2265,28 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
   colnames(orgo_bg_bed)<-c("chr","start","end")
   orgo_bg_bed$start<-as.numeric(as.character(orgo_bg_bed$start))
   orgo_bg_bed$end<-as.numeric(as.character(orgo_bg_bed$end))
-
+  orgo_bg_bed<-makeGRangesFromDataFrame(orgo_bg_bed)
   cirm43_da_peaks<-read.table("orgo_cirm43.onevone.da_peaks.txt",header=T)
+
+  dir.create("./GREAT_analysis")
 
   write("Beginning loop through all annotation groups.", stderr())
 
-  great_processing<-function(enriched_group_input,peak_dataframe,prefix){
+  great_processing<-function(enriched_group_input,peak_dataframe,prefix,bg){
       #subset bed file to peaks enriched in input group
-      orgo_bed<-as.data.frame(do.call("rbind",strsplit(peak_dataframe[peak_dataframe$enriched_group==enriched_group_input,]$da_region,"-")))
+      orgo_bed<-as.data.frame(do.call("rbind",strsplit(peak_dataframe[peak_dataframe$enriched_group==enriched_group_input,]$query_region,"-")))
       colnames(orgo_bed)<-c("chr","start","end")
       orgo_bed$start<-as.numeric(as.character(orgo_bed$start))
       orgo_bed$end<-as.numeric(as.character(orgo_bed$end))
-      
+      nrow(orgo_bed)
+      orgo_bed<-orgo_bed[!duplicated(orgo_bed),]
+      row_count<-nrow(orgo_bed)
+      orgo_bed$width<-orgo_bed$end-orgo_bed$start
+      orgo_bed<-makeGRangesFromDataFrame(orgo_bed)
+
       #run GREAT using all peaks as background
-      write(paste("Using",nrow(orgo_bed), "DA peaks from",enriched_group_input), stderr())
-      job = submitGreatJob(orgo_bed,orgo_bg_bed,species="hg38",request_interval=30)
+      write(paste("Using",row_count, "DA peaks from",enriched_group_input), stderr())
+      job = submitGreatJob(orgo_bed,bg=bg,species="hg38",request_interval=30)
       tb = getEnrichmentTables(job, ontology = c("GO Molecular Function", "GO Biological Process","GO Cellular Component"))
       tb = getEnrichmentTables(job, category = c("GO","Phenotype","Genes"))
       #Plot gene association
@@ -2294,7 +2302,8 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
   }
 
   library(parallel)
-  mclapply(unique(cirm43_da_peaks$enriched_group), FUN=great_processing, peak_dataframe=cirm43_da_peaks,prefix="cirm43",mc.cores=1)
+  mclapply(unique(cirm43_da_peaks$enriched_group), FUN=function(x){great_processing(enriched_group_input=x,peak_dataframe=cirm43_da_peaks,prefix="cirm43",bg=orgo_bg_bed)},mc.cores=7)
+
 ```
 
 {% endcapture %} {% include details.html %} 
@@ -2349,7 +2358,7 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
   DefaultAssay(orgo_cirm43)<-"peaks"
 
-  orgo_cirm43_sub<-subset(orgo_cirm43,cells=row.names(orgo_cirm43@meta.data)[which(!(orgo_cirm43$seurat_clusters %in% c("7","4","8")))]) 
+  orgo_cirm43_sub<-subset(orgo_cirm43,cells=row.names(orgo_cirm43@meta.data)[which(!(orgo_cirm43$seurat_clusters %in% c("7","4","8","5")))]) 
 
   orgo_cirm43_sub<-subset(orgo_cirm43_sub,cells=row.names(orgo_cirm43_sub@meta.data)[which(orgo_cirm43_sub$DIV %in% c("30","60","90"))]) 
 
@@ -2377,7 +2386,7 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
   #Define pseudotime from peak accessibility for all cells
     orgo_cirm43.cicero<-monocle_processing(seurat_input=orgo_cirm43_sub,prefix="orgo_cirm43",min_branch=20)
     #Then determine root nodes via plots and assign by order cells function.
-    orgo_cirm43.cds <- order_cells(orgo_cirm43.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_446")) #Chose youngest cells as root
+    orgo_cirm43.cds <- order_cells(orgo_cirm43.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_25")) #Chose youngest cells as root
     saveRDS(orgo_cirm43.cds,"cirm43.pseudotime.monoclecds.Rds")
     
     pdf("orgo_cirm43_trajectory.pseudotime.pdf")
@@ -2617,6 +2626,8 @@ Decided to use a binning strategy to assess pseudotime signal.
     ggsave(plt1/plt2/plt3,file="test_orgo_cirm43_trajectory.pseudotime.pdf")
     system("slack -F test_orgo_cirm43_trajectory.pseudotime.pdf ryan_todo")
 
+  cirm43_da_peaks<-read.table("orgo_cirm43.onevone.da_peaks.txt",header=T)
+  gene_list<-unique(cirm43_da_peaks$)
 
   chromvar_motifs_per_bin<-function(x){
   bin_tmp<-row.names(atac_sub@meta.data[atac_sub@meta.data$pseudotime_bin==x,])
@@ -2738,39 +2749,44 @@ Decided to use a binning strategy to assess pseudotime signal.
         saveRDS(tfmod_mean,file=paste0(prefix,".pseudotime_tfmodules.rds"))
 
         #filter data by significant changes over pseudotime
-        chromvar_cds_pr_test_res<-readRDS(paste0(monocle_prefix,"_pseudotime.chromvar.rds"))
+        #chromvar_cds_pr_test_res<-readRDS(paste0(monocle_prefix,"_pseudotime.chromvar.rds"))
         #OR
         ###Filter by top 10% variances
         # calculate variance per column
+        da_tf<-read.table("orgo_cirm43.onevone.da_tf.txt")
+        da_tf<-da_tf[da_tf$enriched_group  %in% c("6","0","3","1","2"),]
         motif_mean<-readRDS(paste0(prefix,".pseudotime_chromVARmotifs.rds"))
-        motif_mean<-motif_mean[row.names(motif_mean) %in% (chromvar_cds_pr_test_res %>% filter(q_value < 0.1))$tf_name,] # use that to subset the original data
+        motif_mean<-motif_mean[row.names(motif_mean) %in% unique(da_tf$da_tf),]
+        #motif_mean<-motif_mean[which(apply(motif_mean,1,var) < quantile(apply(motif_mean,1,var),0.25)),]
+        #motif_mean<-motif_mean[row.names(motif_mean) %in% (chromvar_cds_pr_test_res %>% filter(q_value < 0.1))$tf_name,] # use that to subset the original data
         motif_mean<-na.omit(t(scale(t(motif_mean))))
 
         ####build up tangleogram by matching row names
         motif_mean<-motif_mean[!duplicated(unlist(lapply(strsplit(row.names(motif_mean),'[(:]'),"[",1))),] #remove similar motifs
         row.names(motif_mean)<-unlist(lapply(strsplit(row.names(motif_mean),'[(:]'),"[",1)) #simplify row names
         #subset ga and tf modules to those in motif mean
-        row.names(tfmod_mean)<-unlist(lapply(strsplit(row.names(tfmod_mean),'[-]'),"[",2))
-        tfmod_mean<-tfmod_mean[row.names(tfmod_mean) %in% row.names(motif_mean),] #ignoring tfmod mean for now
+        #row.names(tfmod_mean)<-unlist(lapply(strsplit(row.names(tfmod_mean),'[-]'),"[",2))
+        #tfmod_mean<-tfmod_mean[row.names(tfmod_mean) %in% row.names(motif_mean),] #ignoring tfmod mean for now
         
         #shared rows only for ga and motif mean
-        ga_mean<-ga_mean[row.names(ga_mean) %in% row.names(motif_mean),]
-        motif_mean<-motif_mean[row.names(motif_mean) %in% row.names(ga_mean),]
+        #ga_mean<-ga_mean[row.names(ga_mean) %in% row.names(motif_mean),]
+        #motif_mean<-motif_mean[row.names(motif_mean) %in% row.names(ga_mean),]
 
-        hc_motif <- motif_mean %>% dist() %>% hclust("centroid") 
-        k_waves_motif<-hc_motif %>% find_k(2:10)
-        hc_motif <- color_branches(as.dendrogram(hc_motif),k=k_waves_motif$k)
-        hc_motif<- ladderize(hc_motif,right=T)
+        #hc_motif <- motif_mean %>% dist() %>% hclust("centroid") 
+        #k_waves_motif<-hc_motif %>% find_k(2:10)
+        #hc_motif <- color_branches(as.dendrogram(hc_motif),k=k_waves_motif$k)
+        #hc_motif<- ladderize(hc_motif,right=T)
         #dend_motif <- gc_motif %>% as.dendrogram %>% set("labels_to_char")
         #dend_ga <- ga_sub %>% match_order_by_labels(dend_ga)
         #dends_motif_ga <- dendlist(dend_motif,dend_ga)
 
-        colfun=colorRamp2(quantile(unlist(motif_mean),c(0.25,0.5,0.9)),cividis(3))
+        colfun=colorRamp2(quantile(unlist(motif_mean),c(0.5,0.75,0.99)),cividis(3))
         motif_sub<-motif_mean[order(unlist(lapply(1:nrow(motif_mean),function(x) which(motif_mean[x,]==max(motif_mean[x,]))))),]
-        plt<-Heatmap(motif_mean,
-        column_order=1:ncol(motif_mean),
+        plt<-Heatmap(motif_sub,
+        column_order=1:ncol(motif_sub),
+        row_order=1:nrow(motif_sub),
         bottom_annotation=ha_barplots,
-        cluster_rows=hc_motif,
+        #cluster_rows=hc_motif,
         row_names_gp = gpar(fontsize = 3),
         column_names_gp = gpar(fontsize = 3),
         show_column_names=T,
@@ -2783,23 +2799,28 @@ Decided to use a binning strategy to assess pseudotime signal.
         system(paste0("slack -F ",prefix,".pseudotime.chromvar.heatmap.pdf"," ryan_todo"))
 
         ga_mean<-readRDS(paste0(prefix,".pseudotime_geneactivity.rds"))
-        ga_cds_pr_test_res<-readRDS(paste0(monocle_prefix,"_pseudotime.geneactivity.rds"))
-        ga_mean<-ga_mean[row.names(ga_mean) %in% row.names(ga_cds_pr_test_res %>% filter(q_value < 0.01)),] # use that to subset the original data
+        ga_mean<-na.omit(t(scale(t(ga_mean))))
+        da_ga<-read.table("orgo_cirm43.onevone.ga_tf.txt")
+        da_ga<-da_ga[da_ga$enriched_group  %in% c("6","0","3","1","2"),]
+        #ga_cds_pr_test_res<-readRDS(paste0(monocle_prefix,"_pseudotime.geneactivity.rds"))
+        #ga_mean<-ga_mean[row.names(ga_mean) %in% row.names(ga_cds_pr_test_res %>% filter(q_value < 0.001)),] # use that to subset the original data
+        #ga_mean<-ga_mean[which(apply(ga_mean,1,var) < quantile(apply(ga_mean,1,var),0.01)),]
 
-        ga_mean<-na.omit(scale(ga_mean))
+        #ga_mean<-na.omit(scale(ga_mean))
 
-        hc_ga <- ga_mean %>% dist() %>% hclust("centroid") 
-        k_waves_ga<-hc_ga %>% find_k(2:10)
-        hc_ga<- color_branches(as.dendrogram(hc_ga),k=k_waves_ga$k)
-        hc_ga<- ladderize(hc_ga,right=T)
+        #hc_ga <- ga_mean %>% dist() %>% hclust("centroid") 
+        #k_waves_ga<-hc_ga %>% find_k(2:10)
+        #hc_ga<- color_branches(as.dendrogram(hc_ga),k=k_waves_ga$k)
+        #hc_ga<- ladderize(hc_ga,right=T)
 
         ga_mean<-ga_mean[order(unlist(lapply(1:nrow(ga_mean),function(x) which(ga_mean[x,]==max(ga_mean[x,]))))),]
         colfun=colorRamp2(quantile(unlist(ga_mean),c(0,0.5,0.9)),magma(3))
+
         plt<-Heatmap(ga_mean,
         column_order=1:ncol(ga_mean),
         bottom_annotation=ha_barplots,
         #row_order=1:nrow(ga_mean),
-        cluster_rows=hc_ga,
+        #cluster_rows=hc_ga,
         row_names_gp = gpar(fontsize = 3),
         column_names_gp = gpar(fontsize = 3),
         show_column_names=T,
@@ -2817,9 +2838,14 @@ Decided to use a binning strategy to assess pseudotime signal.
         dev.off()
         system("slack -F entanglement.test.pdf ryan_todo")
 
+        tfmod_sub<-readRDS(file=paste0(prefix,".pseudotime_tfmodules.rds"))
+        tfmod_sub<-tfmod_sub[which(apply(tfmod_sub,1,var) < quantile(apply(tfmod_sub,1,var),0.1)),]
+
+        tfmod_sub<-na.omit(t(scale(t(tfmod_sub))))
 
         tfmod_sub<-tfmod_sub[order(unlist(lapply(1:nrow(tfmod_sub),function(x) which(tfmod_sub[x,]==max(tfmod_sub[x,]))))),]
-        colfun=colorRamp2(c(0,1,2),viridis(3))
+
+        colfun=colorRamp2(quantile(unlist(tfmod_sub),c(0,0.5,0.9)),viridis(3))
         plt<-Heatmap(tfmod_sub,
         column_order=1:ncol(tfmod_sub),
         bottom_annotation=ha_barplots,

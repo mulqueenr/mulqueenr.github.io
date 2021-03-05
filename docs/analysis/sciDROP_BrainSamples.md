@@ -2,7 +2,7 @@
 title: sciDROP
 layout: analysis
 permalink: /scidrop/
-category: s3
+category: alternative
 ---
 
 
@@ -2425,7 +2425,7 @@ marker_plot<-function(j,k=celltype_name,l=hg38_atac,m="hg38_",n="seurat_clusters
         extend.downstream = 1000,
         ncol = 1
     )
-    pdf(paste0("./marker_sets/",m,k,"_",j,"_genebody_accessibility.pdf"))
+    pdf(paste0("./marker_sets/",m,k,"_",j,"_genebody_accessibility.pdf")) 
     print(plt)
     dev.off()
 }

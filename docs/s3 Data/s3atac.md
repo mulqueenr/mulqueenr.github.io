@@ -1,9 +1,9 @@
 ---
 title: s3ATAC Analysis
-layout: analysis
+layout: s3data
 author: Ryan Mulqueen
 permalink: /s3atac/
-category: s3
+category: s3processing
 ---
 
 # Processing for s3ATAC portion of s3 paper.
