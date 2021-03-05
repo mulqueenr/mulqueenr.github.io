@@ -1,6 +1,6 @@
 ---
 title: s3 Pre-processing
-layout: analysis
+layout: s3data
 author: Ryan Mulqueen
 permalink: /s3preprocess/
 category: s3processing
