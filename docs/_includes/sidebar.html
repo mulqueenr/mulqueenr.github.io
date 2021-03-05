@@ -39,7 +39,7 @@
     {% assign pages_list = site.pages | sort:"url" %}
     {% for node in pages_list %}
       {% if node.title != null %}
-        {% if node.layout == "s3processing" %}
+        {% if node.layout == "s3data" %}
           <a class="sidebar-nav-item{% if page.url == node.url %} active{% endif %}" href="{{ node.url | absolute_url }}">{{ node.title }}</a>
         {% endif %}
       {% endif %}
