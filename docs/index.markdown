@@ -22,7 +22,7 @@ Some of the basic processing (bcl2fastq to generation of a counts matrix) was pe
 <h3>s3 Assays</h3>
 <ul>
     {% for doc in site.pages %}
-      {% if doc.category == "s3data" %}
+      {% if doc.category == "s3processing" %}
         <li><a href="{{ doc.url }}">{{ doc.title }}</a></li>
       {% endif %}
     {% endfor %}
@@ -31,7 +31,7 @@ Some of the basic processing (bcl2fastq to generation of a counts matrix) was pe
 <h3>Alternative Assays</h3>
 <ul>
     {% for doc in site.pages %}
-      {% if doc.category != "sciATAC" or doc.category != "s3data" %}
+      {% if doc.category == "alternative" %}
         <li><a href="{{ doc.url }}">{{ doc.title }}</a></li>
       {% endif %}
     {% endfor %}
