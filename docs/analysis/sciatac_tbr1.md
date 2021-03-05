@@ -6,32 +6,30 @@ permalink: /tbr1/
 category: sciATAC
 ---
 
-# Processing for sciATAC portion for Tbr1 Patient specific mutation mouse models.
+# Processing for sciATAC portion for Tbr1 patient-specific mutation mouse models
 
-## BCL File Locations
-
-For a test run we got about 10% of the run pool after PCR amplification of two plates.
+Includes conversion of bcl to fastq files, barcode assignment, fastq splitting, alignment, removal of duplicate reads, checking sequencing depth, calling peaks, and looking at TSS enrichment.
 
 Full breakdown of experimental setup is located [here.](https://docs.google.com/spreadsheets/d/1Px1OAE8vIi3GUXPny7OaVvYJHgGESCp4fyZKnLWW0UE/edit#gid=823628902)
 
+## BCL File Locations
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
-  #First Test Run (Two PCR Plates)
+  #"firstplates" Plates 1,10 (10% of run pool); Plates 1,2,10
   /home/groups/oroaklab/seq/madbum/201116_NS500556_0437_AH72CMAFX2
-  #Second Test Run (Three PCR Plates, processed an additional frozen plate)
   /home/groups/oroaklab/seq/madbum/201203_NS500556_0442_AH7FJGBGXG
-
-
+  #"secondplates" Plates 3,4,5,7,6(5% spike-in); Plates 8,11,13
+  /home/groups/oroaklab/seq/madbum/210202_NS500556_0456_AHK5C5BGXH
+  /home/groups/oroaklab/seq/madbum/210210_NS500556_0458_AHVGCTBGXG
+  #"thirdplates" Plates 9,12,14,2(5% spike-in),10(5% spike-in)
+  /home/groups/oroaklab/seq/madbum/210223_NS500556_0463_AHNNH7BGXH
 ```
 {% endcapture %} {% include details.html %} 
 
 
-## Initial Processing of Files
-Includes conversion of bcl to fastq files, barcode assignment, fastq splitting, alignment, removal of duplicate reads, calling peaks and looking at TSS enrichment.
-
-### BCL to FASTQ Conversion
+## BCL to FASTQ Conversion
 For this we use a wrapper function NextSeq2fastq which wraps around bcl2fastq (v2.19). The wrapper is just to make it easier, since it infers where the run folder and output folders are based on our directory structure on the clusters. 
 
 This is read in bcl files from the raw run folder in:
@@ -39,6 +37,8 @@ This is read in bcl files from the raw run folder in:
 
 And output fastq files in:
 /home/groups/oroaklab/fastq
+
+We repeated for all runs in firstplates, secondplates, and thirdplates.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -60,7 +60,8 @@ And output fastq files in:
 {% endcapture %} {% include details.html %} 
 
 
-### Demultiplexing the fastq files
+## Demultiplexing the FASTQ files
+
 After fastq files are generated we can then demultiplex them. By this, I mean that we are going to assign our index sequences based on the index reads from the run. 
 
 Index cycles on the Nextseq are substantially more error prone than read cycles, so we account for an error rate. For our 8 and 10 bp indexes, we allow 2 base mismatches for each (Hamming distance of 2). This is enough to still unambiguously assign the proper original primer for any index.
@@ -91,15 +92,19 @@ We use a scitools function which is a perl script to do this. This demultiplexer
 
 {% endcapture %} {% include details.html %} 
 
+
 This will output to:
 ```bash
  /home/groups/oroaklab/demultiplex/201116_NS500556_0437_AH72CMAFX2
  /home/groups/oroaklab/demultiplex/201203_NS500556_0442_AH7FJGBGXG
+ /home/groups/oroaklab/demultiplex/210202_NS500556_0456_AHK5C5BGXH
+ /home/groups/oroaklab/demultiplex/210210_NS500556_0458_AHVGCTBGXG
+ /home/groups/oroaklab/demultiplex/210223_NS500556_0463_AHNNH7BGXH
 
 ```
 I then set up a working directory and moved the properly assigned reads.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+{% capture summary %} Code (firstplates) {% endcapture %} {% capture details %}  
 
 ```bash
   mkdir /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates
@@ -113,6 +118,35 @@ I then set up a working directory and moved the properly assigned reads.
   /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates
 ```
 {% endcapture %} {% include details.html %} 
+
+
+{% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
+
+```bash
+  mkdir /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210212_secondplates
+
+  mv /home/groups/oroaklab/demultiplex/210202_NS500556_0456_AHK5C5BGXH/210202_NS500556_0456_AHK5C5BGXH.1.fq.gz \
+  /home/groups/oroaklab/demultiplex/210202_NS500556_0456_AHK5C5BGXH/210202_NS500556_0456_AHK5C5BGXH.2.fq.gz \
+  /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210212_secondplates
+
+  mv /home/groups/oroaklab/demultiplex/210210_NS500556_0458_AHVGCTBGXG/210210_NS500556_0458_AHVGCTBGXG.unassigned.1.fq.gz \
+  /home/groups/oroaklab/demultiplex/210210_NS500556_0458_AHVGCTBGXG/210210_NS500556_0458_AHVGCTBGXG.unassigned.2.fq.gz \
+  /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210212_secondplates
+```
+{% endcapture %} {% include details.html %}
+
+
+{% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
+
+```bash
+  mkdir /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210224_thirdplates
+
+  mv /home/groups/oroaklab/demultiplex/210223_NS500556_0463_AHNNH7BGXH/210223_NS500556_0463_AHNNH7BGXH.1.fq.gz \
+  /home/groups/oroaklab/demultiplex/210223_NS500556_0463_AHNNH7BGXH/210223_NS500556_0463_AHNNH7BGXH.2.fq.gz \
+  /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210224_thirdplates
+```
+{% endcapture %} {% include details.html %}
+
 
 ### Generation of thorough annotation file and all meta data per cell 
 
@@ -129,7 +163,7 @@ For this, I am once again looking at our experimental design from  [here.](https
 
 I'm going to use a scitools helper function to do this, but a simple for loop through the index master list would work as well.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+{% capture summary %} Code (firstplates) {% endcapture %} {% capture details %}  
 
 ``` bash
 #Since all plates are a random assortment of all Tn5 tagmentation, we can generate a simplified annotation schematic for PCR plates.
@@ -149,13 +183,64 @@ Plate_2+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,CB
 ```
 {% endcapture %} {% include details.html %} 
 
+
+{% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
+
+``` bash
+#secondplates_annot.txt
+Plate   Plate_SDSBSA_Condition  PCR_Index_i5    PCR_Index_i7    PCR_Cycles
+3	Fresh	C	C	17
+4	Fresh	C	D	17
+5	Fresh	G	F	17
+6	Fresh	G	G	17
+7	Fresh	H	D	17
+8	Fresh	H	E	17
+11	Old	C	E	17
+13	Old	G	H	17
+
+scitools make-annot \
+Plate_3+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,CC=ALL \
+Plate_4+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,CD=ALL \
+Plate_5+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,GF=ALL \
+Plate_6+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,GG=ALL \
+Plate_7+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,HD=ALL \
+Plate_8+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,HE=ALL \
+Plate_11+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,CE=ALL \
+Plate_13+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,GH=ALL \
+> secondplates.annot
+```
+{% endcapture %} {% include details.html %}
+
+
+{% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
+
+``` bash
+#thirdplates_annot.txt
+Plate   Plate_SDSBSA_Condition  PCR_Index_i5    PCR_Index_i7    PCR_Cycles
+2	Fresh	C	B	17
+9	Fresh	H	F	17
+10	Old	A	B	17
+12	Old	C	F	17
+14	Old	H	G	17
+
+scitools make-annot \
+Plate_2+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,CB=ALL \
+Plate_9+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,HF=ALL \
+Plate_10+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,AB=ALL \
+Plate_12+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,CF=ALL \
+Plate_14+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,HG=ALL \
+> thirdplates.annot
+```
+{% endcapture %} {% include details.html %}
+
+
 ### Splitting out our reads from the demultiplexed fastqs
 
 Now that we know which barcodes belong to our reads, we can split them out from the full pool.
 
 To do this we will use a scitools function that looks at fastq read 1 and read 2 and splits it into new files based on matches to our annotation.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+{% capture summary %} Code (firstplates) {% endcapture %} {% capture details %}  
 
 ```bash
 #Combine fastq files across runs
@@ -166,12 +251,53 @@ scitools fastq-split -X -A firstplates.annot \
 tbr1.1.fq.gz \
 tbr1.2.fq.gz &
 
+#The -X flag tells it to not write out barcodes which don't match. Those would be other sci formatted experiments on the same run
+
 #Annot: Plate_1, count = 85746573
 #Annot: Plate_10, count = 78801321
 #Annot: Plate_2, count = 70776718
-#The -X flag tells it to not write out barcodes which don't match. Those would be other sci formatted experiments on the same run
 ```
 {% endcapture %} {% include details.html %} 
+
+
+{% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
+
+```bash
+#Combine fastq files across runs
+cat 210202_NS500556_0456_AHK5C5BGXH.1.fq.gz 210210_NS500556_0458_AHVGCTBGXG.unassigned.1.fq.gz > 210202_210210_merged.1.fq.gz
+cat 210202_NS500556_0456_AHK5C5BGXH.2.fq.gz 210210_NS500556_0458_AHVGCTBGXG.unassigned.2.fq.gz > 210202_210210_merged.2.fq.gz
+
+scitools fastq-split -X -A secondplates.annot \
+210202_210210_merged.1.fq.gz \
+210202_210210_merged.2.fq.gz &
+
+#Annot: Plate_7, count = 83652013
+#Annot: Plate_11, count = 129213990
+#Annot: Plate_8, count = 90351664
+#Annot: Plate_4, count = 76915941
+#Annot: Plate_13, count = 85242513
+#Annot: Plate_3, count = 69656977
+#Annot: Plate_5, count = 77743124
+#Annot: Plate_6, count = 17561992
+```
+{% endcapture %} {% include details.html %}
+
+
+{% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
+
+```bash
+scitools fastq-split -X -A thirdplates.annot \
+210223_NS500556_0463_AHNNH7BGXH.1.fq.gz \
+210223_NS500556_0463_AHNNH7BGXH.2.fq.gz &
+
+#Annot: Plate_12, count = 98462906
+#Annot: Plate_10, count = 7507432
+#Annot: Plate_14, count = 100526129
+#Annot: Plate_2, count = 14610178
+#Annot: Plate_9, count = 112807352
+```
+{% endcapture %} {% include details.html %}
+
 
 ## Alignment
 
@@ -179,7 +305,7 @@ We have our reads, so now we can align them to the mouse reference genome. ATAC 
 
 We use another scitools function for convenience. It wraps bwa mem. We will use -t 10 threads for alignment and -r 10 threads for samtools sort afterwards.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+{% capture summary %} Code (firstplates) {% endcapture %} {% capture details %}  
 
 ```bash
   #For plate 1
@@ -191,11 +317,52 @@ We use another scitools function for convenience. It wraps bwa mem. We will use 
 ```
 {% endcapture %} {% include details.html %} 
 
-### Deduplicate
+
+{% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
+
+```bash
+  #For plate 3
+  scitools fastq-align -t 10 -r 10 mm10 plate3 secondplates.Plate_3.1.fq.gz secondplates.Plate_3.2.fq.gz &
+  #For plate 4
+  scitools fastq-align -t 10 -r 10 mm10 plate4 secondplates.Plate_4.1.fq.gz secondplates.Plate_4.2.fq.gz &
+  #For plate 5
+  scitools fastq-align -t 10 -r 10 mm10 plate5 secondplates.Plate_5.1.fq.gz secondplates.Plate_5.2.fq.gz &
+  #For plate 6
+  scitools fastq-align -t 10 -r 10 mm10 plate6 secondplates.Plate_6.1.fq.gz secondplates.Plate_6.2.fq.gz &
+  #For plate 7
+  scitools fastq-align -t 10 -r 10 mm10 plate7 secondplates.Plate_7.1.fq.gz secondplates.Plate_7.2.fq.gz &
+  #For plate 8
+  scitools fastq-align -t 10 -r 10 mm10 plate8 secondplates.Plate_8.1.fq.gz secondplates.Plate_8.2.fq.gz &
+  #For plate 11
+  scitools fastq-align -t 10 -r 10 mm10 plate11 secondplates.Plate_11.1.fq.gz secondplates.Plate_11.2.fq.gz &
+  #For plate 13
+  scitools fastq-align -t 10 -r 10 mm10 plate13 secondplates.Plate_13.1.fq.gz secondplates.Plate_13.2.fq.gz &
+```
+{% endcapture %} {% include details.html %}
+
+
+{% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
+
+```bash
+  #For plate 2
+  scitools fastq-align -t 10 -r 10 mm10 plate2 thirdplates.Plate_2.1.fq.gz thirdplates.Plate_2.2.fq.gz &
+  #For plate 9
+  scitools fastq-align -t 10 -r 10 mm10 plate9 thirdplates.Plate_9.1.fq.gz thirdplates.Plate_9.2.fq.gz &
+  #For plate 10
+  scitools fastq-align -t 10 -r 10 mm10 plate10 thirdplates.Plate_10.1.fq.gz thirdplates.Plate_10.2.fq.gz &
+  #For plate 12
+  scitools fastq-align -t 10 -r 10 mm10 plate12 thirdplates.Plate_12.1.fq.gz thirdplates.Plate_12.2.fq.gz &
+  #For plate 14
+  scitools fastq-align -t 10 -r 10 mm10 plate14 thirdplates.Plate_14.1.fq.gz thirdplates.Plate_14.2.fq.gz &
+```
+{% endcapture %} {% include details.html %}
+
+
+## Removal of Duplicate Reads
 
 Once we have aligned reads, we can mark PCR duplicates. Because we are sampling across the genome, it is highly unlikely that we capture the same exact start and end region twice. So we can use a combination of our barcode, and the start and end positions of a read to mark duplication rates.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+{% capture summary %} Code (firstplates) {% endcapture %} {% capture details %}  
 
 ```bash
   #For plate 1
@@ -209,28 +376,104 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
   scitools plot-complexity plate10.complexity.txt &
   scitools plot-complexity plate1.complexity.txt &
   scitools plot-complexity plate2.complexity.txt &
+```
+{% endcapture %} {% include details.html %}
 
 
-  ##Checking plates and sequencing depth
-  #Count of reads per plate
-  for j in /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210212_secondplates \
+{% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
+
+```bash
+  #For plate 3
+  scitools bam-rmdup plate3.bam &
+  #For plate 4
+  scitools bam-rmdup plate4.bam &
+  #For plate 5
+  scitools bam-rmdup plate5.bam &
+  #For plate 6
+  scitools bam-rmdup plate6.bam &
+  #For plate 7
+  scitools bam-rmdup plate7.bam &
+  #For plate 8
+  scitools bam-rmdup plate8.bam &
+  #For plate 11
+  scitools bam-rmdup plate11.bam &
+  #For plate 13
+  scitools bam-rmdup plate13.bam &
+
+  #Once these finish, plot the complexity per cell
+  scitools plot-complexity plate3.complexity.txt &
+  scitools plot-complexity plate4.complexity.txt &
+  scitools plot-complexity plate5.complexity.txt &
+  scitools plot-complexity plate6.complexity.txt &
+  scitools plot-complexity plate7.complexity.txt &
+  scitools plot-complexity plate8.complexity.txt &
+  scitools plot-complexity plate11.complexity.txt &
+  scitools plot-complexity plate13.complexity.txt &
+```
+{% endcapture %} {% include details.html %}
+
+
+{% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
+
+```bash
+
+  #Combine firstplates and thirdplates bam files for plates 2 and 10 (sequenced 2x)
+  mv plate2.bam plate2-third.bam
+  mv plate10.bam plate10-third.bam
+
+  cp /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates/plate2.bam .
+  cp /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates/plate10.bam .
+
+  mv plate2.bam plate2-first.bam
+  mv plate10.bam plate10-first.bam
+
+  scitools bam-merge plate2.bam plate2-first.bam plate2-third.bam &
+  scitools bam-merge plate10.bam plate10-first.bam plate10-third.bam &
+
+  #For plate 2
+  scitools bam-rmdup plate2.bam &
+  #For plate 9
+  scitools bam-rmdup plate9.bam &
+  #For plate 10
+  scitools bam-rmdup plate10.bam &
+  #For plate 12
+  scitools bam-rmdup plate12.bam &
+  #For plate 14
+  scitools bam-rmdup plate14.bam &
+
+  #Once these finish, plot the complexity per cell
+  scitools plot-complexity plate2.complexity.txt &
+  scitools plot-complexity plate9.complexity.txt &
+  scitools plot-complexity plate10.complexity.txt &
+  scitools plot-complexity plate12.complexity.txt &
+  scitools plot-complexity plate14.complexity.txt &
+```
+{% endcapture %} {% include details.html %}
+
+
+## Checking Plates and Sequencing Depth
+
+### Reads Per Plate
+
+{% capture summary %} Code {% endcapture %} {% capture details %}
+
+```bash
+  for j in /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210224_thirdplates \
+    /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210212_secondplates \
     /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates;
     do for i in ${j}/*Plate*1.fq.gz;
     do echo $i `zcat $i | grep "^@" - | wc -l` ; done ; done &
-
-  #Complexity for all plates
-  cd /home/groups/oroaklab/adey_lab/projects/tbr1_mus
-  for j in /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210212_secondplates \
-    /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates;
-    do for i in ${j}/plate*.complexity.txt;
-    do awk 'OFS="\t" { split(FILENAME,a,"/");split(a[9],b,"[.]"); print $2,$3,$4,$5,b[1]}' $i ; done; done > firstandsecondsetplates.complexity.txt
 ```
-{% endcapture %} {% include details.html %} 
+{% endcapture %} {% include details.html %}
 
-Reads per plate
 
 | Plate Prep  | Plate   | Reads Devoted |
 |:--------|:--------|:--------|
+| 210224_thirdplates  | Plate_10 | 7507432 |
+| 210224_thirdplates  | Plate_12 | 98462906 |
+| 210224_thirdplates  | Plate_14 | 100526129 |
+| 210224_thirdplates  | Plate_2 | 14610178 |
+| 210224_thirdplates  | Plate_9 | 112807352 |
 | 210212_secondplates | Plate_11 | 129213990 |
 | 210212_secondplates | Plate_13 | 85242513 |
 | 210212_secondplates | Plate_3 | 69656977 |
@@ -243,12 +486,36 @@ Reads per plate
 | 201117_firstplates  | Plate_1 | 85746573 |
 | 201117_firstplates  | Plate_2 | 70776718 |
 
+### Complexity for All Plates
+
+Make combined complexity file for all plates.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}
+```bash
+  #Create new working directory for all plates
+  mkdir /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates
+  cd /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates
+  
+  #Link to complexity files for all plates
+  ln -s /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates/plate1.complexity.txt .
+  ln -s /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210212_secondplates/plate*.complexity.txt .
+  ln -s /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210224_thirdplates/plate*.complexity.txt .
+  
+  #Make combined complexity file
+  for j in /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates;
+  do for i in ${j}/plate*.complexity.txt;
+  do awk 'OFS="\t" { split(FILENAME,a,"/");split(a[9],b,"[.]"); print $2,$3,$4,$5,b[1]}' $i ; done; done > allplates.complexity.txt
+```
+{% endcapture %} {% include details.html %}
+
+
+Make table in R with cell counts, median and mean unique reads per cell, and mean percent unique reads per cell.
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
-
 ```R
-  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus")
-  dat<-read.table("firstandsecondsetplates.complexity.txt",sep="\t",header=F)\
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
+  dat<-read.table("allplates.complexity.txt",sep="\t",header=F)
   colnames(dat)<-c("cellID","total_reads","unique_reads","percent_uniq","plate_name")
   dat<-dat[dat$unique_reads>=1000,]
   library(dplyr)
@@ -256,50 +523,100 @@ Reads per plate
 
 ```
 
+{% endcapture %} {% include details.html %}
+
+
 | plate_name | cell_count | median_uniq_reads | mean_uniq_reads | mean_percent_uniq |
 |:--------|:--------|:--------|:--------|:--------|
 | plate1 | 3887 | 22143 | 31404 | 90.7 |
-| plate10 | 5682 | 11712 | 20431 | 93.1 |
-| plate11 | 4124 | 27138 | 41738 | 86.9 |
-| plate13 | 3970 | 19556 | 30665 | 90.0 |
-| plate2 | 5965 | 10998 | 17785 | 93.8 |
+| plate2 | 6049 | 12883 | 20923 | 93.1 |
 | plate3 | 4601 | 15122 | 22041 | 92.2 |
 | plate4 | 4219 | 18567 | 26743 | 91.8 |
 | plate5 | 3861 | 16097 | 27445 | 88.6 |
 | plate6 | 2484 | 4360 | 9001 | 89.7 |
 | plate7 | 4713 | 17300 | 25658 | 91.4 |
 | plate8 | 3537 | 23041 | 35603 | 89.1 |
+| plate9 | 3159 | 20149 | 38844 | 73.8 |
+| plate10 | 5729 | 12540 | 22063 | 92.7 |
+| plate11 | 4124 | 27138 | 41738 | 86.9 |
+| plate12 | 5097 | 19173 | 27789 | 91.0 |
+| plate13 | 3970 | 19556 | 30665 | 90.0 |
+| plate14 | 4307 | 22072 | 33249 | 89.0 |
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+## Merging All BAM Files and Filtering
+
+{% capture summary %} Code {% endcapture %} {% capture details %}
 
 ```bash
-  #Combine bam files and filter
-  scitools bam-merge tbr1_ko.bam plate1.bbrd.q10.bam plate2.bbrd.q10.bam plate10.bbrd.q10.bam &
+  #Link to final bam files for merging
+  ln -s /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates/plate1.bbrd.q10.bam .
+  ln -s /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210212_secondplates/plate*.bbrd.q10.bam .
+  ln -s /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210224_thirdplates/plate*.bbrd.q10.bam .
+  rm plate6.bbrd.q10.bam
+  
+  #Combine bam files
+  scitools bam-merge tbr1_ko.bam plate1.bbrd.q10.bam plate2.bbrd.q10.bam \
+  plate3.bbrd.q10.bam plate4.bbrd.q10.bam plate5.bbrd.q10.bam plate7.bbrd.q10.bam \
+  plate8.bbrd.q10.bam plate9.bbrd.q10.bam plate10.bbrd.q10.bam plate11.bbrd.q10.bam \
+  plate12.bbrd.q10.bam plate13.bbrd.q10.bam plate14.bbrd.q10.bam &
+  
+  #Make complexity plots for merged dataset
+
+  #Make a scitools compatible complexity file [rownumber][cellid][totread][uniqread][percuniq]
+  #Note: this will replace the complexity file for checking sequencing depth per cell
+  for j in /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates; \
+  do for i in ${j}/plate*.complexity.txt; do awk 'OFS="\t" {print $1,$2,$3,$4,$5}' $i ; \
+  done; done > allplates.complexity.txt
+
+  #Make a scitools compatible annotation file [cellid][annot]
+  for j in /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates; \
+  do for i in ${j}/plate*.complexity.txt; do awk 'OFS="\t" { split(FILENAME,a,"/");split(a[9],b,"[.]"); \
+  print $2,b[1]}' $i ; done; done > allplates.annot
+
+  #Make merged complexity plot colored by plate
+  scitools plot-complexity -A allplates.annot allplates.complexity.txt
+```
+{% endcapture %} {% include details.html %}
+
+
+Based on the complexity plot we filtered the merged BAM file to exclude cells with <1000 unique reads per cell.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}
+
+```bash
+  
   #Filter bam
   scitools bam-filter -N 1000 tbr1_ko.bam
+
+```
+{% endcapture %} {% include details.html %}
+ 
+ 
+## Peak Calling and TSS Enrichment
+ 
+{% capture summary %} Code {% endcapture %} {% capture details %}
+
+```bash
   #Generate counts matrix
   scitools atac-callpeak tbr1_ko.filt.bam &
   scitools atac-counts tbr1_ko.filt.bam tbr1_ko.filt.500.bed &
 
   #Get insert size distribution
   scitools isize tbr1_ko.filt.bam &
+  
   #Get TSS enrichment per cell
   module load bedops/2.4.36
-    #Bulk ENCODE method
-    scitools bam-tssenrich -E tbr1_ko.filt.bam mm10 &
-    #Per cell method
-    scitools bam-tssenrich tbr1_ko.filt.bam mm10 &
+  
+  #Bulk ENCODE method
+  scitools bam-tssenrich -E tbr1_ko.filt.bam mm10 &
 
-
-  #Filter bam file by insert sizes to be between 200 to 1000 bp (based on insert size distribution)
-  samtools view -h tbr1_ko.filt.bam | \
-  awk 'substr($0,1,1)=="@" || ($9>= 120 && $9<=1000) || ($9<=-120 && $9>=-1000)' | \
-  samtools view -b > tbr1_ko.filt.120_1000.bam
+  #Per cell method
+  scitools bam-tssenrich tbr1_ko.filt.bam mm10 &
 ```
 {% endcapture %} {% include details.html %} 
 
-### Tabix fragment file generation
 
+## Tabix Fragment File Generation
 
 Tabix file format is a tab separated multicolumn data structure.
 
@@ -314,27 +631,19 @@ Tabix file format is a tab separated multicolumn data structure.
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
-  #Organoid processing
-  input_bam="tbr1_ko.bam"
+  #Tabix fragment file generation
+  input_bam="tbr1_ko.filt.bam"
   output_name="tbr1_ko"
   tabix="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/tabix"
   bgzip="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/bgzip"
   samtools view --threads 10 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=30 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz
   $tabix -p bed $output_name.fragments.tsv.gz &
+
 ```
 
 {% endcapture %} {% include details.html %} 
 
-# Using alternative peaks from MOCA data set
-peaks used from the MOCA mouse sci-ATAC atlas:
-http://krishna.gs.washington.edu/content/members/ajh24/mouse_atlas_data_release/matrices/atac_matrix.binary.qc_filtered.peaks.txt
 
-```bash
-
-awk 'OFS="\t" {split($1,a,"_"); print a[1],a[2],a[3]}' atac_matrix.binary.qc_filtered.peaks.txt > atac_matrix.binary.qc_filtered.peaks.bed
-scitools atac-counts -O tbr1_ko_moca tbr1_ko.filt.bam ../atac_matrix.binary.qc_filtered.peaks.bed & 
-
-```
 # sciATAC Full Processing in R
 
 ## Generating Seurat Objects
@@ -355,6 +664,7 @@ Using R v4.0 and Signac v1.0 for processing.
   setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
 
   # make counts matrix from sparse matrix
+  #Make counts matrix from sparse matrix
   IN<-as.matrix(read.table("tbr1_ko.filt.500.counts.sparseMatrix.values.gz"))
   IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
   COLS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.cols.gz")
@@ -368,7 +678,7 @@ Using R v4.0 and Signac v1.0 for processing.
   # extract gene annotations from EnsDb
   annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
 
-  # change to UCSC style since the data was mapped to hg38
+  # change to UCSC style since the data was mapped to mm10
   seqlevelsStyle(annotations) <- 'UCSC'
   genome(annotations) <- "mm10"
 
@@ -397,7 +707,6 @@ Using R v4.0 and Signac v1.0 for processing.
 {% endcapture %} {% include details.html %} 
 
 
-
 ## Performing cisTopic and UMAP
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -408,7 +717,7 @@ Using R v4.0 and Signac v1.0 for processing.
   library(GenomeInfoDb)
   library(ggplot2)
   set.seed(1234)
-  library(EnsDb.Hsapiens.v86)
+  library(EnsDb.Mmusculus.v79)
   library(Matrix)
   setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
 
@@ -425,7 +734,6 @@ Using R v4.0 and Signac v1.0 for processing.
       saveRDS(atac_cistopic_models,file=paste(prefix,"CisTopicObject.Rds",sep=".")) 
   }
           
-
   cistopic_processing(seurat_input=obj,prefix="tbr1_ko")
 
   cistopic_models<-readRDS("tbr1_ko.CisTopicObject.Rds")
@@ -551,7 +859,6 @@ Using R v4.0 and Signac v1.0 for processing.
 {% endcapture %} {% include details.html %} 
 
 
-
 ### Plotting and updating metadata
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -564,9 +871,9 @@ Using R v4.0 and Signac v1.0 for processing.
   library(GenomeInfoDb)
   library(ggplot2)
   set.seed(1234)
-  library(EnsDb.Hsapiens.v86)
+  library(EnsDb.Mmusculus.v79)
   library(Matrix)
-  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
 
   obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
   obj@meta.data$cellID<-row.names(obj@meta.data)
@@ -616,6 +923,7 @@ Using R v4.0 and Signac v1.0 for processing.
 ```
 {% endcapture %} {% include details.html %} 
 
+
 ### Statistics on cell reads
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -627,10 +935,10 @@ Using R v4.0 and Signac v1.0 for processing.
   library(GenomeInfoDb)
   library(ggplot2)
   set.seed(1234)
-  library(EnsDb.Hsapiens.v86)
+  library(EnsDb.Mmusculus.v79)
   library(Matrix)
   library(dplyr)
-  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
   obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
 
 
@@ -664,7 +972,9 @@ Using R v4.0 and Signac v1.0 for processing.
   ggsave(plt,file="unique_reads.pdf",width=10)
   system("slack -F unique_reads.pdf ryan_todo")
 ```
+
 {% endcapture %} {% include details.html %} 
+
 
 ## Cicero for Coaccessible Networks
 
@@ -679,7 +989,7 @@ Using R v4.0 and Signac v1.0 for processing.
   library(monocle3)
   library(cicero)
   library(EnsDb.Mmusculus.v79)
-  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
 
   obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
 
@@ -779,6 +1089,7 @@ system("slack -F tbr1_ko.markers.test.pdf ryan_todo"
 
 
 ```
+
 {% endcapture %} {% include details.html %} 
 
 

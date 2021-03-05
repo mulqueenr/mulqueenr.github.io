@@ -27,7 +27,8 @@ url: "" # the base hostname & protocol for your site, e.g. http://example.com
 github_username:  mulqueenr
 
 # Build settings
-theme: jekyll-theme-lanyon
+#theme: jekyll-theme-lanyon
+remote-theme: poole/lanyon
 plugins:
   - jekyll-feed
   - jekyll-sitemap
