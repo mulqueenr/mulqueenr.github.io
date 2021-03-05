@@ -352,14 +352,14 @@ Using R v4.0 and Signac v1.0 for processing.
   set.seed(1234)
   library(EnsDb.Mmusculus.v79)
   library(Matrix)
-  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
 
   # make counts matrix from sparse matrix
-  IN<-as.matrix(read.table("tbr1_ko_moca.counts.sparseMatrix.values.gz"))
+  IN<-as.matrix(read.table("tbr1_ko.filt.500.counts.sparseMatrix.values.gz"))
   IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
-  COLS<-read.table("tbr1_ko_moca.counts.sparseMatrix.cols.gz")
+  COLS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.cols.gz")
   colnames(IN)<-COLS$V1
-  ROWS<-read.table("tbr1_ko_moca.counts.sparseMatrix.rows.gz")
+  ROWS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.rows.gz")
   row.names(IN)<-ROWS$V1
 
   #Read in fragment path for coverage plots
@@ -392,7 +392,7 @@ Using R v4.0 and Signac v1.0 for processing.
 
 
   #saving unprocessed SeuratObject
-  saveRDS(obj,file="tbr1_ko_moca.SeuratObject.Rds")
+  saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -410,7 +410,7 @@ Using R v4.0 and Signac v1.0 for processing.
   set.seed(1234)
   library(EnsDb.Hsapiens.v86)
   library(Matrix)
-  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates")
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
 
   library(cisTopic)
   obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
@@ -420,7 +420,7 @@ Using R v4.0 and Signac v1.0 for processing.
       row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt)) #renaming row names to fit granges expectation of format
       atac_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt) #set up CisTopicObjects
       #Run warp LDA on objects
-      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(5,10,20:30,40,50,55),nCores=15,addModels=FALSE)
+      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=(10,20,22,24,26,28,30,40),nCores=8,addModels=FALSE)
       print("Saving cistopic models.")
       saveRDS(atac_cistopic_models,file=paste(prefix,"CisTopicObject.Rds",sep=".")) 
   }
@@ -449,7 +449,7 @@ Using R v4.0 and Signac v1.0 for processing.
       row.names(dims)<-colnames(topic_df)
       colnames(dims)<-c("x","y")
       dims$cellID<-row.names(dims)
-      dims<-merge(dims,as.data.frame(object_input@meta.data),by="cellID")
+      dims<-merge(dims,as.data.frame(object_input@meta.data),by="row.names")
      
       #combine with seurat object    
       umap_dims<-as.data.frame(as.matrix(dims[2:3]))
@@ -465,10 +465,9 @@ Using R v4.0 and Signac v1.0 for processing.
 
   library(patchwork)
   library(parallel)
-  plt_list<-mclapply(cistopic_models@calc.params$runWarpLDAModels$topic,
-                     FUN=cistopic_loop,
-                     object_input=obj,
-                     models_input=cistopic_models,mc.cores=10)
+  plt_list<-mclapply(cistopic_models@calc.params$runWarpLDAModels$topic, function(x) {
+    cistopic_loop(topic_number=x,object_input=obj,models_input=cistopic_models)},mc.cores=1)
+
   plt_list<-wrap_plots(plt_list)
   ggsave(plt_list,file="tbr1_ko.umap_multipleTopicModels_clustering.png",height=20,width=60,limitsize=FALSE)
   system("slack -F tbr1_ko.umap_multipleTopicModels_clustering.png ryan_todo")
@@ -477,7 +476,7 @@ Using R v4.0 and Signac v1.0 for processing.
 
 
   #set topics based on derivative
-  selected_topic=30
+  selected_topic=28
   cisTopicObject<-cisTopic::selectModel(cistopic_models,select=selected_topic,keepModels=T)
 
   #saving model selected RDS
@@ -494,8 +493,7 @@ Using R v4.0 and Signac v1.0 for processing.
       row.names(dims)<-colnames(topic_df)
       colnames(dims)<-c("x","y")
       dims$cellID<-row.names(dims)
-      dims<-merge(dims,object_input@meta.data,by="cellID")
-
+      dims<-merge(dims,object_input@meta.data,by="row.names")
 
       #Add cell embeddings into seurat
       cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
@@ -535,9 +533,12 @@ Using R v4.0 and Signac v1.0 for processing.
   return(object_input)}
 
   obj<-cistopic_wrapper(object_input=obj,cisTopicObject=cisTopicObject,resolution=0.5)
-  row.names(obj@meta.data)<-obj$cellID
 
 
+
+
+
+####Update meta data files and append here
   plt<-DimPlot(obj,group.by=c("seurat_clusters","Developmental.Stage","line","sex","genotype"))
   ggsave(plt,file="tbr1_ko.umap.png",width=20)
   ggsave(plt,file="tbr1_ko.umap.pdf",width=20)
