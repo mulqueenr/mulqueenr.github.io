@@ -1,3 +1,11 @@
+---
+title: s3 Pre-processing
+layout: analysis
+author: Ryan Mulqueen
+permalink: /s3preprocess/
+category: s3processing
+---
+
 # Detailed run breakdown and experiment meta data is in the following google doc.
 
 https://docs.google.com/spreadsheets/d/1mZ34KIwmr2vdjQlnqY7v_u0-Eca8mRc-HgI2r_WICXk/edit#gid=1567443037
