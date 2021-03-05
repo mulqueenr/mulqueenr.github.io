@@ -1,3 +1,10 @@
+---
+title: s3WGS Analysis
+layout: analysis
+author: Ryan Mulqueen
+permalink: /s3wgs/
+category: s3
+---
 # Processing for s3WGS portion of s3 paper.
 This notebook is a continuation of "s3 Preprocessing to Bam files" and details the processing of s3WGS libraries. This notebook starts with a merged, barcode-based removal of duplicate, >Q10 filtered bam file which was subset to barcodes >=10K unique reads
 
