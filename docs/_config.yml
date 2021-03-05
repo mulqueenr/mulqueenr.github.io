@@ -18,7 +18,7 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 
-title: Single Cell Omics
+title:      Single Cell Omics
 email: mulqueen@ohsu.edu
 description: >- # this means to ignore newlines until "baseurl:"
   Advancing single cell technologies for the study of neurogenesis and carcinogenesis.
