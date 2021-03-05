@@ -27,3 +27,12 @@ Some of the basic processing (bcl2fastq to generation of a counts matrix) was pe
       {% endif %}
     {% endfor %}
 </ul>
+
+<h3>s3 Assays</h3>
+<ul>
+    {% for doc in site.pages %}
+      {% if doc.category == "s3" %}
+        <li><a href="{{ doc.url }}">{{ doc.title }}</a></li>
+      {% endif %}
+    {% endfor %}
+</ul>

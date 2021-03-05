@@ -1,3 +1,11 @@
+---
+title: s3WGS Analysis
+layout: analysis
+author: Ryan Mulqueen
+permalink: /s3wgs/
+category: s3processing
+---
+
 # s3-GCC Processing of PDAC Samples
 
 This notebook describes processing of s3GCC samples following the splitting of a deduplicated bwa mem aligned bam file which occurs in s3wgs processing ipynb.
