@@ -312,8 +312,7 @@ $tabix -p bed $output_name.fragments.tsv.gz &
 
 ## Downsampling of BAM Files
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
+{% capture summary %} Split out single-cell bams from deduplicated bams {% endcapture %} {% capture details %}  
 
 ```bash
 
@@ -325,9 +324,9 @@ for i in *bbrd.q10.bam ; do scitools bam-addrg $i & done &
 #mm10 is small enough to split as is
 samtools split -@20 -f './single_cell_splits/%*_%!.full.%.' mm10.bbrd.q10.RG.bam & #perform samtools split on RG (cellIDs)
 
-#for human too many cells for simultaneous splitting, going to make two temp bam files with limited RG headers
+#for human too many cells for simultaneous splitting (I/O errors), going to make two temp bam files with limited RG headers
 samtools view -H hg38.bbrd.q10.RG.bam | grep "^@RG" | awk '{split($2,a,":"); print a[2]}' | split --lines=500 --additional-suffix=".cellID.subset.temp.cellID.list" #split RG into 500 cell chunks
-for i in *.cellID.subset.temp.cellID.list; do outname=${i::-26} ; scitools bam-filter -L $i -O hg38.bbrd.q10.RG.${outname}.temp hg38.bbrd.q10.RG.bam; done & #split bam files by RG lists
+for i in *.cellID.subset.temp.cellID.list; do outname=${i::-26} ; scitools bam-filter -L $i -O hg38.bbrd.q10.RG.${outname}.temp hg38.bbrd.q10.RG.bam & done & #split bam files by RG lists
 
 #samtools split opens as many IO streams as rg in header, so need to fix headers with just rg in new split bams
 #reheader bam files
@@ -340,9 +339,48 @@ for i in *.cellID.subset.temp.cellID.list;
 #finally split out single cells
 for i in *temp.rehead.bam; do samtools split -@20 -f './single_cell_splits/%*_%!.full.%.' $i; done & #perform samtools split on RG (cellIDs)
 
+```
+{% endcapture %} {% include details.html %} 
+
+{% capture summary %} Split out single-cell bams from *raw* bams for projections {% endcapture %} {% capture details %}  
+
+```bash
+
+#Add read group for cellID specific splitting
+for i in mm10.bam hg38.bam ; do scitools bam-addrg $i & done &
+
+#mm10 is small enough to split as is
+samtools split -@20 -f './single_cell_splits/%*_%!.full.%.' mm10.bbrd.q10.RG.bam & #perform samtools split on RG (cellIDs)
+
+#for human too many cells for simultaneous splitting (I/O errors), going to make two temp bam files with limited RG headers
+samtools view -H hg38.bbrd.q10.RG.bam | grep "^@RG" | awk '{split($2,a,":"); print a[2]}' | split --lines=500 --additional-suffix=".cellID.subset.temp.cellID.list" #split RG into 500 cell chunks
+for i in *.cellID.subset.temp.cellID.list; do outname=${i::-26} ; scitools bam-filter -L $i -O hg38.bbrd.q10.RG.${outname}.temp hg38.bbrd.q10.RG.bam & done & #split bam files by RG lists
+
+#samtools split opens as many IO streams as rg in header, so need to fix headers with just rg in new split bams
+#reheader bam files
+for i in *.cellID.subset.temp.cellID.list; 
+  do outname=${i::-26} ; 
+  samtools view -H hg38.bbrd.q10.RG.${outname}.temp.filt.bam | grep -v "^@RG" - > temp.header;
+  awk 'OFS="\t" {print "@RG","ID:"$1,"SM:"$1,"LB:"$i,"PL:SCI"}' $i >> temp.header ;
+  samtools reheader -c "cat temp.header" hg38.bbrd.q10.RG.${outname}.temp.filt.bam > hg38.bbrd.q10.RG.${outname}.temp.rehead.bam; done &
+
+#finally split out single cells
+for i in *temp.rehead.bam; do samtools split -@20 -f './single_cell_splits/%*_%!.full.%.' $i; done & #perform samtools split on RG (cellIDs)
+
+```
+{% endcapture %} {% include details.html %} 
+
+{% capture summary %} Process single-cell pre-deduplicated bams {% endcapture %} {% capture details %}  
+
+```bash
 cd single_cell_splits
+
+mv *full.bam single_dedup_bams/
+
+cd single_dedup_bams
+
 #Subsample by percentage
-for j in 2 4 6 8;
+for j in 2 4 6 8; #2 = 20%, 4= 40% etc.
   do for i in *.full.bam; 
     do samtools view -@ 10 -h -s 0.${j} $i > ${i::-9}.${j}0perc.bam ;done ; done & 
 
@@ -530,9 +568,11 @@ cistopic_generation<-function(x,subset_obj,species="hg38"){
     }
 
 #UMAP Projection and clustering on selected cistopic model
-clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_atac,subset_obj,topiccount_list.=topic_count_list){
+clustering_loop<-function(topicmodel_list.=topicmodel_list,
+	object_input,subset_obj,
+	topiccount_list.=topic_count_list,fullset=hg38_atac){
     #set up subset object again
-    atac_sub<-readRDS(x) 
+    atac_sub<-readRDS(object_input) 
     #select_topic
     models_input<-readRDS(paste(species,subset_obj,".CisTopicObject.Rds",sep="_"))
     cisTopicObject<-cisTopic::selectModel(models_input,select=topiccount_list.[subset_obj],keepModels=F)
@@ -544,7 +584,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     row.names(dims)<-colnames(topic_df)
     colnames(dims)<-c("x","y")
     dims$cellID<-row.names(dims)
-    dims<-merge(dims,object_input@meta.data,by.x="cellID",by.y="row.names")
+    dims<-merge(dims,atac_sub@meta.data,by.x="cellID",by.y="row.names")
 
     #get cell embeddings
     cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
@@ -570,8 +610,11 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic"))
     #Clustering with multiple resolutions to account for different celltype complexities
 
+    fullset_metadata<-as.data.frame(fullset@meta.data)
+    fullset_metadata<-fullset_metadata[row.names(fullset_metadata) %in% row.names(atac_sub@meta.data),]
+    atac_sub<-AddMetaData(atac_sub,fullset_metadata)
     saveRDS(atac_sub,paste(species,subset_obj,"SeuratObject.Rds",sep="_"))
-    plt<-DimPlot(atac_sub)
+    plt<-DimPlot(atac_sub,group.by="seurat_clusters")
     ggsave(plt,file=paste(species,subset_obj,"clustering.pdf",sep="_"))
 }
 
@@ -589,46 +632,48 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     species="hg38"
 
     #Running cistopic subclustering on all identified cell types
-    lapply(hg38_objects[6:length(hg38_objects)], function(i) {cistopic_generation(x=i,subset_obj=unlist(lapply(strsplit(i,"[.]"),"[",2)))})
+    lapply(hg38_objects[8], function(i) {cistopic_generation(x=i,subset_obj=unlist(lapply(strsplit(i,"[.]"),"[",2)))})
     topicmodel_list<-paste(species,hg38_object_list,".CisTopicObject.Rds",sep="_")
 
     #determine model count to use for each cell type
     for (i in paste(species,hg38_object_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
 
     #selecting topics based on derivative, making a named vector 
-    topic_count_list<-c(25,22,24,27,24,22)
+    topic_count_list<-c(30,29,22,24,24,25,26,25)
     names(topic_count_list)<-hg38_object_list
+    hg38_atac<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/hg38_SeuratObject.Rds")
 
     #Running clustering loop
-    lapply(hg38_objects,function(i) {clustering_loop(object_input=i,subset_obj=unlist(lapply(strsplit(i,"[.]"),"[",2)))})
-
+    lapply(hg38_objects,function(i) {clustering_loop(object_input=i,fullset=hg38_atac,subset_obj=unlist(lapply(strsplit(i,"[.]"),"[",2)))})
     #selecting resolution by plots
-    for (i in celltype_list){system(paste0("slack -F ",paste(species,hg38_object_list,"clustering.pdf",sep="_")," ryan_todo"))}
-
-    #need to add cluster meta data from full file for analysis
+    for (i in hg38_object_list){system(paste0("slack -F ",paste(species,hg38_object_list,"clustering.pdf",sep="_")," ryan_todo"))}
 
 #mm10
     #Set up variables
+    seurat_objects<-list.files(pattern="SeuratObject.Rds$")
+    topics_generated<-list.files(pattern="model_selection.pdf$")
+    mm10_objects<-seurat_objects[grepl(seurat_objects,pattern="^mm10")]
+    mm10_object_list<-unlist(lapply(strsplit(mm10_objects,"[.]"),"[",2))
     species="mm10"
-    celltype_list<-unique(mm10_atac$celltype)
 
-    
     #Running cistopic subclustering on all identified cell types
-    for (i in celltype_list){cistopic_generation(x=mm10_atac,celltype.x=i,species="mm10")}
-    topicmodel_list<-paste(species,celltype_list,".CisTopicObject.Rds",sep="_")
+    lapply(mm10_objects[8], function(i) {cistopic_generation(x=i,subset_obj=unlist(lapply(strsplit(i,"[.]"),"[",2)))})
+    topicmodel_list<-paste(species,mm10_object_list,".CisTopicObject.Rds",sep="_")
 
     #determine model count to use for each cell type
-    for (i in paste(species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
+    for (i in paste(species,mm10_object_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
 
     #selecting topics based on derivative, making a named vector 
-    topic_count_list<-c(28,22,23,28,28,22)
-    names(topic_count_list)<-celltype_list
+    topic_count_list<-c(30,29,22,24,24,25,26,25)
+    names(topic_count_list)<-mm10_object_list
+    mm10_atac<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10_SeuratObject.Rds")
 
     #Running clustering loop
-    for (i in celltype_list){clustering_loop(object_input=hg38_atac,celltype.x=i)}
-
+    lapply(mm10_objects,function(i) {clustering_loop(object_input=i,fullset=mm10_atac,subset_obj=unlist(lapply(strsplit(i,"[.]"),"[",2)))})
     #selecting resolution by plots
-    for (i in celltype_list){system(paste0("slack -F ",paste(species,i,"clustering.pdf",sep="_")," ryan_todo"))}
+    for (i in celltype_list){system(paste0("slack -F ",paste(species,mm10_object_list,"clustering.pdf",sep="_")," ryan_todo"))}
+
+
 
 ```
 {% endcapture %} {% include details.html %} 

@@ -729,12 +729,14 @@ Using R v4.0 and Signac v1.0 for processing.
       row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt)) #renaming row names to fit granges expectation of format
       atac_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt) #set up CisTopicObjects
       #Run warp LDA on objects
-      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=(10,20,22,24,26,28,30,40),nCores=8,addModels=FALSE)
+      #atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(10,20,22,24,26,28,30,40),nCores=8,addModels=FALSE)
+      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(32,34,36,38),nCores=4,addModels=FALSE)   
       print("Saving cistopic models.")
       saveRDS(atac_cistopic_models,file=paste(prefix,"CisTopicObject.Rds",sep=".")) 
   }
           
-  cistopic_processing(seurat_input=obj,prefix="tbr1_ko")
+  #cistopic_processing(seurat_input=obj,prefix="tbr1_ko")
+  cistopic_processing(seurat_input=obj,prefix="tbr1_ko.moremodels")
 
   cistopic_models<-readRDS("tbr1_ko.CisTopicObject.Rds")
 
@@ -841,18 +843,6 @@ Using R v4.0 and Signac v1.0 for processing.
   return(object_input)}
 
   obj<-cistopic_wrapper(object_input=obj,cisTopicObject=cisTopicObject,resolution=0.5)
-
-
-
-
-
-####Update meta data files and append here
-  plt<-DimPlot(obj,group.by=c("seurat_clusters","Developmental.Stage","line","sex","genotype"))
-  ggsave(plt,file="tbr1_ko.umap.png",width=20)
-  ggsave(plt,file="tbr1_ko.umap.pdf",width=20)
-
-  i="tbr1_ko.umap.png"
-  system(paste0("slack -F ",i," ryan_todo"))#post to ryan_todo
          
 
 ```
@@ -915,7 +905,7 @@ Using R v4.0 and Signac v1.0 for processing.
   saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
   write.table(obj@meta.data,file="summary_statistics_per_cell.tsv",col.names=T,row.names=T,sep="\t",quote=F)
 
-  plt<-DimPlot(obj,group.by="sex")
+  plt<-DimPlot(obj,group.by=c("Developmental.Stage","sex","line","genotype","tube_ID"))
   ggsave(plt,file="tbr1_ko.umap.png",width=20)
   ggsave(plt,file="tbr1_ko.umap.pdf",width=20)
   system("slack -F tbr1_ko.umap.pdf ryan_todo")
