@@ -312,7 +312,7 @@ $tabix -p bed $output_name.fragments.tsv.gz &
 
 ## Downsampling of BAM Files
 
-{% capture summary %} Split out single-cell bams from deduplicated bams {% endcapture %} {% capture details %}  
+{% capture summary %} Split out single-cell bams from *deduplicated* bams {% endcapture %} {% capture details %}  
 
 ```bash
 
@@ -350,22 +350,22 @@ for i in *temp.rehead.bam; do samtools split -@20 -f './single_cell_splits/%*_%!
 for i in mm10.bam hg38.bam ; do scitools bam-addrg $i & done &
 
 #mm10 is small enough to split as is
-samtools split -@20 -f './single_cell_splits/%*_%!.full.%.' mm10.bbrd.q10.RG.bam & #perform samtools split on RG (cellIDs)
+samtools split -@20 -f './single_cell_splits/%*_%!.prededup.%.' mm10.RG.bam & #perform samtools split on RG (cellIDs)
 
 #for human too many cells for simultaneous splitting (I/O errors), going to make two temp bam files with limited RG headers
-samtools view -H hg38.bbrd.q10.RG.bam | grep "^@RG" | awk '{split($2,a,":"); print a[2]}' | split --lines=500 --additional-suffix=".cellID.subset.temp.cellID.list" #split RG into 500 cell chunks
-for i in *.cellID.subset.temp.cellID.list; do outname=${i::-26} ; scitools bam-filter -L $i -O hg38.bbrd.q10.RG.${outname}.temp hg38.bbrd.q10.RG.bam & done & #split bam files by RG lists
+samtools view -H hg38.RG.bam | grep "^@RG" | awk '{split($2,a,":"); print a[2]}' | split --lines=500 --additional-suffix=".cellID.subset.temp.cellID.list" #split RG into 500 cell chunks
+for i in *.cellID.subset.temp.cellID.list; do outname=${i::-26} ; scitools bam-filter -L $i -O hg38.RG.${outname}.temp hg38.RG.bam & done & #split bam files by RG lists
 
 #samtools split opens as many IO streams as rg in header, so need to fix headers with just rg in new split bams
 #reheader bam files
 for i in *.cellID.subset.temp.cellID.list; 
   do outname=${i::-26} ; 
-  samtools view -H hg38.bbrd.q10.RG.${outname}.temp.filt.bam | grep -v "^@RG" - > temp.header;
+  samtools view -H hg38.RG.${outname}.temp.filt.bam | grep -v "^@RG" - > temp.header;
   awk 'OFS="\t" {print "@RG","ID:"$1,"SM:"$1,"LB:"$i,"PL:SCI"}' $i >> temp.header ;
-  samtools reheader -c "cat temp.header" hg38.bbrd.q10.RG.${outname}.temp.filt.bam > hg38.bbrd.q10.RG.${outname}.temp.rehead.bam; done &
+  samtools reheader -c "cat temp.header" hg38.RG.${outname}.temp.filt.bam > hg38.RG.${outname}.temp.rehead.bam; done &
 
 #finally split out single cells
-for i in *temp.rehead.bam; do samtools split -@20 -f './single_cell_splits/%*_%!.full.%.' $i; done & #perform samtools split on RG (cellIDs)
+for i in *temp.rehead.bam; do samtools split -@20 -f './single_cell_splits/%*_%!.prededup.%.' $i; done & #perform samtools split on RG (cellIDs)
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -375,8 +375,11 @@ for i in *temp.rehead.bam; do samtools split -@20 -f './single_cell_splits/%*_%!
 ```bash
 cd single_cell_splits
 
-mv *full.bam single_dedup_bams/
+mkdir single_dedup_bams
+mkdir single_prededup_bams
 
+mv *full.bam single_dedup_bams/
+mv *prededup.bam single_prededup_bams/
 cd single_dedup_bams
 
 #Subsample by percentage
