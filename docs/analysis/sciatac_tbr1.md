@@ -646,6 +646,8 @@ Tabix file format is a tab separated multicolumn data structure.
 
 ## Testing out called peaks against other available data sets
 
+WashU study of mouse organogenesis
+
 {% capture summary %} Code {% endcapture %} {% capture details %}
 ```bash
 #Using https://atlas.gs.washington.edu/mouse-atac/ data set peaks on mouse development
@@ -666,8 +668,7 @@ wc -l washU_mousedevel.peaks.bed
 
 {% endcapture %} {% include details.html %} 
 
-
-##Using ARSN peak set generated from all ENCODE data
+ Using ARSN peak set generated from all ENCODE data
 
 {% capture summary %} Code {% endcapture %} {% capture details %}
 
