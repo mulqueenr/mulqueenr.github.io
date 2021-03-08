@@ -662,11 +662,11 @@ wc -l washU_mousedevel.peaks.bed
 
 ```
 
+{% endcapture %} {% include details.html %} 
+
 | In Ours Only | Shared | In WashU Only |
 |:--------:|:-------:|:--------:|
 | 604650 (81.26%) | 139474 (18.74% Ours ; 31.97% WashU)|  296732 (68.03%)|
-
-{% endcapture %} {% include details.html %} 
 
  Using ARSN peak set generated from all ENCODE data
 
@@ -686,11 +686,11 @@ wc -l /home/groups/oroaklab/refs/mm10/masterlistDHS/roughmerged.DHS_masterlist.b
 
 ```
 
+{% endcapture %} {% include details.html %} 
+
 | In Ours Only | Shared | In Masterset |
 |:--------:|:-------:|:--------:|
 | 52187 (7.02%) | 691937 (92.98% Ours ; 29.10% WashU)|  1685290 (70.89%)|
-
-{% endcapture %} {% include details.html %} 
 
 # sciATAC Full Processing in R
 
