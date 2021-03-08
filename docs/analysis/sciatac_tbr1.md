@@ -723,6 +723,7 @@ Using R v4.0 and Signac v1.0 for processing.
 
   library(cisTopic)
   obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
+  #row.names(obj@meta.data)<-obj$cellID
 
   cistopic_processing<-function(seurat_input,prefix){
       cistopic_counts_frmt<-seurat_input$peaks@counts #grabbing counts matrices
@@ -739,6 +740,7 @@ Using R v4.0 and Signac v1.0 for processing.
   cistopic_processing(seurat_input=obj,prefix="tbr1_ko.moremodels")
 
   cistopic_models<-readRDS("tbr1_ko.CisTopicObject.Rds")
+  cistopic_models_more<-readRDS("tbr1_ko.moremodels.CisTopicObject.Rds")
 
   #Setting up topic count selection
   pdf("tbr1_ko.cistopic_model_selection.pdf")
@@ -747,10 +749,18 @@ Using R v4.0 and Signac v1.0 for processing.
   dev.off()
   system("slack -F tbr1_ko.cistopic_model_selection.pdf ryan_todo")
 
+  #Setting up topic count selection
+  pdf("tbr1_ko.cistopic_modelmore_selection.pdf")
+  par(mfrow=c(1,3))
+  cistopic_models <- selectModel(cistopic_models_more, type='derivative')
+  dev.off()
+  system("slack -F tbr1_ko.cistopic_modelmore_selection.pdf ryan_todo")
+
+
   ###############################################
   #Loop through cistopic models
   cistopic_loop<-function(topic_number,object_input,models_input){
-      models_input<-selectModel(models_input,select=topic_number)
+      models_input<-selectModel(models_input,select=as.numeric(topic_number))
       #perform UMAP on topics
       topic_df<-as.data.frame(models_input@selected.model$document_expects)
       row.names(topic_df)<-paste0("Topic_",row.names(topic_df))
@@ -759,7 +769,7 @@ Using R v4.0 and Signac v1.0 for processing.
       row.names(dims)<-colnames(topic_df)
       colnames(dims)<-c("x","y")
       dims$cellID<-row.names(dims)
-      dims<-merge(dims,as.data.frame(object_input@meta.data),by="row.names")
+      dims<-merge(dims,as.data.frame(object_input@meta.data),by="cellID")
      
       #combine with seurat object    
       umap_dims<-as.data.frame(as.matrix(dims[2:3]))
@@ -769,17 +779,21 @@ Using R v4.0 and Signac v1.0 for processing.
       object_input@reductions$umap<-cistopic_umap
       
       #finally plot
-      plt<-DimPlot(object_input,size=0.1)+ggtitle(as.character(topic_number))
+      plt<-DimPlot(object_input,size=0.1,group.by="Developmental.Stage")+ggtitle(as.character(topic_number))
       return(plt)
   }
 
   library(patchwork)
   library(parallel)
-  plt_list<-mclapply(cistopic_models@calc.params$runWarpLDAModels$topic, function(x) {
+  plt_list<-mclapply(names(cistopic_models@models), function(x) {
     cistopic_loop(topic_number=x,object_input=obj,models_input=cistopic_models)},mc.cores=1)
 
-  plt_list<-wrap_plots(plt_list)
-  ggsave(plt_list,file="tbr1_ko.umap_multipleTopicModels_clustering.png",height=20,width=60,limitsize=FALSE)
+  plt_list_more<-mclapply(names(cistopic_models_more@models), function(x) {
+    cistopic_loop(topic_number=x,object_input=obj,models_input=cistopic_models_more)},mc.cores=1)
+
+  plt_list_merged<-c(plt_list,plt_list_more)
+  plt_list_plt<-wrap_plots(plt_list_merged)
+  ggsave(plt_list_plt,file="tbr1_ko.umap_multipleTopicModels_clustering.png",height=20,width=60,limitsize=FALSE)
   system("slack -F tbr1_ko.umap_multipleTopicModels_clustering.png ryan_todo")
   ###############################################
 
@@ -902,6 +916,7 @@ Using R v4.0 and Signac v1.0 for processing.
   dim(obj@meta.data)
 
 
+  row.names(obj@meta.data)<-obj$cellID
   saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
   write.table(obj@meta.data,file="summary_statistics_per_cell.tsv",col.names=T,row.names=T,sep="\t",quote=F)
 
