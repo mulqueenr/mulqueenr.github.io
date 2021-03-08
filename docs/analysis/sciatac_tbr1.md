@@ -644,6 +644,53 @@ Tabix file format is a tab separated multicolumn data structure.
 {% endcapture %} {% include details.html %} 
 
 
+## Testing out called peaks against other available data sets
+
+{% capture summary %} Code {% endcapture %} {% capture details %}
+```bash
+#Using https://atlas.gs.washington.edu/mouse-atac/ data set peaks on mouse development
+wget http://krishna.gs.washington.edu/content/members/ajh24/mouse_atlas_data_release/matrices/atac_matrix.binary.qc_filtered.peaks.txt
+awk 'OFS="\t" {split($1,a,"_"); print a[1],a[2],a[3]}' atac_matrix.binary.qc_filtered.peaks.txt > washU_mousedevel.peaks.bed
+bedtools intersect -u -wa -a tbr1_ko.filt.500.bed -b washU_mousedevel.peaks.bed | wc -l
+#139474
+wc -l tbr1_ko.filt.500.bed
+#744124 tbr1_ko.filt.500.bed
+wc -l washU_mousedevel.peaks.bed
+#436206 washU_mousedevel.peaks.bed
+
+```
+
+| In Ours Only | Shared | In WashU Only |
+|:--------:|:-------:|:--------:|
+| 604650 (81.26%) | 139474 (18.74% Ours ; 31.97% WashU)|  296732 (68.03%)|
+
+{% endcapture %} {% include details.html %} 
+
+
+##Using ARSN peak set generated from all ENCODE data
+
+{% capture summary %} Code {% endcapture %} {% capture details %}
+
+```bash 
+#Using ARSN peak set
+#/home/groups/oroaklab/refs/mm10/masterlistDHS/roughmerged.DHS_masterlist.bed
+
+bedtools intersect -u -wa -a tbr1_ko.filt.500.bed -b /home/groups/oroaklab/refs/mm10/masterlistDHS/roughmerged.DHS_masterlist.bed | wc -l
+#691937
+wc -l tbr1_ko.filt.500.bed
+#744124 tbr1_ko.filt.500.bed
+wc -l /home/groups/oroaklab/refs/mm10/masterlistDHS/roughmerged.DHS_masterlist.bed
+#2377227 /home/groups/oroaklab/refs/mm10/masterlistDHS/roughmerged.DHS_masterlist.bed
+
+
+```
+
+| In Ours Only | Shared | In Masterset |
+|:--------:|:-------:|:--------:|
+| 52187 (7.02%) | 691937 (92.98% Ours ; 29.10% WashU)|  1685290 (70.89%)|
+
+{% endcapture %} {% include details.html %} 
+
 # sciATAC Full Processing in R
 
 ## Generating Seurat Objects
