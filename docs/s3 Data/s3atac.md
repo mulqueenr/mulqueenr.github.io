@@ -342,6 +342,13 @@ for i in *temp.rehead.bam; do samtools split -@20 -f './single_cell_splits/%*_%!
 ```
 {% endcapture %} {% include details.html %} 
 
+{% capture summary %} Compare forward to reverse mapped identical tagmentation sites {% endcapture %} {% capture details %}  
+```bash
+#TBD
+```
+{% endcapture %} {% include details.html %} 
+
+
 {% capture summary %} Split out single-cell bams from *raw* bams for projections {% endcapture %} {% capture details %}  
 
 ```bash
@@ -370,7 +377,7 @@ for i in *temp.rehead.bam; do samtools split -@20 -f './single_cell_splits/%*_%!
 ```
 {% endcapture %} {% include details.html %} 
 
-{% capture summary %} Process single-cell pre-deduplicated bams {% endcapture %} {% capture details %}  
+{% capture summary %} Process single-cell bams {% endcapture %} {% capture details %}  
 
 ```bash
 cd single_cell_splits
@@ -380,6 +387,19 @@ mkdir single_prededup_bams
 
 mv *full.bam single_dedup_bams/
 mv *prededup.bam single_prededup_bams/
+
+cd single_prededup_bams
+
+#parallelization of picard tools estimate library complexity, running on j=30 cores
+parallel -j 30 "java -jar /home/groups/oroaklab/src/picard/picard-tools-1.70/EstimateLibraryComplexity.jar I={} O={}.picard.metrics" ::: **.bam
+
+```
+
+{% endcapture %} {% include details.html %} 
+
+{% capture summary %} Process single-cell pre-deduplicated bams {% endcapture %} {% capture details %}  
+
+```bash
 cd single_dedup_bams
 
 #Subsample by percentage
@@ -439,10 +459,17 @@ do scitools callpeaks $i & done &
 #  154911 mm10.80perc.merged.500.bed
 
 for i in hg38*bam;
-do scitools atac-count -O ${i::-4} $i ../hg38.bbrd.q10.500.bed & done &
+do scitools atac-count -O ${i::-4}.fullpeakset $i ../../hg38.bbrd.q10.500.bed & done &
 
 for i in mm10*bam;
-do scitools atac-count -O ${i:-4} $i ../mm10.bbrd.q10.500.bed & done &
+do scitools atac-count -O ${i:-4}.fullpeakset $i ../../mm10.bbrd.q10.500.bed & done &
+
+
+for i in hg38*bam;
+do scitools atac-count -O ${i::-4}.calledpeaks $i ${i::-4}.500.bed & done &
+
+for i in mm10*bam;
+do scitools atac-count -O ${i:-4}.calledpeaks $i ${i::-4}.500.bed & done &
 
 ````
 

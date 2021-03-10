@@ -330,32 +330,6 @@ for cellid_out in out_dict: #generate [cellID].[chr].txt files in triple sparse 
         
 ```
 
-    Processed 100000 distal cis reads in 32.036776065826416 seconds.
-
-
-
-    ---------------------------------------------------------------------------
-
-    KeyboardInterrupt                         Traceback (most recent call last)
-
-    <ipython-input-2-aa6bebf048b7> in <module>
-         41     cellline=bulk.split(".")[1]
-         42     bam = pysam.AlignmentFile(bam_dir+bulk, 'rb')
-    ---> 43     for read1, read2 in read_pair_generator(bam): #set paired reads together
-         44         if read1 is not None and read2 is not None: #remove reads which dont pair
-         45             if read1.reference_id==read2.reference_id: #ensure chromosomes are same
-
-
-    <ipython-input-2-aa6bebf048b7> in read_pair_generator(bam)
-         14     read_dict = defaultdict(lambda: [None, None])
-         15     for read in bam.fetch(until_eof=True):
-    ---> 16         qname = read.query_name
-         17         if qname not in read_dict:
-         18             if read.is_read1:
-
-
-    KeyboardInterrupt: 
-
 
 ## Plotting distal reads per cell
 

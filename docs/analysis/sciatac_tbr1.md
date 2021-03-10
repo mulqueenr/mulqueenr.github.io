@@ -597,9 +597,6 @@ Based on the complexity plot we filtered the merged BAM file to exclude cells wi
 {% capture summary %} Code {% endcapture %} {% capture details %}
 
 ```bash
-  #Generate counts matrix
-  scitools atac-callpeak tbr1_ko.filt.bam &
-  scitools atac-counts tbr1_ko.filt.bam tbr1_ko.filt.500.bed &
 
   #Get insert size distribution
   scitools isize tbr1_ko.filt.bam &
@@ -615,6 +612,15 @@ Based on the complexity plot we filtered the merged BAM file to exclude cells wi
 ```
 {% endcapture %} {% include details.html %} 
 
+### Alternative approach to peak calling
+
+Using macs3 for improved peak calling
+```bash
+# call macs3 with shift and extensions
+source /home/groups/oroaklab/nishida/scitools_env/bin/activate
+
+macs3 callpeak -f BAMPE --keep-dup all -q 0.01 -t tbr1_ko.filt.bam -g mm -n tbr1_ko.macs3.keepdup &
+```
 
 ## Tabix Fragment File Generation
 
@@ -660,6 +666,14 @@ wc -l tbr1_ko.filt.500.bed
 wc -l washU_mousedevel.peaks.bed
 #436206 washU_mousedevel.peaks.bed
 
+
+
+#also checking macs3 peaks
+bedtools intersect -u -wa -a tbr1_ko.macs3.keepdup_summits.bed -b washU_mousedevel.peaks.bed | wc -l
+#24781
+wc -l tbr1_ko.macs3.keepdup_summits.bed
+#277699 tbr1_ko.macs3.keepdup_summits.bed
+
 ```
 
 {% endcapture %} {% include details.html %} 
@@ -676,21 +690,54 @@ wc -l washU_mousedevel.peaks.bed
 #Using ARSN peak set
 #/home/groups/oroaklab/refs/mm10/masterlistDHS/roughmerged.DHS_masterlist.bed
 
-bedtools intersect -u -wa -a tbr1_ko.filt.500.bed -b /home/groups/oroaklab/refs/mm10/masterlistDHS/roughmerged.DHS_masterlist.bed | wc -l
+bedtools intersect -u -wa -a tbr1_ko.filt.500.bed -b /home/groups/oroaklab/refs/mm10/masterlistDHS/media-6.bed | wc -l
 #691937
 wc -l tbr1_ko.filt.500.bed
 #744124 tbr1_ko.filt.500.bed
-wc -l /home/groups/oroaklab/refs/mm10/masterlistDHS/roughmerged.DHS_masterlist.bed
-#2377227 /home/groups/oroaklab/refs/mm10/masterlistDHS/roughmerged.DHS_masterlist.bed
+wc -l /home/groups/oroaklab/refs/mm10/masterlistDHS/media-6.bed
+#1802603 /home/groups/oroaklab/refs/mm10/masterlistDHS/media-6.bed
 
+
+#checking macs3
+bedtools intersect -u -wa -a tbr1_ko.macs3.keepdup_summits.bed -b /home/groups/oroaklab/refs/mm10/masterlistDHS/media-6.bed | wc -l
+#65571
+wc -l tbr1_ko.macs3.keepdup_summits.bed
+#277699 tbr1_ko.macs3.keepdup_summits.bed
 
 ```
-
-{% endcapture %} {% include details.html %} 
 
 | In Ours Only | Shared | In Masterset |
 |:--------:|:-------:|:--------:|
 | 52187 (7.02%) | 691937 (92.98% Ours ; 29.10% WashU)|  1685290 (70.89%)|
+
+
+### Index bam and check peaks and read pile-ups via scitools plotting function
+
+Annotation file was generated below after seurat object meta data was made
+
+```bash
+ samtools index -@ 20 -b tbr1_ko.filt.bam tbr1_ko.filt.bai & #generate an index
+scitools plot-reads -A devel_line_geno.annot -B tbr1_ko.filt.500.bed -F 0.1 -p 0.1 -G mm10 tbr1_ko.filt.bam Pax6 Neurod1 Tbr1 
+
+scitools plot-reads -A devel_line_geno.annot -B tbr1_ko.macs3_summits.bed -F 0.1 -p 0.1 -G mm10 tbr1_ko.filt.bam Pax6 Neurod1 Tbr1
+
+```
+{% endcapture %} {% include details.html %} 
+
+Based on this, I'm going to continue with the conservative macs3 peaks for clustering.
+
+### Counts matrix generation on called peaks
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```bash
+  #Generate counts matrix for macs2 peak set
+  scitools atac-callpeak tbr1_ko.filt.bam &
+  scitools atac-counts tbr1_ko.filt.bam tbr1_ko.filt.500.bed &
+
+  #Generate counts matrix for macs3 peak set
+  scitools atac-counts -O tbr1_ko.macs3 tbr1_ko.filt.bam tbr1_ko.macs3.keepdup_summits.bed &
+```
+{% endcapture %} {% include details.html %} 
 
 # sciATAC Full Processing in R
 
@@ -713,11 +760,14 @@ Using R v4.0 and Signac v1.0 for processing.
 
   # make counts matrix from sparse matrix
   #Make counts matrix from sparse matrix
-  IN<-as.matrix(read.table("tbr1_ko.filt.500.counts.sparseMatrix.values.gz"))
+  #IN<-as.matrix(read.table("tbr1_ko.filt.500.counts.sparseMatrix.values.gz")) #old peak set
+  IN<-as.matrix(read.table("tbr1_ko.macs3.counts.sparseMatrix.values.gz"))
   IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
-  COLS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.cols.gz")
+  #COLS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.cols.gz") #old peak set
+  COLS<-read.table("tbr1_ko.macs3.counts.sparseMatrix.cols.gz")
   colnames(IN)<-COLS$V1
-  ROWS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.rows.gz")
+  #ROWS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.rows.gz") #old peak set
+  ROWS<-read.table("tbr1_ko.macs3.counts.sparseMatrix.rows.gz")
   row.names(IN)<-ROWS$V1
 
   #Read in fragment path for coverage plots
@@ -750,7 +800,9 @@ Using R v4.0 and Signac v1.0 for processing.
 
 
   #saving unprocessed SeuratObject
-  saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
+  #saveRDS(obj,file="tbr1_ko.SeuratObject.Rds") #old peak set
+  saveRDS(obj,file="tbr1_ko.macs3.SeuratObject.Rds") #old peak set
+
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -770,7 +822,7 @@ Using R v4.0 and Signac v1.0 for processing.
   setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
 
   library(cisTopic)
-  obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
+  obj<-readRDS(file="tbr1_ko.macs3.SeuratObject.Rds")
   #row.names(obj@meta.data)<-obj$cellID
 
   cistopic_processing<-function(seurat_input,prefix){
@@ -778,14 +830,14 @@ Using R v4.0 and Signac v1.0 for processing.
       row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt)) #renaming row names to fit granges expectation of format
       atac_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt) #set up CisTopicObjects
       #Run warp LDA on objects
-      #atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(10,20,22,24,26,28,30,40),nCores=8,addModels=FALSE)
-      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(29,31,32,33,34,35,36,38),nCores=7,addModels=FALSE)   
+      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(10,20,22,24,26,28,30,40),nCores=8,addModels=FALSE)
+      #atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(29,31,32,33,34,35,36,38),nCores=7,addModels=FALSE)   
       print("Saving cistopic models.")
       saveRDS(atac_cistopic_models,file=paste(prefix,"CisTopicObject.Rds",sep=".")) 
   }
           
   #cistopic_processing(seurat_input=obj,prefix="tbr1_ko")
-  cistopic_processing(seurat_input=obj,prefix="tbr1_ko.moremodels")
+  cistopic_processing(seurat_input=obj,prefix="tbr1_ko.macs3")
 
   cistopic_models<-readRDS("tbr1_ko.CisTopicObject.Rds")
   cistopic_models_more<-readRDS("tbr1_ko.moremodels.CisTopicObject.Rds")
@@ -974,6 +1026,17 @@ Using R v4.0 and Signac v1.0 for processing.
   system("slack -F tbr1_ko.umap.pdf ryan_todo")
 
 ```
+### Make annotation files
+```bash
+tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21}' - > line.annot
+tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21}' - > devel.annot
+tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$22}' - > line.annot
+tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$23}' - > geno.annot
+tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21"_"$22"_"$23}' - > devel_line_geno.annot
+
+```
+
+
 {% endcapture %} {% include details.html %} 
 
 
