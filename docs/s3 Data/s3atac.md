@@ -488,24 +488,10 @@ set.seed(1234)
 library(EnsDb.Hsapiens.v86)
 library(EnsDb.Mmusculus.v79)
 library(Matrix)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits")
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits/subsampled_merged_bams")
 
-hg38_subset_bams<-c("hg38.10000.merged",
-"hg38.1000.merged",
-"hg38.20perc.merged",
-"hg38.25000.merged",
-"hg38.40perc.merged",
-"hg38.5000.merged",
-"hg38.60perc.merged",
-"hg38.80perc.merged")
-mm10_subset_bams<-c("mm10.10000.merged.bam",
-"mm10.1000.merged.bam",
-"mm10.20perc.merged.bam",
-"mm10.25000.merged.bam",
-"mm10.40perc.merged.bam",
-"mm10.5000.merged.bam",
-"mm10.60perc.merged.bam",
-"mm10.80perc.merged.bam")
+file_in<-list.files(pattern="*.fracOnTarget.values")
+file_in<-substr(file_in,1,nchar(file_in)-20)
 
 make_seurat_object<-function(x,genome="hg38"){
 IN<-as.matrix(read.table(paste0(x,".counts.sparseMatrix.values.gz")))
@@ -517,7 +503,7 @@ row.names(IN)<-ROWS$V1
 counts_mat<-IN # make counts matrix from sparse matrix
 
 # extract gene annotations from EnsDb
-if(genome=="hg38"){
+if(startsWith(x,"hg38")){
 annotations<-GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
 } else {
 annotations<-GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
@@ -543,8 +529,7 @@ atac <- CreateSeuratObject(
 saveRDS(atac,file=paste0(x,"_SeuratObject.Rds"))
 }
 
-lapply(hg38_subset_bams,make_seurat_object)
-lapply(mm10_subset_bams,make_seurat_object,genome="mm10")
+lapply(file_in,make_seurat_object)
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -576,20 +561,21 @@ library(ggrepel)
 
 #Read in data and modify to monocle CDS file
 #read in RDS file.
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits")
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits/subsampled_merged_bams")
 
 
 ######FUNCTIONS#####
-cistopic_generation<-function(x,subset_obj,species="hg38"){
+cistopic_generation<-function(x){
 #Perform cistopic on subclusters of data 
     atac_sub<-readRDS(x) 
+    outname<-unlist(strsplit(x,"_"))[[1]]
     cistopic_counts_frmt<-atac_sub$peaks@counts
     row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
     sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
     sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(5,10,20:30),nCores=12,addModels=FALSE)
-    saveRDS(sub_cistopic_models,file=paste(species,subset_obj,".CisTopicObject.Rds",sep="_"))
+    saveRDS(sub_cistopic_models,file=paste(outname,"CisTopicObject.Rds",sep="."))
 
-    pdf(paste(species,subset_obj,"_model_selection.pdf",sep="_"))
+    pdf(paste(outname,"model_selection.pdf",sep="_"))
     par(mfrow=c(3,3))
     sub_cistopic_models <- selectModel(sub_cistopic_models, type='maximum')
     sub_cistopic_models <- selectModel(sub_cistopic_models, type='perplexity')
@@ -653,16 +639,11 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,
 
 ####################################
 ### Processing ###
-#hg38
-    #Set up variables
+    #Running cistopic model generation on all subset data
     seurat_objects<-list.files(pattern="SeuratObject.Rds$")
-    topics_generated<-list.files(pattern="model_selection.pdf$")
-    hg38_objects<-seurat_objects[grepl(seurat_objects,pattern="^hg38")]
-    hg38_object_list<-unlist(lapply(strsplit(hg38_objects,"[.]"),"[",2))
-    species="hg38"
-
+    topic_models<-list.files(pattern="CisTopicObject.Rds")
     #Running cistopic subclustering on all identified cell types
-    lapply(hg38_objects[8], function(i) {cistopic_generation(x=i,subset_obj=unlist(lapply(strsplit(i,"[.]"),"[",2)))})
+    lapply(seurat_objects[8:length(seurat_objects)], function(i) {cistopic_generation(x=i)})
     topicmodel_list<-paste(species,hg38_object_list,".CisTopicObject.Rds",sep="_")
 
     #determine model count to use for each cell type
@@ -678,17 +659,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,
     #selecting resolution by plots
     for (i in hg38_object_list){system(paste0("slack -F ",paste(species,hg38_object_list,"clustering.pdf",sep="_")," ryan_todo"))}
 
-#mm10
-    #Set up variables
-    seurat_objects<-list.files(pattern="SeuratObject.Rds$")
-    topics_generated<-list.files(pattern="model_selection.pdf$")
-    mm10_objects<-seurat_objects[grepl(seurat_objects,pattern="^mm10")]
-    mm10_object_list<-unlist(lapply(strsplit(mm10_objects,"[.]"),"[",2))
-    species="mm10"
-
-    #Running cistopic subclustering on all identified cell types
-    lapply(mm10_objects[8], function(i) {cistopic_generation(x=i,subset_obj=unlist(lapply(strsplit(i,"[.]"),"[",2)))})
-    topicmodel_list<-paste(species,mm10_object_list,".CisTopicObject.Rds",sep="_")
+##mm10
 
     #determine model count to use for each cell type
     for (i in paste(species,mm10_object_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}

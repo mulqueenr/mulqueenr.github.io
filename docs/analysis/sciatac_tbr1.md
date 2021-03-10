@@ -823,24 +823,25 @@ Using R v4.0 and Signac v1.0 for processing.
 
   library(cisTopic)
   obj<-readRDS(file="tbr1_ko.macs3.SeuratObject.Rds")
-  #row.names(obj@meta.data)<-obj$cellID
+  obj$cellID<-row.names(obj@meta.data)
 
   cistopic_processing<-function(seurat_input,prefix){
       cistopic_counts_frmt<-seurat_input$peaks@counts #grabbing counts matrices
       row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt)) #renaming row names to fit granges expectation of format
       atac_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt) #set up CisTopicObjects
       #Run warp LDA on objects
-      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(10,20,22,24,26,28,30,40),nCores=8,addModels=FALSE)
-      #atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(29,31,32,33,34,35,36,38),nCores=7,addModels=FALSE)   
+      #atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(10,20,22,24,26,28,30,40),nCores=8,addModels=FALSE)
+      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(29,31,32,33,34,35,36,38),nCores=7,addModels=TRUE)   
       print("Saving cistopic models.")
       saveRDS(atac_cistopic_models,file=paste(prefix,"CisTopicObject.Rds",sep=".")) 
   }
           
   #cistopic_processing(seurat_input=obj,prefix="tbr1_ko")
-  cistopic_processing(seurat_input=obj,prefix="tbr1_ko.macs3")
+  cistopic_processing(seurat_input=obj,prefix="tbr1_ko.macs3.more")
 
-  cistopic_models<-readRDS("tbr1_ko.CisTopicObject.Rds")
-  cistopic_models_more<-readRDS("tbr1_ko.moremodels.CisTopicObject.Rds")
+  #cistopic_models<-readRDS("tbr1_ko.CisTopicObject.Rds")
+  cistopic_models_more<-readRDS("tbr1_ko.macs3.CisTopicObject.Rds")
+  cistopic_models_more2<-cisTopic::runWarpLDAModels(cistopic_models_more,topic=c(29,31,32,33,34,35,36,38),nCores=7,addModels=TRUE)   
 
   #Setting up topic count selection
   pdf("tbr1_ko.cistopic_model_selection.pdf")
@@ -879,37 +880,34 @@ Using R v4.0 and Signac v1.0 for processing.
       object_input@reductions$umap<-cistopic_umap
       
       #finally plot
-      plt<-DimPlot(object_input,size=0.1,group.by="Developmental.Stage")+ggtitle(as.character(topic_number))
+      plt<-DimPlot(object_input,size=0.1)+ggtitle(as.character(topic_number))
       return(plt)
   }
 
   library(patchwork)
   library(parallel)
-  plt_list<-mclapply(names(cistopic_models@models), function(x) {
-    cistopic_loop(topic_number=x,object_input=obj,models_input=cistopic_models)},mc.cores=1)
+  #plt_list<-mclapply(names(cistopic_models@models), function(x) {
+  #  cistopic_loop(topic_number=x,object_input=obj,models_input=cistopic_models)},mc.cores=1)
 
   plt_list_more<-mclapply(names(cistopic_models_more@models), function(x) {
     cistopic_loop(topic_number=x,object_input=obj,models_input=cistopic_models_more)},mc.cores=1)
 
-  plt_list_merged<-c(plt_list,plt_list_more)
-  plt_list_plt<-wrap_plots(plt_list_merged)
-  ggsave(plt_list_plt,file="tbr1_ko.umap_multipleTopicModels_clustering.png",height=20,width=60,limitsize=FALSE)
-  system("slack -F tbr1_ko.umap_multipleTopicModels_clustering.png ryan_todo")
+  #plt_list_merged<-c(plt_list,plt_list_more)
+  #plt_list_plt<-wrap_plots(plt_list_merged)
+  plt_list_more<-wrap_plots(plt_list_more)
+  ggsave(plt_list_more,file="tbr1_ko.macs3.umap_multipleTopicModels_clustering.png",height=20,width=60,limitsize=FALSE)
+  system("slack -F tbr1_ko.macs3.umap_multipleTopicModels_clustering.png ryan_todo")
   ###############################################
-
-
 
   #set topics based on derivative
   selected_topic=28
   cisTopicObject<-cisTopic::selectModel(cistopic_models,select=selected_topic,keepModels=T)
 
   #saving model selected RDS
-  saveRDS(cisTopicObject,file="tbr1_ko.CisTopicObject.Rds")
+  saveRDS(cisTopicObject,file="tbr1_ko.macs3.CisTopicObject.Rds")
 
   ####Function to include topics and umap in seurat object
   cistopic_wrapper<-function(object_input=orgo_atac,cisTopicObject=orgo_cisTopicObject,resolution=0.8){   
-
-
       #run UMAP on topics
       topic_df<-as.data.frame(cisTopicObject@selected.model$document_expects)
       row.names(topic_df)<-paste0("Topic_",row.names(topic_df))
@@ -953,7 +951,7 @@ Using R v4.0 and Signac v1.0 for processing.
         resolution=resolution)
 
   ###save Seurat file
-  saveRDS(object_input,file="tbr1_ko.SeuratObject.Rds")
+  saveRDS(object_input,file="tbr1_ko.macs3.SeuratObject.Rds")
   return(object_input)}
 
   obj<-cistopic_wrapper(object_input=obj,cisTopicObject=cisTopicObject,resolution=0.5)
