@@ -809,6 +809,8 @@ Using R v4.0 and Signac v1.0 for processing.
 
 ## Performing cisTopic and UMAP
 
+Used multiple clustering and dim reduc attempts. Commented out irrelevant ones.
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
@@ -822,7 +824,7 @@ Using R v4.0 and Signac v1.0 for processing.
   setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
 
   library(cisTopic)
-  obj<-readRDS(file="tbr1_ko.macs3.SeuratObject.Rds")
+  obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
   obj$cellID<-row.names(obj@meta.data)
 
   cistopic_processing<-function(seurat_input,prefix){
@@ -830,18 +832,17 @@ Using R v4.0 and Signac v1.0 for processing.
       row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt)) #renaming row names to fit granges expectation of format
       atac_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt) #set up CisTopicObjects
       #Run warp LDA on objects
-      #atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(10,20,22,24,26,28,30,40),nCores=8,addModels=FALSE)
-      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(29,31,32,33,34,35,36,38),nCores=7,addModels=TRUE)   
+      atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(10,20,22,24,26,28,30,40),nCores=8,addModels=FALSE)
+      #atac_cistopic_models<-cisTopic::runWarpLDAModels(atac_cistopic,topic=c(29,31,32,33,34,35,36,38),nCores=7,addModels=TRUE)   
       print("Saving cistopic models.")
       saveRDS(atac_cistopic_models,file=paste(prefix,"CisTopicObject.Rds",sep=".")) 
   }
           
-  #cistopic_processing(seurat_input=obj,prefix="tbr1_ko")
-  cistopic_processing(seurat_input=obj,prefix="tbr1_ko.macs3.more")
+  cistopic_processing(seurat_input=obj,prefix="tbr1_ko")
+  #cistopic_processing(seurat_input=obj,prefix="tbr1_ko.macs3.more")
 
-  #cistopic_models<-readRDS("tbr1_ko.CisTopicObject.Rds")
-  cistopic_models_more<-readRDS("tbr1_ko.macs3.CisTopicObject.Rds")
-  cistopic_models_more2<-cisTopic::runWarpLDAModels(cistopic_models_more,topic=c(29,31,32,33,34,35,36,38),nCores=7,addModels=TRUE)   
+  cistopic_models<-readRDS("tbr1_ko.CisTopicObject.Rds")
+  #cistopic_models_more<-readRDS("tbr1_ko.macs3.more.CisTopicObject.Rds")
 
   #Setting up topic count selection
   pdf("tbr1_ko.cistopic_model_selection.pdf")
@@ -851,11 +852,11 @@ Using R v4.0 and Signac v1.0 for processing.
   system("slack -F tbr1_ko.cistopic_model_selection.pdf ryan_todo")
 
   #Setting up topic count selection
-  pdf("tbr1_ko.cistopic_modelmore_selection.pdf")
-  par(mfrow=c(1,3))
-  cistopic_models <- selectModel(cistopic_models_more, type='derivative')
-  dev.off()
-  system("slack -F tbr1_ko.cistopic_modelmore_selection.pdf ryan_todo")
+  #pdf("tbr1_ko.cistopic_modelmore_selection.pdf")
+  #par(mfrow=c(1,3))
+  #cistopic_models <- selectModel(cistopic_models_more, type='derivative')
+  #dev.off()
+  #system("slack -F tbr1_ko.cistopic_modelmore_selection.pdf ryan_todo")
 
 
   ###############################################
@@ -886,17 +887,13 @@ Using R v4.0 and Signac v1.0 for processing.
 
   library(patchwork)
   library(parallel)
-  #plt_list<-mclapply(names(cistopic_models@models), function(x) {
-  #  cistopic_loop(topic_number=x,object_input=obj,models_input=cistopic_models)},mc.cores=1)
 
-  plt_list_more<-mclapply(names(cistopic_models_more@models), function(x) {
-    cistopic_loop(topic_number=x,object_input=obj,models_input=cistopic_models_more)},mc.cores=1)
+  plt_list_more<-mclapply(names(cistopic_models@models), function(x) {
+    cistopic_loop(topic_number=x,object_input=obj,models_input=cistopic_models)},mc.cores=1)
 
-  #plt_list_merged<-c(plt_list,plt_list_more)
-  #plt_list_plt<-wrap_plots(plt_list_merged)
   plt_list_more<-wrap_plots(plt_list_more)
-  ggsave(plt_list_more,file="tbr1_ko.macs3.umap_multipleTopicModels_clustering.png",height=20,width=60,limitsize=FALSE)
-  system("slack -F tbr1_ko.macs3.umap_multipleTopicModels_clustering.png ryan_todo")
+  ggsave(plt_list_more,file="tbr1_ko.umap_multipleTopicModels_clustering.png",height=20,width=60,limitsize=FALSE)
+  system("slack -F tbr1_ko.umap_multipleTopicModels_clustering.png ryan_todo")
   ###############################################
 
   #set topics based on derivative
@@ -904,7 +901,7 @@ Using R v4.0 and Signac v1.0 for processing.
   cisTopicObject<-cisTopic::selectModel(cistopic_models,select=selected_topic,keepModels=T)
 
   #saving model selected RDS
-  saveRDS(cisTopicObject,file="tbr1_ko.macs3.CisTopicObject.Rds")
+  saveRDS(cisTopicObject,file="tbr1_ko.CisTopicObject.Rds")
 
   ####Function to include topics and umap in seurat object
   cistopic_wrapper<-function(object_input=orgo_atac,cisTopicObject=orgo_cisTopicObject,resolution=0.8){   
@@ -915,7 +912,7 @@ Using R v4.0 and Signac v1.0 for processing.
       row.names(dims)<-colnames(topic_df)
       colnames(dims)<-c("x","y")
       dims$cellID<-row.names(dims)
-      dims<-merge(dims,object_input@meta.data,by="row.names")
+      dims<-merge(dims,object_input@meta.data,by="cellID")
 
       #Add cell embeddings into seurat
       cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
@@ -951,11 +948,11 @@ Using R v4.0 and Signac v1.0 for processing.
         resolution=resolution)
 
   ###save Seurat file
-  saveRDS(object_input,file="tbr1_ko.macs3.SeuratObject.Rds")
   return(object_input)}
 
   obj<-cistopic_wrapper(object_input=obj,cisTopicObject=cisTopicObject,resolution=0.5)
-         
+  saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
+    
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -978,7 +975,6 @@ Using R v4.0 and Signac v1.0 for processing.
   setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
 
   obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
-  obj@meta.data$cellID<-row.names(obj@meta.data)
   dim(obj@meta.data)
 
   #Read in expected sci indexes
@@ -1013,18 +1009,20 @@ Using R v4.0 and Signac v1.0 for processing.
   obj@meta.data<-merge(obj@meta.data,samp_info,by.x=c("tn5_i5_set","tn5_i5_row","tn5_i7_set","tn5_i7_row"),by.y=c("tn5_i5_set","Row","tn5_i7_set","Column"))
   dim(obj@meta.data)
 
-
-  row.names(obj@meta.data)<-obj$cellID
   saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
   write.table(obj@meta.data,file="summary_statistics_per_cell.tsv",col.names=T,row.names=T,sep="\t",quote=F)
 
-  plt<-DimPlot(obj,group.by=c("Developmental.Stage","sex","line","genotype","tube_ID"))
+  obj$line_genotype<-paste(obj$line,obj$genotype,sep="_")
+  plt<-DimPlot(obj,group.by=c("peaks_snn_res.0.5","Developmental.Stage","sex","line_genotype","tube_ID"))
   ggsave(plt,file="tbr1_ko.umap.png",width=20)
   ggsave(plt,file="tbr1_ko.umap.pdf",width=20)
   system("slack -F tbr1_ko.umap.pdf ryan_todo")
 
 ```
 ### Make annotation files
+
+This can be helpful with some other scitools functions.
+
 ```bash
 tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21}' - > line.annot
 tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21}' - > devel.annot
@@ -1060,10 +1058,8 @@ tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21"_"$22"_
   frip<-read.table("tbr1_ko.filt.500.fracOnTarget.values")
   colnames(frip)<-c("cellID","frip")
   obj$FRIP<-frip[match(obj$cellID,frip$cellID,),]$frip
-  saveRDS(obj,"tbr1_ko.SeuratObject.Rds")
 
-  #cat plate10.complexity.txt plate2.complexity.txt plate1.complexity.txt > complexity.txt
-  compl<-read.table("complexity.txt")
+  compl<-read.table("allplates.complexity.txt")
   colnames(compl)<-c("roworder","cellID","total_reads","unique_reads","percent_unique")
   obj$total_reads<-compl[match(obj$cellID,compl$cellID,),]$total_reads
   obj$unique_reads<-compl[match(obj$cellID,compl$cellID,),]$unique_reads
