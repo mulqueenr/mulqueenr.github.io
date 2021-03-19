@@ -459,18 +459,21 @@ do scitools callpeaks $i ; done &
 #   99236 mm10.60perc.merged.500.bed
 #  154911 mm10.80perc.merged.500.bed
 
+#for i in hg38*bam;
+#do scitools atac-count -O ${i::-4}.fullpeakset $i ../../hg38.bbrd.q10.500.bed & done &
+
+#for i in mm10*bam;
+#do scitools atac-count -O ${i:-4}.fullpeakset $i ../../mm10.bbrd.q10.500.bed & done &
+
 for i in hg38*bam;
-do scitools atac-count -O ${i::-4}.fullpeakset $i ../../hg38.bbrd.q10.500.bed & done &
+do scitools atac-count -O ${i::-4} $i ${i::-4}.500.bed & done &
 
 for i in mm10*bam;
-do scitools atac-count -O ${i:-4}.fullpeakset $i ../../mm10.bbrd.q10.500.bed & done &
+do scitools atac-count -O ${i:-4} $i ${i::-4}.500.bed & done &
 
-
-for i in hg38*bam;
-do scitools atac-count -O ${i::-4}.calledpeaks $i ${i::-4}.500.bed & done &
-
-for i in mm10*bam;
-do scitools atac-count -O ${i:-4}.calledpeaks $i ${i::-4}.500.bed & done &
+#Generate count of reads per bam
+for i in *bam; do
+samtools view $i | awk '{split($1,a,":");print a[1]}' | sort --parallel 10 | uniq -c > ${i::-4}.counts.txt; done &
 
 ````
 
@@ -489,10 +492,14 @@ set.seed(1234)
 library(EnsDb.Hsapiens.v86)
 library(EnsDb.Mmusculus.v79)
 library(Matrix)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits/subsampled_merged_bams")
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits/single_dedup_bams")
 
 file_in<-list.files(pattern="*.fracOnTarget.values")
 file_in<-substr(file_in,1,nchar(file_in)-20)
+
+hg38_annotations<-GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+mm10_annotations<-GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+
 
 make_seurat_object<-function(x,genome="hg38"){
 IN<-as.matrix(read.table(paste0(x,".counts.sparseMatrix.values.gz")))
@@ -505,9 +512,9 @@ counts_mat<-IN # make counts matrix from sparse matrix
 
 # extract gene annotations from EnsDb
 if(startsWith(x,"hg38")){
-annotations<-GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+annotations<-hg38_annotations
 } else {
-annotations<-GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+annotations<-mm10_annotations
 }
 
 # change to UCSC style
@@ -539,30 +546,20 @@ Perform cisTopic on each subset seurat object
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
+This is a custom R script to be run in bash with argument 1 being the seurat objects. This is because cistopic seems to have a memory leak if run in R internally.
+
 ```R
 library(Signac)
 library(Seurat)
 library(SeuratWrappers)
-library(ggplot2)
-library(patchwork)
-library(cicero)
 library(cisTopic)
-library(GenomeInfoDb)
-library(ggplot2)
 set.seed(1234)
-library(EnsDb.Hsapiens.v86)
-library(Matrix)
-library(JASPAR2020)
-library(TFBSTools)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(patchwork)
-set.seed(1234)
-library(dplyr)
-library(ggrepel)
 
 #Read in data and modify to monocle CDS file
 #read in RDS file.
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits/subsampled_merged_bams")
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits/single_dedup_bams")
+
+args = commandArgs(trailingOnly=TRUE)
 
 
 ######FUNCTIONS#####
@@ -573,7 +570,7 @@ cistopic_generation<-function(x){
     cistopic_counts_frmt<-atac_sub$peaks@counts
     row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
     sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
-    sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(5,10,20:30),nCores=12,addModels=FALSE)
+    sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(10,20:30),nCores=11,addModels=FALSE)
     saveRDS(sub_cistopic_models,file=paste(outname,"CisTopicObject.Rds",sep="."))
 
     pdf(paste(outname,"model_selection.pdf",sep="_"))
@@ -582,18 +579,71 @@ cistopic_generation<-function(x){
     dev.off()
     }
 
-#UMAP Projection and clustering on selected cistopic model
-clustering_loop<-function(object_input=obj_in,topic_input=topic_in,topic_count_input=topic_count){
-    #set up subset object again
-    atac_sub<-readRDS(object_input) 
-    outname<-unlist(strsplit(object_input,"_"))[[1]]
-    species<-unlist(strsplit(outname,"[.]"))[[1]]
-    downsamp<-unlist(strsplit(outname,"[.]"))[[2]]
-    peaks<-unlist(strsplit(outname,"[.]"))[[4]]
 
+####################################
+### Processing ###
+    #Running cistopic model generation on all subset data
+    print(paste("Running model for",args[1]))
+    #Running cistopic subclustering on all identified cell types
+    #lapply(seurat_objects[8:length(seurat_objects)], function(i) {cistopic_generation(x=i)})
+	cistopic_generation(x=args[1])
+
+```
+{% endcapture %} {% include details.html %} 
+
+
+Using a bash loop for cistopic clustering. 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```bash
+for i in *SeuratObject.Rds; 
+do Rscript cistopic.loop.r $i; done &
+#cistopic.loop.r is the above R code
+```
+{% endcapture %} {% include details.html %} 
+
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(cisTopic)
+library(patchwork)
+library(ggplot2)
+set.seed(1234)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits/single_dedup_bams")
+
+	hg38_atac<-readRDS(file="/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/hg38_SeuratObject.Rds")
+	mm10_atac<-readRDS(file="/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10_SeuratObject.Rds")
+
+    seurat_objects<-list.files(pattern="SeuratObject.Rds$")
+    topic_models<-list.files(pattern="CisTopicObject.Rds$")
+
+    #determine model count to use for each cell type
+    for (i in seurat_objects){
+    	    outname<-unlist(strsplit(i,"_"))[[1]]
+    	    system(paste0("slack -F ",outname,"_model_selection.pdf"," ryan_todo"))}
+
+    #selecting topics based on derivative, making a named vector 
+    topic_count_list<-c(24,24,25,26,26,28,30,28,23,30,30,23,
+    	24,30,27,28,30,30,28,28,23,26,26,24)
+    names(topic_count_list)<-topic_models
+
+
+#UMAP Projection and clustering on selected cistopic model
+clustering_loop<-function(topicmodel,topiccount,seuratobject,genome_name="hg38",outname.){
+	outname<-outname.
+	object_input<-readRDS(seuratobject)
+	object_input$cellID<-row.names(object_input@meta.data)
     #select_topic
-    models_input<-readRDS(topic_input)
-    cisTopicObject<-cisTopic::selectModel(models_input,select=topic_count_input,keepModels=F)
+    models_input<-readRDS(topicmodel)
+    counts<-read.table(paste0(outname,".counts.txt"),header=F)
+    colnames(counts)<-c("subsamp_counts","cellID")
+    row.names(counts)<-counts$cellID
+    avg_read_count<-mean(counts$subsamp_counts)
+    cisTopicObject<-cisTopic::selectModel(models_input,select=topiccount,keepModels=F)
     
     #perform UMAP on topics
     topic_df<-as.data.frame(cisTopicObject@selected.model$document_expects)
@@ -602,7 +652,6 @@ clustering_loop<-function(object_input=obj_in,topic_input=topic_in,topic_count_i
     row.names(dims)<-colnames(topic_df)
     colnames(dims)<-c("x","y")
     dims$cellID<-row.names(dims)
-    dims<-merge(dims,atac_sub@meta.data,by.x="cellID",by.y="row.names")
 
     #get cell embeddings
     cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
@@ -618,72 +667,151 @@ clustering_loop<-function(object_input=obj_in,topic_input=topic_in,topic_count_i
     
     #combine with seurat object for celltype seuratobject  
     cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
-    umap_dims<-as.data.frame(as.matrix(dims[2:3]))
+    umap_dims<-as.data.frame(as.matrix(dims[,c("x","y")]))
     colnames(umap_dims)<-c("UMAP_1","UMAP_2")
     row.names(umap_dims)<-dims$cellID
     cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(umap_dims),assay="peaks",key="UMAP_")
-    atac_sub@reductions$cistopic<-cistopic_obj
-    atac_sub@reductions$umap<-cistopic_umap
-    #finally recluster
-    n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic"))
-    #Clustering with multiple resolutions to account for different celltype complexities
+    object_input@reductions$cistopic<-cistopic_obj
+    object_input@reductions$umap<-cistopic_umap
 
-    if(startsWith(object_input,"hg38")){
-    fullset_metadata<-as.data.frame(hg38_atac@meta.data)
-    } else {
-    fullset_metadata<-as.data.frame(mm10_atac@meta.data)
-    }
-    
-    fullset_metadata<-fullset_metadata[row.names(fullset_metadata) %in% row.names(atac_sub@meta.data),]
-    atac_sub<-AddMetaData(atac_sub,fullset_metadata)
-    saveRDS(atac_sub,paste0(outname,"_processed.SueratObject.Rds"))
-    plt<-DimPlot(atac_sub,group.by="seurat_clusters")+ggtitle(paste(species,downsamp,peaks))+theme(plot.title = element_text(size = 10))
-    ggsave(plt,file=paste0(outname,"_clustering.pdf"))
+    if(genome_name=="hg38"){
+    	metadata<-as.data.frame(hg38_atac@meta.data)
+    	}else {
+    	metadata<-as.data.frame(mm10_atac@meta.data)
+    	}
+    object_input$cellID<-row.names(object_input@meta.data)
+    object_input<-subset(object_input,cells=metadata$cellID)
+    object_input<-AddMetaData(object_input,metadata)
+
+    saveRDS(object_input,seuratobject)
+    plt<-DimPlot(object_input,group.by=c('seurat_clusters'))+ggtitle(paste(outname,avg_read_count))
+    ggsave(plt,file=paste(outname,"clustering.pdf",sep="_"))
     return(plt)
 }
 
 
-
-
-####################################
-### Processing ###
-    #Running cistopic model generation on all subset data
-    seurat_objects<-list.files(pattern="SeuratObject.Rds$")
-    topic_models<-list.files(pattern="CisTopicObject.Rds")
-    #Running cistopic subclustering on all identified cell types
-    lapply(seurat_objects, function(i) {cistopic_generation(x=i)})
-
-    #determine model count to use for each cell type
-    for (i in seurat_objects){
-    	    outname<-unlist(strsplit(i,"_"))[[1]]
-    	    system(paste0("slack -F ",outname,"_model_selection.pdf"," ryan_todo"))}
-
-    #selecting topics based on derivative, making a named vector 
-    topic_count_list<-c(25,30,28,29,29,22,26,27,24,27,25,22,24,26,26,23,
-    	28,27,29,26,30,25,28,28,23,24,29,27,22,27,27,30)
-    names(topic_count_list)<-topic_models
-    hg38_atac<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/hg38_SeuratObject.Rds")
-    mm10_atac<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10_SeuratObject.Rds")
-
     #Running clustering loop
-    plt_list<-lapply(seurat_objects,function(i) {
-    	outname<-unlist(strsplit(i,"_"))[[1]]
-    	obj_in<-paste(outname,"SeuratObject.Rds",sep="_")
-    	topic_in<-paste(outname,"CisTopicObject.Rds",sep=".")
+    hg38_seuratobjects<-seurat_objects[which(startsWith(seurat_objects,"hg38"))]
+    mm10_seuratobjects<-seurat_objects[which(startsWith(seurat_objects,"mm10"))]
+
+    plt_list_hg38<-lapply(hg38_seuratobjects,function(i) {
+    	outname_in<-unlist(strsplit(i,"_"))[[1]]
+    	obj_in<-paste(outname_in,"SeuratObject.Rds",sep="_")
+    	topic_in<-paste(outname_in,"CisTopicObject.Rds",sep=".")
 		topic_count=topic_count_list[topic_in]
-    	clustering_loop(object_input=obj_in,topic_input=topic_in,topic_count_input=topic_count)}
+    	clustering_loop(seuratobject=obj_in,topicmodel=topic_in,topiccount=topic_count,genome_name="hg38",outname.=outname_in)}
+    	)
+
+    plt_list_mm10<-lapply(mm10_seuratobjects,function(i) {
+    	outname_in<-unlist(strsplit(i,"_"))[[1]]
+    	obj_in<-paste(outname_in,"SeuratObject.Rds",sep="_")
+    	topic_in<-paste(outname_in,"CisTopicObject.Rds",sep=".")
+		topic_count=topic_count_list[topic_in]
+    	clustering_loop(seuratobject=obj_in,topicmodel=topic_in,topiccount=topic_count,genome_name="mm10",outname.=outname_in)}
     	)
     
-    library(patchwork)
-    plt_list_out<-wrap_plots(plt_list,guides="collect")
+    plt_list_out<-wrap_plots(plt_list_hg38,guides="collect")
+  	ggsave(plt_list_out,file="downsample.hg38.clustering.pdf",height=30,width=30,limitsize=F)
+  	system("slack -F downsample.hg38.clustering.pdf ryan_todo")
 
-  	ggsave(plt_list_out,file="downsample.clustering.pdf",height=30,width=30,limitsize=F)
-  	system("slack -F downsample.clustering.pdf ryan_todo")
+  	plt_list_out<-wrap_plots(plt_list_mm10,guides="collect")
+  	ggsave(plt_list_out,file="downsample.mm10.clustering.pdf",height=30,width=30,limitsize=F)
+  	system("slack -F downsample.mm10.clustering.pdf ryan_todo")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
+### Gene activity score comparison between downsampled seurat objects
+```R
+library(SeuratWrappers)
+library(ggplot2)
+library(patchwork)
+library(cicero)
+library(EnsDb.Hsapiens.v86)
+library(EnsDb.Mmusculus.v79)
+library(Signac)
+library(Seurat)
+set.seed(1234)
+
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits/single_dedup_bams")
+
+seurat_objects<-list.files(pattern="SeuratObject.Rds$")
+
+#Read in data and modify to monocle CDS file
+#read in RDS file.
+
+cicero_processing<-function(x){
+	obj_in<-readRDS(x)
+	outname_in<-unlist(strsplit(x,"_"))[[1]]
+	#convert to CellDataSet format and make the cicero object
+    #Processing hg38 cells
+    obj.cds <- as.cell_data_set(x = obj_in,group_by="seurat_clusters")
+    obj.cicero <- make_cicero_cds( obj.cds, reduced_coordinates = reducedDims(obj.cds)$UMAP)
+    genome <- seqlengths(obj_in) # get the chromosome sizes from the Seurat object
+    genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
+    conns <- run_cicero(obj.cicero, genomic_coords = genome.df) # run cicero
+    saveRDS(conns,paste0(outname_in,"_cicero_conns.Rds"))
+    ccans <- generate_ccans(conns) # generate ccans
+    saveRDS(ccans,paste0(outname_in,"_cicero_ccans.Rds"))
+    links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
+    Links(obj_in) <- links
+    saveRDS(obj_in,x)
+}
+
+
+# generate unnormalized gene activity matrices
+# gene annotation sample
+    #hg38
+    hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+    mm10_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+
+generate_ga<-function(x){
+	obj_in<-readRDS(x)
+	outname_in<-unlist(strsplit(x,"_"))[[1]]
+	conns<-readRDS(paste0(outname_in,"_cicero_conns.Rds"))
+
+	if(startsWith(outname_in,"hg38")){
+		annot<-hg38_annotations
+	} else {
+		annot<-mm10_annotations
+	}
+
+	pos <-as.data.frame(annot,row.names=NULL)
+    pos$chromosome<-paste0("chr",pos$seqnames)
+    pos$gene<-pos$gene_id
+    pos <- subset(pos, strand == "+")
+    pos <- pos[order(pos$start),] 
+    pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
+    pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
+
+    neg <-as.data.frame(annot,row.names=NULL)
+    neg$chromosome<-paste0("chr",neg$seqnames)
+    neg$gene<-neg$gene_id
+    neg <- subset(neg, strand == "-")
+    neg <- neg[order(neg$start,decreasing=TRUE),] 
+    neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
+    neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
+    gene_annotation<- rbind(pos, neg)
+    gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
+    names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
+    obj.cds<-annotate_cds_by_site(as.cell_data_set(x = obj_in,group_by="seurat_clusters"), gene_annotation)
+    unnorm_ga<-build_gene_activity_matrix(obj.cds, conns)
+    saveRDS(unnorm_ga,paste0(outname_in,".unnorm_GA.Rds"))
+    obj_in[['GeneActivity']]<- CreateAssayObject(counts = as.data.frame(unnorm_ga)) 
+    # normalize
+    obj_in <- NormalizeData(
+      object = obj_in,
+      assay = 'GeneActivity',
+      normalization.method = 'LogNormalize',
+      scale.factor = median(obj_in$nCount_peaks)
+    )
+    saveRDS(obj_in,x)
+}
+
+
+lapply(seurat_objects,cicero_processing)
+lapply(seurat_objects,generate_ga)
+```
 <!--
 ```python
 import glob
