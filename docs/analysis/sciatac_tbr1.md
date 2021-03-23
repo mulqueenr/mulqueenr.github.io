@@ -1261,7 +1261,6 @@ system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
 {% endcapture %} {% include details.html %} 
 
 
-
 ### Differential Motif Accessibility
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -1375,6 +1374,43 @@ system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
   obj_ga<-do.call("rbind",do.call("rbind",obj_ga))
   write.table(obj_ga,file="tbr1_ko.onevrest.da_ga.txt",sep="\t",col.names=T,row.names=T,quote=F)
 
+
+  #Now plotting
+  ########################Plot out top TF for each cluster###################
+  da_tf<-read.csv(file="tbr1_ko.onevrest.da_chromvar.txt",head=T,sep="\t",row.names=NULL)
+
+  da_tf$label<-""
+  for (x in unique(da_tf$enriched_group)){
+  selc_genes<-as.data.frame(da_tf %>% filter(enriched_group==x)  %>% filter(p_val < 0.05) %>% arrange(rev(desc(p_val))) %>% slice(1:10))$tf_name
+  da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$label<- da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$tf_name
+  }
+
+
+  plt<-ggplot(da_tf,aes(x=avg_logFC,y=(-log(p_val)),color=as.factor(enriched_group)))+
+  geom_point(aes(alpha=0.1))+
+  geom_label_repel(aes(label=label),size=2,force=5)+
+  theme_bw()+ylim(c(0,7))+xlim(c(0,20))
+  ggsave(plt,file="tbr1_ko.onevrest.da_chromvar.plt.pdf")
+  system(paste0("slack -F ","tbr1_ko.onevrest.da_chromvar.plt.pdf"," ryan_todo"))
+
+    ########################Plot out top DA Peaks for each cluster###################
+  da_peaks<-read.csv(file="tbr1_ko.onevrest.da_peaks.txt",head=T,sep="\t",row.names=NULL)
+
+  da_peaks$label<-""
+  for (x in unique(da_peaks$enriched_group)){
+  selc_genes<-as.data.frame(da_peaks %>% filter(enriched_group==x)  %>% filter(p_val < 0.05) %>% arrange(rev(desc(p_val))) %>% slice(1:10))$gene_name
+  da_peaks[da_peaks$gene_name %in% selc_genes & da_peaks$enriched_group==x,]$label<- da_peaks[da_peaks$gene_name %in% selc_genes & da_peaks$enriched_group==x,]$gene_name
+  }
+
+
+  plt<-ggplot(da_peaks,aes(x=avg_logFC,y=(-log(p_val)),color=as.factor(enriched_group)))+
+  geom_point(aes(alpha=0.1))+
+  geom_label_repel(aes(label=label),size=2,force=5)+
+  theme_bw()+ylim(c(0,7))+xlim(c(0,20))
+  ggsave(plt,file="tbr1_ko.onevrest.da_peaks.plt.pdf")
+  system(paste0("slack -F ","tbr1_ko.onevrest.da_peaks.plt.pdf"," ryan_todo"))
+
+
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -1441,3 +1477,41 @@ system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 
+```R
+
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
+
+  library(Signac)
+  library(Seurat)
+  library(GenomeInfoDb)
+  library(ggplot2)
+  set.seed(1234)
+  library(EnsDb.Mmusculus.v79)
+  library(Matrix)
+
+  obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
+
+simpleCap <- function(x) {
+  s <- strsplit(x, " ")[[1]]
+  paste(toupper(substring(s, 1,1)), tolower(substring(s, 2)),
+      sep="", collapse=" ")
+}
+
+markers<-c("Rit1","Tbr1","Cux1","Neurod6","Gad2","Eomes","Mki67")
+markers<-unlist(lapply(markers,simpleCap)) # correct case
+
+plt<-FeaturePlot(obj,features=markers,order=T,min.cutoff="q05",max.cutoff="q95",cols=c("lightgrey","red"))
+ggsave(plt,file="tbr1_ko.markers.test.pdf",width=20,height=20)
+system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
+
+plt<-VlnPlot(obj,features=markers,group.by="seurat_clusters")
+ggsave(plt,file="tbr1_ko.markers.test.pdf",width=20,height=20)
+system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
+
+row.names(obj@assays$chromvar@data)<-unlist(lapply(unlist(lapply(row.names(obj@assays$chromvar@data), function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
+
+plt<-FeaturePlot(obj,features=c("TBR1","CUX1","NEUROD6","GAD2","EOMES"),order=T,min.cutoff="q01",max.cutoff="q99",cols=c("lightgrey","blue"))
+ggsave(plt,file="tbr1_ko.markers.test.pdf",width=20,height=20)
+system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
+
+```

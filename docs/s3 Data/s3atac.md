@@ -755,7 +755,7 @@ cicero_processing<-function(x){
     saveRDS(ccans,paste0(outname_in,"_cicero_ccans.Rds"))
     links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
     Links(obj_in) <- links
-    saveRDS(obj_in,x)
+    saveRDS(obj_in,paste0(outname_in,"Seurat.cicero.Rds"))
 }
 
 
@@ -809,8 +809,16 @@ generate_ga<-function(x){
 }
 
 
-lapply(seurat_objects,cicero_processing)
-lapply(seurat_objects,generate_ga)
+for (i in seurat_objects){
+	tryCatch(
+		{
+			cicero_processing(i)
+		},
+		error=function(err){print(paste(i,"failed to generate model."))})
+}
+
+cicero_objects<-list.files(pattern="Seurat.cicero.Rds")
+lapply(cicero_objects,generate_ga)
 ```
 <!--
 ```python
@@ -1794,11 +1802,11 @@ for (x in 1:length(marker_list)){
 }
 
 #For concatenating cell types into a single scrollable pdf
-celltype=`ls mm10*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
-for i in $celltype ; do convert `echo mm10_${i}_*genebody_accessibility.pdf` markerset_mm10_${i}.pdf; done
+#celltype=`ls mm10*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
+#for i in $celltype ; do convert `echo mm10_${i}_*genebody_accessibility.pdf` markerset_mm10_${i}.pdf; done
 
-celltype=`ls hg38*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
-for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` markerset_hg38_${i}.pdf; done
+#celltype=`ls hg38*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
+#for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` markerset_hg38_${i}.pdf; done
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -2847,32 +2855,100 @@ system("slack -F inhib_markers.pdf ryan_todo")
 {% endcapture %} {% include details.html %} 
 
 
-<!--
-## Species Coembedding
-### Using https://satijalab.org/seurat/v3.0/integration.html
 
+## Public Data RNA Comparison
+### Download data from Allen Brain-span
+For human: https://portal.brain-map.org/atlases-and-data/rnaseq/human-m1-10x
+For mouse: https://portal.brain-map.org/atlases-and-data/rnaseq/mouse-whole-cortex-and-hippocampus-10x
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+```bash
+#Human download
+cd /home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex
+wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/70/32/70326830-e306-4743-a02c-a8da5bf9eb56/readme-m1-10.txt
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/metadata.csv
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/matrix.csv
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/trimmed_means.csv
+wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/0c/0c/0c0c882d-1c31-40a9-8039-3bf2706a77cd/sample-exp_component_mapping_human_10x_apr2020.zip
+#Mouse download
+cd /home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse
+wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/87/14/8714d0a3-27d7-4a81-8c77-eebfd605a280/readme_mouse_10x.txt
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_mouse_ctx-hip_10x/metadata.csv 
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_mouse_ctx-hip_10x/matrix.csv
+wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_mouse_ctx-hip_10x/trimmed_means.csv
+#Downloading Mouse whole brain data 
+wget https://www.dropbox.com/s/kqsy9tvsklbu7c4/allen_brain.rds?dl=0
+
+```
+{% endcapture %} {% include details.html %} 
+
+
+### Process Data into Seurat Object
+Following https://satijalab.org/seurat/v3.2/pbmc3k_tutorial.html
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+```R
+library(Seurat)
+library(ggplot2)
+#Human
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex")
+meta_data<-read.csv("metadata.csv",header=T)
+row.names(meta_data)<-meta_data$sample_name
+counts<-read.csv("matrix.csv",header=T,row.names=1)
+brainspan <- CreateSeuratObject(counts = as.data.frame(t(counts)), project = "brainspain", min.cells = 3, min.features = 500, meta.data=meta_data)
+saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
+brainspan <- NormalizeData(brainspan, normalization.method = "LogNormalize", scale.factor = 10000)
+brainspan <- FindVariableFeatures(brainspan, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(brainspan)
+brainspan <- ScaleData(brainspan, features = all.genes)
+brainspan <- RunPCA(brainspan, features = VariableFeatures(object = brainspan))
+plt<-ElbowPlot(brainspan)
+ggsave(plt,file="allen_brainspan_humancortex.elbowplot.pdf")
+system("slack -F allen_brainspan_humancortex.elbowplot.pdf ryan_todo")
+brainspan <- FindNeighbors(brainspan, dims = 1:14)
+brainspan <- FindClusters(brainspan, resolution = 0.5)
+brainspan <- RunUMAP(brainspan, dims = 1:14)
+plt<-DimPlot(brainspan, reduction = "umap",group.by=c("class_label","subclass_label"))
+ggsave(plt,file="allen_brainspan_humancortex.dimplot.pdf",width=30)
+system("slack -F allen_brainspan_humancortex.dimplot.pdf ryan_todo")
+saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
+
+#Mouse
+ setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse")
+ meta_data<-read.csv("metadata.csv",header=T)
+ row.names(meta_data)<-meta_data$sample_name
+ counts<-read.csv("matrix.csv",header=T,row.names=1,nrows=100000) #this is 1million cells, i think 10% of that will be fine, hopefully they are evenly distributed
+ brainspan <- CreateSeuratObject(counts = as.data.frame(t(counts)), project = "brainspain", min.cells = 3, min.features = 500, meta.data=meta_data)
+ saveRDS(brainspan, file = "allen_brainspan_mouse.rds")
+ brainspan <- NormalizeData(brainspan, normalization.method = "LogNormalize", scale.factor = 10000)
+ brainspan <- FindVariableFeatures(brainspan, selection.method = "vst", nfeatures = 2000)
+ all.genes <- rownames(brainspan)
+ brainspan <- ScaleData(brainspan, features = all.genes)
+ brainspan <- RunPCA(brainspan, features = VariableFeatures(object = brainspan))
+ plt<-ElbowPlot(brainspan)
+ ggsave(plt,file="allen_brainspan_mouse.elbowplot.pdf")
+ system("slack -F allen_brainspan_mouse.elbowplot.pdf ryan_todo")
+ brainspan <- FindNeighbors(brainspan, dims = 1:15)
+ brainspan <- FindClusters(brainspan, resolution = 0.5)
+ brainspan <- RunUMAP(brainspan, dims = 1:15)
+ plt<-DimPlot(brainspan, reduction = "umap",group.by=c("class_label","subclass_label"))
+ ggsave(plt,file="allen_brainspan_mouse.dimplot.pdf",width=30)
+ system("slack -F allen_brainspan_mouse.dimplot.pdf ryan_todo")
+ saveRDS(brainspan, file = "allen_brainspan_mouse.rds")
+
+
+```
+{% endcapture %} {% include details.html %} 
+
+### Integration of ATAC and RNA for cell type identification
+
+Retry mouse cluster id just straight up following https://satijalab.org/signac/articles/mouse_brain_vignette.html?
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
+library(ComplexHeatmap)
 library(Signac)
 library(Seurat)
-library(SeuratWrappers)
 library(ggplot2)
-library(patchwork)
-library(cicero)
-library(cisTopic)
-library(GenomeInfoDb)
-library(ggplot2)
-set.seed(1234)
-library(EnsDb.Hsapiens.v86)
-library(Matrix)
-library(JASPAR2020)
-library(TFBSTools)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(patchwork)
-set.seed(1234)
-library(dplyr)
-library(ggrepel)
-
 
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
 
@@ -2881,53 +2957,49 @@ setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3a
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
 mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 
-DefaultAssay(hg38_atac) <- 'GeneActivity'
-DefaultAssay(mm10_atac) <- 'GeneActivity'
-#map mm10 genes to hg38 genes following https://www.r-bloggers.com/2016/10/converting-mouse-to-human-gene-names-with-biomart-package/
-library(biomaRt)
+predict_celltype<-function(object,brainspan,prefix){
+    transfer.anchors <- FindTransferAnchors(reference = brainspan,query = object,query.assay="GeneActivity",reduction = 'cca')
+    saveRDS(transfer.anchors,file=paste0(prefix,".transferanchors.rds"))
+    #predict labels for class and subclass
+    predicted.labels.class <- TransferData(anchorset = transfer.anchors,refdata = brainspan$class_label,weight.reduction = "cca",dims = 1:30)
+    predicted.labels.subclass <- TransferData(anchorset = transfer.anchors,refdata = brainspan$subclass_label,weight.reduction = "cca", dims = 1:30)
+    object <- AddMetaData(object = object, metadata = predicted.labels.class)
+    object <- AddMetaData(object = object, metadata = predicted.labels.subclass)
+    saveRDS(object,file=paste0(prefix,"_SeuratObject.Rds"))
 
-musGenes <- row.names(mm10_atac)
-# Basic function to convert mouse to human gene names
-human = useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-mouse = useMart("ensembl", dataset = "mmusculus_gene_ensembl")
-genesV2 = getLDS(attributes = c("mgi_symbol"), filters = "mgi_symbol", values = musGenes , mart = mouse, attributesL = c("hgnc_symbol"), martL = human, uniqueRows=F)
-genesV2 = genesV2[!duplicated(genesV2$HGNC.symbol),] #remove duplicated genes
+    feat<-colnames(object@meta.data)[which(grepl("prediction.score",colnames(object@meta.data)))]
+    feat<-feat[feat !="prediction.score.max"]
+    plt<-FeaturePlot(object,features=feat,order=T)#plot feature plots
+    ggsave(plt,file=paste0(prefix,"_predicted.umap.png"),width=20,height=30)
+    system(paste0("slack -F ",prefix,"_predicted.umap.png ryan_todo"))
 
-hg38_ga<-hg38_atac@assays$GeneActivity@counts
-mm10_ga<-mm10_atac@assays$GeneActivity@counts
+    #plot merged cluster heatmap
+    #Generate Heatmap of TF ChromVar score and TF modules
+    pred<-object@meta.data[,feat]
+    colnames(pred)<-substring(colnames(pred),18) #remove "prediction.score" for readability
+    #Combine over subclusters
+    pred<-split(pred,paste(object$seurat_clusters)) #group by rows to seurat clusters
+    pred<-lapply(pred,function(x) apply(x,2,mean)) #take average across group
+    pred<-do.call("rbind",pred) #condense to smaller data frame
+    pred<-pred[!endsWith(row.names(pred),"NA"),] #remove doublets not assigned a subcluster
 
-#set mm10 gene names as hg38
-mm10_ga<-mm10_ga[row.names(mm10_ga) %in% genesV2$MGI.symbol,]
-row.names(mm10_ga)<-genesV2[match(row.names(mm10_ga),genesV2$MGI.symbol),]$HGNC.symbol
-#subset mm10 and hg38 to same genes
-hg38_ga<-hg38_ga[row.names(hg38_ga) %in% row.names(mm10_ga),]
-mm10_ga<-mm10_ga[row.names(mm10_ga) %in% row.names(hg38_ga),]
+    plt1<-Heatmap(pred,clustering_distance_rows="maximum",clustering_distance_columns="maximum")
+    pdf(paste0(prefix,".complexheatmap.pdf"),height=20)
+    plt1
+    dev.off()
+    system(paste0("slack -F ",prefix,".complexheatmap.pdf ryan_todo"))
 
-hg38_ga<-CreateSeuratObject(counts=hg38_ga,meta.data=hg38_atac@meta.data,assay="ACTIVITY")
-mm10_ga<-CreateSeuratObject(counts=mm10_ga,meta.data=mm10_atac@meta.data,assay="ACTIVITY")
+}
 
-atac.list<-merge(hg38_ga,mm10_ga)
-atac.list <- SplitObject(atac.list, split.by = "barnyard_calledspecies")
-atac.list <- lapply(X = atac.list, FUN = function(x) {
-    x <- NormalizeData(x, assay="ACTIVITY",verbose = FALSE)
-    x <- FindVariableFeatures(x, assay="ACTIVITY",verbose = FALSE)
-})
+brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
+predict_celltype(object=hg38_atac,brainspan=brainspan.,prefix="hg38")
 
-features <- SelectIntegrationFeatures(object.list = atac.list)
-atac.list <- lapply(X = atac.list, FUN = function(x) {
-    x <- ScaleData(x, features = features, verbose = TRUE)
-    x <- RunPCA(x, features = features, verbose = TRUE)
-})
-anchors <- FindIntegrationAnchors(object.list = atac.list, reference = c(1, 2), reduction = "cca")
-atac.integrated <- IntegrateData(anchorset = anchors)
-atac.integrated <- ScaleData(atac.integrated, verbose = FALSE)
-atac.integrated <- RunPCA(atac.integrated, verbose = FALSE)
-atac.integrated <- RunUMAP(atac.integrated,dims=1:30)
-pdf("integrated_species.umap.pdf",width=20)
-DimPlot(atac.integrated, group.by = c("celltype","barnyard_calledspecies"))
-dev.off()
-system("slack -F integrated_species.umap.pdf ryan_todo")
+#Mouse using smaller data set that is whole brain
+brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse/allen_brainspan_mouse.rds")
+brainspan. <- FindVariableFeatures(object = brainspan.,nfeatures = 5000)
+predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10")
+
 
 ```
 
---->
+{% endcapture %} {% include details.html %} 
