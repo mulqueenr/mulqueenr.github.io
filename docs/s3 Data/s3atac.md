@@ -758,6 +758,23 @@ cicero_processing<-function(x){
     saveRDS(obj_in,paste0(outname_in,"Seurat.cicero.Rds"))
 }
 
+for (i in seurat_objects){
+	tryCatch(
+		{
+			cicero_processing(i)
+		},
+		error=function(err){print(paste(i,"failed to generate model."))})
+}
+
+ccan_list<-list.files(pattern="_ccans.Rds$")
+ccan_output<-list()
+
+for (i in ccan_list){
+	ccan_in<-readRDS(i)
+	ccan_output[[i]]<-c(sample=i,peak_in_ccan=nrow(ccan_in),ccan_count=length(unique(ccan_in$CCAN)),average_peak_per_ccan=mean(table(ccan_in$CCAN)))
+}
+
+saveRDS(ccan_output,file="subsampling_ccanoutput.rds")
 
 # generate unnormalized gene activity matrices
 # gene annotation sample
@@ -808,14 +825,6 @@ generate_ga<-function(x){
     saveRDS(obj_in,x)
 }
 
-
-for (i in seurat_objects){
-	tryCatch(
-		{
-			cicero_processing(i)
-		},
-		error=function(err){print(paste(i,"failed to generate model."))})
-}
 
 cicero_objects<-list.files(pattern="Seurat.cicero.Rds")
 lapply(cicero_objects,generate_ga)
@@ -1499,6 +1508,9 @@ write.table(dat_mm10,file="mm10_cell_summary.txt",col.names=T,row.names=T,sep="\
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
+Currently testing k argument in make_cicero_cds to see if lower cell count (using out higher reads) does a better job.
+Also need to make sure that it is assigning cells correctly while adding to the Seurat object. Genebody analysis looks like GA should be working better.
+
 ```R
 library(Signac)
 library(Seurat)
@@ -1520,7 +1532,7 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 # convert to CellDataSet format and make the cicero object
     #Processing hg38 cells
     hg38_atac.cds <- as.cell_data_set(x = hg38_atac,group_by="seurat_clusters")
-    hg38_atac.cicero <- make_cicero_cds( hg38_atac.cds, reduced_coordinates = reducedDims(hg38_atac.cds)$UMAP)
+    hg38_atac.cicero <- make_cicero_cds( hg38_atac.cds, reduced_coordinates = reducedDims(hg38_atac.cds)$UMAP,k=10)
     genome <- seqlengths(hg38_atac) # get the chromosome sizes from the Seurat object
     genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
     conns <- run_cicero(hg38_atac.cicero, genomic_coords = genome.df) # run cicero
@@ -1533,7 +1545,7 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 
     #Processing mm10 cells
     mm10_atac.cds <- as.cell_data_set(x = mm10_atac,group_by="seurat_clusters")
-    mm10_atac.cicero <- make_cicero_cds( mm10_atac.cds, reduced_coordinates = reducedDims(mm10_atac.cds)$UMAP)
+    mm10_atac.cicero <- make_cicero_cds( mm10_atac.cds, reduced_coordinates = reducedDims(mm10_atac.cds)$UMAP,k=10)
     genome <- seqlengths(mm10_atac) # get the chromosome sizes from the Seurat object
     genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
     conns <- run_cicero(mm10_atac.cicero, genomic_coords = genome.df) # run cicero
@@ -1750,6 +1762,18 @@ marker_plot<-function(j,k=celltype_name,l=hg38_atac,m="hg38_",n="seurat_clusters
 }
 
 
+feature_plot<-function(j,k=celltype_name,l=hg38_atac,m="hg38_",n="seurat_clusters"){
+    plt<-FeaturePlot(
+        object = l,
+        features = j,
+        order=T
+    )
+    pdf(paste0("./marker_sets/",m,k,"_",j,"_geneactivity.pdf"))
+    print(plt)
+    dev.off()
+}
+
+
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
 marker_list<-readRDS("./marker_sets/grosscelltype_markerlist.rds")
 summary(hg38_atac@meta.data$seurat_clusters) #setting tile cells to 90 to downsample
@@ -1757,36 +1781,16 @@ downsamp=90
 
 for (x in 1:length(marker_list)){
     gene_list<-marker_list[[x]]
-    gene_list<-gene_list[as.numeric(unlist(lapply(1:length(gene_list),FUN=region_check)))==1]
-    gene_list<-toupper(gene_list)
+    gene_list<-gene_list[as.numeric(unlist(lapply(1:length(gene_list),FUN=region_check)))==1] #subset for genes with reads across gene body
+    gene_list<-toupper(gene_list) #make gene names uppercase
     celltype_name<-names(marker_list)[x]
     mclapply(gene_list,FUN=marker_plot,k=celltype_name,mc.cores=20)
+    gene_list<-gene_list[gene_list %in% row.names(hg38_atac@assays$GeneActivity@data)] #subset for genes with GA 
+    mclapply(gene_list,FUN=feature_plot,k=celltype_name,mc.cores=20)
 }
 
 for (i in list.files(path="./marker_sets",pattern="markerset_hg38")){
     system(paste0("slack -F ./marker_sets/",i," ryan_todo"))
-}
-
-#Now setting up for mm10 
-region_check<-function(i,object=mm10_atac){
-    return(nrow(as.data.frame(LookupGeneCoords(object=object,gene=gene_list[i]))))
-    }
-
-marker_plot<-function(j,k=celltype_name,l=mm10_atac,m="mm10_",n="seurat_clusters"){
-    plt<-CoveragePlot(
-        object = l,
-        region = j,
-        group.by=n,
-        extend.upstream = 1000,
-        extend.downstream = 1000,
-        ncol = 1,
-        tile=T,
-        tile.size=500,
-        tile.cells=downsamp
-    )
-    pdf(paste0("./marker_sets/",m,k,"_",j,"_genebody_accessibility.pdf"))
-    print(plt)
-    dev.off()
 }
 
 mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
@@ -1798,15 +1802,29 @@ for (x in 1:length(marker_list)){
     gene_list<-marker_list[[x]]
     gene_list<-gene_list[as.numeric(unlist(lapply(1:length(gene_list),FUN=region_check)))==1]
     celltype_name<-names(marker_list)[x]
-    mclapply(gene_list,FUN=marker_plot,k=celltype_name,mc.cores=20) 
+    mclapply(gene_list,FUN=marker_plot,k=celltype_name,l=mm10_atac,m="mm10_",mc.cores=20) 
+    gene_list<-gene_list[gene_list %in% row.names(mm10_atac@assays$GeneActivity@data)] #subset for genes with GA 
+    mclapply(gene_list,FUN=feature_plot,k=celltype_name,l=mm10_atac,m="mm10_",mc.cores=20)
+
 }
 
-#For concatenating cell types into a single scrollable pdf
-#celltype=`ls mm10*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
-#for i in $celltype ; do convert `echo mm10_${i}_*genebody_accessibility.pdf` markerset_mm10_${i}.pdf; done
+```
 
-#celltype=`ls hg38*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
-#for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` markerset_hg38_${i}.pdf; done
+```bash
+
+#For concatenating cell types into a single scrollable pdf
+celltype=`ls mm10*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
+for i in $celltype ; do convert `echo mm10_${i}_*genebody_accessibility.pdf` markerset_mm10_${i}.genebody.pdf; done
+
+celltype=`ls mm10*geneactivity.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
+for i in $celltype ; do convert `echo mm10_${i}_*geneactivity.pdf` markerset_mm10_${i}.GA.pdf; done
+
+celltype=`ls hg38*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
+for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` markerset_hg38_${i}.genebody.pdf; done
+
+celltype=`ls hg38*geneactivity.pdf | awk '{split($1,a,"_");print a[2]}' - | uniq`
+for i in $celltype ; do convert `echo hg38_${i}_*geneactivity.pdf` markerset_hg8_${i}.GA.pdf; done
+
 
 ```
 {% endcapture %} {% include details.html %} 
