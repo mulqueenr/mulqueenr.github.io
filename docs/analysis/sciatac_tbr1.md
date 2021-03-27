@@ -1178,6 +1178,20 @@ tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21"_"$22"_
   obj <- NormalizeData(object = obj,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(obj$nCount_peaks))  # normalize
   saveRDS(obj,"tbr1_ko.SeuratObject.Rds")
 
+```
+
+{% endcapture %} {% include details.html %} 
+
+### Plots
+```R
+    library(Signac)
+    library(Seurat)
+    library(patchwork)
+    set.seed(1234)
+    library(dplyr)
+    setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
+
+    obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
 
 simpleCap <- function(x) {
   s <- strsplit(x, " ")[[1]]
@@ -1185,23 +1199,31 @@ simpleCap <- function(x) {
       sep="", collapse=" ")
 }
 
-markers<-c("Rit1","Tbr1","Cux1"
-    )
-markers<-unlist(lapply(markers,simpleCap)) # correct case
+  markers<-c("Tbr1","Hes5","Olig1","Dbi","Neurod6","Gad1","Apoe","Mog","C1qb")
+  markers<-unlist(lapply(markers,simpleCap)) # correct case
 
 plt<-FeaturePlot(obj,features=markers,order=T,min.cutoff="q05",max.cutoff="q95",cols=c("lightgrey","red"))
 ggsave(plt,file="tbr1_ko.markers.test.pdf",width=20,height=20)
 system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
 
+plt<-DimPlot(obj,group.by=c("peaks_snn_res.0.5","seurat_clusters","Sample_ID","Developmental.Stage","line_genotype"),order=T)
+ggsave(plt,file="tbr1_ko.metadata.test.pdf",width=20,height=20)
+system("slack -F tbr1_ko.metadata.test.pdf ryan_todo")
+
+plt<-CoveragePlot(obj,region=markers,assay="peaks",group.by="peaks_snn_res.0.5",extend.upstream=2000,extend.downstream=2000,ncol=1)
+ggsave(plt,file="tbr1_ko.markers.test.cov.pdf",height=5*length(markers),limitsize=F)
+system("slack -F tbr1_ko.markers.test.cov.pdf ryan_todo")
+
 plt<-VlnPlot(obj,features=markers)
 ggsave(plt,file="tbr1_ko.markers.test.pdf",width=20,height=20)
 system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
 
+dat<-obj@meta.data %>% group_by(Sample_ID,sex,Developmental.Stage,line,genotype,peaks_snn_res.0.5) %>% summarize(count=n()) 
 
+plt<-ggplot(dat,aes(y=count,fill=peaks_snn_res.0.5,x=Sample_ID))+geom_bar(position="fill",stat="identity")+facet_wrap(Developmental.Stage+line~genotype,scales="free",strip.position="left")
+ggsave(plt,file="stacked_bar_plot.png",width=10,height=10)
+system("slack -F stacked_bar_plot.png ryan_todo")
 ```
-
-{% endcapture %} {% include details.html %} 
-
 
 ### Add TF Motif Usage through ChromVAR
 
@@ -1289,13 +1311,13 @@ system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
 
   #define DA functions for parallelization
   #Use LR test for atac data
-  da_one_v_rest<-function(i,obj,group){
+  da_one_v_rest<-function(i,obj,group,latent.vars.="nCount_peaks"){
       da_peaks_tmp <- FindMarkers(
           object = obj,
           ident.1 = i,
           group.by = group,
           test.use = 'LR',
-          latent.vars = 'nCount_peaks',
+          latent.vars = latent.vars.,
           only.pos=T,
           logfc.threshold=0.05
           )
@@ -1334,10 +1356,10 @@ system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
   DefaultAssay(obj)<-"peaks"
   obj_peaks<-list()
   obj_peaks<-mclapply(
-      unique(obj@meta.data$seurat_clusters),
+      unique(obj@meta.data$peaks_snn_res.0.5),
       FUN=da_one_v_rest,
       obj=obj,
-      group="seurat_clusters",
+      group="peaks_snn_res.0.5",
       mc.cores=n.cores)
 
   #Merge the final data frame from the list for 1vrest DA
@@ -1350,10 +1372,10 @@ system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
   DefaultAssay(obj)<-"chromvar"
   obj_chromvar<-list()
   obj_chromvar<-mclapply(
-      unique(obj@meta.data$seurat_clusters),
+      unique(obj@meta.data$peaks_snn_res.0.5),
       FUN=da_one_v_rest,
       obj=obj,
-      group="seurat_clusters",
+      group="peaks_snn_res.0.5",
       mc.cores=n.cores)
 
   #Merge the final data frame from the list for 1vrest DA
@@ -1364,10 +1386,11 @@ system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
   DefaultAssay(obj)<-"GeneActivity"
   obj_ga<-list()
   obj_ga<-mclapply(
-      unique(obj@meta.data$seurat_clusters),
+      unique(obj@meta.data$peaks_snn_res.0.5),
       FUN=da_one_v_rest,
       obj=obj,
-      group="seurat_clusters",
+      group="peaks_snn_res.0.5",
+      latent.vars.="ncount_GeneActivity",
       mc.cores=n.cores)
 
   #Merge the final data frame from the list for 1v1 DA
@@ -1389,7 +1412,7 @@ system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
   plt<-ggplot(da_tf,aes(x=avg_logFC,y=(-log(p_val)),color=as.factor(enriched_group)))+
   geom_point(aes(alpha=0.1))+
   geom_label_repel(aes(label=label),size=2,force=5)+
-  theme_bw()+ylim(c(0,7))+xlim(c(0,20))
+  theme_bw()+ylim(c(0,9))+xlim(c(0,30))
   ggsave(plt,file="tbr1_ko.onevrest.da_chromvar.plt.pdf")
   system(paste0("slack -F ","tbr1_ko.onevrest.da_chromvar.plt.pdf"," ryan_todo"))
 
