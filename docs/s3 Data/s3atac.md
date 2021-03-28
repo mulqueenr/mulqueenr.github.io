@@ -829,96 +829,15 @@ generate_ga<-function(x){
 cicero_objects<-list.files(pattern="Seurat.cicero.Rds")
 lapply(cicero_objects,generate_ga)
 ```
-<!--
-```python
-import glob
-import pysam
-from collections import defaultdict
-from collections import Counter
-import pandas as pd
-import os
-import time
 
-def read_pair_generator(bam):
-    """
-    Generate read pairs in a BAM file or within a region string.
-    Reads are added to read_dict until a pair is found.
-    """
-    read_dict = defaultdict(lambda: [None, None])
-    for read in bam.fetch(until_eof=True):
-        qname = read.query_name
-        if qname not in read_dict:
-            if read.is_read1:
-                read_dict[qname][0] = read
-            else:
-                read_dict[qname][1] = read
-        else:
-            if read.is_read1:
-                yield read, read_dict[qname][1]
-            else:
-                yield read_dict[qname][0], read
-            del read_dict[qname]
-
-bam_dir="/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/" #working directory
-bam_bulk=["mm10.bbrd.q10.bam"] #list of bam files
-subset_count=[1000,5000,10000,20000,50000]
-#Takes read 1 and read 2 paired by query name with the above function
-#then rounds read 1 and read 2 starts to the nearest 1mb and takes that as the bin (drops the 6 0s for the bin names)
-out_dict = defaultdict(dict)
-total_count = defaultdict(dict)
-
-chr_count=[]
-
-i=0 #Counter just to check progress
-start_time = time.time() #And set up a timer
-
-#generate list of read count for bam
-for bulk in bam_bulk:
-  bam = pysam.AlignmentFile(bam_dir+bulk, 'rb')
-  for read in bam.fetch(until_eof=True):
-    cellid_out=read.query_name.split(":")[0] #assign read to cellID
-    if cellid_out not in total_count: #add any new cellIDs
-      total_count[cellid_out]=0 #build out dict
-    total_count[cellid_out]+=1
-    i+=1
-    if i % 1000000 == 0:
-        print("Processed "+str(i)+" reads in "+str(time.time()-start_time)+" seconds.")
-
-i=0
-start_time = time.time() #And set up a timer
-
-for bulk in bam_bulk:
-  for count_no in subset_count:
-    filt_cellID=[]
-    for (key, value) in total_count.items(): #check cellIDs (divide by 2 for total read count)
-      if value >= count_no:
-       filt_cellID += key
-    species=bulk.split(".")[0]
-    bam = pysam.AlignmentFile(bam_dir+bulk, 'rb')
-    with pysam.AlignmentFile(species+"."+str(count_no)+".bam", "wb", header=bam.header) as outf:
-      for read1, read2 in read_pair_generator(bam): #set paired reads together #for read in bam.fetch(until_eof=True): #
-          if read1 is not None and read2 is not None: #remove reads which dont pair
-            i+=1
-            if i % 100000 == 0:
-                print("Processed "+str(i)+" reads in "+str(time.time()-start_time)+" seconds.")
-            cellid_out=read1.query_name.split(":")[0] #assign read to cellID
-            if cellid_out in filt_cellID:
-              if cellid_out not in out_dict: #add any new cellIDs
-                out_dict[cellid_out]=0 #build out dict
-              out_dict[cellid_out]+=1
-              if out_dict[cellid_out] <= count_no: #check cellIDs
-                null=outf.write(read1)
-                null=outf.write(read2)
-    outf.close()
-    print("Generated "+species+"."+str(count_no)+".bam"+"\n")
-          
-```
---->
 
 # Comparison of s3ATAC adult mouse brain reads with available data sets
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
+* 10X Reports Fragments per cell so should be doubled I guess. from https://cf.10xgenomics.com/samples/cell-atac/1.1.0/atac_v1_adult_brain_fresh_5k
+* dscATAC from https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/mousebrain/data/mousebrain-master_dataframe.rds Looks like they do get single reads. So "uniqueNuclearFrags" is the correct column to use.
+* snATAC from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM2668124 "Quality metrics for cells that passed quality filtering (column 1: cell barcodes, column 2: number of reads, column 3: promoter coverage, column 4: fraction of reads in peaks."
 ```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/barnyard_analysis")
 
