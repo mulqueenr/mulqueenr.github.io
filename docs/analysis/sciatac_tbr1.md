@@ -1189,6 +1189,7 @@ tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21"_"$22"_
     library(patchwork)
     set.seed(1234)
     library(dplyr)
+    library(ggplot2)
     setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
 
     obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
@@ -1209,6 +1210,11 @@ system("slack -F tbr1_ko.markers.test.pdf ryan_todo")
 plt<-DimPlot(obj,group.by=c("peaks_snn_res.0.5","seurat_clusters","Sample_ID","Developmental.Stage","line_genotype"),order=T)
 ggsave(plt,file="tbr1_ko.metadata.test.pdf",width=20,height=20)
 system("slack -F tbr1_ko.metadata.test.pdf ryan_todo")
+
+
+plt<-DimPlot(obj,group.by="genotype",split.by="line",order=T)
+ggsave(plt,file="tbr1_ko.metadata.line.test.pdf")
+system("slack -F tbr1_ko.metadata.line.test.pdf ryan_todo")
 
 plt<-CoveragePlot(obj,region=markers,assay="peaks",group.by="peaks_snn_res.0.5",extend.upstream=2000,extend.downstream=2000,ncol=1)
 ggsave(plt,file="tbr1_ko.markers.test.cov.pdf",height=5*length(markers),limitsize=F)
