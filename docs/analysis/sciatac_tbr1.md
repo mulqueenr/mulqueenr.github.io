@@ -1445,6 +1445,7 @@ system("slack -F stacked_bar_plot.png ryan_todo")
 
 ### Performing GREAT on DA peaks
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #mkdir GREAT_analysis
