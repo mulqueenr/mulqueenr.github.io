@@ -720,8 +720,12 @@ clustering_loop<-function(topicmodel,topiccount,seuratobject,genome_name="hg38",
 
 
 ```
+{% endcapture %} {% include details.html %} 
+
 
 ### Gene activity score comparison between downsampled seurat objects
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```R
 library(SeuratWrappers)
 library(ggplot2)
@@ -829,6 +833,7 @@ generate_ga<-function(x){
 cicero_objects<-list.files(pattern="Seurat.cicero.Rds")
 lapply(cicero_objects,generate_ga)
 ```
+{% endcapture %} {% include details.html %} 
 
 
 # Comparison of s3ATAC adult mouse brain reads with available data sets
