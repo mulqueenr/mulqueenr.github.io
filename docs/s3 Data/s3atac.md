@@ -835,9 +835,41 @@ lapply(cicero_objects,generate_ga)
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
-* 10X Reports Fragments per cell so should be doubled I guess. from https://cf.10xgenomics.com/samples/cell-atac/1.1.0/atac_v1_adult_brain_fresh_5k
-* dscATAC from https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/mousebrain/data/mousebrain-master_dataframe.rds Looks like they do get single reads. So "uniqueNuclearFrags" is the correct column to use.
-* snATAC from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM2668124 "Quality metrics for cells that passed quality filtering (column 1: cell barcodes, column 2: number of reads, column 3: promoter coverage, column 4: fraction of reads in peaks."
+* dscATAC
+	* from https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/mousebrain/data/mousebrain-master_dataframe.rds They only get single reads. So "uniqueNuclearFrags" is the correct column to use.
+
+* snATAC 
+	* from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM2668124 
+	"Quality metrics for cells that passed quality filtering (column 1: cell barcodes, column 2: number of reads, column 3: promoter coverage, column 4: fraction of reads in peaks."
+
+* 10X scATAC
+	* Reports Fragments from https://cf.10xgenomics.com/samples/cell-atac/1.1.0/atac_v1_adult_brain_fresh_5k
+	So for 10X I decided to use their filtered bam file to generate my own count of unique reads per cell.
+```bash
+cd /home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison
+wget https://cg.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_possorted_bam.bam
+samtools flagstat atac_v1_adult_brain_fresh_5k_possorted_bam.bam
+#488116262 + 0 in total (QC-passed reads + QC-failed reads)
+#3570 + 0 secondary
+#0 + 0 supplementary
+#270088536 + 0 duplicates
+#481421958 + 0 mapped (98.63% : N/A)
+#488112692 + 0 paired in sequencing
+#244056346 + 0 read1
+#244056346 + 0 read2
+#473659052 + 0 properly paired (97.04% : N/A)
+#478189330 + 0 with itself and mate mapped
+#3229058 + 0 singletons (0.66% : N/A)
+#1467290 + 0 with mate mapped to a different chr
+#839491 + 0 with mate mapped to a different chr (mapQ>=5)
+#so there are some singletons in this as well, but a low amount
+samtools view -bf 2 atac_v1_adult_brain_fresh_5k_possorted_bam.bam > 10xout.temp.bam
+samtools flagstat 10xout.temp.bam
+
+samtools view -b -f 2 atac_v1_adult_brain_fresh_5k_possorted_bam.bam | awk '{print $19}' | sort --parallel=20 -T . | uniq -c > 10x_genomics_uniquereads.txt &
+
+```
+
 ```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/barnyard_analysis")
 
@@ -931,6 +963,40 @@ for (j in unique(dat$assay)){
 #[1] "s3ATAC_Plate_C,dscATAC,1.5654951763642e-37,264133.506711409,34045.7355797055,greater,Welch Two Sample t-test"
 #[1] "s3ATAC_Plate_C,sciatac,9.87044162982429e-43,264133.506711409,12263.8299081767,greater,Welch Two Sample t-test"
 #[1] "s3ATAC_Plate_C,s3ATAC_Plate_C,0.5,264133.506711409,264133.506711409,greater,Welch Two Sample t-test"
+
+
+```
+{% endcapture %} {% include details.html %} 
+
+### Comparison between peak sets
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```bash
+#snATAC peaks
+wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM2668nnn/GSM2668124/suppl/GSM2668124_p56.nchrM.merge.sel_cell.ygi.txt.gz
+gzip -d GSM2668124_p56.nchrM.merge.sel_cell.ygi.txt.gz
+awk 'OFS="\t" {print $0}' GSM2668124_p56.nchrM.merge.sel_cell.ygi.txt > snatac_peaks.bed
+wc -l snatac_peaks.bed
+##140102 peaks
+
+#10X peaks
+wget https://cf.10xgenomics.com/samples/cell-atac/1.1.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_peaks.bed
+##157797 peaks
+
+#biorad peaks
+wget https://raw.githubusercontent.com/buenrostrolab/dscATAC_analysis_code/master/mousebrain/data/mouseBrain_peaks.bed
+awk 'OFS="\t" {print $0}' mouseBrain_peaks.bed | awk '(NR>1)' - > biorad_peaks.bed
+##454047 peaks
+#Getting counts of peak overlaps
+wc -l /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.500.bed
+#174653
+bedtools intersect -wb -a /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.500.bed -b /home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/snatac_peaks.bed | wc -l
+#71199 of ours in theirs
+bedtools intersect -wa -a /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.500.bed -b /home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/atac_v1_adult_brain_fresh_5k_peaks.bed | wc -l
+
+bedtools intersect -wa -a /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.500.bed -b /home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/biorad_peaks.bed | wc -l
+
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -2418,9 +2484,9 @@ setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3a
 iN<-readRDS("hg38_inhibitory_neuron_SeuratObject.Rds")
 
 #Plot Markers
-markers<-c("LHX6","ADARB2")
+markers<-c("LHX6","ADARB2","CHODL","UNC5B")
 
-DefaultAssay(dat)<-"peaks"
+DefaultAssay(iN)<-"peaks"
 plt<-CoveragePlot(iN, region = markers, 
                   tile = TRUE,
                  extend.upstream=2000,
