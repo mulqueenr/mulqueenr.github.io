@@ -342,13 +342,6 @@ for i in *temp.rehead.bam; do samtools split -@20 -f './single_cell_splits/%*_%!
 ```
 {% endcapture %} {% include details.html %} 
 
-{% capture summary %} Compare forward to reverse mapped identical tagmentation sites {% endcapture %} {% capture details %}  
-```bash
-#TBD
-```
-{% endcapture %} {% include details.html %} 
-
-
 {% capture summary %} Split out single-cell bams from *raw* bams for projections {% endcapture %} {% capture details %}  
 
 ```bash
@@ -1491,15 +1484,16 @@ dat_mm10$UMAP_2<-mm10_atac@reductions$umap@cell.embeddings[,2]
 write.table(dat_hg38,file="hg38_cell_summary.txt",col.names=T,row.names=T,sep="\t",quote=F)
 write.table(dat_mm10,file="mm10_cell_summary.txt",col.names=T,row.names=T,sep="\t",quote=F)
 ```
+
 {% endcapture %} {% include details.html %} 
 
 ## Adding gene activity matrix to ATAC processing
 ### Cicero for co-accessible sites and gene activity score generation
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
 Currently testing k argument in make_cicero_cds to see if lower cell count (using out higher reads) does a better job.
 Also need to make sure that it is assigning cells correctly while adding to the Seurat object. Genebody analysis looks like GA should be working better.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(Signac)
@@ -1643,10 +1637,10 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 
 
 ```
+
 {% endcapture %} {% include details.html %} 
 
 ## Plotting Coverage Plots
-
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -3009,5 +3003,4 @@ predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10")
 
 
 ```
-
 {% endcapture %} {% include details.html %} 
