@@ -1640,6 +1640,39 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 
 {% endcapture %} {% include details.html %} 
 
+### Adding additional gene activity via read count across gene bodies 
+This is the signac default method of calculating gene activity
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+library(Signac)
+library(Seurat)
+
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
+
+#Read in data and modify to monocle CDS file
+#read in RDS file.
+mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+
+gene.activities <- GeneActivity(mm10_atac,process_n=10000)
+saveRDS(gene.activities,"mm10.signac.geneactivities.RDS")
+# add the gene activity matrix to the Seurat object as a new assay and normalize it
+mm10_atac[['SignacGA']] <- CreateAssayObject(counts = gene.activities)
+pbmc <- NormalizeData(
+  object = mm10_atac,
+  assay = 'SignacGA',
+  normalization.method = 'LogNormalize',
+  scale.factor = median(mm10_atac$nCount_SignacGA)
+)
+ 
+saveRDS(mm10_atac,file="mm10_SeuratObject.signacGA.Rds")
+
+
+```
+
+{% endcapture %} {% include details.html %} 
+
 ## Plotting Coverage Plots
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
