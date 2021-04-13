@@ -760,14 +760,14 @@ Using R v4.0 and Signac v1.0 for processing.
 
   # make counts matrix from sparse matrix
   #Make counts matrix from sparse matrix
-  #IN<-as.matrix(read.table("tbr1_ko.filt.500.counts.sparseMatrix.values.gz")) #old peak set
-  IN<-as.matrix(read.table("tbr1_ko.macs3.counts.sparseMatrix.values.gz"))
+  IN<-as.matrix(read.table("tbr1_ko.filt.500.counts.sparseMatrix.values.gz")) #old peak set
+  #IN<-as.matrix(read.table("tbr1_ko.macs3.counts.sparseMatrix.values.gz"))
   IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
-  #COLS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.cols.gz") #old peak set
-  COLS<-read.table("tbr1_ko.macs3.counts.sparseMatrix.cols.gz")
+  COLS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.cols.gz") #old peak set
+  #COLS<-read.table("tbr1_ko.macs3.counts.sparseMatrix.cols.gz")
   colnames(IN)<-COLS$V1
-  #ROWS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.rows.gz") #old peak set
-  ROWS<-read.table("tbr1_ko.macs3.counts.sparseMatrix.rows.gz")
+  ROWS<-read.table("tbr1_ko.filt.500.counts.sparseMatrix.rows.gz") #old peak set
+  #ROWS<-read.table("tbr1_ko.macs3.counts.sparseMatrix.rows.gz")
   row.names(IN)<-ROWS$V1
 
   #Read in fragment path for coverage plots
@@ -800,8 +800,8 @@ Using R v4.0 and Signac v1.0 for processing.
 
 
   #saving unprocessed SeuratObject
-  #saveRDS(obj,file="tbr1_ko.SeuratObject.Rds") #old peak set
-  saveRDS(obj,file="tbr1_ko.macs3.SeuratObject.Rds") #old peak set
+  saveRDS(obj,file="tbr1_ko.SeuratObject.Rds") #old peak set
+  #saveRDS(obj,file="tbr1_ko.macs3.SeuratObject.Rds") #old peak set
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -952,7 +952,13 @@ Used multiple clustering and dim reduc attempts. Commented out irrelevant ones.
 
   obj<-cistopic_wrapper(object_input=obj,cisTopicObject=cisTopicObject,resolution=0.5)
   saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
-    
+  
+  #also perform simplified dim reduction
+  obj <- RunTFIDF(obj)
+  obj <- FindTopFeatures(obj, min.cutoff = 'q0')
+  obj <- RunSVD(obj)
+  saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
+
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -1006,8 +1012,16 @@ Used multiple clustering and dim reduc attempts. Commented out irrelevant ones.
   samp_info<-merge(samp_info,tn5_info,by="Sample_ID")
   samp_info$tn5_i5_set<-substr(samp_info$Plate,1,1) #split string to get set name
   samp_info$tn5_i7_set<-substr(samp_info$Plate,2,2) #split string to get set name
-  obj@meta.data<-merge(obj@meta.data,samp_info,by.x=c("tn5_i5_set","tn5_i5_row","tn5_i7_set","tn5_i7_row"),by.y=c("tn5_i5_set","Row","tn5_i7_set","Column"))
+  obj@meta.data<-
+  dat<-obj@meta.data
+  dat<-merge(dat,samp_info,by.x=c("tn5_i5_set.x","tn5_i5_row.x","tn5_i7_set.x","tn5_i7_row.x"),by.y=c("tn5_i5_set","Row","tn5_i7_set","Column"))
+  dat<-dat[,c(1:34,50)]
+  row.names(dat)<-dat$cellID
+  obj<-AddMetaData(obj,dat)
+
   dim(obj@meta.data)
+
+  #add in litter factor from updated samp_info
 
   saveRDS(obj,file="tbr1_ko.SeuratObject.Rds")
   write.table(obj@meta.data,file="summary_statistics_per_cell.tsv",col.names=T,row.names=T,sep="\t",quote=F)
@@ -1017,6 +1031,16 @@ Used multiple clustering and dim reduc attempts. Commented out irrelevant ones.
   ggsave(plt,file="tbr1_ko.umap.png",width=20)
   ggsave(plt,file="tbr1_ko.umap.pdf",width=20)
   system("slack -F tbr1_ko.umap.pdf ryan_todo")
+
+  plt<-FeaturePlot(obj,features="litter_factor")
+  ggsave(plt,file="tbr1_ko.umap.litter_factor.png")
+  ggsave(plt,file="tbr1_ko.umap.litter_factor.pdf")
+  system("slack -F tbr1_ko.umap.litter_factor.pdf ryan_todo")
+
+
+
+
+
 
 ```
 ### Make annotation files

@@ -264,7 +264,7 @@ Note a lot of this code and even the comments and explanation is directly taken 
 First reading in the split bam files and setting up the reference genome.
 
 
-```python
+```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
 
 library(SCOPE)
@@ -300,7 +300,7 @@ saveRDS(bambedObj,"scope_bambedObj.250kb.rds")
 ```
 
 
-```python
+```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
 
 library(SCOPE)
@@ -357,7 +357,7 @@ saveRDS(ploidy,"scope_ploidy.gini.1mb.rds")
 ### Using ploidy estimates to assess copy number change
 
 
-```python
+```R
 library(SCOPE)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
 #Performing normalization via gini euploid estimates
@@ -380,7 +380,7 @@ saveRDS(normObj.scope.gini,"scope_normforeach.gini.1mb.rds")
 ```
 
 
-```python
+```R
 library(SCOPE)
 
 
@@ -415,7 +415,7 @@ chr_cbs <- function(x,scope=normObj.scope.gini) {
 ```
 
 
-```python
+```R
 library(SCOPE)
 library(ComplexHeatmap)
 library(dplyr)
@@ -583,12 +583,7 @@ system("slack -F test.png ryan_todo")
 ```
 
 
-```python
-## Single cell VCF Calling
-```
-
-
-```python
+```bash
 cd /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data
 #VarScan for WES
 module load varscan/2.3.7
@@ -633,7 +628,7 @@ MAPD, or the Median Absolute deviation of Pairwise Differences, is defined for a
 
 
 
-```python
+```R
 R
 library(ggplot2)
 library(SCOPE)
@@ -690,7 +685,7 @@ I haven't doen this yet on the samples but is a good follow up once we have more
 
 
 
-```python
+```R
 # Group-wise ploidy initialization
 #Updating annotation file
 library(ggplot2)
@@ -733,7 +728,7 @@ SCOPE provides the cross-sample segmentation, which outputs shared breakpoints a
 Using circular binary segmentation (CBS) for breakpoint analysis
 
 
-```python
+```R
 
 
 normObj<-readRDS("SCOPE_normObj.noK.500kb.rds")
@@ -930,14 +925,10 @@ theme(axis.text.x = element_text(angle = 90))
 ggsave(plt,file="s3wgs_complexity_platecellline_boxplot.pdf")
 ```
 
-
 ## Now plotting those QC metrics out with ggplot and R
 This is a big old copy and paste script and can probably be parsed down by user defined functions.
 
-
-
-```python
-R
+```R
 library(ggplot2)
 library(reshape2)
 ###This is all kind of a mess since there is a lot of copy paste code and reassigning the same variable names
@@ -1149,7 +1140,7 @@ for (i in unique(dat_m$sample)){
 Going to look at mutations in 4442 (Sample 1) and 4671 (Sample 2) mutations. Both have a KRAS driver mutation at chr12:25245350. Sample 1 is G12D (C>T transistion), Sample 2 is G12C.
 
 
-```python
+```bash
 
 module load bcftools/1.1
 
@@ -1191,5 +1182,346 @@ for bam in hg38.s3WGS_GM12878.bbrd.q10.filt.bam hg38.s3GCC_4442.bbrd.q10.filt.ba
 
 #Look at by hand
 awk '$1=="chr12" && $2=25235382 {print $0}' ${bam%.bam}.vcf | less-S
+
+```
+
+
+```R
+#Combing clades of cell lines for high resolution annotation
+#using 50kb windows
+
+library(SCOPE)
+library(ComplexHeatmap)
+library(circlize)
+library(dplyr)
+library(philentropy)
+library(ape)
+library(ggdendro)
+library(dendextend)
+library(rpart)
+library(cluster)
+library(parallel)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(WGSmapp)
+library(ggrepel)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
+
+
+#set up single cell bam files from given directory
+prepare_bam_bed_obj<-function(resol=resol){
+    #Initalization
+    bamfolder <- "/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data/singlecell_bam/sorted_bams"
+    bamFile <- list.files(bamfolder, pattern = 'sorted.bam$')
+    bamdir <- file.path(bamfolder, bamFile)
+    sampname_raw <- paste(sapply(strsplit(bamFile, ".", fixed = TRUE), "[", 1),sapply(strsplit(bamFile, ".", fixed = TRUE), "[", 3),sep=".")
+    #set genomic window size to 500kb
+    bambedObj <- get_bam_bed(bamdir = bamdir, sampname = sampname_raw, hgref = "hg38",resolution=resol,sex=T)#resolution of 100 = 100kbp
+
+    #Compute GC content and mappability for each reference bin.
+    mapp <- get_mapp(bambedObj$ref, hgref = "hg38")
+    gc <- get_gc(bambedObj$ref, hgref = "hg38")
+    values(bambedObj$ref) <- cbind(values(bambedObj$ref), DataFrame(gc, mapp))
+    return(bambedObj)
+}
+
+#modified scope get_coverage_scDNA
+read_in_reads<-function(i,seq="paired-end"){
+    bamurl <- bamdir[i]
+    what <- c("rname", "pos", "mapq", "qwidth")
+    if (seq == "paired-end") {
+        flag <- scanBamFlag(isPaired = TRUE,
+                isUnmappedQuery = FALSE, isNotPassingQualityControls = FALSE,
+                isFirstMateRead = TRUE)
+        param <- ScanBamParam(what = what, flag = flag)
+        bam <- scanBam(bamurl, param = param)[[1]]
+        }
+    else if (seq == "single-end") {
+            flag <- scanBamFlag(isUnmappedQuery = FALSE, isNotPassingQualityControls = FALSE) #removed checking for unpaired 
+            param <- ScanBamParam(what = what, flag = flag)
+            bam <- scanBam(bamurl, param = param)[[1]]
+        }
+        message("Getting coverage for sample ", i, ": ", sampname[i],"...", sep = "")
+            bam.ref <- GRanges(seqnames = bam$rname, ranges = IRanges(start = bam[["pos"]],width = bam[["qwidth"]]))
+            bam.ref <- suppressWarnings(bam.ref[countOverlaps(bam.ref,mask.ref) == 0])
+            Y<- countOverlaps(ref, bam.ref)
+            ref$counts<-Y
+    return(Y)
+}
+
+
+#Set up genome masking of duplicated regions and gaps
+# Get segmental duplication regions
+seg.dup <- read.table(system.file("extdata", "GRCh38GenomicSuperDup.tab", package = "WGSmapp"))
+# Get hg38 gaps
+gaps <- read.table(system.file("extdata", "hg38gaps.txt", package = "WGSmapp"))
+#Set up genome masking from SCOPE get_masked_ref function
+seg.dup <- seg.dup[!is.na(match(seg.dup[,1], paste('chr', c(seq_len(22), 'X', 'Y'), sep = ''))),]
+seg.dup <- GRanges(seqnames = seg.dup[,1], ranges = IRanges(start = seg.dup[,2], end = seg.dup[,3]))
+gaps <- gaps[!is.na(match(gaps[,2], paste('chr', c(seq_len(22), 'X', 'Y'), sep = ''))),]
+gaps <- GRanges(seqnames = gaps[,2], ranges = IRanges(start = gaps[,3], end = gaps[,4]))
+mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
+
+#Read in annotation files
+annot<-read.table("s3wgs_gcc.cellsummary.txt")
+resol=50
+bambedObj<-prepare_bam_bed_obj(resol=50) #500 is 500kbp
+saveRDS(bambedObj,"bambedObj.50kbp.rds")
+
+#saveRDS(bambedObj,file="bambedObj.50kbp.rds")
+bambedObj<-readRDS("bambedObj.50kbp.rds")
+ref <- bambedObj$ref
+bamdir <- bambedObj$bamdir
+sampname <- bambedObj$sampname
+
+#Get read count per bin per cell
+Y_out<-mclapply(1:length(sampname),read_in_reads,mc.cores=20) #can be set to "single-end" for single-end reads
+Y<-do.call("cbind",Y_out)
+colnames(Y)<-sampname
+ref<-as.data.frame(ref)
+row.names(Y)<-paste0(ref$seqnames,":",ref$start,"_",ref$end)
+#saveRDS(Y,file="rawcount.100kbp.rds")
+#saveRDS(Y,file="rawcount.50kbp.rds")
+Y<-readRDS(file="rawcount.50kbp.rds")
+
+
+#Apriori Ploidy Estimate
+annot<-read.table("s3wgs_gcc.cellsummary.txt")
+#reorder Y to annot
+Y<-Y[,which(sampname %in% annot$cellID)]
+#qcObj<-readRDS("scope_qcObj.500kb.rds")
+dend<-readRDS("scope_segmentcs.500kb_k2.maxns2.dendrogram.rds")
+k_clus_id<-readRDS("scope_segmentcs.500kb_k2.maxns2.clusterID.rds")
+ploidy<-readRDS("scope_ploidy.apriori.500kb.rds")
+ploidy<-ploidy$ploidy
+
+#determine which is gm12878 clade
+for (i in unique(k_clus_id)){
+    clade<-names(k_clus_id[k_clus_id==i])
+    print(paste(i,length(clade),sum(startsWith(clade,"s3wgs_gm12878"))/length(clade),mean(ploidy[colnames(Y) %in% clade],na.rm=T)))
+}
+#clade 1
+
+clade_dat<-list()
+for (i in unique(k_clus_id)){
+    clade<-names(k_clus_id[k_clus_id==i])
+    clade_combined<-rowMeans(Y[,colnames(Y) %in% clade],na.rm=T)
+    clade_dat[[paste0("clade_",i)]]<-clade_combined
+}
+
+dat<-do.call("cbind",clade_dat)
+colnames(dat)<-names(clade_dat)
+
+
+#clade ploidy
+clade_ploidy<-list()
+for (i in unique(k_clus_id)){
+clade<-names(k_clus_id[k_clus_id==i])
+clade_ploidy[[paste0("clade_",i)]]<-median(ploidy[colnames(Y) %in% clade],na.rm=T)
+}
+clade_ploidy
+
+#manually filter bins for mappability and gc content (using the scope defaults)
+ref<-as.data.frame(ref)
+ref<-ref[ref$mapp>0.9 & ref$gc>=20 & ref$gc<=80,]
+dat<-dat[paste0(ref$seqnames,":",ref$start,"_",ref$end),]
+
+#normalize clade data, clade 6 contains most gm12878 cells and is considered the normal index
+normObj<- normalize_codex2_ns_noK(Y_qc = dat, gc_qc = ref$gc, norm_index = 6)
+saveRDS(normObj,"scope.50kb.normalizedobj.mean.rds")
+normObj<-readRDS("scope.50kb.normalizedobj.mean.rds")
+
+
+#Perform CBS originally run with ns=2
+chr_cbs <- function(x,scope=normObj,ns=1) {
+    print(paste("Running for ",x))
+    chr_seg<-segment_CBScs(Y = dat,
+    Yhat = as.data.frame(scope$Yhat),
+    sampname = colnames(dat),
+    ref = makeGRangesFromDataFrame(ref),
+    chr = x,
+    mode = "integer", max.ns = ns)
+    return(chr_seg)
+}
+
+chrs <- unique(as.character(seqnames(bambedObj$ref)))
+segment_cs <- vector('list',length = length(chrs))
+names(segment_cs) <- chrs
+
+segment_cs<-list()
+segment_cs<-mclapply(chrs,FUN=chr_cbs,mc.cores=25)
+names(segment_cs) <- chrs #mclapply returns jobs in same order as specified
+
+#saveRDS(segment_cs,"scope_segmentcs_clade_50kb.rds")
+#saveRDS(segment_cs,"scope_segmentcs_clade_100kb.ns1.rds")
+saveRDS(segment_cs,"scope_segmentcs_clade_50kb.ns1.rds")
+segment_cs<-readRDS("scope_segmentcs_clade_50kb.rds")
+
+qcObj<-readRDS("scope_qcObj.1mb.rds")
+ploidy<-readRDS("scope_ploidy.gini.1mb.rds")
+norm_index<-which(grepl("gm12878",colnames(qcObj$Y)))
+normObj<-readRDS("scope_noKnorm.gini.1mb.rds")
+
+# #Normalize with Latent Factors
+# normObj.scope <- normalize_scope_foreach(
+#     Y_qc = dat,
+#     gc_qc = as.data.frame(ref)$gc,
+#     K = 1,
+#     ploidyInt = unlist(clade_ploidy),
+#     norm_index = 6,
+#     T = 1:6,
+#     beta0 = normObj$beta.hat)
+    
+# saveRDS(normObj.scope,"scope_normforeach.50kb.rds")
+
+#saveRDS(segment_cs,"scope_segmentcs_clade_50kb.ns6.rds")
+segment_cs<-readRDS("scope_segmentcs_clade_50kb.rds")
+
+#remove chrY, it failed because the read count is low
+segment_cs<-segment_cs[1:23]
+bin_loci<-data.frame(ref)
+bin_loci<-bin_loci[bin_loci$seqnames!="chrY",]
+bin_loci$bin_name<-row.names(bin_loci)
+bin_loci_subject<-makeGRangesFromDataFrame(bin_loci,keep.extra.columns=T)
+iCN <- do.call(rbind, lapply(segment_cs, function(z){names(z)}))
+iCN <- do.call(rbind, lapply(segment_cs, function(z){z[["iCN"]]}))
+row.names(iCN)<-paste(bin_loci$seqnames,bin_loci$start,bin_loci$end,sep="_")
+iCN[which(iCN>5,arr.ind=T)]<-5
+iCN<-as.data.frame(t(iCN))
+
+
+iCN<-iCN[1:6,]
+
+
+library(ggplot2)
+library(patchwork)
+library(reshape2)
+
+image.orig<-NULL
+image.orig <- do.call(rbind, lapply(segment_cs, function(z){names(z)}))
+image.orig <- do.call(rbind, lapply(segment_cs, function(z){z[["image.orig"]]}))
+row.names(image.orig)<-paste(bin_loci$seqnames,bin_loci$start,bin_loci$end,sep="_")
+colnames(image.orig)<-colnames(dat)
+plt_melt<-melt(image.orig)
+plt_melt$gloc<-row.names(image.orig)
+plt_melt<-cbind(plt_melt,melt(t(iCN)))
+plt_melt<-plt_melt[,c(1,2,3,6)]
+colnames(plt_melt)<-c("clade","copy","gloc","state")
+plt_melt$row_order<-1:nrow(bin_loci)
+
+cols<-c("0"="#2166ac", "1"="#d0e7f5", "2"="#f5f5f5","3"="#fddbc7","4"="#ef8a62","5"="#b2182b")
+#plot bins for a cell across a chromosome
+
+range_gc<-quantile(plt_melt$copy, na.rm = TRUE, prob = c(0.05,0.95))
+plt_melt$contig<-unlist(lapply(strsplit(plt_melt$gloc,"_"),"[",1))
+plt_melt$contig<-factor(plt_melt$contig,level=unique(plt_melt$contig))
+
+plt_melt$start<-as.numeric(unlist(lapply(strsplit(plt_melt$gloc,"_"),"[",2)))
+plt_melt$end<-as.numeric(unlist(lapply(strsplit(plt_melt$gloc,"_"),"[",3)))
+plt_melt$gene<-c("")
+plt_melt_6<-plt_melt[plt_melt$clade=="clade_6",] #just adding annotation track to clade 6
+plt_melt<-plt_melt[plt_melt$clade!="clade_6",]
+
+#Making another track to plot PDAC linked genes
+pdac_genes<-read.table("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/pdac_gene.bed",header=F)
+colnames(pdac_genes)<-c("chr","start","end","gene")
+pdac_genes<-makeGRangesFromDataFrame(pdac_genes,keep.extra.columns=T)
+pdac_genes_idx<-as.data.frame(findOverlaps(pdac_genes,makeGRangesFromDataFrame(ref))) #overlap GRanges for plotting consistent matrix bins
+pdac_genes_idx<-pdac_genes_idx[!duplicated(pdac_genes_idx$queryHits),]
+pdac_genes_idx<-cbind(pdac_genes_idx,pdac_genes)
+pdac_genes_idx<-merge(bin_loci,pdac_genes_idx,by.x="bin_name",by.y="subjectHits")
+pdac_genes_idx$gloc<-paste(pdac_genes_idx$seqnames.x,pdac_genes_idx$start.x,pdac_genes_idx$end.x,sep="_")
+plt_melt_6[match(pdac_genes_idx$gloc,plt_melt_6$gloc,nomatch=0),]$gene<-pdac_genes_idx$gene
+
+plt_melt<-rbind(plt_melt,plt_melt_6)
+
+library(ggrepel)
+
+cols_clade<-c("na"="grey","clade_1"="#cccc99","clade_2"="#ffcc33","clade_3"="#ff99cc","clade_4"="#ff9966","clade_5"="#66cc99","clade_6"="#cccccc")
+
+plt<-ggplot(plt_melt,aes(x=row_order,y=(2^(copy)),label=gene))+
+geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=6,alpha=0.01))+
+scale_fill_manual(values=cols)+
+#geom_hline(yintercept=c(0,1,2,3,4,5),linetype="dashed")+
+geom_point(color="black",size=1,alpha=0.2)+
+scale_color_manual(values=cols_clade)+
+ylab("")+
+xlab("")+
+geom_text_repel(size=20,y=1,nudge_y= 2, direction="x",angle= 90, hjust= 0,segment.size = 2,max.iter = 1e4,min.segment.length=0)+
+facet_grid(plt_melt$clade~plt_melt$contig,space="free",scales="free_x")+
+theme_minimal()+
+scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,6))+
+theme(axis.text.y = element_text(size=30),
+    axis.text.x = element_blank(), 
+    panel.grid.minor = element_blank(),
+    #panel.grid.major = element_blank(),
+    panel.spacing.x=unit(0.1,"lines"),
+    strip.background = element_blank(), 
+    strip.text = element_blank(),
+    legend.position="none",
+    panel.border = element_rect(colour = "black", fill = NA,size=3))
+
+
+
+ggsave(plt,file="scope.merged.50kb.final.final.png",width=2000,height=1000,units="mm",limitsize=F)
+system("slack -F scope.merged.50kb.final.final.png ryan_todo")
+
+
+
+
+
+
+
+
+#Per chromosome
+chrs <- unique(as.character(seqnames(bambedObj$ref)))
+
+for (i in chrs[1:23]){
+plt_melt_chr<-plt_melt[plt_melt$contig==i,] 
+plt<-ggplot(plt_melt_chr,aes(x=row_order,y=(2^copy),label=gene))+
+geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=6,alpha=0.05))+scale_fill_manual(values=cols)+
+geom_point(aes(color = "black"),size=0.005,alpha=0.2)+scale_color_manual(values=cols_clade)+
+geom_text_repel(size=1,y=1,nudge_y= 2, direction="x",angle= 90, hjust= 0,segment.size = 0.2,max.iter = 1e4,min.segment.length=0)+
+facet_grid(plt_melt_chr$clade~plt_melt_chr$contig,space="free",scales="free_x")+theme_bw()+scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,6))+
+theme(axis.text.y = element_text(size=5),  axis.text.x = element_blank(), panel.grid.minor = element_blank(),panel.grid.major = element_blank(),panel.spacing.x=unit(0.1,"lines"))
+
+ggsave(plt,file=paste0("scope.merged.50kb.",i,"final.png"),width=400,height=100,units="mm")
+system(paste0("slack -F ","scope.merged.50kb.",i,"final.png"," ryan_todo"))
+
+}
+
+
+#Selected Regions
+i<-"chr_7_PRSS1"
+plt_melt_chr<-plt_melt[plt_melt$contig=="chr7" & plt_melt$end<145000000 & plt_melt$start>140000000,] 
+plt<-ggplot(plt_melt_chr,aes(x=row_order,y=(2^copy),label=gene))+
+geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=6,alpha=0.05))+scale_fill_manual(values=cols)+
+geom_point(aes(color = as.factor(clade)),size=0.5,alpha=0.5)+scale_color_manual(values=cols_clade)+
+geom_text_repel(size=1,y=1,nudge_y= 2, direction="x",angle= 90, hjust= 0,segment.size = 0.2,max.iter = 1e4,min.segment.length=0)+
+facet_grid(plt_melt_chr$clade~plt_melt_chr$contig,space="free",scales="free_x")+theme_bw()+scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,6))+
+theme(axis.text.y = element_text(size=5),  axis.text.x = element_blank(), panel.grid.minor = element_blank(),panel.grid.major = element_blank(),panel.spacing.x=unit(0.1,"lines"))
+
+ggsave(plt,file=paste0("scope.merged.50kb.",i,"final.png"),width=100,height=100,units="mm")
+system(paste0("slack -F ","scope.merged.50kb.",i,"final.png"," ryan_todo"))
+
+
+pdac_genes<-as.data.frame(pdac_genes)
+
+#Selected Regions
+for (i in unique(pdac_genes$gene)){
+gene_id<-i
+gene_contig<-as.character(pdac_genes[pdac_genes$gene==gene_id,]$seqnames)
+gene_start<-pdac_genes[pdac_genes$gene==gene_id,]$start
+gene_end<-pdac_genes[pdac_genes$gene==gene_id,]$end
+plt_melt_chr<-plt_melt[(as.character(plt_melt$contig)==gene_contig & plt_melt$start>gene_start-200000 & plt_melt$end<gene_end+200000),] 
+plt<-ggplot(plt_melt_chr,aes(x=row_order,y=(2^copy),label=gene))+
+geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=6,alpha=0.05))+scale_fill_manual(values=cols)+
+geom_point(aes(color = as.factor(clade)),size=0.5,alpha=0.5)+scale_color_manual(values=cols_clade)+
+geom_text_repel(size=1,y=1,nudge_y= 2, direction="x",angle= 90, hjust= 0,segment.size = 0.2,max.iter = 1e4,min.segment.length=0)+
+facet_grid(plt_melt_chr$clade~plt_melt_chr$contig,space="free",scales="free_x")+theme_bw()+scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,6))+
+theme(axis.text.y = element_text(size=5),  axis.text.x = element_blank(), panel.grid.minor = element_blank(),panel.grid.major = element_blank(),panel.spacing.x=unit(0.1,"lines"))
+
+ggsave(plt,file=paste0("scope.merged.50kb.",i,"final.png"),width=100,height=100,units="mm")
+system(paste0("slack -F ","scope.merged.50kb.",i,"final.png"," ryan_todo"))
+}
 
 ```

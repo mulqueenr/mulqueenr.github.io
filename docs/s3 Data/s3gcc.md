@@ -730,6 +730,53 @@ write.table(tad$bed[1:dim(tad$bed)[1],2:4], file=out_name, quote = FALSE, sep = 
 }
 ```
 
+### Plot raw contact frequencies of single-cells
+
+```R
+library(ggplot2)
+library(ComplexHeatmap)
+library(reshape2)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3gcc_data/gcc_cisdistal_triplesparse")
+
+files_in<-list.files(pattern="_chr16.txt$")
+x<-files_in[1]
+plot_singlechr<-function(x){
+    name_out<-paste0(basename(x),".inter.hic.pdf")
+    dat<-read.table(x,head=F,sep="\t")
+    dat$V1<-dat$V1+1 #make it start counting at 1 rather than 0
+    dat$V2<-dat$V2+1
+
+    for (i in 1:nrow(dat)){
+        if (dat[i,]$V2 < dat[i,]$V1) {
+            temp<-dat[i,]$V1
+            dat[i,]$V1 <- dat[i,]$V2
+            dat[i,]$V2 <- temp
+            } 
+    }
+    #create all the country combinations
+    df <- expand.grid(1:max(dat$V1,dat$V2), 1:max(dat$V1,dat$V2))
+    #change names
+    colnames(df) <- c('V1', 'V2')
+    #add a value of 0 for the new combinations (won't affect outcome)
+    df$V3 <- 0
+    #row bind with original dataset
+    df <- rbind(df, dat)
+    dat_cast<-as.data.frame(xtabs( V3 ~ V1 + V2, aggregate(V3~V1+V2,df,sum)))
+    dat_cast<-dcast(data=dat_cast,formula=V1~V2,value.var="Freq",fun.aggregate=sum)
+    dat_cast<-dat_cast[2:ncol(dat_cast)]
+    #dat_cast<-log10(dat_cast)
+    #dat_cast[dat_cast <= -Inf] <- 0    
+    plt<-Heatmap(dat_cast,column_order=1:ncol(dat_cast),row_order=1:nrow(dat_cast),col=c("white","red"))
+    pdf(name_out)
+    print(plt)
+    dev.off()
+    #if(max(dat_cast)>1.5){
+    system(paste0("slack -F ",name_out," ryan_todo"))#}
+}
+
+lapply(files_in,plot_singlechr)
+```
+
 ### Using Python for statistical analysis on TopDom matrices
 Input:
 
