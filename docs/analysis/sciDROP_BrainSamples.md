@@ -542,20 +542,6 @@ doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2,
                                                           min_gene_variability_pctl=85, 
                                                           n_prin_comps=30)
 
-    """
-Preprocessing...
-Simulating doublets...
-Embedding transcriptomes using PCA...
-Calculating doublet scores...
-Automatically set threshold at doublet score = 0.40
-Detected doublet rate = 1.7%
-Estimated detectable doublet fraction = 39.2%
-Overall doublet rate:
-        Expected   = 5.0%
-        Estimated  = 4.3%
-Elapsed time: 705.7 seconds
-
-    """
 df = pd.DataFrame({'cellid':cellid, 'doublet_scores':doublet_scores,'predicted_doublets':predicted_doublets})
 df.to_csv('mm10.scrublet.tsv', index=False, sep="\t")
 
@@ -577,19 +563,6 @@ doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2,
                                                           min_cells=3, 
                                                           min_gene_variability_pctl=85, 
                                                           n_prin_comps=30)
-"""
-Preprocessing...
-Simulating doublets...
-Embedding transcriptomes using PCA...
-Calculating doublet scores...
-Automatically set threshold at doublet score = 0.56
-Detected doublet rate = 0.5%
-Estimated detectable doublet fraction = 34.1%
-Overall doublet rate:
-        Expected   = 5.0%
-        Estimated  = 1.5%
-Elapsed time: 498.8 seconds
-"""
 
 df = pd.DataFrame({'cellid':cellid, 'doublet_scores':doublet_scores,'predicted_doublets':predicted_doublets})
 df.to_csv('hg38.scrublet.tsv', index=False, sep="\t")
@@ -616,6 +589,17 @@ setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
 mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+hg38_atac$cellid<-row.names(hg38_atac@meta.data)
+mm10_atac$cellid<-row.names(mm10_atac@meta.data)
+
+hg38_doublet<-read.table("hg38.scrublet.tsv",head=T)
+hg38_atac<-AddMetaData(object=hg38_atac,col="doublet_scores",metadata=setNames(hg38_doublet$doublet_scores,hg38_doublet$cellid))
+hg38_atac<-AddMetaData(object=hg38_atac,col="predicted_doublets",metadata=setNames(hg38_doublet$predicted_doublets,hg38_doublet$cellid))
+
+mm10_doublet<-read.table("mm10.scrublet.tsv",head=T)
+mm10_atac<-AddMetaData(object=mm10_atac,col="doublet_scores",metadata=setNames(mm10_doublet$doublet_scores,mm10_doublet$cellid))
+mm10_atac<-AddMetaData(object=mm10_atac,col="predicted_doublets",metadata=setNames(mm10_doublet$predicted_doublets,mm10_doublet$cellid))
+
 compl<-read.table(file="complexity.txt",header=F)
 colnames(compl)<-c("row_carryover","cellid","total_reads","unique_reads","percent_uniq")
 row.names(compl)<-compl$cellid
@@ -654,77 +638,18 @@ plt2<-ggplot(hg38_atac@meta.data[hg38_atac@meta.data$predicted_doublets=="False"
 ggsave(plt1+plt2,file="mm10.hg38.complexity.2d.pdf")
 system("slack -F mm10.hg38.complexity.2d.pdf ryan_todo")
 
-#Looking for experiment bias
-#plt1<-DimPlot(hg38_atac,group.by=c("pcr_idx","seurat_clusters"))
-#plt2<-DimPlot(mm10_atac,group.by="pcr_idx")
-#ggsave(plt1,file="hg38.i7idx.pdf",limitsize=F,width=10)
-#system("slack -F hg38.i7idx.pdf ryan_todo")
-
-#Correcting bias with harmony
-#harm_mat<-HarmonyMatrix(hg38_atac@reductions$cistopic@cell.embeddings, hg38_atac@meta.data$experiment,do_pca=FALSE,nclust=8)
-#hg38_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
-#hg38_atac<-RunUMAP(hg38_atac, reduction = "harmony",dims=1:ncol(hg38_atac@reductions$harmony))
-#hg38_atac <- FindNeighbors(object = hg38_atac,reduction = 'harmony')
-#hg38_atac <- FindClusters(object = hg38_atac,verbose = TRUE,resolution=0.05 )#targetting roughly 8 communities
-
-#looking like a strong experiment bias, checking topic bias
-#side_ha<-rowAnnotation(df= data.frame(experiment=hg38_atac$pcr_idx),
-#                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(hg38_atac$pcr_idx))))
-#pdf("hg38.i7idx.heatmap.pdf")
-#plt<-Heatmap(hg38_atac@reductions$cistopic@cell.embeddings,
-#    left_annotation=side_ha, show_row_names=F,show_column_names=F)
-#plt
-#dev.off()
-#system("slack -F hg38.i7idx.heatmap.pdf ryan_todo")
-
-
-#looking like a strong experiment bias, checking topic bias
-#side_ha<-rowAnnotation(df= data.frame(experiment=mm10_atac$pcr_idx),
-#                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(mm10_atac$pcr_idx))))
-#pdf("mm10.i7idx.heatmap.pdf")
-#plt<-Heatmap(mm10_atac@reductions$cistopic@cell.embeddings,
-#    left_annotation=side_ha,show_row_names=F,show_column_names=F)
-#plt
-#dev.off()
-#system("slack -F mm10.i7idx.heatmap.pdf ryan_todo")
-
 #hard coded these numbers just because i had them for a meeting
-cell_count_75k<-data.frame(count=c(10040,18985,170,12663-(141+19),19530-(484+50),141+19,484+50),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("75k"))
-cell_count_20k<-data.frame(count=c(3001,6572,24,3703-(27),5841-(449),27,449),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("20k"))
-cell_count<-rbind(cell_count_75k,cell_count_20k)
-plt<-ggplot(cell_count,aes(x=loading,y=count,fill=factor(names,levels=rev(c("mus","hum","by_h","by_m","by_mix","scrub_h","scrub_m")))))+geom_bar(position="stack",stat="identity")
-ggsave(plt,file="mm10.hg38.cellcount.pdf")
-system("slack -F mm10.hg38.cellcount.pdf ryan_todo")
+#cell_count_75k<-data.frame(count=c(10040,18985,170,12663-(141+19),19530-(484+50),141+19,484+50),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("75k"))
+#cell_count_20k<-data.frame(count=c(3001,6572,24,3703-(27),5841-(449),27,449),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("20k"))
+#cell_count<-rbind(cell_count_75k,cell_count_20k)
+#plt<-ggplot(cell_count,aes(x=loading,y=count,fill=factor(names,levels=rev(c("mus","hum","by_h","by_m","by_mix","scrub_h","scrub_m")))))+geom_bar(position="stack",stat="identity")
+#ggsave(plt,file="mm10.hg38.cellcount.pdf")
+#system("slack -F mm10.hg38.cellcount.pdf ryan_todo")
 
 ```
 
 {% endcapture %} {% include details.html %} 
 
-## Filtering to just a single lane for now
-Need to figure out best way to integration of data later
-
-```R
-library(cisTopic)
-library(Signac)
-library(Seurat)
-library(GenomeInfoDb)
-library(ggplot2)
-set.seed(1234)
-library(EnsDb.Hsapiens.v86)
-library(EnsDb.Mmusculus.v79)
-library(Matrix)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
-
-#Saved all cells files as hg38_SeuratObject.allcells.Rds and mm10_SeuratObject.allcells.Rds
-hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
-hg38_atac<-subset(hg38_atac, cells=row.names(hg38_atac@meta.data[which(hg38_atac$pcr_idx!="CGTACTAG"),]))
-saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
-
-mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
-mm10_atac<-subset(mm10_atac, cells=row.names(mm10_atac@meta.data[which(mm10_atac$pcr_idx!="CGTACTAG"),]))
-saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
-
-```
 ## Running Initial Clustering of Cells
 Using CisTopic for Dimensionality reduction and UMAP for projection.
 
@@ -922,6 +847,42 @@ plt<-FeaturePlot(mm10_atac,feature=c('doublet_scores'))
 ggsave(plt,file="mm10.umap.scrub.pdf")
 system("slack -F mm10.umap.scrub.pdf ryan_todo")
 
+
+#Run Harmony
+
+#Looking for experiment bias
+#plt1<-DimPlot(hg38_atac,group.by=c("pcr_idx","seurat_clusters"))
+#plt2<-DimPlot(mm10_atac,group.by="pcr_idx")
+#ggsave(plt1,file="hg38.i7idx.pdf",limitsize=F,width=10)
+#system("slack -F hg38.i7idx.pdf ryan_todo")
+
+#Correcting bias with harmony
+#harm_mat<-HarmonyMatrix(hg38_atac@reductions$cistopic@cell.embeddings, hg38_atac@meta.data$experiment,do_pca=FALSE,nclust=8)
+#hg38_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
+#hg38_atac<-RunUMAP(hg38_atac, reduction = "harmony",dims=1:ncol(hg38_atac@reductions$harmony))
+#hg38_atac <- FindNeighbors(object = hg38_atac,reduction = 'harmony')
+#hg38_atac <- FindClusters(object = hg38_atac,verbose = TRUE,resolution=0.05 )#targetting roughly 8 communities
+
+#looking like a strong experiment bias, checking topic bias
+#side_ha<-rowAnnotation(df= data.frame(experiment=hg38_atac$pcr_idx),
+#                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(hg38_atac$pcr_idx))))
+#pdf("hg38.i7idx.heatmap.pdf")
+#plt<-Heatmap(hg38_atac@reductions$cistopic@cell.embeddings,
+#    left_annotation=side_ha, show_row_names=F,show_column_names=F)
+#plt
+#dev.off()
+#system("slack -F hg38.i7idx.heatmap.pdf ryan_todo")
+
+
+#looking like a strong experiment bias, checking topic bias
+#side_ha<-rowAnnotation(df= data.frame(experiment=mm10_atac$pcr_idx),
+#                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(mm10_atac$pcr_idx))))
+#pdf("mm10.i7idx.heatmap.pdf")
+#plt<-Heatmap(mm10_atac@reductions$cistopic@cell.embeddings,
+#    left_annotation=side_ha,show_row_names=F,show_column_names=F)
+#plt
+#dev.off()
+#system("slack -F mm10.i7idx.heatmap.pdf ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 

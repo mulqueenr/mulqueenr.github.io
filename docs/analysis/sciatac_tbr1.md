@@ -1004,6 +1004,7 @@ Used multiple clustering and dim reduc attempts. Commented out irrelevant ones.
 
   obj@meta.data<-merge(obj@meta.data,sci_idx_tn5_i5,by="tn5_i5_idx_seq")
   obj@meta.data<-merge(obj@meta.data,sci_idx_tn5_i7,by="tn5_i7_idx_seq")
+  row.names(obj@meta.data)<-obj$cellID
 
   #Read in sample information
   samp_info<-read.table("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/sample_id.txt",header=T,sep="\t")
@@ -1012,10 +1013,8 @@ Used multiple clustering and dim reduc attempts. Commented out irrelevant ones.
   samp_info<-merge(samp_info,tn5_info,by="Sample_ID")
   samp_info$tn5_i5_set<-substr(samp_info$Plate,1,1) #split string to get set name
   samp_info$tn5_i7_set<-substr(samp_info$Plate,2,2) #split string to get set name
-  obj@meta.data<-
   dat<-obj@meta.data
-  dat<-merge(dat,samp_info,by.x=c("tn5_i5_set.x","tn5_i5_row.x","tn5_i7_set.x","tn5_i7_row.x"),by.y=c("tn5_i5_set","Row","tn5_i7_set","Column"))
-  dat<-dat[,c(1:34,50)]
+  dat<-merge(dat,samp_info,by.x=c("tn5_i5_set","tn5_i5_row","tn5_i7_set","tn5_i7_row"),by.y=c("tn5_i5_set","Row","tn5_i7_set","Column"))
   row.names(dat)<-dat$cellID
   obj<-AddMetaData(obj,dat)
 
