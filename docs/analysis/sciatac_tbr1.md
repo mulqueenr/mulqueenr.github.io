@@ -1055,7 +1055,6 @@ tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21"_"$22"_
 
 ```
 
-
 {% endcapture %} {% include details.html %} 
 
 
@@ -1108,6 +1107,117 @@ tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21"_"$22"_
 
 {% endcapture %} {% include details.html %} 
 
+## Bias in Dimensionality Reduction 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+```R
+  library(Signac)
+  library(Seurat)
+  library(GenomeInfoDb)
+  library(ggplot2)
+  set.seed(1234)
+  library(EnsDb.Mmusculus.v79)
+  library(Matrix)
+  library(dplyr)
+  library(patchwork)
+  setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
+  obj<-readRDS(file="tbr1_ko.SeuratObject.Rds")
+
+  cor(obj@reductions$cistopic@cell.embeddings,obj$litter_factor)
+  #                  [,1]
+  #topic_1  -0.0048682800
+  #topic_2   0.0006114080
+  #topic_3   0.0019391434
+  #topic_4   0.0004925101
+  #topic_5   0.0059098554
+  #topic_6   0.0079975065
+  #topic_7   0.0014970228
+  #topic_8   0.0064396577
+  #topic_9  -0.0042905441
+  #topic_10  0.0056733199
+  #topic_11 -0.0095159759
+  #topic_12 -0.0052573402
+  #topic_13 -0.0094208357
+  #topic_14  0.0008690332
+  #topic_15  0.0008384395
+  #topic_16 -0.0117585221
+  #topic_17  0.0085839462
+  #topic_18  0.0047497686
+  #topic_19 -0.0183519401
+  #topic_20  0.0027161257
+  #topic_21 -0.0009331169
+  #topic_22  0.0029973032
+  #topic_23  0.0056093547
+  #topic_24  0.0056003574
+  #topic_25  0.0092143458
+  #topic_26  0.0071105516
+  #topic_27  0.0015259029
+  #topic_28  0.0102165411
+
+  plt_list<-lapply(paste0("topic_",1:dim(obj@reductions$cistopic@cell.embeddings)[2]), function(x) {FeatureScatter(obj,feature1 = "litter_factor", feature2 = x)})
+  plt<-wrap_plots(plt_list)
+  ggsave(plt,file="topic.v.litterfactor.pdf",width=100,height=100,limitsize=F)
+  system("slack -F topic.v.litterfactor.pdf ryan_todo")
+
+  cor(obj@reductions$lsi@cell.embeddings,obj$litter_factor)
+  #                [,1]
+  #LSI_1  -0.0197984916
+  #LSI_2   0.0142581141
+  #LSI_3   0.0153538534
+  # LSI_4  -0.0099494669
+  # LSI_5  -0.0088753754
+  # LSI_6   0.0034057586
+  # LSI_7  -0.0096628819
+  # LSI_8   0.0060060897
+  # LSI_9  -0.0058106464
+  # LSI_10 -0.0059709231
+  # LSI_11  0.0049568514
+  # LSI_12 -0.0071513856
+  # LSI_13 -0.0053931850
+  # LSI_14  0.0039286017
+  # LSI_15  0.0016372250
+  # LSI_16 -0.0022244979
+  # LSI_17 -0.0079830814
+  # LSI_18 -0.0048076842
+  # LSI_19  0.0008759692
+  # LSI_20 -0.0038078880
+  # LSI_21  0.0073928409
+  # LSI_22 -0.0001032833
+  # LSI_23  0.0049631178
+  # LSI_24 -0.0081225945
+  # LSI_25  0.0032082861
+  # LSI_26 -0.0029074241
+  # LSI_27 -0.0002510083
+  # LSI_28 -0.0001919163
+  # LSI_29 -0.0004581280
+  # LSI_30  0.0042757921
+  # LSI_31  0.0027678633
+  # LSI_32  0.0018201965
+  # LSI_33  0.0031855607
+  # LSI_34 -0.0083743461
+  # LSI_35  0.0033139926
+  # LSI_36 -0.0019435683
+  # LSI_37  0.0016345240
+  # LSI_38  0.0110766545
+  # LSI_39  0.0006939064
+  # LSI_40  0.0021132637
+  # LSI_41  0.0013361446
+  # LSI_42 -0.0017175437
+  # LSI_43 -0.0018615958
+  # LSI_44  0.0062366147
+  # LSI_45 -0.0012734999
+  # LSI_46  0.0005573040
+  # LSI_47  0.0015743826
+  # LSI_48 -0.0012989560
+  # LSI_49 -0.0084322017
+  # LSI_50  0.0092624056
+
+  plt_list<-lapply(paste0("LSI_",1:dim(obj@reductions$lsi@cell.embeddings)[2]), function(x) {FeatureScatter(obj,feature1 = "litter_factor", feature2 = x)})
+  plt<-wrap_plots(plt_list)
+  ggsave(plt,file="lsi.v.litterfactor.pdf",width=100,height=100,limitsize=F)
+  system("slack -F lsi.v.litterfactor.pdf ryan_todo")
+
+```
+{% endcapture %} {% include details.html %} 
 
 ## Cicero for Coaccessible Networks
 

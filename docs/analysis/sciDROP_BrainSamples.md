@@ -584,7 +584,6 @@ library(Seurat)
 library(ggplot2)
 library(patchwork)
 library(ComplexHeatmap)
-library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
@@ -665,6 +664,8 @@ set.seed(1234)
 library(EnsDb.Hsapiens.v86)
 library(EnsDb.Mmusculus.v79)
 library(Matrix)
+library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
+
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
@@ -709,8 +710,8 @@ system("slack -F mm10_atac_model_selection.pdf ryan_todo")
 
 #set topics based on derivative
 #selected topics subject to change
-mm10_selected_topic=30
-hg38_selected_topic=28
+mm10_selected_topic=28
+hg38_selected_topic=30
 mm10_cisTopicObject<-cisTopic::selectModel(mm10_atac_cistopic_models,select=mm10_selected_topic,keepModels=F)
 hg38_cisTopicObject<-cisTopic::selectModel(hg38_atac_cistopic_models,select=hg38_selected_topic,keepModels=F)
 
@@ -802,7 +803,7 @@ hg38_atac <- FindNeighbors(
 hg38_atac <- FindClusters(
   object = hg38_atac,
   verbose = TRUE,
-  resolution=0.01 #targetting roughly 8 communities
+  resolution=0.01 #8 communities
 )
 
 mm10_n_topics<-ncol(Embeddings(mm10_atac,reduction="cistopic"))
@@ -818,13 +819,6 @@ mm10_atac <- FindClusters(
   resolution=0.02 #targetting roughly 10 communities for gross cell clustering
 )
 
-#Add scrublet scores to meta data
-mm10_scrub<-read.table("mm10.scrublet.tsv",header=T)
-hg38_scrub<-read.table("hg38.scrublet.tsv",header=T)
-
-mm10_atac@meta.data<-cbind(mm10_atac@meta.data,mm10_scrub[match(mm10_scrub$cellid,row.names(mm10_atac@meta.data),nomatch=0),])
-hg38_atac@meta.data<-cbind(hg38_atac@meta.data,hg38_scrub[match(hg38_scrub$cellid,row.names(hg38_atac@meta.data),nomatch=0),])
-
 ###save Seurat files
 saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
 saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
@@ -832,12 +826,12 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 #Plotting 2d projection and clusters
 
 plt<-DimPlot(hg38_atac,group.by=c('seurat_clusters','predicted_doublets',"pcr_idx"))
-ggsave(plt,file="hg38.umap.pdf",width=10)
-system("slack -F hg38.umap.pdf ryan_todo")
+ggsave(plt,file="hg38.umap.i7idx.pdf",width=10)
+system("slack -F hg38.umap.i7idx.pdf ryan_todo")
 
 plt<-DimPlot(mm10_atac,group.by=c('seurat_clusters','predicted_doublets',"pcr_idx"))
-ggsave(plt,file="mm10.umap.pdf",width=10)
-system("slack -F mm10.umap.pdf ryan_todo")
+ggsave(plt,file="mm10.umap.i7idx.pdf",width=10)
+system("slack -F mm10.umap.i7idx.pdf ryan_todo")
 
 plt<-FeaturePlot(hg38_atac,feature=c('doublet_scores'))
 ggsave(plt,file="hg38.umap.scrub.pdf")
@@ -847,42 +841,34 @@ plt<-FeaturePlot(mm10_atac,feature=c('doublet_scores'))
 ggsave(plt,file="mm10.umap.scrub.pdf")
 system("slack -F mm10.umap.scrub.pdf ryan_todo")
 
+#Correcting bias with harmony
+pdf("hg38.harmony.convergence.pdf")
+harm_mat<-HarmonyMatrix(hg38_atac@reductions$cistopic@cell.embeddings, hg38_atac@meta.data$pcr_idx,do_pca=FALSE,nclust=20,plot_convergence=T)
+dev.off()
+system("slack -F hg38.harmony.convergence.pdf ryan_todo")
+hg38_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
+hg38_atac<-RunUMAP(hg38_atac, reduction = "harmony",dims=1:ncol(hg38_atac@reductions$harmony))
+hg38_atac <- FindNeighbors(object = hg38_atac,reduction = 'harmony')
+hg38_atac <- FindClusters(object = hg38_atac,verbose = TRUE,resolution=0.05)
 
-#Run Harmony
-
-#Looking for experiment bias
-#plt1<-DimPlot(hg38_atac,group.by=c("pcr_idx","seurat_clusters"))
-#plt2<-DimPlot(mm10_atac,group.by="pcr_idx")
-#ggsave(plt1,file="hg38.i7idx.pdf",limitsize=F,width=10)
-#system("slack -F hg38.i7idx.pdf ryan_todo")
+plt<-DimPlot(hg38_atac,group.by=c("pcr_idx"))
+ggsave(plt,file="hg38.umap.i7idx.harm.pdf",width=10)
+system("slack -F hg38.umap.i7idx.harm.pdf ryan_todo")
 
 #Correcting bias with harmony
-#harm_mat<-HarmonyMatrix(hg38_atac@reductions$cistopic@cell.embeddings, hg38_atac@meta.data$experiment,do_pca=FALSE,nclust=8)
-#hg38_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
-#hg38_atac<-RunUMAP(hg38_atac, reduction = "harmony",dims=1:ncol(hg38_atac@reductions$harmony))
-#hg38_atac <- FindNeighbors(object = hg38_atac,reduction = 'harmony')
-#hg38_atac <- FindClusters(object = hg38_atac,verbose = TRUE,resolution=0.05 )#targetting roughly 8 communities
+pdf("mm10.harmony.convergence.pdf")
+harm_mat<-HarmonyMatrix(mm10_atac@reductions$cistopic@cell.embeddings, mm10_atac@meta.data$pcr_idx,do_pca=FALSE,nclust=10)
+dev.off()
 
-#looking like a strong experiment bias, checking topic bias
-#side_ha<-rowAnnotation(df= data.frame(experiment=hg38_atac$pcr_idx),
-#                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(hg38_atac$pcr_idx))))
-#pdf("hg38.i7idx.heatmap.pdf")
-#plt<-Heatmap(hg38_atac@reductions$cistopic@cell.embeddings,
-#    left_annotation=side_ha, show_row_names=F,show_column_names=F)
-#plt
-#dev.off()
-#system("slack -F hg38.i7idx.heatmap.pdf ryan_todo")
+mm10_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
+mm10_atac<-RunUMAP(mm10_atac, reduction = "harmony",dims=2:ncol(mm10_atac@reductions$harmony))
+mm10_atac <- FindNeighbors(object = mm10_atac,reduction = 'harmony')
+mm10_atac <- FindClusters(object = mm10_atac,verbose = TRUE,resolution=0.05 )
 
+plt<-DimPlot(mm10_atac,group.by=c("pcr_idx"))
+ggsave(plt,file="mm10.umap.i7idx.harm.pdf",width=10)
+system("slack -F mm10.umap.i7idx.harm.pdf ryan_todo")
 
-#looking like a strong experiment bias, checking topic bias
-#side_ha<-rowAnnotation(df= data.frame(experiment=mm10_atac$pcr_idx),
-#                col=list(experiment=setNames(c("#e41a1c","#377eb8","#4daf4a"),unique(mm10_atac$pcr_idx))))
-#pdf("mm10.i7idx.heatmap.pdf")
-#plt<-Heatmap(mm10_atac@reductions$cistopic@cell.embeddings,
-#    left_annotation=side_ha,show_row_names=F,show_column_names=F)
-#plt
-#dev.off()
-#system("slack -F mm10.i7idx.heatmap.pdf ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 

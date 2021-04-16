@@ -2538,6 +2538,8 @@ Following https://satijalab.org/signac/articles/integration.html
 
 Generate counts matrices using the given peak sets for other technologies.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```R
 
 library(Signac)
@@ -2690,6 +2692,7 @@ integration_peaks(x=ours_in_dscatac_object,y=dscatac,prefix="ours_in_dscatac")
 
 
 ```
+{% endcapture %} {% include details.html %} 
 
 ## Subclustering of Cell Types
 Starting with human cells
@@ -3109,6 +3112,10 @@ df = pd.DataFrame({'cellid':cellid, 'doublet_scores':doublet_scores,'predicted_d
 df.to_csv('hg38_inhibitoryneurons.scrublet.tsv', index=False, sep="\t")
 
 ```
+{% endcapture %} {% include details.html %} 
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 
 ```R
 library(Signac)

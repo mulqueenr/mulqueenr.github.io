@@ -10,7 +10,7 @@ category: s3processing
 This notebook is a continuation of "s3 Preprocessing to Bam files" and details the processing of s3WGS libraries. This notebook starts with a merged, barcode-based removal of duplicate, >Q10 filtered bam file which was subset to barcodes >=10K unique reads
 
 
-```python
+```bash
 #Initial directory structure (filtered to relevant files):
 #Note GCC type libraries will also be processes as WGS files, so are included here.
 /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis
@@ -37,7 +37,7 @@ This notebook is a continuation of "s3 Preprocessing to Bam files" and details t
 Performing this on pre-barcode based remove duplicate bams for future complexity plotting and projection modeling.
 
 
-```python
+```bash
 #First going to subset un-rmdup bam files to just those passing QC
 DIR="/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis"
 OUTPUT_DIR=$DIR"/s3wgs_data/singlecell_bam"
@@ -113,7 +113,7 @@ mv *isize* ./isize
 ### QC Directory Structure 
 
 
-```python
+```bash
 /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data
 ├── singlecell_bam #contains deduplicated single cell bams for SCOPE analysis
 │   └── isize #contains isize output for insert size distribution
@@ -128,7 +128,7 @@ mv *isize* ./isize
  
 
 
-```python
+```bash
 
 cd /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data
 
