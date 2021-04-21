@@ -841,9 +841,34 @@ plt<-FeaturePlot(mm10_atac,feature=c('doublet_scores'))
 ggsave(plt,file="mm10.umap.scrub.pdf")
 system("slack -F mm10.umap.scrub.pdf ryan_todo")
 
+
+```
+{% endcapture %} {% include details.html %} 
+
+## Correcting for systematic bias with harmony
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+library(cisTopic)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(EnsDb.Mmusculus.v79)
+library(Matrix)
+library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
+
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+
 #Correcting bias with harmony
 pdf("hg38.harmony.convergence.pdf")
-harm_mat<-HarmonyMatrix(hg38_atac@reductions$cistopic@cell.embeddings, hg38_atac@meta.data$pcr_idx,do_pca=FALSE,nclust=20,plot_convergence=T)
+harm_mat<-HarmonyMatrix(hg38_atac@reductions$cistopic@cell.embeddings, hg38_atac@meta.data$pcr_idx,do_pca=FALSE,nclust=14,plot_convergence=T)
 dev.off()
 system("slack -F hg38.harmony.convergence.pdf ryan_todo")
 hg38_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
@@ -851,27 +876,25 @@ hg38_atac<-RunUMAP(hg38_atac, reduction = "harmony",dims=1:ncol(hg38_atac@reduct
 hg38_atac <- FindNeighbors(object = hg38_atac,reduction = 'harmony')
 hg38_atac <- FindClusters(object = hg38_atac,verbose = TRUE,resolution=0.05)
 
-plt<-DimPlot(hg38_atac,group.by=c("pcr_idx"))
-ggsave(plt,file="hg38.umap.i7idx.harm.pdf",width=10)
+plt<-DimPlot(hg38_atac,group.by=c("pcr_idx","seurat_clusters"))
+ggsave(plt,file="hg38.umap.i7idx.harm.pdf",width=15)
 system("slack -F hg38.umap.i7idx.harm.pdf ryan_todo")
 
 #Correcting bias with harmony
 pdf("mm10.harmony.convergence.pdf")
-harm_mat<-HarmonyMatrix(mm10_atac@reductions$cistopic@cell.embeddings, mm10_atac@meta.data$pcr_idx,do_pca=FALSE,nclust=10)
+harm_mat<-HarmonyMatrix(mm10_atac@reductions$cistopic@cell.embeddings, mm10_atac@meta.data$pcr_idx,do_pca=FALSE,nclust=15)
 dev.off()
 
 mm10_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
 mm10_atac<-RunUMAP(mm10_atac, reduction = "harmony",dims=2:ncol(mm10_atac@reductions$harmony))
 mm10_atac <- FindNeighbors(object = mm10_atac,reduction = 'harmony')
-mm10_atac <- FindClusters(object = mm10_atac,verbose = TRUE,resolution=0.05 )
+mm10_atac <- FindClusters(object = mm10_atac,verbose = TRUE,resolution=0.075 )
 
-plt<-DimPlot(mm10_atac,group.by=c("pcr_idx"))
+plt<-DimPlot(mm10_atac,group.by=c("pcr_idx","seurat_clusters"))
 ggsave(plt,file="mm10.umap.i7idx.harm.pdf",width=10)
 system("slack -F mm10.umap.i7idx.harm.pdf ryan_todo")
-
 ```
 {% endcapture %} {% include details.html %} 
-
 
 ### Subclustering 
 
@@ -879,6 +902,76 @@ Going to exclude cells in subclustering that are identified by scrublet as poten
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
+
+```R
+library(Signac)
+library(Seurat)
+
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+#Read in data and modify to monocle CDS file
+#read in RDS file.
+hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+dir.create("subcluster")
+
+subset_seurat<-function(x,i,prefix){
+#Perform cistopic on subclusters of data
+    atac_sub<-subset(x,subset=seurat_clusters==i)
+    atac_sub<-subset(atac_sub,subset=predicted_doublets=="False") #remove doublets from subclustering
+    outname<-paste0(prefix,"_",i,".subset.SeuratObject.Rds")
+    saveRDS(atac_sub,paste0("./subcluster/",outname))
+    atac_sub<-subset(atac_sub,subset=pcr_idx %in% c("CAGAGAGG","CTCTCTAC"))
+    outname<-paste0(prefix,"_",i,".75k.subset.SeuratObject.Rds")
+    saveRDS(atac_sub,paste0("./subcluster/",outname))
+}
+
+for (i. in unique(hg38_atac$seurat_clusters)){subset_seurat(hg38_atac,i=i.,prefix="hg38")}
+for (i. in unique(mm10_atac$seurat_clusters)){subset_seurat(mm10_atac,i=i.,prefix="mm10")}
+
+```
+
+```R
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(cisTopic)
+set.seed(1234)
+
+wd<-"/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/subcluster"
+setwd(wd)
+args = commandArgs(trailingOnly=TRUE)
+
+cistopic_generation<-function(x){
+    #Perform cistopic on subclusters of data 
+    outname<-paste0(strsplit(x,"[.]")[[1]][1],".",strsplit(x,"[.]")[[1]][2])
+    atac_sub<-readRDS(x)
+    cistopic_counts_frmt<-atac_sub$peaks@counts
+    row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
+    sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
+    print("made cistopic object")
+    sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(10,22:28),nCores=8,addModels=FALSE)
+    saveRDS(sub_cistopic_models,
+        file=paste0(wd,"/",outname,".CisTopicObject.Rds"))
+    print("finshed running cistopic")
+
+    pdf(paste0(wd,"/",outname,"_model_selection.pdf"))
+    par(mfrow=c(3,3))
+    sub_cistopic_models<- selectModel(sub_cistopic_models, type='derivative')
+    dev.off()
+    rm(sub_cistopic_models)
+    rm(sub_cistopic)
+    rm(atac_sub)
+    }
+
+cistopic_generation(x=args[1])
+
+```
+
+```bash
+for i in *75k.subset.SeuratObject.Rds;
+do Rscript subcluster.R $i ; done &
+```
 
 ```R
 library(Signac)
@@ -909,30 +1002,6 @@ setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
 mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 dir.create("subcluster")
-
-######FUNCTIONS#####
-cistopic_generation<-function(x,celltype.x,species="hg38"){
-#Perform cistopic on subclusters of data 
-    atac_sub<-x
-    atac_sub<-subset(atac_sub,subset=predicted_doublets=="False") #remove doublets from subclustering
-    print("subset atac data")
-    cistopic_counts_frmt<-atac_sub$peaks@counts
-    row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
-    sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
-    print("made cistopic object")
-    sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(10,22:28),nCores=8,addModels=FALSE)
-    saveRDS(sub_cistopic_models,file=paste("./subcluster/",species,celltype.x,".CisTopicObject.Rds",sep="_"))
-    print("finshed running cistopic")
-
-    pdf(paste("./subcluster/",species,celltype.x,"_model_selection.pdf",sep="_"))
-    par(mfrow=c(3,3))
-    sub_cistopic_models<- selectModel(sub_cistopic_models, type='derivative')
-    dev.off()
-    rm(sub_cistopic_models)
-    rm(sub_cistopic)
-    rm(atac_sub)
-    }
-
 
 #UMAP Projection and clustering on selected cistopic model
 clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_atac,celltype.x,topiccount_list.=topic_count_list){
@@ -993,7 +1062,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     celltype_list<-unique(hg38_atac$seurat_clusters)
 
     #Running cistopic subclustering on all identified cell types
-    lapply(celltype_list, function(i){atac_sub<-subset(hg38_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="hg38")})
+    #lapply(celltype_list, function(i){atac_sub<-subset(hg38_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="hg38")})
 
     topicmodel_list<-paste("./subcluster/",species,celltype_list,".CisTopicObject.Rds",sep="_")
 
@@ -1040,7 +1109,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
 
     #Running cistopic subclustering on all identified cell types
     #####DOING CUSTERS 1:4 to START, CLEARING MEMORY THEN DOING AGAIN
-    lapply(celltype_list[4:length(celltype_list)], function(i){atac_sub<-subset(mm10_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="mm10")})
+    #lapply(celltype_list[4:length(celltype_list)], function(i){atac_sub<-subset(mm10_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="mm10")})
     
     #determine model count to use for each cell type
     for (i in paste("./subcluster/",species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}

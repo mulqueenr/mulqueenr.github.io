@@ -56,7 +56,7 @@ We repeated for all runs in firstplates, secondplates, and thirdplates.
   #$run_processing_log_file = "/home/groups/oroaklab/fastq/run_processing.log";
   #@POSSIBLE_OUTS = ("Undetermined_S0_R1_001.fastq.gz", "Undetermined_S0_R2_001.fastq.gz", "Undetermined_S0_I1_001.fastq.gz", "Undetermined_S0_I2_001.fastq.gz");
 
-```
+``` 
 {% endcapture %} {% include details.html %} 
 
 

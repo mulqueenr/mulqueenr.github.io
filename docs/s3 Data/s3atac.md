@@ -435,41 +435,41 @@ rm -rf *tmp*bam
 for i in *perc*merged.bam;
 do scitools callpeaks $i ; done &
 
+#  40782 hg38.10000.merged.500.bed
+#    3173 hg38.1000.merged.500.bed
+#   75744 hg38.20perc.merged.500.bed
+#   64892 hg38.25000.merged.500.bed
+#  137381 hg38.40perc.merged.500.bed
+#   94585 hg38.5000.merged.500.bed
+#  184420 hg38.60perc.merged.500.bed
+#  221442 hg38.80perc.merged.500.bed
+#   16732 mm10.10000.merged.500.bed
+#     519 mm10.1000.merged.500.bed
+#   36837 mm10.20perc.merged.500.bed
+#   26208 mm10.25000.merged.500.bed
+#   71047 mm10.40perc.merged.500.bed
+#   41218 mm10.5000.merged.500.bed
+#   99236 mm10.60perc.merged.500.bed
+#  154911 mm10.80perc.merged.500.bed
+
+#for i in hg38*bam;
+#do scitools atac-count -O ${i::-4}.fullpeakset $i ../../hg38.bbrd.q10.500.bed & done &
+
+#for i in mm10*bam;
+#do scitools atac-count -O ${i:-4}.fullpeakset $i ../../mm10.bbrd.q10.500.bed & done &
+
 for i in hg38*bam;
 do scitools atac-count -O ${i::-4} $i ${i::-4}.500.bed & done &
 
 for i in mm10*bam;
 do scitools atac-count -O ${i:-4} $i ${i::-4}.500.bed & done &
 
-#generate peak count per subsampling
-wc -l *bed > peak.counts.txt
-
 #Generate count of reads per bam
 for i in *bam; do
 samtools view $i | awk '{split($1,a,":");print a[1]}' | sort --parallel 10 | uniq -c > ${i::-4}.counts.txt; done &
 
 ````
-Plotting Peaks Called per subsampled bam
-```R
-library(ggplot2)
-dat<-read.table("peak.counts.txt",header=F)
-dat<-dat[dat$V2 != "total",]
-dat$species<-unlist(lapply(strsplit(dat$V2,"[.]"),"[",1))
-dat$percentage<-unlist(lapply(strsplit(dat$V2,"[.]"),"[",2))
-dat<-dat[dat$percentage!="100perc",]
-dat<-rbind(dat,c(292156,"hg38.bbrd.q10.500.bed","hg38","onehundo"),c(174653,"mm10.bbrd.q10.500.bed","mm10","onehundo"))
-dat$V1<-as.numeric(dat$V1)
-plt<-ggplot(dat,aes(x=percentage,y=V1))+geom_bar(stat="identity")+facet_wrap(species~.,ncol=1,scale="free")+theme_minimal()
-ggsave(plt,file="peaks_per_downsampling.pdf")
-system("slack -F peaks_per_downsampling.pdf ryan_todo")
-```
 
-Read counts per subsampled bam.
-```bash
- for i in *bam; do 
- 	outname=${i::-4}.readcount.txt
- 	samtools view -f 2 $i | awk '{split($1,a,":"); print a[1]}' | sort -T . --parallel=15 -S 2G - | uniq -c > $outname ; done &
-```
 {% endcapture %} {% include details.html %} 
 
 Generate Seurat Objects of downsampled data.
@@ -711,31 +711,6 @@ clustering_loop<-function(topicmodel,topiccount,seuratobject,genome_name="hg38",
   	ggsave(plt_list_out,file="downsample.mm10.clustering.pdf",height=30,width=30,limitsize=F)
   	system("slack -F downsample.mm10.clustering.pdf ryan_todo")
 
-#mouse mean unique reads
-#0.5 544.2
-#1 1086.6
-#2 2173.7
-#5 5979.8
-#10 10870.8
-#15 16307.6
-#20 21747.1
-#40 43490.9
-#50 54365.4
-#60 65233.0
-#80 86976.9
-
-#hg38 mean unique reads
-#0.5 715.1
-#1 1430.0
-#2 2860.4
-#5 7867.6
-#10 14307.9
-#15 21460.6
-#20 28617.9
-#40 57245.4
-#50 71555.2
-#60 85873.1
-#80 114497.9
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -853,277 +828,173 @@ lapply(cicero_objects,generate_ga)
 ```
 {% endcapture %} {% include details.html %} 
 
-# Preparation of s3ATAC adult mouse brain reads with available data sets
+
+# Comparison of s3ATAC adult mouse brain reads with available data sets
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
+
 * dscATAC
 	* from https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/mousebrain/data/mousebrain-master_dataframe.rds They only get single reads. So "uniqueNuclearFrags" is the correct column to use.
-	* Made this into a seurat object as well for integration.
+
 * snATAC 
 	* from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM2668124 
 	"Quality metrics for cells that passed quality filtering (column 1: cell barcodes, column 2: number of reads, column 3: promoter coverage, column 4: fraction of reads in peaks."
-	* Made this into a seurat object as well for integration.
+
 * 10X scATAC
 	* Reports Fragments from https://cf.10xgenomics.com/samples/cell-atac/1.1.0/atac_v1_adult_brain_fresh_5k
 	So for 10X I decided to use their filtered bam file to generate my own count of unique reads per cell.
-* sciMAP ATAC
-	* Using local files from sciMAP ATAC paper (Thornton 2021)
-
-{% capture summary %} Preparation of snATAC Data Set {% endcapture %} {% capture details %}  
 ```bash
-wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM2668nnn/GSM2668124/suppl/GSM2668124_p56.nchrM.merge.sel_cell.mat.gz
-wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM2668nnn/GSM2668124/suppl/GSM2668124_p56.nchrM.merge.sel_cell.qc.txt.gz
-wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM2668nnn/GSM2668124/suppl/GSM2668124_p56.nchrM.merge.sel_cell.xgi.txt.gz
+cd /home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison
+wget https://cg.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_possorted_bam.bam
+samtools flagstat atac_v1_adult_brain_fresh_5k_possorted_bam.bam
+#488116262 + 0 in total (QC-passed reads + QC-failed reads)
+#3570 + 0 secondary
+#0 + 0 supplementary
+#270088536 + 0 duplicates
+#481421958 + 0 mapped (98.63% : N/A)
+#488112692 + 0 paired in sequencing
+#244056346 + 0 read1
+#244056346 + 0 read2
+#473659052 + 0 properly paired (97.04% : N/A)
+#478189330 + 0 with itself and mate mapped
+#3229058 + 0 singletons (0.66% : N/A)
+#1467290 + 0 with mate mapped to a different chr
+#839491 + 0 with mate mapped to a different chr (mapQ>=5)
+#so there are some singletons in this as well, but a low amount
+samtools view -bf 2 atac_v1_adult_brain_fresh_5k_possorted_bam.bam > 10xout.temp.bam
+samtools flagstat 10xout.temp.bam
+
+samtools view -b -f 2 atac_v1_adult_brain_fresh_5k_possorted_bam.bam | awk '{print $19}' | sort --parallel=20 -T . | uniq -c > 10x_genomics_uniquereads.txt &
+
+```
+
+```R
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/barnyard_analysis")
+
+dat_10x<-read.csv("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/10x_atac_v1_adult_brain_fresh_5k_singlecell.csv")
+dat_10x<-dat_10x[c("barcode","passed_filters")]
+barcused_10x<-read.table("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/10x_atac_v1_adult_brain_fresh_5k_barcodesused.txt")
+dat_10x<-dat_10x[dat_10x$barcode %in% barcused_10x$V1,]
+#summary(dat_10x$duplicate/dat_10x$total)
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+#0.05322 0.48545 0.52413 0.52090 0.56153 0.79080
+colnames(dat_10x)<-c("cellID","uniq_reads")
+dat_10x$assay<-"10x_scATAC"
+
+dat_biorad<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/mousebrain-master_dataframe.rds")
+#summary(1-dat_biorad$duplicateProportion)
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+ # 0.051   0.160   0.190   0.255   0.328   0.796
+dat_biorad_projected<-dat_biorad[c("DropBarcode","librarySize")]
+colnames(dat_biorad_projected)<-c("cellID","uniq_reads")
+dat_biorad_projected$assay<-"dscATAC_projected"
+
+dat_biorad<-dat_biorad[c("DropBarcode","uniqueNuclearFrags")]
+colnames(dat_biorad)<-c("cellID","uniq_reads")
+dat_biorad$assay<-"dscATAC"
+
+dat_ren<-read.csv("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/GSM2668124_p56.nchrM.merge.sel_cell.qc.csv",header=F)
+colnames(dat_ren)<-c("cellID","uniq_reads","perc_uniq","frip")
+#> summary(dat_ren$perc_uniq)
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+# 0.2508  0.2643  0.2660  0.2682  0.2724  0.3334
+dat_ren<-dat_ren[c("cellID","uniq_reads")]
+dat_ren$assay<-"snATAC"
+
+dat_sciatac<-read.table("/home/groups/oroaklab/adey_lab/projects/spatial/wholebrain/wholebrain.complexity.txt",header=F)
+colnames(dat_sciatac)<-c("rowname_carryover","cellID","tot_reads","uniq_reads","perc_uniq")
+dat_sciatac_condition<-read.table("/home/groups/oroaklab/adey_lab/projects/spatial/wholebrain/annots_wholebrain/wholebrain_FreshvFrozen.annot")
+colnames(dat_sciatac_condition)<-c("cellID","condition")
+dat_sciatac<-merge(dat_sciatac,dat_sciatac_condition,by="cellID")
+dat_sciatac<-dat_sciatac[dat_sciatac$condition=="Frozen",] #filter by frozen condition
+dat_sciatac_dims<-read.table("/home/groups/oroaklab/adey_lab/projects/spatial/wholebrain/wholebrain.bbrd.q10.filt.500.counts.cistopic.UMAP.dims") 
+colnames(dat_sciatac_dims)<-c("cellID","x","y") #filter by cells used in analysis (dims file are those which underwent clustering)
+dat_sciatac<-dat_sciatac[c("cellID","uniq_reads")]
+dat_sciatac<-dat_sciatac[dat_sciatac$cellID %in% dat_sciatac_dims$cellID,]
+dat_sciatac$assay<-"sciatac"
+
+
+dat_s3<-read.table("mm10.complexity.txt",header=F)
+colnames(dat_s3)<-c("rowname_carryover","cellID","tot_reads","uniq_reads","perc_uniq")
+dat_s3_pcrplate<-read.table("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/barnyard_pcrplate.annot",header=F,col.names=c("cellID","pcr_plate"))
+dat_s3<-merge(dat_s3,dat_s3_pcrplate,by="cellID")
+#summarize percent unique per plate
+library(dplyr)
+
+dat_s3<-dat_s3[dat_s3$uniq_reads>=10000,]
+
+data.frame(dat_s3 %>% group_by(pcr_plate) %>% summarise(mean_compl=mean(perc_uniq),
+                                                        median_compl=median(perc_uniq),
+                                                        sd=sd(perc_uniq),
+                                                        mean_uniq=mean(uniq_reads),
+                                                        median_uniq=median(uniq_reads),
+                                                        sd_uniq=sd(uniq_reads),
+                                                        cell_count=n()))
+
+#  pcr_plate mean_compl median_compl        sd mean_uniq median_uniq   sd_uniq cell_count
+#1         B   71.48840       71.820  3.668856  46299.46     33502.0  39659.36 381
+#2         C   36.31242       27.895 16.913973 264133.51    181248.5 269722.56 298
+#3         D   66.16967       67.690  7.614098  43358.67     26490.0  48451.74 273 
+       
+dat_s3_b<-dat_s3[dat_s3$pcr_plate=="B",c("cellID","uniq_reads")]
+dat_s3_b$assay<-"s3ATAC_Plate_B"
+dat_s3_c<-dat_s3[dat_s3$pcr_plate=="C",c("cellID","uniq_reads")]
+dat_s3_c$assay<-"s3ATAC_Plate_C"
+
+dat_10x<-dat_10x[dat_10x$uniq_reads>=1000,]
+
+dat<-rbind(dat_10x,dat_ren,dat_biorad,dat_sciatac,dat_s3_c)
+dat$assay  = factor(dat$assay, levels=c("snATAC", "10x_scATAC","dscATAC","sciatac","s3ATAC_Plate_C"))
+
+library(ggplot2)
+ggplot(dat,aes(x=as.factor(assay),y=log10(uniq_reads),color=as.factor(assay)))+geom_boxplot()+theme_bw()+theme(axis.text.x = element_text(angle = 60, hjust=1))
+ggsave("adultmusbrain_atacprotocol_comparisons.svg")
+ggsave("adultmusbrain_atacprotocol_comparisons.pdf")
+ggsave("adultmusbrain_atacprotocol_comparisons.png")
+i="s3ATAC_Plate_C"
+for (j in unique(dat$assay)){
+  ttemp<-t.test(dat[dat$assay==i,]$uniq_reads,dat[dat$assay==j,]$uniq_reads,alternative="greater")
+  print(paste(i,j,ttemp$p.value,ttemp$estimate[1],ttemp$estimate[2],ttemp$estimate[1]/ttemp$estimate[2],ttemp$alternative,ttemp$method))
+  }
+#[1] "s3ATAC_Plate_C,10x_scATAC,3.13338819899197e-40,264133.506711409,22715.9052708283,greater,Welch Two Sample t-test"
+#[1] "s3ATAC_Plate_C,snATAC,5.7106611661251e-42,264133.506711409,15459.4017798286,greater,Welch Two Sample t-test"
+#[1] "s3ATAC_Plate_C,dscATAC,1.5654951763642e-37,264133.506711409,34045.7355797055,greater,Welch Two Sample t-test"
+#[1] "s3ATAC_Plate_C,sciatac,9.87044162982429e-43,264133.506711409,12263.8299081767,greater,Welch Two Sample t-test"
+#[1] "s3ATAC_Plate_C,s3ATAC_Plate_C,0.5,264133.506711409,264133.506711409,greater,Welch Two Sample t-test"
+
+
+```
+{% endcapture %} {% include details.html %} 
+
+### Comparison between peak sets
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```bash
+#snATAC peaks
 wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM2668nnn/GSM2668124/suppl/GSM2668124_p56.nchrM.merge.sel_cell.ygi.txt.gz
-gzip -d GSM2668124*
-```
-```R
-library(Signac)
-library(Seurat)
-library(GenomeInfoDb)
-library(EnsDb.Mmusculus.v79)
-library(ggplot2)
-library(patchwork)
-set.seed(1234)
-library(Matrix)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison")
+gzip -d GSM2668124_p56.nchrM.merge.sel_cell.ygi.txt.gz
+awk 'OFS="\t" {print $0}' GSM2668124_p56.nchrM.merge.sel_cell.ygi.txt > snatac_peaks.bed
+wc -l snatac_peaks.bed
+##140102 peaks
 
-counts<-read.table("GSM2668124_p56.nchrM.merge.sel_cell.mat",head=F)
-xnames<-unlist(read.table("GSM2668124_p56.nchrM.merge.sel_cell.xgi.txt",head=F))
-ynames<-read.table("GSM2668124_p56.nchrM.merge.sel_cell.ygi.txt",head=F)
-ynames<-paste0(ynames$V1,":",ynames$V2,"-",ynames$V3)
-colnames(counts)<-ynames
-row.names(counts)<-xnames
-counts<-t(counts)
-#metadata <- read.table(
-#  file = "GSM2668124_p56.nchrM.merge.sel_cell.qc.txt",
-#  header = F,row.names=1
-#)
-#colnames(metadata)<-c("unique_readcount","promoter_coverage","frip")
+#10X peaks
+wget https://cf.10xgenomics.com/samples/cell-atac/1.1.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_peaks.bed
+##157797 peaks
 
-chrom_assay <- CreateChromatinAssay(
-  counts = counts,
-  sep = c(":", "-"),
-  genome = 'mm10',
-  min.cells = 1,
-  min.features = 1
-)
+#biorad peaks
+wget https://raw.githubusercontent.com/buenrostrolab/dscATAC_analysis_code/master/mousebrain/data/mouseBrain_peaks.bed
+awk 'OFS="\t" {print $0}' mouseBrain_peaks.bed | awk '(NR>1)' - > biorad_peaks.bed
+##454047 peaks
+#Getting counts of peak overlaps
+wc -l /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.500.bed
+#174653
+bedtools intersect -wb -a /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.500.bed -b /home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/snatac_peaks.bed | wc -l
+#71199 of ours in theirs
+bedtools intersect -wa -a /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.500.bed -b /home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/atac_v1_adult_brain_fresh_5k_peaks.bed | wc -l
 
-snatac <- CreateSeuratObject(	
-  counts = chrom_assay,
-  assay = "peaks")
+bedtools intersect -wa -a /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.500.bed -b /home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/biorad_peaks.bed | wc -l
 
-saveRDS(snatac,"snatac_adultbrain.Rds")
-```
-{% endcapture %} {% include details.html %} 
-
-{% capture summary %} Preparation of 10x Genomics Data Set {% endcapture %} {% capture details %}  
-
-```bash
-cd /home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison
-
-wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_filtered_peak_bc_matrix.tar.gz #counts matrix
-tar -xvf atac_v1_adult_brain_fresh_5k_filtered_peak_bc_matrix.tar.gz
-awk '{print $1":"$2"-"$3}' peaks.bed > features.tsv
-
-wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_singlecell.csv #per barcode metrics
-wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_fragments.tsv.gz #fragments
-wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_fragments.tsv.gz.tbi #fragment index
-
-```
-
-```R
-library(Signac)
-library(Seurat)
-library(GenomeInfoDb)
-library(EnsDb.Mmusculus.v79)
-library(ggplot2)
-library(patchwork)
-set.seed(1234)
-library(Matrix)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison")
-
-#From Signac v4.0.1 (I just didn't update the full library)
-ReadMtx <- function(mtx, cells, features, cell.column = 1, feature.column = 2, skip.cell = 0, skip.feature = 0, unique.features = TRUE, strip.suffix = FALSE ) {
-	all.files <- list("expression matrix" = mtx, "barcode list" = cells, "feature list" = features ) 
-	for (i in seq_along(along.with = all.files)) {
-    uri <- all.files[[i]]
-    all.files[[i]] <- uri
-  }
-  cell.barcodes <- read.table(
-    file = all.files[['barcode list']],
-    header = FALSE,
-    sep = '\t',
-    row.names = NULL,
-    skip = skip.cell
-  )
-  feature.names <- read.table(
-    file = all.files[['feature list']],
-    header = FALSE,
-    sep = '\t',
-    row.names = NULL,
-    skip = skip.feature
-  )
-  # read barcodes
-  bcols <- ncol(x = cell.barcodes)
-  if (bcols < cell.column) {
-    stop("cell.column was set to ", cell.column, " but ", cells, " only has ", bcols, " columns.", " Try setting the cell.column argument to a value <= to ", bcols, ".") }
-  cell.names <- cell.barcodes[, cell.column]
-  if (all(grepl(pattern = "\\-1$", x = cell.names)) & strip.suffix) {
-    cell.names <- as.vector(x = as.character(x = sapply(X = cell.names, FUN = ExtractField, field = 1, delim = "-"))) }
-  # read features
-  fcols <- ncol(x = feature.names)
-  if (fcols < feature.column) {
-    stop("feature.column was set to ", feature.column, " but ", features, " only has ", fcols, " column(s).", " Try setting the feature.column argument to a value <= to ", fcols, ".") }
-  if (any(is.na(x = feature.names[, feature.column]))) {
-    na.features <- which(x = is.na(x = feature.names[, feature.column]))
-    replacement.column <- ifelse(test = feature.column == 2, yes = 1, no = 2)
-    if (replacement.column > fcols) {
-      stop("Some features names are NA in column ", feature.column, ". Try specifiying a different column.", call. = FALSE ) } else {
-      warning("Some features names are NA in column ", feature.column, ". Replacing NA names with ID from column ", replacement.column, ".", call. = FALSE ) }
-    feature.names[na.features, feature.column] <- feature.names[na.features, replacement.column]
-  }
-  feature.names <- feature.names[, feature.column]
-  if (unique.features) {
-    feature.names <- make.unique(names = feature.names)
-  }
-  data <- readMM(file = all.files[['expression matrix']])
-  if (length(x = cell.names) != ncol(x = data)) {
-    stop("Matrix has ", ncol(data), " columns but found ", length(cell.names), " barcodes. ", ifelse(test = length(x = cell.names) > ncol(x = data), yes = "Try increasing `skip.cell`. ", no = ""), call. = FALSE ) }
-  if (length(x = feature.names) != nrow(x = data)) {
-    stop("Matrix has ", ncol(data), " rows but found ", length(feature.names), " features. ", ifelse(test = length(x = feature.names) > nrow(x = data), yes = "Try increasing `skip.feature`. ", no = ""), call. = FALSE ) }
-  colnames(x = data) <- cell.names
-  rownames(x = data) <- feature.names
-  data <- as(data, Class = "dgCMatrix")
-  return(data)
-}
-
-counts<-ReadMtx(mtx="filtered_peak_bc_matrix/matrix.mtx",
-	cells="filtered_peak_bc_matrix/barcodes.tsv",
-	features="filtered_peak_bc_matrix/features.tsv",feature.column=1)
-
-metadata <- read.csv(
-  file = "atac_v1_adult_brain_fresh_5k_singlecell.csv",
-  header = TRUE,
-  row.names = 1)
-
-chrom_assay <- CreateChromatinAssay(
-  counts = counts,
-  sep = c(":", "-"),
-  genome = 'mm10',
-  fragments = 'atac_v1_adult_brain_fresh_5k_fragments.tsv.gz',
-  min.cells = 1,
-  min.features = 1)
-
-tenx <- CreateSeuratObject(	
-  counts = chrom_assay,
-  assay = "peaks",
-  meta.data = metadata)
-
-saveRDS(tenx,"tenx_genomics_adultbrain_fresh_5k.Rds")
-```
-{% endcapture %} {% include details.html %} 
-
-
-{% capture summary %} Preparation of sciMAP ATAC Whole Brain Data Set {% endcapture %} {% capture details %}  
-```bash
-cd /home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison
-
-wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_filtered_peak_bc_matrix.tar.gz #counts matrix
-tar -xvf atac_v1_adult_brain_fresh_5k_filtered_peak_bc_matrix.tar.gz
-awk '{print $1":"$2"-"$3}' peaks.bed > features.tsv
-
-wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_singlecell.csv #per barcode metrics
-wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_fragments.tsv.gz #fragments
-wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_fragments.tsv.gz.tbi #fragment index
-
-```
-
-```R
-library(Signac)
-library(Seurat)
-library(GenomeInfoDb)
-library(EnsDb.Mmusculus.v79)
-library(ggplot2)
-library(patchwork)
-set.seed(1234)
-library(Matrix)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison")
-
-counts<-read.table("/home/groups/oroaklab/adey_lab/projects/spatial/wholebrain/wholebrain.bbrd.q10.filt.500.counts.matrix",head=T)
-
-metadata <- read.table(
-  file = "/home/groups/oroaklab/adey_lab/projects/spatial/sciMAP.metadata.csv",
-  header = T,row.names=1,sep=","
-)
-metadata<-metadata[metadata$Barcode %in% colnames(counts),]
-chrom_assay <- CreateChromatinAssay(
-  counts = counts,
-  sep = c("_", "_"),
-  genome = 'mm10',
-  min.cells = 1,
-  min.features = 1
-)
-
-sciatac <- CreateSeuratObject(	
-  counts = chrom_assay,
-  assay = "peaks")
-
-saveRDS(sciatac,"scimapatac_adultbrain.Rds")
-```
-{% endcapture %} {% include details.html %} 
-
-
-{% capture summary %} Preparation of dscATAC Data Set {% endcapture %} {% capture details %}  
-
-```bash
-wget https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/mousebrain/data/mousebrain-master_dataframe.rds
-wget https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/mousebrain/data/revision-cluster_annotations.tsv
-wget https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/mousebrain/data/revision_mouseBrain_Countsmatrix.tsv
-```
-```R
-library(Signac)
-library(Seurat)
-library(GenomeInfoDb)
-library(EnsDb.Mmusculus.v79)
-library(ggplot2)
-library(patchwork)
-set.seed(1234)
-library(Matrix)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison")
-
-
-cluster_data<-read.table("/home/users/adey/candlestick/adey_lab/projects/dscATAC_seq/BuenrostroData/GSE123576_mousebrain_cellData.tsv")
-peaks<-read.table("/home/users/adey/candlestick/adey_lab/projects/dscATAC_seq/BuenrostroData/GSE123576_mousebrain_peaks.bed")
-peaks<-paste(peaks$V1,peaks$V2,peaks$V3,sep="_")
-cellids<-unlist(read.table("/home/users/adey/candlestick/adey_lab/projects/dscATAC_seq/BuenrostroData/GSE123576_mousebrain_cellIDs.txt"))
-
-counts_data<-read.table("/home/users/adey/candlestick/adey_lab/projects/dscATAC_seq/BuenrostroData/GSE123576_mousebrain_countsData.csv",head=T)
-#peak_idx cell_idx count
-
-counts_data2<-sparseMatrix(i=counts_data[,1],j=counts_data[,2],x=counts_data[,3])
-row.names(counts_data2)<-peaks
-colnames(counts_data2)<-cellids
-
-#metadata <- read.table(
-#  file = "/home/groups/oroaklab/adey_lab/projects/spatial/sciMAP.metadata.csv",
-#  header = T,row.names=1,sep=","
-#)
-
-#metadata<-metadata[metadata$Barcode %in% colnames(counts),]
-chrom_assay <- CreateChromatinAssay(
-  counts = counts_data2,
-  sep = c("_", "_"),
-  genome = 'mm10',
-  min.cells = 1,
-  min.features = 1
-)
-
-dscatac <- CreateSeuratObject(	
-  counts = chrom_assay, metadata=metadata,
-  assay = "peaks")
-
-saveRDS(dscatac,"dscatac_adultbrain.Rds")
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -1215,6 +1086,7 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
 ## Plotting and updating metadata
 
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
@@ -1281,251 +1153,8 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 ```
 {% endcapture %} {% include details.html %} 
 
+## Performing cisTopic and UMAP
 
-{% capture summary %} Properly paired reads {% endcapture %} {% capture details %}  
-
-Properly paired reads from our data
-```bash
- samtools view -f 2 /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.bam| awk '{split($1,a,":"); print a[1]}' | sort -T . --parallel=15 -S 2G - | uniq -c > mm10.paired.unique.count.txt &
-
-  samtools view -f 2 /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/hg38.bbrd.q10.bam | awk '{split($1,a,":"); print a[1]}' | sort -T . --parallel=15 -S 2G - | uniq -c > hg38.paired.unique.count.txt &
-
-  #also generating for sciMAP whole brain
-    samtools view -f 2 /home/groups/oroaklab/adey_lab/projects/spatial/wholebrain/wholebrain.bbrd.q10.filt.bam | awk '{split($1,a,":"); print a[1]}' | sort -T . --parallel=10 -S 2G - | uniq -c > sciMAP.paired.unique.count.txt &
-
-```
-
-```R
-library(Signac)
-library(Seurat)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
-
-mm10_atac<-readRDS("mm10_SeuratObject.Rds")
-hg38_atac<-readRDS("hg38_SeuratObject.Rds")
-
-mm10_paired<-read.table("mm10.paired.unique.count.txt")
-row.names(mm10_paired)<-mm10_paired$V2
-mm10_paired<-mm10_paired[c("V1")]
-colnames(mm10_paired)<-c("properly_paired_reads")
-mm10_atac <- AddMetaData(object = mm10_atac, metadata = mm10_paired)
-saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
-
-hg38_paired<-read.table("hg38.paired.unique.count.txt")
-row.names(hg38_paired)<-hg38_paired$V2
-hg38_paired<-hg38_paired[c("V1")]
-colnames(hg38_paired)<-c("properly_paired_reads")
-hg38_atac <- AddMetaData(object = hg38_atac, metadata = hg38_paired)
-saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
-
-
-```
-{% endcapture %} {% include details.html %} 
-
-
-## Comparison across data sets
-
-### Unique Read Count Comparison across Adult Mouse Brain Preparations 
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```R
-library(ggplot2)
-library(Signac)
-library(Seurat)
-library(dplyr)
-
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/barnyard_analysis")
-
-dat_10x<-read.csv("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/atac_v1_adult_brain_fresh_5k_singlecell.csv")
-barcused_10x<-read.csv("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/10x_atac_v1_adult_brain_fresh_5k_barcodesused.txt")
-dat_10x<-dat_10x[dat_10x$barcode %in% barcused_10x[[1]],] 
-dat_10x<-dat_10x[c("barcode","passed_filters")]
-colnames(dat_10x)<-c("cellID","uniq_reads")
-dat_10x$uniq_reads<-as.numeric(dat_10x$uniq_reads)*2 #multiple by two since this comment in count of read-pairs passing filters
-dat_10x$assay<-"10x_scATAC"
-
-#BioRad dscATAC comparison
-dat_biorad<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/mousebrain-master_dataframe.rds")
-dat_biorad<-dat_biorad[c("DropBarcode","uniqueNuclearFrags")]
-colnames(dat_biorad)<-c("cellID","uniq_reads")
-dat_biorad$assay<-"dscATAC"
-
-# snATAC comparison
-dat_ren<-read.csv("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/GSM2668124_p56.nchrM.merge.sel_cell.qc.csv",header=F)
-colnames(dat_ren)<-c("cellID","uniq_reads","perc_uniq","frip")
-dat_ren<-dat_ren[c("cellID","uniq_reads")]
-dat_ren$assay<-"snATAC"
-
-# sciATAC comparison
-dat_sciatac<-read.table("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/sciMAP.paired.unique.count.txt",header=F)
-colnames(dat_sciatac)<-c("uniq_reads","cellID")
-dat_sciatac_condition<-read.table("/home/groups/oroaklab/adey_lab/projects/spatial/wholebrain/annots_wholebrain/wholebrain_FreshvFrozen.annot")
-colnames(dat_sciatac_condition)<-c("cellID","condition")
-dat_sciatac<-merge(dat_sciatac,dat_sciatac_condition,by="cellID")
-dat_sciatac<-dat_sciatac[dat_sciatac$condition=="Frozen",] #filter by frozen condition
-dat_sciatac_dims<-read.table("/home/groups/oroaklab/adey_lab/projects/spatial/wholebrain/wholebrain.bbrd.q10.filt.500.counts.cistopic.UMAP.dims") 
-colnames(dat_sciatac_dims)<-c("cellID","x","y") #filter by cells used in analysis (dims file are those which underwent clustering)
-dat_sciatac<-dat_sciatac[c("cellID","uniq_reads")]
-dat_sciatac<-dat_sciatac[dat_sciatac$cellID %in% dat_sciatac_dims$cellID,]
-dat_sciatac$assay<-"sciatac"
-
-# Our Dataset
-mm10_atac<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10_SeuratObject.Rds")
-dat_s3<-mm10_atac@meta.data
-#summarize percent unique per plate
-data.frame(dat_s3 %>% group_by(barnyard_pcrplate) %>% summarise(mean_compl=mean(perc_uniq),
-                                                        median_compl=median(perc_uniq),
-                                                        sd=sd(perc_uniq),
-                                                        mean_uniq=mean(properly_paired_reads),
-                                                        median_uniq=median(properly_paired_reads),
-                                                        sd_uniq=sd(properly_paired_reads),
-                                                        cell_count=n()))
-
-data.frame(dat_s3 %>% group_by(barnyard_pcrplate) %>% summarise(mean_compl=mean(perc_uniq),
-                                                        median_compl=median(perc_uniq),
-                                                        mean_uniq=mean(uniq_reads),
-                                                        median_uniq=median(uniq_reads),
-                                                        cell_count=n()))
-
-
-
-dat_s3_b<-dat_s3[dat_s3$barnyard_pcrplate=="B",c("cellID","properly_paired_reads")]
-dat_s3_b$assay<-"s3ATAC_Plate_B"
-dat_s3_c<-dat_s3[dat_s3$barnyard_pcrplate=="C",c("cellID","properly_paired_reads")]
-dat_s3_c$assay<-"s3ATAC_Plate_C"
-colnames(dat_s3_c)<-c("cellID","uniq_reads","assay")
-
-mm10_atac@meta.data$used_in_comparison<-"FALSE"
-mm10_atac@meta.data[mm10_atac@meta.data$barnyard_pcrplate=="C",]$used_in_comparison<-"TRUE"
-saveRDS(mm10_atac,file="/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10_SeuratObject.Rds")
-
-dat<-rbind(dat_10x,dat_ren,dat_biorad,dat_sciatac,dat_s3_c)
-dat$assay  = factor(dat$assay, levels=c("snATAC", "10x_scATAC","dscATAC","sciatac","s3ATAC_Plate_C"))
-
-library(ggplot2)
-ggplot(dat,aes(x=as.factor(assay),y=log10(uniq_reads),color=as.factor(assay)))+geom_boxplot(outlier.size=NULL)+theme_bw()+theme(axis.text.x = element_text(angle = 60, hjust=1))
-ggsave("adultmusbrain_atacprotocol_comparisons.pdf")
-ggsave("adultmusbrain_atacprotocol_comparisons.png")
-system("slack -F adultmusbrain_atacprotocol_comparisons.pdf ryan_todo")
-i="s3ATAC_Plate_C"
-for (j in unique(dat$assay)){
-  ttemp<-t.test(dat[dat$assay==i,]$uniq_reads,dat[dat$assay==j,]$uniq_reads,alternative="greater")
-  print(paste(i,j,ttemp$p.value,ttemp$estimate[1],ttemp$estimate[2],ttemp$estimate[1]/ttemp$estimate[2],ttemp$alternative,ttemp$method,median(dat[dat$assay==i,]$uniq_reads)/median(dat[dat$assay==j,]$uniq_reads)))
-  }
-#[1] "s3ATAC_Plate_C 10x_scATAC 1.55714200572637e-21 211971.921985816 83838.2499531572 2.52834382998512 greater Welch Two Sample t-test 2.39160331495318"
-#[1] "s3ATAC_Plate_C snATAC 5.39882686151462e-41 211971.921985816 15459.4017798286 13.7115216361345 greater Welch Two Sample t-test 11.6488279698053"
-#[1] "s3ATAC_Plate_C dscATAC 1.45505993939067e-35 211971.921985816 34045.7355797055 6.22609317662007 greater Welch Two Sample t-test 4.83558729425735"
-#[1] "s3ATAC_Plate_C sciatac 5.19305611735837e-42 211971.921985816 11977.1880192392 17.6979706459748 greater Welch Two Sample t-test 26.0994303008724"
-#[1] "s3ATAC_Plate_C s3ATAC_Plate_C 0.5 211971.921985816 211971.921985816 1 greater Welch Two Sample t-test 1"
-
-for (j in unique(dat$assay)){
-  print(paste(i,j,mean(dat[dat$assay==i,]$uniq_reads)/mean(dat[dat$assay==j,]$uniq_reads)))
-  }
-
-```
-{% endcapture %} {% include details.html %} 
-
-### Comparison between peak sets
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```bash
-#snATAC peaks
-wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM2668nnn/GSM2668124/suppl/GSM2668124_p56.nchrM.merge.sel_cell.ygi.txt.gz
-gzip -d GSM2668124_p56.nchrM.merge.sel_cell.ygi.txt.gz
-awk 'OFS="\t" {print $0}' GSM2668124_p56.nchrM.merge.sel_cell.ygi.txt | sort -k1,1 -k2,2n > snatac_peaks.bed
-wc -l snatac_peaks.bed
-##140102 peaks
-
-#10X peaks
-wget https://cf.10xgenomics.com/samples/cell-atac/1.1.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_peaks.bed
-sort -k1,1 -k2,2n atac_v1_adult_brain_fresh_5k_peaks.bed > tenx_genomics.bed
-
-##157797 peaks
-
-#biorad peaks
-wget https://raw.githubusercontent.com/buenrostrolab/dscATAC_analysis_code/master/mousebrain/data/mouseBrain_peaks.bed
-awk 'OFS="\t" {print $0}' mouseBrain_peaks.bed | awk '(NR>1)' - | sort -k1,1 -k2,2n > biorad_peaks.bed
-##454047 peaks
-
-#sciatac peaks
-wc -l /home/groups/oroaklab/adey_lab/projects/spatial/wholebrain/wholebrain.bbrd.q10.filt.500.bed
-sort -k1,1 -k2,2n /home/groups/oroaklab/adey_lab/projects/spatial/wholebrain/wholebrain.bbrd.q10.filt.500.bed > scimap_musbrain.bed
-##134729
-
-#Getting counts of peak overlaps
-wc -l /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.500.bed
-sort -k1,1 -k2,2n /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.500.bed > s3atac_musbrain.bed
-#174653
-```
-```bash
-
-a="/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/s3atac_musbrain.bed" #ours
-b="/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/tenx_genomics.bed" #10x
-c="/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/snatac_peaks.bed" #snatac
-d="/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/biorad_peaks.bed" #dscAtac
-e="/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/scimap_musbrain.bed" #scimap
-
-#get size of sets
-for i in $a $b $c $d $e; do
-	outname=`basename $i`;
-	size_out=`wc -l $i| awk '{print $1}'`
-	echo $outname $size_out; done
-#s3atac_musbrain.bed 174653
-#tenx_genomics.bed 157797
-#snatac_peaks.bed 140102
-#biorad_peaks.bed 454047
-#scimap_musbrain.bed 134729
-for i in $a $b $c $d $e; do
-	for j in $a $b $c $d $e; do
-		size_out=`bedtools intersect -wa -a $i -b $j | sort | uniq | wc -l `; 
-		length_1=`wc -l $i | awk '{print $1}'`;
-		length_2=`wc -l $j | awk '{print $1}'`;
-		outname_1=`basename $i`;
-		outname_2=`basename $j`; 
-		echo $outname_1 $length_1 $outname_2 $length_2 $size_out;
-		done; done > peak_overlap.txt
-
-```
-Plot Overlap peak sets
-```R
-library(ggplot2)
-library(reshape2)
-library(ComplexHeatmap)
-library(circlize)
-dat<-read.table("peak_overlap.txt",col.names=c("data_1","data_1_peaks","data_2","data_2_peaks","overlap"))
-
-dat$data_1<-unlist(lapply(strsplit(dat$data_1,"_"),"[",1))
-dat$data_2<-unlist(lapply(strsplit(dat$data_2,"_"),"[",1))
-dat$perc<-(dat$overlap/dat$data_1_peaks)*100
-dat$comparison<-paste(dat$data_2,"in",dat$data_1)
-dat$outpeaks<-dat$data_1_peaks-dat$overlap
-
-dat_in<-dat[c("comparison","data_1","overlap","data_1")]
-colnames(dat_in)<-c("comparison","dataset","peaks","comp_row")
-dat_in$cond<-"IN"
-dat_out<-dat[c("comparison","data_2","outpeaks","data_1")]
-colnames(dat_out)<-c("comparison","dataset","peaks","comp_row")
-dat_out$cond<-"OUT"
-dat_plt<-rbind(dat_in,dat_out)
-
-plt<-ggplot(dat_plt, aes(fill=paste(cond,comparison), y=peaks, x=comparison)) + 
-    geom_bar(position="stack", stat="identity")+facet_wrap(~comp_row,scales="free",ncol=1)+theme_minimal()
-ggsave(plt,file="peak_intersection.pdf")
-system("slack -F peak_intersection.pdf ryan_todo")
-
-
-
-
-colfun=colorRamp2(c(0,100),col=c("white","black"))
-pdf("peak_intersection.pdf")
-Heatmap(dat_cast,col=colfun,column_order=1:ncol(dat_cast),row_order=1:nrow(dat_cast))
-
-dev.off()
-```
-{% endcapture %} {% include details.html %} 
-
-## Performing cisTopic and UMAP on Full Data Set
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -2025,18 +1654,11 @@ setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3a
 #Read in data and modify to monocle CDS file
 #read in RDS file.
 mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
-hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
 
-mm10.gene.activities <- GeneActivity(mm10_atac,process_n=10000)
-saveRDS(mm10.gene.activities,"mm10.signac.geneactivities.RDS")
-mm10.gene.activities<-readRDS("mm10.signac.geneactivities.RDS")
-
-hg38.gene.activities <- GeneActivity(hg38_atac,process_n=10000)
-saveRDS(hg38.gene.activities,"hg38.signac.geneactivities.RDS")
-hg38.gene.activities<-readRDS("hg38.signac.geneactivities.RDS")
-
+gene.activities <- GeneActivity(mm10_atac,process_n=10000)
+saveRDS(gene.activities,"mm10.signac.geneactivities.RDS")
 # add the gene activity matrix to the Seurat object as a new assay and normalize it
-mm10_atac[['SignacGA']] <- CreateAssayObject(counts = mm10.gene.activities)
+mm10_atac[['SignacGA']] <- CreateAssayObject(counts = gene.activities)
 mm10_atac <- NormalizeData(
   object = mm10_atac,
   assay = 'SignacGA',
@@ -2044,9 +1666,24 @@ mm10_atac <- NormalizeData(
   scale.factor = median(mm10_atac$nCount_SignacGA)
 )
  
-saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
+saveRDS(mm10_atac,file="mm10_SeuratObject.signacGA.Rds")
 
-hg38_atac[['SignacGA']] <- CreateAssayObject(counts = hg38.gene.activities)
+```
+
+```R
+library(Signac)
+library(Seurat)
+
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
+
+#Read in data and modify to monocle CDS file
+#read in RDS file.
+hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+
+gene.activities <- GeneActivity(hg38_atac,process_n=10000)
+saveRDS(gene.activities,"hg38.signac.geneactivities.RDS")
+# add the gene activity matrix to the Seurat object as a new assay and normalize it
+hg38_atac[['SignacGA']] <- CreateAssayObject(counts = gene.activities)
 hg38_atac <- NormalizeData(
   object = hg38_atac,
   assay = 'SignacGA',
@@ -2054,10 +1691,10 @@ hg38_atac <- NormalizeData(
   scale.factor = median(hg38_atac$nCount_SignacGA)
 )
  
-saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
-
+saveRDS(hg38_atac,file="hg38_SeuratObject.signacGA.Rds")
 
 ```
+
 
 {% endcapture %} {% include details.html %} 
 
@@ -2074,7 +1711,7 @@ setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3a
 
 marker_list<-NULL
 marker_list[["VLMC"]]<-c('ITIH5', 'ABCA9', 'DCN', 'ATP1A2', 'SAT1', 'NEAT1', 'SLC7A11', 'ABCA8', 'APOD', 'NKD1', 'PTN', 'FBLN1', 'LAMC3', 'PDGFRB', 'CXCL12', 'AKR1C2', 'SVIL', 'ABCA6', 'COLEC12', 'CYP1B1', 'UACA', 'AHNAK', 'TPCN1', 'SLC1A3', 'ADAM33', 'LAMA2', 'COL18A1', 'CYTL1', 'SLC6A1', 'EDN3', 'ARHGAP29', 'COL4A5', 'DAB2', 'BGN', 'LEPR', 'PTGDS', 'OGN', 'WDR86', 'PRELP', 'ISLR', 'PDGFRA', 'MRC2', 'COL15A1', 'SPRY4', 'SELENBP1', 'RHOJ', 'KIAA1755', 'SASH1', 'LHFP', 'RPS12P5', 'KANK2')
-marker_list[["Astrocyte"]]<-c('AstrocyteDGRV1', 'SLC1A3', 'ATP1A2', 'C1orf61', 'FGFR3', 'SLC1A2', 'PTGDS', 'GLUL', 'NDRG2', 'PRODH', 'NTM', 'COL5A3', 'CST3', 'MACF1', 'PTPRZ1', 'ATP1B2', 'SLC25A18', 'ZBTB20', 'MT3', 'MT2A', 'ATP13A4', 'PON2', 'AQP4', 'DTNA', 'GRAMD3', 'NCAN', 'ACSS1', 'MSI2', 'GJA1', 'SLCO1C1', 'SLC7A11', 'PAPLN', 'F3', 'RYR3', 'PSD2', 'ETNPPL', 'MYO10', 'RAPGEF3', 'TTYH1', 'SOX2', 'EMX2', 'HIF3A', 'DST', 'APOE', 'PDGFRB', 'SFXN5', 'AASS', 'FNBP1', 'SLC4A4', 'GRIN2C', 'PLXNB1')
+marker_list[["Astrocyte"]]<-c('ADGRV1', 'SLC1A3', 'ATP1A2', 'C1orf61', 'FGFR3', 'SLC1A2', 'PTGDS', 'GLUL', 'NDRG2', 'PRODH', 'NTM', 'COL5A3', 'CST3', 'MACF1', 'PTPRZ1', 'ATP1B2', 'SLC25A18', 'ZBTB20', 'MT3', 'MT2A', 'ATP13A4', 'PON2', 'AQP4', 'DTNA', 'GRAMD3', 'NCAN', 'ACSS1', 'MSI2', 'GJA1', 'SLCO1C1', 'SLC7A11', 'PAPLN', 'F3', 'RYR3', 'PSD2', 'ETNPPL', 'MYO10', 'RAPGEF3', 'TTYH1', 'SOX2', 'EMX2', 'HIF3A', 'DST', 'APOE', 'PDGFRB', 'SFXN5', 'AASS', 'FNBP1', 'SLC4A4', 'GRIN2C', 'PLXNB1')
 marker_list[["L5ET"]]<-c('COL24A1', 'ADRA1A', 'COL5A2', 'CRYM', 'GRIK2', 'DGKH', 'SULF2', 'ATP6V1C2', 'VAT1L', 'NEFM', 'SPHKAP', 'NRP1', 'SLC26A4', 'COL21A1', 'TOX', 'PDE1C', 'NTNG1', 'IQCA1', 'BCL11B', 'ANXA4', 'ARAP2', 'ADAMTSL3', 'FAM126A', 'LRP2', 'LOC101927745', 'SLC5A8', 'DOCK4', 'NEFH', 'PRUNE2', 'GRB14', 'GRM8', 'MYO16', 'FAM84B', 'ANKRD18A', 'TRDMT1', 'PCSK6', 'ANO4', 'SSTR2', 'ESRRG', 'MYLIP', 'VASH2', 'KLHL32', 'RYR3', 'ZNF189', 'SLC26A4-AS1', 'EPM2A', 'CNR1', 'ST3GAL1', 'LOC105374239', 'ANKRD34B', 'SEPT4')
 marker_list[["L6CT"]]<-c('SEMA3E', 'TLE4', 'EGFEM1P', 'HS3ST4', 'SYT6', 'RYR3', 'ENPP7P4', 'DLC1', 'SEMA3A', 'MEIS2', 'COL24A1', 'DIP2A', 'PCDH17', 'RXFP1', 'LRP8', 'ANKRD18A', 'FOXP2', 'NRP1', 'SEMA5A', 'LRP1B', 'LOC105374199', 'ABCC9', 'SLC24A2', 'VWA2', 'SYNJ2', 'FAM95C', 'SLC8A1-AS1', 'ITGA11', 'SERPINE2', 'KLHL5', 'NFIA', 'CDH6', 'SPARCL1', 'CPE', 'CTGF', 'TENM1', 'ANKRD26P3', 'SEZ6L', 'GRIK3', 'MCC', 'SYNPO2', 'ZFHX3', 'SULF1', 'FILIP1', 'DGKG', 'LUZP2', 'ANKRD20A5P', 'ANKRD20A7P', 'DMD', 'PCLO', 'TMEFF2')
 marker_list[["L4IT"]]<-c('NTNG1', 'HTR2A', 'VAV3', 'PCP4', 'TRPC3', 'CDR1', 'PCSK1', 'BHLHE22', 'PLEKHH2', 'ITM2A', 'BTBD3', 'SORL1', 'CUX2', 'VSTM2A', 'SLC17A6', 'POU6F2', 'MEF2A', 'SEMA6D', 'RORA', 'LOC105377864', 'LRRK2', 'NEFM', 'GPR26', 'KCNH8', 'FSTL1', 'MET', 'ACVR1C', 'LOC105375817', 'KCNS1', 'ND4', 'EGR1', 'RET', 'CD74', 'TIAM1', 'PTTG1', 'PHACTR2', 'TADA1', 'SLC38A11', 'SYT2', 'TMEM215', 'LOC101927653', 'RHBDL3', 'PRKCA', 'GRAMD3', 'ILDR2', 'BMP8A', 'ITPR2', 'ND2', 'TRAF5', 'RALB', 'AIFM3')
@@ -2168,12 +1805,16 @@ marker_plot<-function(j,k=celltype_name,l=hg38_atac,m="hg38_",n="seurat_clusters
 
 
 feature_plot<-function(j,k=celltype_name,l=hg38_atac,m="hg38_",n="seurat_clusters"){
-    plt<-FeaturePlot(object = l, features = j, order=T)
-     pdf(paste0("./marker_sets/",m,k,"_",j,"_geneactivity.pdf"))
+    plt<-FeaturePlot(
+        object = l,
+        features = j,
+        order=T
+    )
+    pdf(paste0("./marker_sets/",m,k,"_",j,"_geneactivity.pdf"))
     print(plt)
     dev.off()
 }
- 
+
 
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
 marker_list<-readRDS("./marker_sets/grosscelltype_markerlist.rds")
@@ -2185,19 +1826,10 @@ for (x in 1:length(marker_list)){
     gene_list<-gene_list[as.numeric(unlist(lapply(1:length(gene_list),FUN=region_check)))==1] #subset for genes with reads across gene body
     gene_list<-toupper(gene_list) #make gene names uppercase
     celltype_name<-names(marker_list)[x]
-    DefaultAssay(object=hg38_atac)<-"peaks"
     mclapply(gene_list,FUN=marker_plot,k=celltype_name,mc.cores=20)
-    DefaultAssay(object=hg38_atac)<-"SignacGA"
-    gene_list<-gene_list[gene_list %in% row.names(hg38_atac@assays$SignacGA@data)] #subset for genes with GA 
+    gene_list<-gene_list[gene_list %in% row.names(hg38_atac@assays$GeneActivity@data)] #subset for genes with GA 
     mclapply(gene_list,FUN=feature_plot,k=celltype_name,mc.cores=20)
 }
-
-DefaultAssay(hg38_atac)<-"SignacGA"
-plt<-FeaturePlot(object = hg38_atac, features = c("GFAP","SLC17A7","NEUROD1","ADARB2","LHX6"), col=c("white","red"), min.cutoff="q05",max.cutoff="q95",order=T)
-pdf(paste0("hg38_signac_ga.pdf"))
-print(plt)
-dev.off()
-system("slack -F hg38_signac_ga.pdf ryan_todo")
 
 for (i in list.files(path="./marker_sets",pattern="markerset_hg38")){
     system(paste0("slack -F ./marker_sets/",i," ryan_todo"))
@@ -2261,6 +1893,9 @@ library(dplyr)
 
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
 mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+
+
+
 #Perform One vs. rest DA enrichment
 
 write("Performing one vs. rest DA enrichment per annotation grouping supplied.", stderr())
@@ -2529,168 +2164,6 @@ theme_bw() + scale_x_reverse()
 ggsave(file="projected_readcount.png")
 ggsave(file="projected_readcount.pdf")
 system("slack -F projected_readcount.pdf s3")
-```
-{% endcapture %} {% include details.html %} 
-
-## Integration across data sets
-
-Following https://satijalab.org/signac/articles/integration.html
-
-Generate counts matrices using the given peak sets for other technologies.
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```R
-
-library(Signac)
-library(Seurat)
-
-#make peaks
-tenx<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/tenx_genomics_adultbrain_fresh_5k.Rds")
-bed_out<-row.names(tenx[["peaks"]]@counts)
-tenx_bed<-cbind(unlist(lapply(strsplit(bed_out,"-"),"[",1)),
-	unlist(lapply(strsplit(bed_out,"-"),"[",2)),
-	unlist(lapply(strsplit(bed_out,"-"),"[",3)))
-write.table(tenx_bed,"tenx.bed",col.names=F,row.names=F,sep="\t",quote=F)
-
-snatac<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/snatac_adultbrain.Rds")
-bed_out<-row.names(snatac[["peaks"]]@counts)
-snatac_bed<-cbind(unlist(lapply(strsplit(bed_out,"-"),"[",1)),
-	unlist(lapply(strsplit(bed_out,"-"),"[",2)),
-	unlist(lapply(strsplit(bed_out,"-"),"[",3)))
-write.table(snatac_bed,"snatac.bed",col.names=F,row.names=F,sep="\t",quote=F)
-
-scimap<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/scimapatac_adultbrain.Rds")
-bed_out<-row.names(scimap[["peaks"]]@counts)
-scimap_bed<-cbind(unlist(lapply(strsplit(bed_out,"-"),"[",1)),
-	unlist(lapply(strsplit(bed_out,"-"),"[",2)),
-	unlist(lapply(strsplit(bed_out,"-"),"[",3)))
-write.table(scimap_bed,"scimap.bed",col.names=F,row.names=F,sep="\t",quote=F)
-
-dscatac<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/dscatac_adultbrain.Rds")
-bed_out<-row.names(dscatac[["peaks"]]@counts)
-dscatac_bed<-cbind(unlist(lapply(strsplit(bed_out,"-"),"[",1)),
-	unlist(lapply(strsplit(bed_out,"-"),"[",2)),
-	unlist(lapply(strsplit(bed_out,"-"),"[",3)))
-write.table(dscatac_bed,"dscatac.bed",col.names=F,row.names=F,sep="\t",quote=F)
-```
-```R
-cd /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data
-for i in tenx.bed snatac.bed scimap.bed dscatac_bed;
-do outname=`basename $i`;
-scitools atac-counts -O ${outname:-3} /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.bam $i & done &
-
-i="dscatac_bed"
-outname=`basename $i`
-scitools atac-counts -O ${outname:-3} /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.bam $i
-```
-
-```R
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
-
-library(Signac)
-library(Seurat)
-library(GenomeInfoDb)
-library(ggplot2)
-set.seed(1234)
-library(EnsDb.Mmusculus.v79)
-library(ggplot2)
-library(dplyr)
-library(patchwork)
-library(Matrix)
-library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
-
-mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
-mm10_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
-seqlevelsStyle(mm10_annotations) <- 'UCSC'
-genome(mm10_annotations) <- "mm10"
-
-#function to read in sparse matrix format from atac-count
-read_in_sparse<-function(x){ #x is character file prefix followed by .bbrd.q10.500.counts.sparseMatrix.values.gz
-IN<-as.matrix(read.table(paste0(x,".counts.sparseMatrix.values.gz")))
-IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
-COLS<-read.table(paste0(x,".counts.sparseMatrix.cols.gz"))
-colnames(IN)<-COLS$V1
-ROWS<-read.table(paste0(x,".counts.sparseMatrix.rows.gz"))
-row.names(IN)<-ROWS$V1
-writeMM(IN,file=paste0(x,".counts.mtx")) #this is to generate counts matrices in scrublet friendly format
-return(IN)
-}
-
-#tenx
-ours_in_tenx<-read_in_sparse("tenx.bed")
-ours_in_tenx_assay <- CreateChromatinAssay(counts = ours_in_tenx, genome="mm10", min.cells = 0, annotation=mm10_annotations, sep=c("_","_"))
-ours_in_tenx_object <- CreateSeuratObject(counts = ours_in_tenx_assay, metadata=mm10_atac@meta.data, assay = "peaks")
-ours_in_tenx_object<-AddMetaData(ours_in_tenx_object,mm10_atac@meta.data["celltype"])
-ours_in_tenx_object$tech<-"s3"
-#snatac
-ours_in_snatac<-read_in_sparse("snatac.bed")
-ours_in_snatac_assay <- CreateChromatinAssay(counts = ours_in_snatac, genome="mm10", min.cells = 0, annotation=mm10_annotations, sep=c("_","_"))
-ours_in_snatac_object <- CreateSeuratObject(counts = ours_in_snatac_assay, metadata=mm10@meta.data, assay = "peaks")
-ours_in_snatac_object<-AddMetaData(ours_in_snatac_object,mm10_atac@meta.data["celltype"])
-ours_in_snatac_object$tech<-"s3"
-#scimap
-ours_in_scimap<-read_in_sparse("scimap.bed")
-ours_in_scimap_assay <- CreateChromatinAssay(counts = ours_in_scimap, genome="mm10", min.cells = 0, annotation=mm10_annotations, sep=c("_","_"))
-ours_in_scimap_object <- CreateSeuratObject(counts = ours_in_scimap_assay, metadata=mm10@meta.data, assay = "peaks")
-ours_in_scimap_object<-AddMetaData(ours_in_scimap_object,mm10_atac@meta.data["celltype"])
-ours_in_scimap_object$tech<-"s3"
-#dscatac
-ours_in_dscatac<-read_in_sparse("dscatac_bed")
-ours_in_dscatac_assay <- CreateChromatinAssay(counts = ours_in_dscatac, genome="mm10", min.cells = 0, annotation=mm10_annotations, sep=c("_","_"))
-ours_in_dscatac_object <- CreateSeuratObject(counts = ours_in_dscatac_assay, metadata=mm10@meta.data, assay = "peaks")
-ours_in_dscatac_object<-AddMetaData(ours_in_dscatac_object,mm10_atac@meta.data["celltype"])
-ours_in_dscatac_object$tech<-"s3"
-
-tenx<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/tenx_genomics_adultbrain_fresh_5k.Rds")
-tenx$tech<-"tenx"
-snatac<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/snatac_adultbrain.Rds")
-snatac$tech<-"snatac"
-scimap<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/scimapatac_adultbrain.Rds")
-scimap$tech<-"scimap"
-dscatac<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/dscatac_adultbrain.Rds")
-dscatac$tech<-"dscatac"
-
-x<-ours_in_scimap_object
-y<-scimap
-
-integration_peaks<-function(x,y,prefix){
-y<-subset(y,features=row.names(x[["peaks"]]@counts))
-unintegrated <- merge(x,y)
-unintegrated <- RunTFIDF(unintegrated)
-unintegrated <- FindTopFeatures(unintegrated, min.cutoff = 50)
-unintegrated <- RunSVD(unintegrated)
-unintegrated <- RunUMAP(unintegrated, reduction = 'lsi', dims = 2:30)
-p1 <- DimPlot(unintegrated, group.by = 'tech', pt.size = 0.1) + ggplot2::ggtitle("Unintegrated")
-saveRDS(unintegrated,paste0(prefix,".unintegrated.Rds"))
-
-# find integration anchors between 10x and sci-ATAC
-#anchors <- FindIntegrationAnchors(object.list = list(y, x), anchor.features = rownames(y), assay = c('peaks','peaks'), k.filter = NA )
-# integrate data and create a new merged object
-#integrated <- IntegrateData(anchorset = anchors, weight.reduction = x[['lsi']], dims = 2:30, preserve.order = TRUE )
-## we now have a "corrected" TF-IDF matrix, and can run LSI again on this corrected matrix
-#integrated <- RunSVD(object = integrated, n = 30, reduction.name = 'integratedLSI')
-#integrated <- RunUMAP(object = integrated, dims = 2:30, reduction = 'integratedLSI')
-#p2 <- DimPlot(integrated, group.by = 'tech', pt.size = 0.1) + ggplot2::ggtitle("Integrated")
-
-hm.integrated <- RunHarmony(object = unintegrated, group.by.vars = 'tech', reduction = 'lsi', assay.use = 'peaks', project.dim = FALSE )
-# re-compute the UMAP using corrected LSI embeddings
-hm.integrated <- RunUMAP(hm.integrated, dims = 2:30, reduction = 'harmony')
-#saveRDS(hm.integrated,paste0(prefix,".hm.integrated.Rds"))
-
-p5 <- DimPlot(hm.integrated, group.by = 'tech', pt.size = 0.1) + ggplot2::ggtitle("Harmony integration")
-p6 <- DimPlot(hm.integrated, group.by = 'celltype', pt.size = 0.1) + ggplot2::ggtitle("Harmony integration")
-plt<-p1 + p5 + p6
-ggsave(plt,file=paste0(prefix,"_integration.pdf"),width=20)
-system(paste0("slack -F ",paste0(prefix,"_integration.pdf")," ryan_todo"))
-}
-
-integration_peaks(x=ours_in_tenx_object,y=tenx,prefix="ours_in_tenx")
-integration_peaks(x=ours_in_snatac_object,y=snatac,prefix="ours_in_snatac")
-integration_peaks(x=ours_in_scimap_object,y=scimap,prefix="ours_in_scimap")
-integration_peaks(x=ours_in_dscatac_object,y=dscatac,prefix="ours_in_dscatac")
-
-
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -3042,80 +2515,6 @@ da_peaks_loop<-function(celltype.x){
 Focusing on human inhibitory neurons
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
-Check for doublets in data. Generating input files for scrublet.
-
-```R
-```R
-library(Signac)
-library(Matrix)
-library(Seurat)
-
-#read in RDS file.
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/subclustering")
-iN<-readRDS("hg38_inhibitory_neuron_SeuratObject.Rds")
-
-writeMM(iN[["peaks"]]@counts,file="hg38_inhibitoryneurons.counts.mtx") #this is to generate counts matrices in scrublet friendly format
-write.table(unlist(row.names(iN@meta.data)),file="hg38_inhibitoryneurons.cellid.txt",quote=F,col.names=F,row.names=F)
-```
-Running scrublet on data.
-```python
-#using a conda environment set up by ARSN
-#source /home/groups/oroaklab/nishida/scitools_env/bin/activate
-#Installing scrublet
-#pip install scrublet
-import scrublet as scr
-import scipy.io
-import matplotlib.pyplot as plt
-import numpy as np
-import os
-from scipy.sparse import coo_matrix
-import gzip
-import pandas as pd
-
-#Load the raw counts matrix as a scipy sparse matrix with cells as rows and genes as columns.
-
-input_dir = '/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/subclustering'
-
-#Perform scrublet on mm10 cells
-counts_matrix = scipy.io.mmread(input_dir + '/hg38_inhibitoryneurons.counts.mtx').T.tocsc() #generated during the initialization of the Seurat Object
-
-peaks= np.array(gzip.open('/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/hg38.bbrd.q10.500.counts.sparseMatrix.rows.gz', 'rt').read().split()) #This is read in to check that our data frame is in the correct orientation
-cellid= open(input_dir+'/hg38_inhibitoryneurons.cellid.txt', 'rt').read().split() #This is read in to check that our data frame is in the correct orientation
-
-print('Counts matrix shape: {} rows, {} columns'.format(counts_matrix.shape[0], counts_matrix.shape[1]))
-print('Number of genes in gene list: {}'.format(len(peaks)))
-#Run scrublet
-scrub = scr.Scrublet(counts_matrix, expected_doublet_rate=0.05)
-#Run the default pipeline, which includes:
-#Doublet simulation
-#Normalization, gene filtering, rescaling, PCA
-#Doublet score calculation
-#Doublet score threshold detection and doublet calling
-doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2, 
-                                                          min_cells=3, 
-                                                          min_gene_variability_pctl=85, 
-                                                          n_prin_comps=30)
-
-#Preprocessing...
-#Simulating doublets...
-#Embedding transcriptomes using PCA...
-#Calculating doublet scores...
-#Automatically set threshold at doublet score = 0.23
-#Detected doublet rate = 4.1%
-#Estimated detectable doublet fraction = 4.2%
-#Overall doublet rate:
-#        Expected   = 5.0%
-#        Estimated  = 96.6%
-#Elapsed time: 10.3 seconds
-
-df = pd.DataFrame({'cellid':cellid, 'doublet_scores':doublet_scores,'predicted_doublets':predicted_doublets})
-df.to_csv('hg38_inhibitoryneurons.scrublet.tsv', index=False, sep="\t")
-
-```
-{% endcapture %} {% include details.html %} 
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
 
 ```R
 library(Signac)
@@ -3141,32 +2540,12 @@ library(parallel)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/subclustering")
 iN<-readRDS("hg38_inhibitory_neuron_SeuratObject.Rds")
 
-#Cluster 4 is suspected doublets
-doublet_rate<-read.table('hg38_inhibitoryneurons.scrublet.tsv',head=T)
-row.names(doublet_rate)<-doublet_rate$cellid
-doublet_rate<-doublet_rate["doublet_scores"]
-iN<-AddMetaData(iN,doublet_rate)
-
-metadat<-iN@meta.data
-plt1<-FeaturePlot(iN,features="doublet_scores",col=c("white","red"))
-plt2<-ggplot(metadat,aes(x=final_clusters,y=doublet_scores,color=final_clusters))+geom_boxplot()
-ggsave(plt1+plt2,file="hg38_inhibitoryneurons.doublets.pdf")
-system("slack -F hg38_inhibitoryneurons.doublets.pdf ryan_todo")
-
-#Excluding and rerunning UMAP Projection
-iN<-subset(iN,cells=iN@meta.data[iN@meta.data$final_clusters %in% c("0","1","2","3"),]$cellID)    
-iN<-RunUMAP(iN,assay="peaks",reduction="cistopic",dims=1:ncol(iN@reductions$cistopic@cell.embeddings))
-plt1<-DimPlot(iN,group.by="final_clusters")
-ggsave(plt1,file="hg38_inhibitoryneurons.umap.pdf")
-system("slack -F hg38_inhibitoryneurons.umap.pdf ryan_todo")
-
-
 #Plot Markers
-markers<-c("LHX6","chr9-122229000-122230000","chr9-122219000-122220000","chr9-121200000-122330000","ADARB2","chr10-1740000-1760000","chr10-600000-2500000","VIP","SST")
+markers<-c("LHX6","ADARB2","CHODL","UNC5B")
 
 DefaultAssay(iN)<-"peaks"
 plt<-CoveragePlot(iN, region = markers, 
-                  tile = FALSE,
+                  tile = TRUE,
                  extend.upstream=2000,
                  extend.downstream=2000,
                  tile.cells=10,ncol=1)
@@ -3339,8 +2718,6 @@ gsea_3$estimate<-as.numeric(gsea_3$estimate)
 #read in RDS file.
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/subclustering")
 iN<-readRDS("hg38_inhibitory_neuron_SeuratObject.Rds")
-iN<-subset(iN,cells=iN@meta.data[iN@meta.data$final_clusters %in% c("0","1","2","3"),]$cellID)    
-
 cistopic_cell_embeddings<-iN@reductions$cistopic@cell.embeddings
 #cistopic_cell_embeddings<-cistopic_cell_embeddings[,colnames(cistopic_cell_embeddings) %in% paste("topic",1:25,sep="_")]
 cellid_order<-row.names(cistopic_cell_embeddings)
@@ -3384,21 +2761,6 @@ plt3<-ggplot(gsea_3, aes(x = CellType, y = Topic)) +
   theme_bw() + scale_color_gradient(limits=c(0,0.05),low="orange",high="white")+coord_flip()+scale_size(limits=c(0,3))
 ggsave(plt3,file="hg38_inhibitory_neuron_celltypelevel3.pdf")
 system("slack -F hg38_inhibitory_neuron_celltypelevel3.pdf ryan_todo")
-
-cell_embed<-as.data.frame(cistopic_cell_embeddings)
-row.names(iN@meta.data)==row.names(cell_embed)
-cell_embed<-cbind(cell_embed,final_clusters=iN$final_clusters)
-#here
-
-gsea_3$Topic <- factor(gsea_3$Topic, levels = paste0("Topic",1:25)[topic_ord])
-gsea_3$CellType <- factor(gsea_3$CellType, levels = gsea_3$CellType)
-
-plt3<-ggplot(gsea_3, aes(x = CellType, y = Topic)) +
-  geom_point(aes(size = estimate, color = pval)) +
-  theme_bw() + scale_color_gradient(limits=c(0,0.05),low="orange",high="white")+coord_flip()+scale_size(limits=c(0,3))
-ggsave(plt3,file="hg38_inhibitory_neuron_celltypelevel3.pdf")
-system("slack -F hg38_inhibitory_neuron_celltypelevel3.pdf ryan_todo")
-
 
 plt<-wrap_plots(plt2,plt3,ncol=1)
 ggsave(plt,file="hg38_inhibitory_neuron_gsea.pdf")
@@ -3458,13 +2820,9 @@ plt<-ggplot(dat_peaks,aes(x=avg_logFC,y=(-log(p_val_adj)),color=as.factor(compar
 geom_point(aes(alpha=0.1))+
 geom_label_repel(dat=dat_select,aes(label=gene_name),size=2,force=5)+
 theme_bw()+facet_wrap(~enriched_group)+ylim(c(0,20))+xlim(c(0,50))
-ggsave(plt,file=paste("hg38_inhibitory_neuron","da_peaks.pdf","da_peaks.pdf",sep="_"))
-system(paste0("slack -F ",paste("hg38_inhibitory_neuron","da_peaks.pdf",sep="_")," ryan_todo"))
-
-plt<-CoveragePlot(iN,region=markers,ncol=1)
-ggsave(plt,file=paste("hg38_inhibitory_neuron","extratracks.pdf",sep="_"),height=50,limitsize=F)
-system(paste0("slack -F ",paste("hg38_inhibitory_neuron","extratracks.pdf",sep="_")," ryan_todo"))
-
+ggsave(plt,file=paste(species,celltype.x,"da_peaks.pdf",sep="_"))
+system(paste0("slack -F ",paste(species,celltype.x,"da_peaks.pdf",sep="_")," ryan_todo"))
+    
 #dat_ga[dat_ga$da_region %in% markers,]
 #dat_tf[dat_tf$da_region %in% markers,]
 #dat_peaks[dat_peaks$gene_name %in% markers,] 
