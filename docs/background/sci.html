@@ -10,7 +10,10 @@ category: background
 <p>
 Bulk methods to capture chromatin accessibility<sup>1</sup>, chromatin conformation<sup>2</sup>, DNA methylation<sup>3</sup> and others have increased our understanding of cell state diversity and the interplay between these features<sup>4,5</sup>. In actively developing samples, or on samples of complex tissue, bulk assays fall short. By capturing and processing thousands to millions of cells together, signals are merged to an average, covering up cellular diversity and genomic decision points. To specify the region, cell type, or developmental stages linking neurotypical cortical development with disorders, efforts have been made to take sequential samples for a time-course analysis, or to perform micro-dissections of the cortex<sup>6,7</sup>. These two approaches, while able to garner critical information, still lack the granularity to catalog a causative string of events for cell fate decisions, leaving the development of new single-cell methods as a promising recourse.</p>
 
-<img src="{{site.baseurl}}/assets/images/fig1.png" alt="Figure 1">
+<figure>
+	<img src="{{site.baseurl}}/assets/images/fig1.png" alt="Figure 1" style="width:60%">
+  <figcaption>Figure 1. Abstracted landscape of cellular heterogeneity (a.) and differentiation (b.) through Waddington’s model.</figcaption>
+</figure>
 
 <p>
 Single-cell applications, the assessment of genomic or epigenomic profiles from discrete single cells, exists to address the shortcomings of those previous experimental designs. Sampling one cell at a time has two major benefits. The first is a less biased count of heterogeneity in a sample. For instance, previous post-mortem analysis demonstrated a large variance of cell type proportions across individual cortical samples. This heterogeneity has been known to skew analysis in bulk samples<sup>8</sup>. A second approach would be to isolate cells through a marker. However this approach can introduce bias into systems, especially when studying cell state transitions<sup>9</sup>. Through capturing cells in an unbiased manner and supsetting data to cells of interest post hoc, this effect can be mitigated and assumptions before data acquisition are limited — isolation of a single cell type allows for a more powerful case-control comparison. For instance, single-cell RNA libraries generated from 48 individuals with Alzheimer’s disease pathology uncovered many more differences using pairwise comparisons respective of cell types than have been previously uncovered in bulk data sets, which compare across all cell types at once. This was driven by the direct comparison between relatively sparse glial suptypes, which are masked in bulk libraries<sup>10</sup>. This same method has been applied to other disorders including major depression<sup>11</sup>, autism spectrum<sup>12</sup>, and multiple sclerosis<sup>13</sup>.  Secondly, single-cell analysis is used for a higher resolution view at dynamic processes. Time course experiments done in bulk are limited by sampling rate, and generally share the same problem with averaging across many cells, or having to synchronize cell cycle or conditional responses prior to sampling. By using a single-cell approach one can capture and order cells through their progression of a state change<sup>14</sup>. Single-cell analysis allows for a higher resolution view into dynamic processes, and the regulatory landscape across complex tissue (Figure 1). </p>
@@ -26,44 +29,44 @@ Regardless of epigenomic or transcriptomic assay, each single cell captured tend
 <div style="height:12rem;width:56rem;border:0.2rem solid #ccc;font:16px/26px Georgia, Garamond, Serif;overflow:auto;">
 <ol>
 <li>
-1.	Buenrostro, J. D., Wu, B., Chang, H. Y. & Greenleaf, W. J. ATAC-seq: A Method for Assaying Chromatin Accessibility Genome-Wide. Curr. Protoc. Mol. Biol. 21.29.1-21.29.9 (2015). doi:10.1002/0471142727.mb2129s109 </li>
+Buenrostro, J. D., Wu, B., Chang, H. Y. & Greenleaf, W. J. ATAC-seq: A Method for Assaying Chromatin Accessibility Genome-Wide. Curr. Protoc. Mol. Biol. 21.29.1-21.29.9 (2015). doi:10.1002/0471142727.mb2129s109 </li>
 <li>
-2.	Lieberman-Aiden, E. et al. Comprehensive mapping of long-range interactions reveals folding principles of the human genome. Science (80-. ). 326, 289–293 (2009). </li>
+Lieberman-Aiden, E. et al. Comprehensive mapping of long-range interactions reveals folding principles of the human genome. Science (80-. ). 326, 289–293 (2009). </li>
 <li>
-3.	Frommer, M. et al. A genomic sequencing protocol that yields a positive display of 5- methylcytosine residues in individual DNA strands. Proc. Natl. Acad. Sci. U. S. A. 89, 1827–1831 (1992). </li>
+Frommer, M. et al. A genomic sequencing protocol that yields a positive display of 5- methylcytosine residues in individual DNA strands. Proc. Natl. Acad. Sci. U. S. A. 89, 1827–1831 (1992). </li>
 <li>
-4.	Luo, C. et al. Single-cell methylomes identify neuronal subtypes and regulatory elements in mammalian cortex. Science (80-. ). 357, 600–604 (2017). </li>
+Luo, C. et al. Single-cell methylomes identify neuronal subtypes and regulatory elements in mammalian cortex. Science (80-. ). 357, 600–604 (2017). </li>
 <li>
-5.	Pliner, H. A. et al. Cicero Predicts cis-Regulatory DNA Interactions from Single-Cell Chromatin Accessibility Data. Mol. Cell 71, 858-871.e8 (2018). </li>
+Pliner, H. A. et al. Cicero Predicts cis-Regulatory DNA Interactions from Single-Cell Chromatin Accessibility Data. Mol. Cell 71, 858-871.e8 (2018). </li>
 <li>
-6.	Raphael, B. J. et al. Integrated Genomic Characterization of Pancreatic Ductal Adenocarcinoma. Cancer Cell (2017). doi:10.1016/j.ccell.2017.07.007 </li>
+Raphael, B. J. et al. Integrated Genomic Characterization of Pancreatic Ductal Adenocarcinoma. Cancer Cell (2017). doi:10.1016/j.ccell.2017.07.007 </li>
 <li>
-7.	Tasic, B. et al. Shared and distinct transcriptomic cell types across neocortical areas. Nature 563, 72–78 (2018).</li>
+Tasic, B. et al. Shared and distinct transcriptomic cell types across neocortical areas. Nature 563, 72–78 (2018).</li>
 <li>
-8.	McGregor, K. et al. An evaluation of methods correcting for cell-type heterogeneity in DNA methylation studies. Genome Biol. 17, 84 (2016).</li>
+McGregor, K. et al. An evaluation of methods correcting for cell-type heterogeneity in DNA methylation studies. Genome Biol. 17, 84 (2016).</li>
 <li>
-9.	Song, M. et al. Cell-type-specific 3D epigenomes in the developing human cortex. Nature 587, 644–649 (2020).</li>
+Song, M. et al. Cell-type-specific 3D epigenomes in the developing human cortex. Nature 587, 644–649 (2020).</li>
 <li>
-10.	Mathys, H. et al. Single-cell transcriptomic analysis of Alzheimer’s disease. Nature 570, 332–337 (2019).</li>
+Mathys, H. et al. Single-cell transcriptomic analysis of Alzheimer’s disease. Nature 570, 332–337 (2019).</li>
 <li>
-11.	Nagy, C. et al. Single-nucleus transcriptomics of the prefrontal cortex in major depressive disorder implicates oligodendrocyte precursor cells and excitatory neurons. Nat. Neurosci. 23, 771–781 (2020).</li>
+Nagy, C. et al. Single-nucleus transcriptomics of the prefrontal cortex in major depressive disorder implicates oligodendrocyte precursor cells and excitatory neurons. Nat. Neurosci. 23, 771–781 (2020).</li>
 <li>
-12.	Velmeshev, D. et al. Single-cell genomics identifies cell type–specific molecular changes in autism. Science (80-. ). 364, 685–689 (2019).</li>
+Velmeshev, D. et al. Single-cell genomics identifies cell type–specific molecular changes in autism. Science (80-. ). 364, 685–689 (2019).</li>
 <li>
-13.	Schirmer, L. et al. Neuronal vulnerability and multilineage diversity in multiple sclerosis. Nature 573, 75–82 (2019).</li>
+Schirmer, L. et al. Neuronal vulnerability and multilineage diversity in multiple sclerosis. Nature 573, 75–82 (2019).</li>
 <li>
-14.	Qiu, X. et al. Reversed graph embedding resolves complex single-cell trajectories. Nat. Methods 14, 979–982 (2017).</li>
+Qiu, X. et al. Reversed graph embedding resolves complex single-cell trajectories. Nat. Methods 14, 979–982 (2017).</li>
 <li>
-15.	Mezger, A. et al. High-throughput chromatin accessibility profiling at single-cell resolution. Nat. Commun. 9, 1–6 (2018).</li>
+Mezger, A. et al. High-throughput chromatin accessibility profiling at single-cell resolution. Nat. Commun. 9, 1–6 (2018).</li>
 <li>
-16.	Lareau, C. A. et al. Droplet-based combinatorial indexing for massive-scale single-cell chromatin accessibility. Nat. Biotechnol. 37, 916–924 (2019).</li>
+Lareau, C. A. et al. Droplet-based combinatorial indexing for massive-scale single-cell chromatin accessibility. Nat. Biotechnol. 37, 916–924 (2019).</li>
 <li>
-17.	Lareau, C. A. et al. Droplet-based combinatorial indexing for massive-scale single-cell chromatin accessibility. Nat. Biotechnol. (2019). doi:10.1038/s41587-019-0147-6</li>
+Lareau, C. A. et al. Droplet-based combinatorial indexing for massive-scale single-cell chromatin accessibility. Nat. Biotechnol. (2019). doi:10.1038/s41587-019-0147-6</li>
 <li>
-18.	Satpathy, A. T. et al. Massively parallel single-cell chromatin landscapes of human immune cell development and intratumoral T cell exhaustion. Nat. Biotechnol. 37, 925–936 (2019).</li>
+Satpathy, A. T. et al. Massively parallel single-cell chromatin landscapes of human immune cell development and intratumoral T cell exhaustion. Nat. Biotechnol. 37, 925–936 (2019).</li>
 <li>
-19.	Sinnamon, J. R. et al. The accessible chromatin landscape of the hippocampus at single-cell resolution. doi:10.1101/407668</li>
+Sinnamon, J. R. et al. The accessible chromatin landscape of the hippocampus at single-cell resolution. doi:10.1101/407668</li>
 <li>
-20.	Sos, B. et al. Characterization of chromatin accessibility with a transposome hypersensitive sites sequencing (THS-seq) assay. Genome Biol 17, 20 (2016).</li>
+Sos, B. et al. Characterization of chromatin accessibility with a transposome hypersensitive sites sequencing (THS-seq) assay. Genome Biol 17, 20 (2016).</li>
 </ol>
 </div>
