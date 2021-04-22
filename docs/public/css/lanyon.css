@@ -619,7 +619,7 @@ a.pagination-item:hover {
   display: none;
   background-color: #262626;
   padding-left: 4px;
-  font-size: 8px; /* Increased text to enable scrolling */
+  font-size: 12px; /* Increased text to enable scrolling */
   padding: .5rem 1rem;
   border-top: 1px
 }
