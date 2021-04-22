@@ -50,7 +50,7 @@
       <i class="fa fa-caret-down"></i>
     </button>
     <div class="dropdown-container">
-    {% assign pages_list = site.pages | sort:"url" %}
+    {% assign pages_list = site.pages | sort:"order" %}
     {% for node in pages_list %}
       {% if node.title != null %}
         {% if node.category == "background" %}
