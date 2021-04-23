@@ -240,7 +240,7 @@ figure {
 img {
   display: block;
   max-width: 100%;
-  margin:1rem;
+  /*margin:1rem;*/
   padding: 1rem; 
 }
 
