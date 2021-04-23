@@ -233,13 +233,13 @@ blockquote p:last-child {
 /* Figures and Figure Captions */
 figure {
     display: block;
-    max-width: 100%;
     border:0.1rem solid #ccc;
     margin: 1rem; /* adjust as needed */
 }
 
 img {
   display: block;
+  max-width: 100%;
   margin: 1 1 1 1rem;
   padding: 1rem; 
 }
