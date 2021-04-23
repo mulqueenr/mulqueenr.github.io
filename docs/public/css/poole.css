@@ -240,10 +240,12 @@ img {
   display: block;
   max-width: 100%;
   margin: 1 1 1 1rem;
+  padding: 1rem; 
 }
 
 figcaption {
-    padding: 3px;
+    padding: 1rem;
+    padding-top:1.5rem;
 }
 /* RM Add ins */
 
