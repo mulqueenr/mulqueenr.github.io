@@ -232,7 +232,7 @@ blockquote p:last-child {
 /* Figures and Figure Captions */
 figure {
     display: inline-block;
-    border:0.1rem solid #ccc;
+    border:5px solid #ccc;
     margin: 1rem; /* adjust as needed */
 }
 
