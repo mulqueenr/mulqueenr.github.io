@@ -235,6 +235,11 @@ img {
   border-radius: 5px;
 }
 
+figcaption {
+    border: 1rem;
+    text-align: center;
+}
+
 /* Tables */
 table {
   margin-bottom: 1rem;
