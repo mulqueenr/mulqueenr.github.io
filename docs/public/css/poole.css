@@ -240,12 +240,10 @@ img {
   display: block;
   max-width: 100%;
   margin: 1 1 1 1rem;
-  border-radius: 0.2rem;
 }
 
 figcaption {
-    background-color: #E9E;
-    font: italic smaller sans-serif;
+    background-color: #E9E9E9;
     padding: 3px;
     text-align: center;
 }
