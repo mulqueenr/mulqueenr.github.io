@@ -25,7 +25,6 @@
  * Pagination
  * Reverse layout
  * Themes
- * RM Added: Figure and FigCaptions;
  */
 
 
@@ -634,14 +633,3 @@ a.pagination-item:hover {
   font-size: 0.5rem; /* Increased text to enable scrolling */
 }
 
-/* RM Add ins */
-/* Figures and Figure Captions */
-.figure {
-    display: inline-block;
-    border: 1rem gray;
-    margin: 1rem; /* adjust as needed */
-}
-.figure img {
-    vertical-align: top;
-}
-.figure 
