@@ -622,7 +622,7 @@ a.pagination-item:hover {
   display: none;
   background-color: #262626;
   padding-left: 0.3rem;
-  font-size: 0.5rem; /* Increased text to enable scrolling */
+  font-size: 1rem; /* Increased text to enable scrolling */
   padding: .5rem 1rem;
   border-top: 0.1rem
 }
@@ -644,7 +644,4 @@ a.pagination-item:hover {
 .figure img {
     vertical-align: top;
 }
-.figure figcaption {
-    border: 1rem;
-    text-align: center;
-}
+.figure 
