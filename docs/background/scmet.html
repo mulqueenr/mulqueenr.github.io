@@ -21,8 +21,8 @@ In the native methylation, reduction of mC is catalyzed by the Tet family of mC 
 <p>
 Methylation profiling genome-wide is achieved by the selective mutation of non-methylated cytosines. Sodium bisulfite is applied to genomic DNA which effectively deaminates non-methylated cytosine to uracil, through a three-step reaction. Importantly, uracil complements with adenine, which means subsequent library amplification will report non-methylated cytosines as thymine. Through this point mutation in the reference genome, namely thymine where cytosines were expected, methylation profiles can be inferred (bisulfite-sequencing, BS-seq)<sup>14</sup>. The first reported protocol for single-cell methylation was scRRBS (reduced representation bisulfite sequencing, Figure 12a). This method uses a methylation-insensitive restriction enzyme (MspI) to digest genomic DNA prior to bisulfite conversion. MspI is used to enrich for CG-rich regions across the genome, via its cut site (5’C|CGG). The resulting sticky ends enriched at CG-rich genome regions are then adapter ligated, DNA is bisulfite converted, and sequencing libraries are prepared<sup>15</sup>. </p>
 
-<figure>
-	<img src="{{site.baseurl}}/assets/images/fig12.png" alt="Figure 12" style="width:100%" align="center">
+<figure style="width:100%" align="center">
+	<img src="{{site.baseurl}}/assets/images/fig12.png" alt="Figure 12">
   <figcaption><p style="font-size:70%"><b>Figure 12.</b>Methods for the generation of single-cell methylomes. a) single-cell reduced representation bisulfite sequencing (scRRBS-seq) digests purified genome DNA with restriction enzyme MspI. This enzyme cuts at a CCGG target sites, fragmenting DNA that is in CG rich regions. Y-adapters (pre-annealed i5 and i7 adapters) are then added on by ligation and the molecule is bisulfite converted. Following this, the DNA is then PCR amplified. b) Single-cell bisulfite sequencing bisulfite converts purified genomic DNA and then uses random priming for post-bisulfite adapter tagging. Prior to the second round of random priming, the reaction is incubated with exonuclease I (exoI) which digests single-stranded DNA. This removes excess primer from the reaction. Following this a second round of random priming is used to introduce the next adapter and the molecules are PCR amplified. c) Single-nucleus methylome sequencing (snmC-seq) is similar to scBS-seq but uses a blunt-end adapter tagging strategy. d) Single-cell combinatorial indexing for methylation (sci-MET) uses a C-depleted oligonucleotide loaded onto a Tn5 enzyme to tagment nucleosome depleted nuclei. Following this, cells are lysed, bisulfite converted, and a post-bisulfite adapter tagging strategy is used prior to PCR amplification.</p></figcaption>
 </figure>
 
@@ -31,8 +31,8 @@ BS-seq is harsh and fragments genomic DNA. This is of high concern for scaling t
 
 <h3>Analysis</h3>
 
-<figure>
-	<img src="{{site.baseurl}}/assets/images/fig13.png" alt="Figure 13" style="width:50%" align="right">
+<figure style="width:50%" align="right">
+	<img src="{{site.baseurl}}/assets/images/fig13.png" alt="Figure 13" >
   <figcaption><p style="font-size:70%"><b>Figure 13.</b>Simplified flow through of single-cell methylation analysis. Bisulfite converted and PCR amplified DNA is sequenced and aligned to pre-converted reference genomes. C-to-T and G-to-A conversions are performed to account for bottom and top strand library capture. For the most confident mapping location and strand, cytosines (C) and methylated cytosines (mC) are called based on point mutations induced in bisulfite conversion. Methylation profiles for cytosines are aggregated over genomic regions and used to group single-cells into clusters. Cells are combined within clusters for increased power and changes in methylation across the genome are calculated. 
 </p></figcaption>
 </figure>
