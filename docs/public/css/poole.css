@@ -240,12 +240,14 @@ figure {
 img {
   display: block;
   max-width: 100%;
-  margin: 1 1 1 1rem;
+  margin:1rem;
   padding: 1rem; 
 }
 
 figcaption {
-    padding-top:1rem;
+  text-align: left;
+  padding-top:1rem;
+  padding-bottom:1rem;
 }
 /* RM Add ins */
 
