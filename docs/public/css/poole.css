@@ -234,7 +234,7 @@ blockquote p:last-child {
 figure {
     display: block;
     border:0.1rem solid #ccc;
-    margin: 1rem; /* adjust as needed */
+    /*margin: 1rem;  adjust as needed */
 }
 
 img {
