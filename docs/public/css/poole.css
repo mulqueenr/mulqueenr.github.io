@@ -227,18 +227,31 @@ blockquote p:last-child {
     padding-left: 1.25rem;
   }
 }
+/* RM Add ins */
+/* Figures and Figure Captions */
+figure {
+    display: inline-block;
+    border: 1rem gray;
+    margin: 1rem; /* adjust as needed */
+}
 
 img {
   display: block;
   max-width: 100%;
   margin: 1 1 1 1rem;
-  border-radius: 5px;
+  border-radius: 0.2rem;
 }
 
 figcaption {
-    border: 1rem;
+    background-color: #222;
+    color: #fff;
+    font: italic smaller sans-serif;
+    padding: 3px;
     text-align: center;
 }
+/* RM Add ins */
+
+
 
 /* Tables */
 table {
