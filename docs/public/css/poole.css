@@ -228,23 +228,24 @@ blockquote p:last-child {
     padding-left: 1.25rem;
   }
 }
+
 /* RM Add ins */
 /* Figures and Figure Captions */
 figure {
-    display: inline-block;
+    display: block;
+    max-width: 100%;
     border:0.1rem solid #ccc;
     margin: 1rem; /* adjust as needed */
 }
 
 img {
   display: block;
-  max-width: 100%;
   margin: 1 1 1 1rem;
   padding: 1rem; 
 }
 
 figcaption {
-    padding-top:1.5rem;
+    padding-top:1rem;
 }
 /* RM Add ins */
 
