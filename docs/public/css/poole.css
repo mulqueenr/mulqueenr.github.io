@@ -231,7 +231,7 @@ blockquote p:last-child {
 /* RM Add ins */
 /* Figures and Figure Captions */
 figure {
-    display: inline;
+    display: inline-block;
     border:0.1rem solid #ccc;
     margin: 1rem; /* adjust as needed */
 }
