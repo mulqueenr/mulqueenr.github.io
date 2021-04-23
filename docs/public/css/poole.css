@@ -232,13 +232,13 @@ blockquote p:last-child {
 /* RM Add ins */
 /* Figures and Figure Captions */
 figure {
-    display: block;
+    display: inline-block;
     border:0.1rem solid #ccc;
     margin: 1rem; /* adjust as needed */
 }
 
 img {
-  display: block;
+  display: inline-block;
   max-width: 100%;
   margin:1rem;
   padding: 1rem; 
