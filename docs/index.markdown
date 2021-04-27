@@ -12,11 +12,16 @@ Some of the basic processing (bcl2fastq to generation of a counts matrix) was pe
 
 <h3>Background</h3>
 <ul>
-    {% for doc in site.pages %}
-      {% if doc.category == "background" %}
+
+    {% assign pages_list = site.pages | sort:"order" %}
+    {% for node in pages_list %}
+      {% if node.title != null %}
+        {% if node.category == "background" %}
         <li><a href="{{ doc.url }}">{{ doc.title }}</a></li>
+        {% endif %}
       {% endif %}
     {% endfor %}
+
 </ul>
 
 <h3>sciATAC</h3>
