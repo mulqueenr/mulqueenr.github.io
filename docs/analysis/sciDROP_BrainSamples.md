@@ -995,30 +995,24 @@ library(dplyr)
 library(ggrepel)
 
 
-setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
-
-#Read in data and modify to monocle CDS file
-#read in RDS file.
-hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
-mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
-dir.create("subcluster")
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/subcluster")
 
 #UMAP Projection and clustering on selected cistopic model
-clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_atac,celltype.x,topiccount_list.=topic_count_list){
-    #set up subset object again
-    atac_sub<-subset(object_input,subset=(seurat_clusters==celltype.x & predicted_doublets=="False")) 
+clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_list.=topic_count_list){
+    #topicmodel_list.=topicmodel_list;topiccount_list.=topic_count_list
+    #set up outname
+    topicmodel_list.<-topicmodel_list.[sample]
+
+    outname<-strsplit(topicmodel_list.,split="[.]")[[1]][1]
+    object_input<-readRDS(paste0(outname,".75k.subset.SeuratObject.Rds"))
+    if (ncol(object_input)>100){ #requiring 100 cells for subclustering
     #select_topic
-    models_input<-readRDS(paste("./subcluster/",species,celltype.x,".CisTopicObject.Rds",sep="_"))
-    cisTopicObject<-cisTopic::selectModel(models_input,select=topiccount_list.[celltype.x],keepModels=F)
+    models_input<-readRDS(topicmodel_list.)
+    cisTopicObject<-cisTopic::selectModel(models_input,select=topiccount_list.[topicmodel_list.],keepModels=F)
     
     #perform UMAP on topics
     topic_df<-as.data.frame(cisTopicObject@selected.model$document_expects)
     row.names(topic_df)<-paste0("Topic_",row.names(topic_df))
-    dims<-as.data.frame(uwot::umap(t(topic_df),n_components=2))
-    row.names(dims)<-colnames(topic_df)
-    colnames(dims)<-c("x","y")
-    dims$cellID<-row.names(dims)
-    dims<-merge(dims,object_input@meta.data,by.x="cellID",by.y="row.names")
 
     #get cell embeddings
     cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
@@ -1034,51 +1028,47 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     
     #combine with seurat object for celltype seuratobject  
     cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
-    umap_dims<-as.data.frame(as.matrix(dims[2:3]))
-    colnames(umap_dims)<-c("UMAP_1","UMAP_2")
-    row.names(umap_dims)<-dims$cellID
-    cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(umap_dims),assay="peaks",key="UMAP_")
-    atac_sub@reductions$cistopic<-cistopic_obj
-    atac_sub@reductions$umap<-cistopic_umap
+    object_input@reductions$cistopic<-cistopic_obj
+    n_topics<-ncol(Embeddings(object_input,reduction="cistopic"))
+    object_input<-RunUMAP(object_input,reduction="cistopic",dims=1:n_topics)
+
     #finally recluster
-    n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic"))
     #Clustering with multiple resolutions to account for different celltype complexities
-    atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics)
-    atac_sub <- FindClusters(object = atac_sub,resolution=0.1)
-    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.2)
-    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.5)
-    atac_sub <- FindClusters(object = atac_sub,verbose = TRUE,resolution=0.9)
+    object_input <- FindNeighbors(object = object_input, reduction = 'cistopic', dims = 1:n_topics)
+    object_input <- FindClusters(object = object_input,resolution=0.1)
+    object_input <- FindClusters(object = object_input,verbose = TRUE,resolution=0.2)
+    object_input <- FindClusters(object = object_input,verbose = TRUE,resolution=0.5)
+    object_input <- FindClusters(object = object_input,verbose = TRUE,resolution=0.9)
     
-    saveRDS(atac_sub,paste("./subcluster/",species,celltype.x,"SeuratObject.Rds",sep="_"))
-    plt<-DimPlot(atac_sub,group.by=c('peaks_snn_res.0.1','peaks_snn_res.0.2','peaks_snn_res.0.5','peaks_snn_res.0.9'))
-    ggsave(plt,file=paste("./subcluster/",species,celltype.x,"clustering.pdf",sep="_"))
+    saveRDS(object_input,paste0(outname,".75k.subset.SeuratObject.Rds"))
+    plt<-DimPlot(object_input,group.by=c('peaks_snn_res.0.1','peaks_snn_res.0.2','peaks_snn_res.0.5','peaks_snn_res.0.9'))
+    ggsave(plt,file=paste(outname,"clustering.pdf",sep="_"))
+    }
 }
 
 ####################################
 ### Processing ###
-#hg38
-    #Set up variables
-    species="hg38"
-    celltype_list<-unique(hg38_atac$seurat_clusters)
-
-    #Running cistopic subclustering on all identified cell types
-    #lapply(celltype_list, function(i){atac_sub<-subset(hg38_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="hg38")})
-
-    topicmodel_list<-paste("./subcluster/",species,celltype_list,".CisTopicObject.Rds",sep="_")
+    topicmodel_list<-list.files(pattern="75k.CisTopicObject.Rds$")
 
     #determine model count to use for each cell type
-    for (i in paste("./subcluster/",species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
+    for (i in list.files(pattern="model_selection.pdf")){system(paste0("slack -F ",i," ryan_todo"))}
 
     #selecting topics based on derivative, making a named vector, note some of these seem to suggest a topic count over 28, but were artificially capped
-    topic_count_list<-setNames(c(27,28,25,26,28,28,26),celltype_list)
-    names(topic_count_list)<-celltype_list
+    topic_count_list<-setNames(c(26,27,24,24,25,28,27,27,24,28,26,27,27,24,25,25,27),topicmodel_list)
 
     #Running clustering loop
-    for (i in celltype_list){clustering_loop(object_input=hg38_atac,celltype.x=i)}
+    for (i in 1:length(topic_count_list)){clustering_loop(sample=i)}
 
     #selecting resolution by plots
-    for (i in celltype_list){system(paste0("slack -F ",paste("./subcluster/",species,i,"clustering.pdf",sep="_")," ryan_todo"))}
+    for (i in list.files(pattern="clustering.pdf")){system(paste0("slack -F ",i," ryan_todo"))}
     
+    setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+    #Read in data and modify to monocle CDS file
+    #read in RDS file.
+    hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+    mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+
     #adding all subclustering info back into main RDS object
     hg38_atac$seurat_subcluster<-"NA"
     hg38_atac$subcluster_x<-"NA"
@@ -1101,52 +1091,6 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,object_input=hg38_ata
     as.data.frame(hg38_atac@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
     #na values are doublets  
     saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
-
-    #mm10
-    #Set up variables
-    species="mm10"
-    celltype_list<-unique(mm10_atac$seurat_clusters)
-
-    #Running cistopic subclustering on all identified cell types
-    #####DOING CUSTERS 1:4 to START, CLEARING MEMORY THEN DOING AGAIN
-    #lapply(celltype_list[4:length(celltype_list)], function(i){atac_sub<-subset(mm10_atac,subset=seurat_clusters==i); cistopic_generation(x=atac_sub,celltype.x=i,species="mm10")})
-    
-    #determine model count to use for each cell type
-    for (i in paste("./subcluster/",species,celltype_list,"_model_selection.pdf",sep="_")){system(paste0("slack -F ",i," ryan_todo"))}
-    topicmodel_list<-paste("./subcluster/",species,celltype_list,".CisTopicObject.Rds",sep="_")
-
-    #selecting topics based on derivative, making a named vector 
-    topic_count_list<-setNames(c(24,24,24,27,25,27,24,27,28),celltype_list)
-    names(topic_count_list)<-celltype_list
-
-    #Running clustering loop
-    for (i in celltype_list){clustering_loop(object_input=mm10_atac,celltype.x=i)}
-
-    #selecting resolution by plots 
-    for (i in celltype_list){system(paste0("slack -F ",paste("./subcluster/",species,i,"clustering.pdf",sep="_")," ryan_todo"))}
-
-    #adding all subclustering info back into main RDS object
-    mm10_atac$seurat_subcluster<-"NA"
-    mm10_atac$subcluster_x<-"NA"
-    mm10_atac$subcluster_y<-"NA"
-
-    #Assign clustering resolution based on clustering.pdf output
-    resolution_list<-setNames(c("peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.1",
-        "peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.1"),celltype_list)
-    cell_order<-row.names(mm10_atac@meta.data)
-
-    for(celltype.x in celltype_list){
-        atac_sub<-readRDS(paste("./subcluster/",species,celltype.x,"SeuratObject.Rds",sep="_"))
-        embedding_order<-row.names(atac_sub@reductions$umap@cell.embeddings)
-        row_order<-match(cell_order,embedding_order,nomatch=0)
-        mm10_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(mm10_atac@meta.data),nomatch=0),]$seurat_subcluster<-as.character(unlist(atac_sub@meta.data[which(colnames(atac_sub@meta.data)==resolution_list[celltype.x])]))
-        mm10_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(mm10_atac@meta.data),nomatch=0),]$subcluster_x<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,1])
-        mm10_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(mm10_atac@meta.data),nomatch=0),]$subcluster_y<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,2])
-    }
-
-    as.data.frame(mm10_atac@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
-    #na values are doublets  
-    saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
 
 ```
 
