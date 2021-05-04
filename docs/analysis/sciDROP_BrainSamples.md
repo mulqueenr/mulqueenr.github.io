@@ -669,6 +669,7 @@ library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+
 hg38_cistopic_counts_frmt<-hg38_atac$peaks@counts
 
 #renaming row names to fit granges expectation of format
@@ -880,6 +881,8 @@ plt<-DimPlot(hg38_atac,group.by=c("pcr_idx","seurat_clusters"))
 ggsave(plt,file="hg38.umap.i7idx.harm.pdf",width=15)
 system("slack -F hg38.umap.i7idx.harm.pdf ryan_todo")
 
+saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
+
 #Correcting bias with harmony
 pdf("mm10.harmony.convergence.pdf")
 harm_mat<-HarmonyMatrix(mm10_atac@reductions$cistopic@cell.embeddings, mm10_atac@meta.data$pcr_idx,do_pca=FALSE,nclust=15)
@@ -893,6 +896,16 @@ mm10_atac <- FindClusters(object = mm10_atac,verbose = TRUE,resolution=0.075 )
 plt<-DimPlot(mm10_atac,group.by=c("pcr_idx","seurat_clusters"))
 ggsave(plt,file="mm10.umap.i7idx.harm.pdf",width=10)
 system("slack -F mm10.umap.i7idx.harm.pdf ryan_todo")
+
+plt1<-DimPlot(hg38_atac,group.by="seurat_clusters")
+plt2<-DimPlot(mm10_atac,group.by="seurat_clusters")
+plt<-plt1+plt2
+ggsave(plt,file="hg38_mm10_seurat.clusters.pdf")
+system("slack -F hg38_mm10_seurat.clusters.pdf ryan_todo")
+
+saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
+
+
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -921,7 +934,7 @@ subset_seurat<-function(x,i,prefix){
     atac_sub<-subset(atac_sub,subset=predicted_doublets=="False") #remove doublets from subclustering
     outname<-paste0(prefix,"_",i,".subset.SeuratObject.Rds")
     saveRDS(atac_sub,paste0("./subcluster/",outname))
-    atac_sub<-subset(atac_sub,subset=pcr_idx %in% c("CAGAGAGG","CTCTCTAC"))
+    atac_sub<-subset(atac_sub,subset=pcr_idx %in% c("CAGAGAGG","CTCTCTAC")) #limit to just 75k loading
     outname<-paste0(prefix,"_",i,".75k.subset.SeuratObject.Rds")
     saveRDS(atac_sub,paste0("./subcluster/",outname))
 }
@@ -950,7 +963,7 @@ cistopic_generation<-function(x){
     row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
     sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
     print("made cistopic object")
-    sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(10,22:28),nCores=8,addModels=FALSE)
+    sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(22:28),nCores=7,addModels=FALSE)
     saveRDS(sub_cistopic_models,
         file=paste0(wd,"/",outname,".CisTopicObject.Rds"))
     print("finshed running cistopic")
@@ -1005,7 +1018,6 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
 
     outname<-strsplit(topicmodel_list.,split="[.]")[[1]][1]
     object_input<-readRDS(paste0(outname,".75k.subset.SeuratObject.Rds"))
-    if (ncol(object_input)>100){ #requiring 100 cells for subclustering
     #select_topic
     models_input<-readRDS(topicmodel_list.)
     cisTopicObject<-cisTopic::selectModel(models_input,select=topiccount_list.[topicmodel_list.],keepModels=F)
@@ -1030,9 +1042,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
     object_input@reductions$cistopic<-cistopic_obj
     n_topics<-ncol(Embeddings(object_input,reduction="cistopic"))
-    object_input<-RunUMAP(object_input,reduction="cistopic",dims=1:n_topics)
-
-    #finally recluster
+    object_input<-RunUMAP(object_input,reduction="cistopic",dims=1:n_topics)    #finally recluster
     #Clustering with multiple resolutions to account for different celltype complexities
     object_input <- FindNeighbors(object = object_input, reduction = 'cistopic', dims = 1:n_topics)
     object_input <- FindClusters(object = object_input,resolution=0.1)
@@ -1042,8 +1052,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     
     saveRDS(object_input,paste0(outname,".75k.subset.SeuratObject.Rds"))
     plt<-DimPlot(object_input,group.by=c('peaks_snn_res.0.1','peaks_snn_res.0.2','peaks_snn_res.0.5','peaks_snn_res.0.9'))
-    ggsave(plt,file=paste(outname,"clustering.pdf",sep="_"))
-    }
+    ggsave(plt,file=paste(outname,"clustering.pdf",sep="."))
 }
 
 ####################################
@@ -1054,7 +1063,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     for (i in list.files(pattern="model_selection.pdf")){system(paste0("slack -F ",i," ryan_todo"))}
 
     #selecting topics based on derivative, making a named vector, note some of these seem to suggest a topic count over 28, but were artificially capped
-    topic_count_list<-setNames(c(26,27,24,24,25,28,27,27,24,28,26,27,27,24,25,25,27),topicmodel_list)
+    topic_count_list<-setNames(c(25,26,27,27,28,25,26,26,25,24,25,27,25,25,27,28,27),topicmodel_list)
 
     #Running clustering loop
     for (i in 1:length(topic_count_list)){clustering_loop(sample=i)}
@@ -1067,7 +1076,6 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     #Read in data and modify to monocle CDS file
     #read in RDS file.
     hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
-    mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 
     #adding all subclustering info back into main RDS object
     hg38_atac$seurat_subcluster<-"NA"
@@ -1075,22 +1083,57 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     hg38_atac$subcluster_y<-"NA"
 
     #Assign clustering resolution based on clustering.pdf output
-    resolution_list<-setNames(c("peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.2","peaks_snn_res.0.2",
-        "peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.2"),celltype_list)
+    celltype_list<-list.files(path="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/subcluster",pattern="clustering.pdf")
+    hg38_celltype_list<-celltype_list[startsWith(prefix="hg38",celltype_list)]
+
+    hg38_resolution_list<-setNames(c("peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.1",
+        "peaks_snn_res.0.5","peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.2"),hg38_celltype_list)
     cell_order<-row.names(hg38_atac@meta.data)
 
-    for(celltype.x in celltype_list){
-        atac_sub<-readRDS(paste("./subcluster/",species,celltype.x,"SeuratObject.Rds",sep="_"))
+    for(celltype.x in hg38_celltype_list){
+        outname<-strsplit(celltype.x,split="[.]")[[1]][1]
+        atac_sub<-readRDS(paste0("./subcluster/",outname,".75k.subset.SeuratObject.Rds"))
         embedding_order<-row.names(atac_sub@reductions$umap@cell.embeddings)
         row_order<-match(cell_order,embedding_order,nomatch=0)
-        hg38_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(hg38_atac@meta.data),nomatch=0),]$seurat_subcluster<-as.character(unlist(atac_sub@meta.data[which(colnames(atac_sub@meta.data)==resolution_list[celltype.x])]))
+        hg38_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(hg38_atac@meta.data),nomatch=0),]$seurat_subcluster<-as.character(unlist(atac_sub@meta.data[which(colnames(atac_sub@meta.data)==hg38_resolution_list[celltype.x])]))
         hg38_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(hg38_atac@meta.data),nomatch=0),]$subcluster_x<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,1])
         hg38_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(hg38_atac@meta.data),nomatch=0),]$subcluster_y<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,2])
     }
 
     as.data.frame(hg38_atac@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
-    #na values are doublets  
+    #na values are doublets or excluded indexes
     saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
+
+
+    #and mouse
+    mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+
+    #adding all subclustering info back into main RDS object
+    mm10_atac$seurat_subcluster<-"NA"
+    mm10_atac$subcluster_x<-"NA"
+    mm10_atac$subcluster_y<-"NA"
+
+    #Assign clustering resolution based on clustering.pdf output
+    celltype_list<-list.files(path="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/subcluster",pattern="clustering.pdf")
+    mm10_celltype_list<-celltype_list[startsWith(prefix="mm10",celltype_list)]
+
+    mm10_resolution_list<-setNames(c("peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.1",
+        "peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.1"),mm10_celltype_list)
+    cell_order<-row.names(mm10_atac@meta.data)
+
+    for(celltype.x in mm10_celltype_list){
+        outname<-strsplit(celltype.x,split="[.]")[[1]][1]
+        atac_sub<-readRDS(paste0("./subcluster/",outname,".75k.subset.SeuratObject.Rds"))
+        embedding_order<-row.names(atac_sub@reductions$umap@cell.embeddings)
+        row_order<-match(cell_order,embedding_order,nomatch=0)
+        mm10_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(mm10_atac@meta.data),nomatch=0),]$seurat_subcluster<-as.character(unlist(atac_sub@meta.data[which(colnames(atac_sub@meta.data)==mm10_resolution_list[celltype.x])]))
+        mm10_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(mm10_atac@meta.data),nomatch=0),]$subcluster_x<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,1])
+        mm10_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(mm10_atac@meta.data),nomatch=0),]$subcluster_y<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,2])
+    }
+
+    as.data.frame(mm10_atac@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
+    #na values are doublets or excluded indexes
+    saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
 
 ```
 
@@ -1130,7 +1173,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     row_order<-match(cell_order,embedding_order)
     dat$umap_x<-as.numeric(hg38_atac@reductions$umap@cell.embeddings[row_order,1])
     dat$umap_y<-as.numeric(hg38_atac@reductions$umap@cell.embeddings[row_order,2])
-    dat<-dat[dat$predicted_doublets=="False",]
+    dat<-dat[!endsWith(dat$cluster_ID,"NA"),]
     dat$seurat_clusters<-as.character(dat$seurat_clusters)
    
     dat$cluster_col<-"NULL"
@@ -1141,6 +1184,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     dat[dat$seurat_clusters=="4",]$cluster_col<-"#6a3d9a"
     dat[dat$seurat_clusters=="5",]$cluster_col<-"#B15928"
     dat[dat$seurat_clusters=="6",]$cluster_col<-"#ff7f00"
+    dat[dat$seurat_clusters=="7",]$cluster_col<-"#228b22"
 
     seurat_clus_col<-setNames(unique(dat$cluster_col),unique(dat$seurat_clusters))
     sort(unique(dat$cluster_ID))
@@ -1161,36 +1205,37 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
 
     dat[dat$cluster_ID=="1_0",]$subcluster_col<-"#A9F5A4"
     dat[dat$cluster_ID=="1_1",]$subcluster_col<-"#0DA802"
-    dat[dat$cluster_ID=="1_2",]$subcluster_col<-"#ED1169"
-    dat[dat$cluster_ID=="1_3",]$subcluster_col<-"#1C3B1A"
+    dat[dat$cluster_ID=="1_2",]$subcluster_col<-"#1C3B1A"
 
     dat[dat$cluster_ID=="2_0",]$subcluster_col<-"#B38A1B"
     dat[dat$cluster_ID=="2_1",]$subcluster_col<-"#6B0E44"
     dat[dat$cluster_ID=="2_2",]$subcluster_col<-"#E0BB55"
 
-    dat[dat$cluster_ID=="3_0",]$subcluster_col<-"#FAA916"
-    dat[dat$cluster_ID=="3_1",]$subcluster_col<-"#5E503F"
-    dat[dat$cluster_ID=="3_2",]$subcluster_col<-"#EDFFAB"
-    dat[dat$cluster_ID=="3_3",]$subcluster_col<-"#FFE1EA"
-    dat[dat$cluster_ID=="3_4",]$subcluster_col<-"#E952DE"
-    dat[dat$cluster_ID=="3_5",]$subcluster_col<-"#848FA5"
-    dat[dat$cluster_ID=="3_6",]$subcluster_col<-"#832161"
-    dat[dat$cluster_ID=="3_7",]$subcluster_col<-"#B0A3D4"
+    dat[dat$cluster_ID=="3_0",]$subcluster_col<-"#DBAD6A"
+    dat[dat$cluster_ID=="3_1",]$subcluster_col<-"#007EA7"
+    dat[dat$cluster_ID=="3_2",]$subcluster_col<-"#C191A1"
+    dat[dat$cluster_ID=="3_3",]$subcluster_col<-"#1818b2"
 
-    dat[dat$cluster_ID=="4_0",]$subcluster_col<-"#DBAD6A"
-    dat[dat$cluster_ID=="4_1",]$subcluster_col<-"#007EA7"
-    dat[dat$cluster_ID=="4_2",]$subcluster_col<-"#C191A1"
-    dat[dat$cluster_ID=="4_3",]$subcluster_col<-"#02010A"
+    dat[dat$cluster_ID=="4_0",]$subcluster_col<-"#FAA916"
+    dat[dat$cluster_ID=="4_1",]$subcluster_col<-"#5E503F"
+    dat[dat$cluster_ID=="4_2",]$subcluster_col<-"#EDFFAB"
+    dat[dat$cluster_ID=="4_3",]$subcluster_col<-"#FFE1EA"
+    dat[dat$cluster_ID=="4_4",]$subcluster_col<-"#E952DE"
+    dat[dat$cluster_ID=="4_5",]$subcluster_col<-"#848FA5"
+    dat[dat$cluster_ID=="4_6",]$subcluster_col<-"#832161"
+    dat[dat$cluster_ID=="4_7",]$subcluster_col<-"#B0A3D4"
+    dat[dat$cluster_ID=="4_8",]$subcluster_col<-"#7fff00"
 
     dat[dat$cluster_ID=="5_0",]$subcluster_col<-"#230903"
     dat[dat$cluster_ID=="5_1",]$subcluster_col<-"#FFBFB7"
     dat[dat$cluster_ID=="5_2",]$subcluster_col<-"#FFD447"
-    dat[dat$cluster_ID=="5_3",]$subcluster_col<-"#493657"
-    dat[dat$cluster_ID=="5_4",]$subcluster_col<-"#B1B695"
 
     dat[dat$cluster_ID=="6_0",]$subcluster_col<-"#80552B"
 
-    dat<-dat[!endsWith(dat$cluster_ID,"NA"),]
+    dat[dat$cluster_ID=="7_0",]$subcluster_col<-"#355d39"
+    dat[dat$cluster_ID=="7_1",]$subcluster_col<-"#95b391"
+    dat[dat$cluster_ID=="7_2",]$subcluster_col<-"#f7f2f2"
+
 
     seurat_subclus_col<-setNames(unique(dat$subcluster_col),unique(dat$cluster_ID))
 
@@ -1225,31 +1270,34 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     row_order<-match(cell_order,embedding_order)
     dat$umap_x<-as.numeric(mm10_atac@reductions$umap@cell.embeddings[row_order,1])
     dat$umap_y<-as.numeric(mm10_atac@reductions$umap@cell.embeddings[row_order,2])
-    dat<-dat[dat$predicted_doublets=="False",]
+    dat<-dat[!endsWith(dat$cluster_ID,"NA"),]
     dat$seurat_clusters<-as.character(dat$seurat_clusters)
 
     dat$cluster_col<-"NA"
-    dat[dat$seurat_clusters=="0",]$cluster_col<-"#A7ACD9" #granule
-    dat[dat$seurat_clusters=="1",]$cluster_col<-"#2CA58D" #granule
-    dat[dat$seurat_clusters=="2",]$cluster_col<-"#BA3B46" #inhib
-    dat[dat$seurat_clusters=="3",]$cluster_col<-"#76B041" #opc and oligo
-    dat[dat$seurat_clusters=="4",]$cluster_col<-"#639cd9" #exN
-    dat[dat$seurat_clusters=="5",]$cluster_col<-"#FCDC4D" #astro
-    dat[dat$seurat_clusters=="6",]$cluster_col<-"#EB5A0C" #inhib
-    dat[dat$seurat_clusters=="7",]$cluster_col<-"#A7754D" #micro
-    dat[dat$seurat_clusters=="8",]$cluster_col<-"#342056" #exN
+    dat[dat$seurat_clusters=="0",]$cluster_col<-"#A7ACD9" 
+    dat[dat$seurat_clusters=="1",]$cluster_col<-"#2CA58D" 
+    dat[dat$seurat_clusters=="2",]$cluster_col<-"#BA3B46" 
+    dat[dat$seurat_clusters=="3",]$cluster_col<-"#76B041" 
+    dat[dat$seurat_clusters=="4",]$cluster_col<-"#639cd9" 
+    dat[dat$seurat_clusters=="5",]$cluster_col<-"#FCDC4D" 
+    dat[dat$seurat_clusters=="6",]$cluster_col<-"#EB5A0C" 
+    dat[dat$seurat_clusters=="7",]$cluster_col<-"#A7754D" 
 
     seurat_clus_col<-setNames(unique(dat$cluster_col),unique(dat$seurat_clusters))
     sort(unique(dat$cluster_ID))
-# [1] "0_0" "1_0" "1_1" "1_2" "1_3" "1_4" "1_5" "1_6" "1_7" "1_8" "2_0" "2_1"
-#[13] "2_2" "2_3" "2_4" "2_5" "3_0" "3_1" "3_2" "3_3" "4_0" "4_1" "4_2" "4_3"
-#[25] "4_4" "4_5" "5_0" "5_1" "5_2" "5_3" "5_4" "5_5" "5_6" "6_0" "6_1" "7_0"
-#[37] "7_1" "7_2" "7_3" "7_4" "8_0"
+#[1] "0_0"  "0_1"  "0_2"  "0_3"  "1_0"  "1_1"  "1_10" "1_11" "1_12" "1_13"
+#[11] "1_14" "1_2"  "1_3"  "1_4"  "1_5"  "1_6"  "1_7"  "1_8"  "1_9"  "2_0"
+#[21] "2_1"  "2_2"  "2_3"  "2_4"  "2_5"  "2_6"  "2_7"  "3_0"  "3_1"  "3_2"
+#[31] "3_3"  "3_4"  "3_5"  "4_0"  "4_1"  "4_2"  "4_3"  "5_0"  "5_1"  "5_2"
+#[41] "5_3"  "5_4"  "5_5"  "6_0"  "6_1"  "7_0"  "7_1"  "7_2"  "7_3"  "7_4"
 
 
     dat$subcluster_col<-"NA"
     dat[dat$cluster_ID=="0_0",]$subcluster_col<-"#5EC6F2"
-    
+    dat[dat$cluster_ID=="0_1",]$subcluster_col<-"#F2BC5E"
+    dat[dat$cluster_ID=="0_2",]$subcluster_col<-"#5EF28B"
+    dat[dat$cluster_ID=="0_3",]$subcluster_col<-"#217A3C"
+
     dat[dat$cluster_ID=="1_0",]$subcluster_col<-"#D46F63"
     dat[dat$cluster_ID=="1_1",]$subcluster_col<-"#68A882"
     dat[dat$cluster_ID=="1_2",]$subcluster_col<-"#496E51"
@@ -1259,6 +1307,13 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     dat[dat$cluster_ID=="1_6",]$subcluster_col<-"#12355B"
     dat[dat$cluster_ID=="1_7",]$subcluster_col<-"#420039"
     dat[dat$cluster_ID=="1_8",]$subcluster_col<-"#FF6B61"
+    dat[dat$cluster_ID=="1_9",]$subcluster_col<-"#6A35F0"
+    dat[dat$cluster_ID=="1_10",]$subcluster_col<-"#F05135"
+    dat[dat$cluster_ID=="1_11",]$subcluster_col<-"#D4F035"
+    dat[dat$cluster_ID=="1_12",]$subcluster_col<-"#35F06A"
+    dat[dat$cluster_ID=="1_13",]$subcluster_col<-"#D5C4FF"
+    dat[dat$cluster_ID=="1_13",]$subcluster_col<-"#077827"
+    dat[dat$cluster_ID=="1_14",]$subcluster_col<-"#F502B8"
 
     dat[dat$cluster_ID=="2_0",]$subcluster_col<-"#A9A587"
     dat[dat$cluster_ID=="2_1",]$subcluster_col<-"#6E171E"
@@ -1266,18 +1321,20 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     dat[dat$cluster_ID=="2_3",]$subcluster_col<-"#533B4D"
     dat[dat$cluster_ID=="2_4",]$subcluster_col<-"#F63E02"
     dat[dat$cluster_ID=="2_5",]$subcluster_col<-"#92BFB1"
+    dat[dat$cluster_ID=="2_6",]$subcluster_col<-"#F5E102"
+    dat[dat$cluster_ID=="2_7",]$subcluster_col<-"#7A005C"
 
     dat[dat$cluster_ID=="3_0",]$subcluster_col<-"#47624F"
-    dat[dat$cluster_ID=="3_1",]$subcluster_col<-"#8BA672"
+    dat[dat$cluster_ID=="3_1",]$subcluster_col<-"#A67C72"
     dat[dat$cluster_ID=="3_2",]$subcluster_col<-"#76D91A"
     dat[dat$cluster_ID=="3_3",]$subcluster_col<-"#55251D"
+    dat[dat$cluster_ID=="3_4",]$subcluster_col<-"#A17C37"
+    dat[dat$cluster_ID=="3_5",]$subcluster_col<-"#74AB3A"
 
     dat[dat$cluster_ID=="4_0",]$subcluster_col<-"#0975E8"
-    dat[dat$cluster_ID=="4_1",]$subcluster_col<-"#CAD5E0"
-    dat[dat$cluster_ID=="4_2",]$subcluster_col<-"#535D69"
-    dat[dat$cluster_ID=="4_3",]$subcluster_col<-"#AEECEF"
-    dat[dat$cluster_ID=="4_4",]$subcluster_col<-"#80DED9"
-    dat[dat$cluster_ID=="4_5",]$subcluster_col<-"#C6B9CD"
+    dat[dat$cluster_ID=="4_1",]$subcluster_col<-"#535D69"
+    dat[dat$cluster_ID=="4_2",]$subcluster_col<-"#80DED9"
+    dat[dat$cluster_ID=="4_3",]$subcluster_col<-"#C6B9CD"
 
     dat[dat$cluster_ID=="5_0",]$subcluster_col<-"#857A4D"
     dat[dat$cluster_ID=="5_1",]$subcluster_col<-"#E8DFB5"
@@ -1285,7 +1342,6 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     dat[dat$cluster_ID=="5_3",]$subcluster_col<-"#E55812"
     dat[dat$cluster_ID=="5_4",]$subcluster_col<-"#93032E"
     dat[dat$cluster_ID=="5_5",]$subcluster_col<-"#FF5E5B"
-    dat[dat$cluster_ID=="5_6",]$subcluster_col<-"#5FBB97"
 
     dat[dat$cluster_ID=="6_0",]$subcluster_col<-"#F57631"
     dat[dat$cluster_ID=="6_1",]$subcluster_col<-"#CF8259"
@@ -1296,7 +1352,6 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     dat[dat$cluster_ID=="7_3",]$subcluster_col<-"#5C6F9E"
     dat[dat$cluster_ID=="7_4",]$subcluster_col<-"#B22CF5"
 
-    dat[dat$cluster_ID=="8_0",]$subcluster_col<-"#6A35F0"
   
 
     dat<-dat[!endsWith(dat$cluster_ID,"NA"),]

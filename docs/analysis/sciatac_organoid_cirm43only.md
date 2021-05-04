@@ -779,8 +779,6 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   orgo_cirm43.cicero<-readRDS("orgo_cirm43_atac_cicero_cds.Rds")
   geneactivity_processing(cds_input=as.cell_data_set(orgo_cirm43,group_by="seurat_clusters"),conns_input=conns,prefix="cirm43_atac")
 
-  #These can be added to the seurat object as a new assay later
-
   #Read in unnormalized GA
   cicero_gene_activities<-readRDS("cirm43_atac.unnorm_GA.Rds")
   orgo_cirm43[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
@@ -790,7 +788,7 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
     object = orgo_cirm43,
     assay = 'GeneActivity',
     normalization.method = 'LogNormalize',
-    scale.factor = median(orgo_cirm43$nCount_peaks)
+    scale.factor = median(orgo_cirm43$nCount_GeneActivity)
   )
   saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
 ```
@@ -851,12 +849,11 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   orgo_cirm43$log10_uniq_reads<-log10(orgo_cirm43$uniq_reads)
 
   plt1<-DimPlot(orgo_cirm43,group.by=c('DIV','prep','uniq_orgID',"treatment",'differentiation_exp','seurat_clusters','predicted_doublets','pass_qc'),size=0.1)
-  plt1<-DimPlot(orgo_cirm43,group.by=c('uniq_orgID'),size=0.1)
 
   plt2<-FeaturePlot(orgo_cirm43,feat=c("doublet_scores","tss_enrichment","log10_uniq_reads"),col=c("white","red"),pt.size=0.1,order=T,ncol=3)
-  plt<-plt1
-  ggsave(plt,file="cirm43.umap.png",width=12,height=15,limitsize=F)
-  ggsave(plt,file="cirm43.umap.pdf",limitsize=F)
+  plt<-plt1/plt2
+  ggsave(plt,file="cirm43.umap.png",width=40,height=10,limitsize=F)
+  ggsave(plt,file="cirm43.umap.pdf",width=40,height=10,limitsize=F)
 
   system(paste0("slack -F cirm43.umap.pdf ryan_todo"))#post to ryan_todo
 
