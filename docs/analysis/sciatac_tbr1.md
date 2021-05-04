@@ -705,6 +705,8 @@ wc -l tbr1_ko.macs3.keepdup_summits.bed
 #277699 tbr1_ko.macs3.keepdup_summits.bed
 
 ```
+{% endcapture %} {% include details.html %} 
+
 
 | In Ours Only | Shared | In Masterset |
 |:--------:|:-------:|:--------:|
@@ -714,6 +716,8 @@ wc -l tbr1_ko.macs3.keepdup_summits.bed
 ### Index bam and check peaks and read pile-ups via scitools plotting function
 
 Annotation file was generated below after seurat object meta data was made
+
+{% capture summary %} Code {% endcapture %} {% capture details %}
 
 ```bash
  samtools index -@ 20 -b tbr1_ko.filt.bam tbr1_ko.filt.bai & #generate an index
