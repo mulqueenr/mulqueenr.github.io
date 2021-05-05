@@ -1404,7 +1404,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
   cicero_processing<-function(object_input=hg38_atac,prefix="hg38"){
 
       #Generate CDS format from Seurat object
-      atac.cds <- as.cell_data_set(object_input,group_by="seurat_clusters")
+      atac.cds <- as.cell_data_set(object_input,group_by="cluster_ID")
 
       # convert to CellDataSet format and make the cicero object
       print("Making Cicero format CDS file")
@@ -1476,19 +1476,20 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
   conns<-as.data.frame(readRDS("hg38_atac_cicero_conns.Rds"))
   geneactivity_processing(cds_input=as.cell_data_set(hg38_atac,group_by="seurat_clusters"),conns_input=conns,prefix="hg38",gene_annotation=hg38_annotation)
   cicero_gene_activities<-readRDS("hg38.unnorm_GA.Rds")  #Read in unnormalized GA
+  hg38_atac<-subset(hg38_atac,cells=which(colnames(hg38_atac) %in% colnames(cicero_gene_activities)))
   hg38_atac[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
-  hg38_atac <- NormalizeData(object = hg38_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(hg38_atac$nCount_peaks))  # normalize
-  saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
-
+  hg38_atac <- NormalizeData(object = hg38_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(hg38_atac$nCount_GeneActivity))  # normalize
+  saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds") #this is limited to just cells passing filters (those with cluster IDs)
 
   #mm10
   conns<-as.data.frame(readRDS("mm10_atac_cicero_conns.Rds"))
   geneactivity_processing(cds_input=as.cell_data_set(mm10_atac,group_by="seurat_clusters"),conns_input=conns,prefix="mm10",gene_annotation=mm10_annotation)
   cicero_gene_activities<-readRDS("mm10.unnorm_GA.Rds")  #Read in unnormalized GA
+  mm10_atac<-subset(mm10_atac,cells=which(colnames(mm10_atac) %in% colnames(cicero_gene_activities)))
   cicero_gene_activities<-cicero_gene_activities[2:nrow(cicero_gene_activities),] #first feature is empy
   mm10_atac[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
-  mm10_atac <- NormalizeData(object = mm10_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(mm10_atac$nCount_peaks))  # normalize
-  saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
+  mm10_atac <- NormalizeData(object = mm10_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(mm10_atac$nCount_GeneActivity))  # normalize
+  saveRDS(mm10_atac,"mm10_SeuratObject.PF.Rds")
 
 
 ```
@@ -1599,7 +1600,7 @@ predict_celltype<-function(object,brainspan,prefix){
     predicted.labels.subclass <- TransferData(anchorset = transfer.anchors,refdata = brainspan$subclass_label,weight.reduction = "cca", dims = 1:30)
     object <- AddMetaData(object = object, metadata = predicted.labels.class)
     object <- AddMetaData(object = object, metadata = predicted.labels.subclass)
-    saveRDS(object,file=paste0(prefix,"_SeuratObject.Rds"))
+    saveRDS(object,file=paste0(prefix,"_SeuratObject.PF.Rds"))
 
     feat<-colnames(object@meta.data)[which(grepl("prediction.score",colnames(object@meta.data)))]
     feat<-feat[feat !="prediction.score.max"]
@@ -1625,19 +1626,18 @@ predict_celltype<-function(object,brainspan,prefix){
 
 }
 
-hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
 brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
 predict_celltype(object=hg38_atac,brainspan=brainspan.,prefix="hg38")
 
 #Mouse using smaller data set that is whole brain
-mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
 brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse/allen_brainspan_mouse.rds")
 brainspan. <- FindVariableFeatures(object = brainspan.,nfeatures = 5000)
 predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10")
 
 
 ```
-
 {% endcapture %} {% include details.html %} 
 
 ### Add TF Motif Usage through ChromVAR
@@ -1658,12 +1658,12 @@ predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10")
 
   #lowerign cores to be used by chromvar to 10
   library(BiocParallel)
-  register(MulticoreParam(5))
+  register(MulticoreParam(10))
 
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
-hg38_atac<-readRDS("hg38_SeuratObject.Rds")
-mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
+mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
 
   #Read in data and modify to monocle CDS file
   #read in RDS file.
@@ -1705,7 +1705,7 @@ mm10_atac<-readRDS("mm10_SeuratObject.Rds")
 
   hg38_atac <- RegionStats(object = hg38_atac, genome = BSgenome.Hsapiens.UCSC.hg38)
   hg38_atac <- RunChromVAR( object = hg38_atac,genome = BSgenome.Hsapiens.UCSC.hg38)
-  saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
+  saveRDS(hg38_atac,file="hg38_SeuratObject.PF.Rds")
 
   #mouse
    mm10_atac <- SetAssayData(
@@ -1716,7 +1716,7 @@ mm10_atac<-readRDS("mm10_SeuratObject.Rds")
 
   mm10_atac <- RegionStats(object = mm10_atac, genome = BSgenome.Mmusculus.UCSC.mm10)
   mm10_atac <- RunChromVAR( object = mm10_atac,genome = BSgenome.Mmusculus.UCSC.mm10)
-  saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
+  saveRDS(mm10_atac,file="mm10_SeuratObject.PF.Rds")
 
 ```
 {% endcapture %} {% include details.html %} 

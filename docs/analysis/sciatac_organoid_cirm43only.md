@@ -852,8 +852,8 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
 
   plt2<-FeaturePlot(orgo_cirm43,feat=c("doublet_scores","tss_enrichment","log10_uniq_reads"),col=c("white","red"),pt.size=0.1,order=T,ncol=3)
   plt<-plt1/plt2
-  ggsave(plt,file="cirm43.umap.png",width=40,height=10,limitsize=F)
-  ggsave(plt,file="cirm43.umap.pdf",width=40,height=10,limitsize=F)
+  ggsave(plt,file="cirm43.umap.png",width=40,height=30,limitsize=F)
+  ggsave(plt,file="cirm43.umap.pdf",width=40,height=30,limitsize=F)
 
   system(paste0("slack -F cirm43.umap.pdf ryan_todo"))#post to ryan_todo
 
