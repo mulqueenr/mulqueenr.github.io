@@ -1239,16 +1239,34 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
 
     seurat_subclus_col<-setNames(unique(dat$subcluster_col),unique(dat$cluster_ID))
 
+    dat$subcluster_x<-as.numeric(dat$subcluster_x)
+    dat$subcluster_y<-as.numeric(dat$subcluster_y)
+
+    label.df <- data.frame(seurat_clusters=unique(dat$seurat_clusters),label=unique(dat$seurat_clusters))
+    label.df_2 <- dat %>% 
+      group_by(seurat_clusters) %>% 
+      summarize(umap_x = mean(umap_x), umap_y = mean(umap_y)) %>% left_join(label.df)
+
     plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
     geom_point(alpha=0.1,size=0.5,shape=16)+
     theme_bw()+scale_color_manual(values=seurat_clus_col)+
-    ggtitle("hg38")+
-    theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
+    ggtitle("hg38")+ ggrepel::geom_label_repel(data = label.df_2, aes(label = label),fontface='bold') +
+    theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
 
-    plt_list<-ggplot(dat,aes(x=as.numeric(subcluster_x),y=as.numeric(subcluster_y),color=cluster_ID))+
-    geom_point(alpha=0.05,size=0.5,shape=16)+scale_color_manual(values=seurat_subclus_col)+
-    theme_bw()+theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none")+
-    facet_wrap(facets=vars(seurat_clusters),ncol=2)
+    label.df <- data.frame(cluster_ID=unique(dat$cluster_ID),label=unique(dat$cluster_ID))
+    label.df$seurat_clusters<-unlist(lapply(strsplit(label.df$cluster_ID,"_"),"[",1))
+    label.df_3 <- dat %>% 
+      group_by(cluster_ID) %>% 
+      summarize(subcluster_x = mean(subcluster_x,na.rm=T), subcluster_y = mean(subcluster_y,na.rm=T)) %>% 
+      merge(label.df,by="cluster_ID")
+
+    plt_list<-ggplot(dat,aes(x=subcluster_x,y=subcluster_y,color=cluster_ID))+
+    geom_point(alpha=0.05,size=0.5,shape=16)+ theme_bw()+ 
+    ggrepel::geom_label_repel(data = label.df_3, aes(x=subcluster_x,y=subcluster_y,label = label), max.iter=10000,direction="both",size=2,force=5, fontface='bold') + 
+    scale_color_manual(values=seurat_subclus_col) +
+    theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none",strip.background = element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank())+
+    facet_wrap(facets=vars(seurat_clusters),ncol=2) + coord_cartesian(clip = "off") 
+
     plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
     ggsave(plt,file="hg38_umap.subclus.pdf")
     system("slack -F hg38_umap.subclus.pdf ryan_todo")
@@ -1356,21 +1374,35 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
 
     dat<-dat[!endsWith(dat$cluster_ID,"NA"),]
 
-    seurat_subclus_col<-setNames(unique(dat$subcluster_col),unique(dat$cluster_ID))
+    dat$subcluster_x<-as.numeric(dat$subcluster_x)
+    dat$subcluster_y<-as.numeric(dat$subcluster_y)
+
+    label.df <- data.frame(seurat_clusters=unique(dat$seurat_clusters),label=unique(dat$seurat_clusters))
+    label.df_2 <- dat %>% 
+      group_by(seurat_clusters) %>% 
+      summarize(umap_x = mean(umap_x), umap_y = mean(umap_y)) %>% left_join(label.df)
 
     plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
     geom_point(alpha=0.1,size=0.5,shape=16)+
     theme_bw()+scale_color_manual(values=seurat_clus_col)+
-    ggtitle("mm10")+
-    theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
+    ggtitle("hg38")+ ggrepel::geom_label_repel(data = label.df_2, aes(label = label),fontface='bold') +
+    theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
 
+    label.df <- data.frame(cluster_ID=unique(dat$cluster_ID),label=unique(dat$cluster_ID))
+    label.df$seurat_clusters<-unlist(lapply(strsplit(label.df$cluster_ID,"_"),"[",1))
+    label.df_3 <- dat %>% 
+      group_by(cluster_ID) %>% 
+      summarize(subcluster_x = mean(subcluster_x,na.rm=T), subcluster_y = mean(subcluster_y,na.rm=T)) %>% 
+      merge(label.df,by="cluster_ID")
 
-    plt_list<-ggplot(dat,aes(x=as.numeric(subcluster_x),y=as.numeric(subcluster_y),color=cluster_ID))+
-    geom_point(alpha=0.05,size=0.5,shape=16)+scale_color_manual(values=seurat_subclus_col)+
-    theme_bw()+theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none")+
-    facet_wrap(facets=vars(seurat_clusters),ncol=2)
+    plt_list<-ggplot(dat,aes(x=subcluster_x,y=subcluster_y,color=cluster_ID))+
+    geom_point(alpha=0.05,size=0.5,shape=16)+ theme_bw()+ 
+    ggrepel::geom_label_repel(data = label.df_3, aes(x=subcluster_x,y=subcluster_y,label = label), max.iter=10000,direction="both",size=2,force=5, fontface='bold') + 
+    scale_color_manual(values=seurat_subclus_col) +
+    theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none",strip.background = element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank())+
+    facet_wrap(facets=vars(seurat_clusters),ncol=2) + coord_cartesian(clip = "off") 
+
     plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
-
     ggsave(plt,file="mm10_umap.subclus.pdf")
     system("slack -F mm10_umap.subclus.pdf ryan_todo")
 
@@ -1726,14 +1758,11 @@ mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
 {% capture summary %} For hg38 {% endcapture %} {% capture details %}  
 
 ```R
-  library(JASPAR2020)
-  library(BSgenome.Hsapiens.UCSC.hg38)
-  #library(Seurat)
+library(JASPAR2020)
+library(BSgenome.Hsapiens.UCSC.hg38)
 library(Signac)
 library(ggplot2)
 library(ComplexHeatmap)
-  #library(TFBSTools)
-
 library(ggdendro)
 library(dendextend)
 library(parallel)
@@ -1746,7 +1775,7 @@ library(circlize)
 
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
-hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
 hg38_atac$cluster_ID<-paste(hg38_atac$seurat_clusters,hg38_atac$seurat_subcluster,sep="_")
 hg38_atac$celltype<-"NA"
 hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==0,]$celltype<-"ExN"
@@ -1764,7 +1793,7 @@ hg38_atac@meta.data[hg38_atac@meta.data$celltype=="Astro",]$celltype_col<-"#99cc
 hg38_atac@meta.data[hg38_atac@meta.data$celltype=="Micro.PVM",]$celltype_col<-"#ff6633"
 hg38_atac@meta.data[hg38_atac@meta.data$celltype=="OPC",]$celltype_col<-"#ffcc99"
 
-saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
+saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds")
 
 
 #Clusters to test
