@@ -1263,7 +1263,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     plt_list<-ggplot(dat,aes(x=subcluster_x,y=subcluster_y,color=cluster_ID))+
     geom_point(alpha=0.05,size=0.5,shape=16)+ theme_bw()+ 
     ggrepel::geom_label_repel(data = label.df_3, aes(x=subcluster_x,y=subcluster_y,label = label), max.iter=10000,direction="both",size=2,force=5, fontface='bold') + 
-    scale_color_manual(values=seurat_subclus_col) +
+    scale_color_manual(values=subcluster_col) +
     theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none",strip.background = element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank())+
     facet_wrap(facets=vars(seurat_clusters),ncol=2) + coord_cartesian(clip = "off") 
 
@@ -1376,6 +1376,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
 
     dat$subcluster_x<-as.numeric(dat$subcluster_x)
     dat$subcluster_y<-as.numeric(dat$subcluster_y)
+    subcluster_col<-setNames(unique(dat$subcluster_col),unique(dat$cluster_ID))
 
     label.df <- data.frame(seurat_clusters=unique(dat$seurat_clusters),label=unique(dat$seurat_clusters))
     label.df_2 <- dat %>% 
@@ -1385,7 +1386,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
     geom_point(alpha=0.1,size=0.5,shape=16)+
     theme_bw()+scale_color_manual(values=seurat_clus_col)+
-    ggtitle("hg38")+ ggrepel::geom_label_repel(data = label.df_2, aes(label = label),fontface='bold') +
+    ggtitle("mm10")+ ggrepel::geom_label_repel(data = label.df_2, aes(label = label),fontface='bold') +
     theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
 
     label.df <- data.frame(cluster_ID=unique(dat$cluster_ID),label=unique(dat$cluster_ID))
@@ -1397,8 +1398,8 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
 
     plt_list<-ggplot(dat,aes(x=subcluster_x,y=subcluster_y,color=cluster_ID))+
     geom_point(alpha=0.05,size=0.5,shape=16)+ theme_bw()+ 
-    ggrepel::geom_label_repel(data = label.df_3, aes(x=subcluster_x,y=subcluster_y,label = label), max.iter=10000,direction="both",size=2,force=5, fontface='bold') + 
-    scale_color_manual(values=seurat_subclus_col) +
+    ggrepel::geom_label_repel(data = label.df_3, aes(x=subcluster_x,y=subcluster_y,label = label), max.iter=10000,direction="both",size=2,force=5, fontface='bold')+
+    scale_color_manual(values=subcluster_col) +
     theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none",strip.background = element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank())+
     facet_wrap(facets=vars(seurat_clusters),ncol=2) + coord_cartesian(clip = "off") 
 
@@ -1761,6 +1762,7 @@ mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
 library(JASPAR2020)
 library(BSgenome.Hsapiens.UCSC.hg38)
 library(Signac)
+library(Seurat)
 library(ggplot2)
 library(ComplexHeatmap)
 library(ggdendro)
@@ -1772,6 +1774,7 @@ library(ggrepel)
 library(RColorBrewer)
 library(viridis)
 library(circlize)
+library(TFBSTools)
 
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
@@ -1781,10 +1784,11 @@ hg38_atac$celltype<-"NA"
 hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==0,]$celltype<-"ExN"
 hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==1,]$celltype<-"Oligo"
 hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==2,]$celltype<-"Astro"
-hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==3,]$celltype<-"Micro.PVM"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==3,]$celltype<-"iN"
 hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==4,]$celltype<-"iN"
-hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==5,]$celltype<-"iN"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==5,]$celltype<-"Micro.PVM"
 hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==6,]$celltype<-"OPC"
+hg38_atac@meta.data[hg38_atac@meta.data$seurat_clusters==7,]$celltype<-"NonN"
 hg38_atac$celltype_col<-"NA"
 hg38_atac@meta.data[hg38_atac@meta.data$celltype=="iN",]$celltype_col<-"#cc3366"
 hg38_atac@meta.data[hg38_atac@meta.data$celltype=="ExN",]$celltype_col<-"#3399cc"
@@ -1792,21 +1796,23 @@ hg38_atac@meta.data[hg38_atac@meta.data$celltype=="Oligo",]$celltype_col<-"#66cc
 hg38_atac@meta.data[hg38_atac@meta.data$celltype=="Astro",]$celltype_col<-"#99cc99"
 hg38_atac@meta.data[hg38_atac@meta.data$celltype=="Micro.PVM",]$celltype_col<-"#ff6633"
 hg38_atac@meta.data[hg38_atac@meta.data$celltype=="OPC",]$celltype_col<-"#ffcc99"
+hg38_atac@meta.data[hg38_atac@meta.data$celltype=="NonN",]$celltype_col<-"#808080"
 
 saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds")
 
 
 #Clusters to test
-cluster_to_test<-names(table(hg38_atac$cluster_ID)[table(hg38_atac$cluster_ID)>50 & !endsWith(names(table(hg38_atac$cluster_ID)),"NA")])
+hg38_atac<-subset(hg38_atac,cells=which(!endsWith(hg38_atac@meta.data$cluster_ID,"NA")))
+cluster_to_test<-unique(hg38_atac$cluster_ID)
 #define DA functions for parallelization
 #Use LR test for atac data
-da_one_v_rest<-function(i,obj,group,assay.="GeneActivity"){
+da_one_v_rest<-function(i,obj,group,assay.="GeneActivity",latent.vars.="nCount_GeneActivity"){
     da_ga_tmp <- FindMarkers(
         object = obj,
         ident.1 = i,
         group.by = group,
         test.use = 'LR',
-        latent.vars = 'nCount_peaks',
+        latent.vars = latent.vars.,
         only.pos=T,
         assay=assay.
         )
@@ -1838,7 +1844,7 @@ da_ga<-mclapply(
     FUN=da_one_v_rest,
     obj=hg38_atac,
     group="cluster_ID",
-    assay.="chromvar",
+    assay.="chromvar", latent.vars.="nCount_peaks",
     mc.cores=n.cores)
 
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
@@ -1909,7 +1915,7 @@ plt1
 dev.off()
 system("slack -F hg38.geneactivity.heatmap.pdf ryan_todo")
 
-saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
+saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds")
 
 ###########Plotting heatmap using brainspan given markers#############################
 
@@ -2095,46 +2101,45 @@ library(ggplot2)
 library(ggrepel)
 library(circlize)
 library(viridis)
-  library(JASPAR2020)
-  library(TFBSTools)
-  library(BSgenome.Hsapiens.UCSC.hg38)
-  library(BSgenome.Mmusculus.UCSC.mm10)
+library(JASPAR2020)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(BSgenome.Mmusculus.UCSC.mm10)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
-mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
 mm10_atac@meta.data$celltype<-"NA"
 mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="0",]$celltype<-"Gran"
 mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="1",]$celltype<-"iN"
 mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="2",]$celltype<-"ExN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="3",]$celltype<-"Oligo"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="4",]$celltype<-"iN"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="5",]$celltype<-"Astro"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="3",]$celltype<-"Astro"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="4",]$celltype<-"Oligo"
+mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="5",]$celltype<-"Oligo"
 mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="6",]$celltype<-"Endo"
 mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="7",]$celltype<-"Endo"
-mm10_atac@meta.data[mm10_atac@meta.data$seurat_clusters=="8",]$celltype<-"Unknown"
 
 mm10_atac$celltype_col<-"NA"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="iN",]$celltype_col<-"#cc3366"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="ExN",]$celltype_col<-"#3399cc"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Oligo",]$celltype_col<-"#66cc99"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Astro",]$celltype_col<-"#99cc99"
-mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Unknown",]$celltype_col<-"#ff6633"
+#mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Unknown",]$celltype_col<-"#ff6633"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Endo",]$celltype_col<-"#A52A2A"
 mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Gran",]$celltype_col<-"#4B0082"
 
-saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
+saveRDS(mm10_atac,"mm10_SeuratObject.PF.Rds")
 
 #Clusters to test
-cluster_to_test<-names(table(mm10_atac$cluster_ID)[table(mm10_atac$cluster_ID)>50 & !endsWith(names(table(mm10_atac$cluster_ID)),"NA")])
+cluster_to_test<-unique(mm10_atac$cluster_ID)
 #define DA functions for parallelization
 #Use LR test for atac data
-da_one_v_rest<-function(i,obj,group,assay.="GeneActivity"){
+da_one_v_rest<-function(i,obj,group,assay.="GeneActivity",latent.vars.="nCount_GeneActivity"){
     da_ga_tmp <- FindMarkers(
         object = obj,
         ident.1 = i,
         group.by = group,
         test.use = 'LR',
-        latent.vars = 'nCount_peaks',
+        latent.vars = latent.vars.,
         only.pos=T,
         assay=assay.
         )
@@ -2146,7 +2151,7 @@ da_one_v_rest<-function(i,obj,group,assay.="GeneActivity"){
 
 da_ga<-list() #set up an empty list for looping through
 
-n.cores=5 #Perform parallel application of DA test
+n.cores=10 #Perform parallel application of DA test
 da_ga<-mclapply(
     cluster_to_test,
     FUN=da_one_v_rest,
@@ -2166,14 +2171,15 @@ da_ga<-mclapply(
     FUN=da_one_v_rest,
     obj=mm10_atac,
     group="cluster_ID",
-    assay.="chromvar",
+    assay.="chromvar", latent.vars.="nCount_peaks",
     mc.cores=n.cores)
+
 
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
 #To convert JASPAR ID TO TF NAME
+da_ga_df<-da_ga_df[startsWith(row.names(da_ga_df),"MA"),]
 da_ga_df$tf_name <- unlist(lapply(unlist(lapply(da_ga_df$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
 write.table(da_ga_df,file="mm10.onevrest.da_chromvar.txt",sep="\t",col.names=T,row.names=T,quote=F)
-
 
 
 #Plot out top ga for each cluster
@@ -2184,7 +2190,7 @@ da_ga<-da_ga[!endsWith(da_ga$enriched_group,"NA"),]
 
 da_ga$label<-""
 for (x in unique(da_ga$enriched_group)){
-selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:3))$da_region
+selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==x) %>% dplyr::arrange(p_val_adj) %>% dplyr::slice(1:3))$da_region
 da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$label<- da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$da_region
 }
 
@@ -2353,6 +2359,20 @@ dev.off()
 system("slack -F mm10.geneactivity.markers.heatmap.pdf ryan_todo")
 
 
+
+########################Plot out top TF for each cluster###################
+da_tf<-read.csv(file="mm10.onevrest.da_chromvar.txt",head=T,sep="\t",row.names=NULL)
+da_tf$gene_name<-da_tf$da_region
+da_tf<-da_tf[complete.cases(da_tf),]
+da_tf<-da_tf[!endsWith(da_tf$enriched_group,"NA"),]
+
+
+da_tf$label<-""
+for (x in unique(da_tf$enriched_group)){
+selc_genes<-as.data.frame(da_tf %>% filter(enriched_group==x) %>% dplyr::arrange(p_val_adj) %>% dplyr::slice(1:3))$tf_name
+da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$label<- da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$tf_name
+}
+
 #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
 dat_tf<-as.data.frame(t(as.data.frame(mm10_atac[["chromvar"]]@data)))
 sum_tf<-split(dat_tf,mm10_atac$cluster_ID) #group by rows to seurat clusters
@@ -2384,7 +2404,7 @@ side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seu
                     subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
                         ))
 
-bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_tf_plot), labels = colnames(sum_tf_plot)))
+#bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_tf_plot), labels = colnames(sum_tf_plot)))
 
 colfun=colorRamp2(quantile(unlist(sum_tf_plot), probs=c(0.5,0.90,0.95)),cividis(3))
 plt1<-Heatmap(sum_tf_plot,
@@ -2401,26 +2421,20 @@ plt1<-draw(plt1)
 
 
 pdf("mm10.tf.heatmap.pdf",height=20,width=20)
-plt1
+draw(plt1)
 dev.off()
 system("slack -F mm10.tf.heatmap.pdf ryan_todo")
-
 
 #Plot motifs alongside chromvar plot
 library(ggplot2)
 library(patchwork)
 
+motif_order<-names(mm10_atac@assays$peaks@motifs@motif.names[match(colnames(sum_tf_plot)[column_order(plt1)],unlist(mm10_atac@assays$peaks@motifs@motif.names),nomatch=0)])
+plt<-MotifPlot(object = mm10_atac,motifs = motif_order,ncol=1)+theme_void()+theme(strip.text = element_blank())
 
-motif_order<-names(hg38_atac@assays$peaks@motifs@motif.names[match(colnames(sum_tf_plot)[column_order(plt1)],unlist(hg38_atac@assays$peaks@motifs@motif.names),nomatch=0)])
-plt<-MotifPlot(object = hg38_atac,motifs = motif_order,ncol=1)+theme_void()+theme(strip.text = element_blank())
 ggsave(plt,file="mm10.tf.heatmap.motif.pdf",height=100,width=2,limitsize=F)
 system("slack -F mm10.tf.heatmap.motif.pdf ryan_todo")
 
-
-feat<-c("Gad1","Lhx6","Adarb2","Slc17a7","Fezf2","Bcl11b","Cux2","Reln","Atoh1","Calb2","Ppp1r17","Gabra6","Prox1","Dsp")
-plt<-FeaturePlot(mm10_atac,features=feat,order=T)
-ggsave(plt,file="test.png",width=10*as.integer(length(feat)/3),height=10*as.integer(length(feat)/3),limitsize=F)
-system("slack -F test.png ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 
