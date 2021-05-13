@@ -747,30 +747,6 @@ Y_dims<-merge(Y_dims,annot,by="cellID")
 plt<-ggplot(dat=Y_dims,aes(x=V1,y=V2,color=as.factor(experiment)))+geom_point()+theme_bw()
 ggsave(plt,file="genome_segment.umap.500kb.svg") #plot umap projection, honestly this isn't the most rigorous way to do this but I'm curious
 
-
-###Perform group-wise normalization as alternative to for each normalization###
-
-qcObj<-readRDS("qcObj_coverage_500kb.rds")
-sampname <- qcObj$sampname
-ref <- qcObj$ref
-gc_qc<-ref$gc
-
-normObj<-readRDS("SCOPE_normObj.noK.500kb.rds")
-Y <- normObj$Y
-beta.hat.noK <- normObj$beta.hat
-
-#updating values with corrected amounts
-normObj.scope<-readRDS("SCOPE_normObj.scope.k1.500kb.rds")
-Yhat <- normObj.scope$Yhat[[which.max(normObj.scope$BIC)]]
-
-annot<-read.table("s3wgsgcc_cellsummary.500kb.tsv",header=T)
-groups<-annot[match(annot$cellID,sampname),]$sample
-norm_index<-which(annot[match(annot$cellID,sampname),]$gini<=0.3)
-
-ploidy.group <- initialize_ploidy_group(Y = Y, Yhat = Yhat,
-                                ref = ref, groups = groups)
-saveRDS(ploidy.group,file="SCOPE_ploidygroup.rds")
-
 ```
 {% endcapture %} {% include details.html %} 
 
