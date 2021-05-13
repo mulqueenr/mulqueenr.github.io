@@ -369,7 +369,7 @@ saveRDS(normObj.scope.gini,"scope_normforeach.gini.500kb.rds")
 ```
 {% endcapture %} {% include details.html %} 
 
-Perform segmentation across chromosomes.
+## Perform segmentation across chromosomes.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -408,7 +408,7 @@ chr_cbs <- function(x,scope=normObj.scope.gini) {
 ```
 {% endcapture %} {% include details.html %} 
 
-Generate final segmentation plots.
+## Generate final segmentation plots.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
