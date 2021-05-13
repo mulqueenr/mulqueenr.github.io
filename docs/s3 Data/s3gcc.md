@@ -12,10 +12,6 @@ category: s3processing
 
 This notebook describes processing of s3GCC samples following the splitting of a deduplicated bwa mem aligned bam file which occurs in ["s3 Preprocessing"](https://mulqueenr.github.io/s3preprocess/)
 
-First create an annotation file from wet lab data and a working directory.
-
-Annotation data is listed in https://docs.google.com/spreadsheets/d/1mZ34KIwmr2vdjQlnqY7v_u0-Eca8mRc-HgI2r_WICXk/edit#gid=695371319
-
 ## Generation of cell summaries
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
