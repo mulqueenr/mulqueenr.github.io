@@ -9,6 +9,8 @@ category: s3processing
 The code provided here was used for initial processing of data up until the barcode-based duplicate removal and bam filtering.
 Code uses scitools initial processing.
 
+Annotation data is listed [here.](https://docs.google.com/spreadsheets/d/1mZ34KIwmr2vdjQlnqY7v_u0-Eca8mRc-HgI2r_WICXk/edit#gid=695371319)
+
 # Initial processing of sequencing data.
 
 Running bcl2fastq for sequencing runs.
@@ -27,7 +29,8 @@ bcl2fastq --no-lane-splitting --create-fastq-for-index-reads -R /home/groups/oro
 
 ## FastQ Dump of reads into sci format
 
-Running 
+Performing FastQ dump on reads.
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
