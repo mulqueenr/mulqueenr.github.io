@@ -9,7 +9,7 @@ category: s3processing
 # Processing for s3WGS portion of s3 paper.
 This notebook is a continuation of ["s3 Preprocessing"](https://mulqueenr.github.io/s3preprocess/) and details the processing of s3WGS libraries. This notebook starts with a merged, barcode-based removal of duplicate, >Q10 filtered bam file which was subset to barcodes >=10K unique reads
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+{% capture summary %} Initial Files and Directory Structure {% endcapture %} {% capture details %}  
 ```bash
 #Initial directory structure (filtered to relevant files):
 #Note GCC type libraries will also be processes as WGS files, so are included here.
@@ -131,7 +131,7 @@ mv *isize* ./isize
 {% endcapture %} {% include details.html %} 
 
 ### Collate data into single files for plotting
- 
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
@@ -149,14 +149,17 @@ for i in ./single_cell_projections/complexity/*complexity.txt;
 do cellid=${i:37:-15};
 awk -v cellid=$cellid 'OFS="\t" {print $2,$3,$4,$5,cellid}' $i;
 done > ./s3wgs_complexity.txt
+```
 
-R
+```R
 dat<-read.table("s3wgs_complexity.txt",header=F)
 annot<-read.table("s3wgs_gcc.annot",header=T)
 colnames(dat)<-c("cellID_idx","total_reads","uniq_reads","perc_uniq","cellID")
 dat<-merge(dat,annot,by="cellID_idx")
 write.table(dat,file="s3wgs_complexity.txt",sep="\t",col.names=T,quote=F)
+```
 
+```bash
 #isize
 for i in ./singlecell_bam/isize/*values;
 do cellid=${i:23:-22};
@@ -194,7 +197,7 @@ dat<- as.data.frame(dat %>%
                               median=median(log10(proj_unique_reads))))
 
 
-dat[dat$proj_perc_uniq==0.05,]
+dat[dat$proj_perc_uniq==0.05,] #looking at read depth at estimated 95% duplication rate.
 #     sample assay proj_perc_uniq     mean        sd   median
 #1   crc4442 s3gcc           0.05 5.845659 0.3314061 5.751168
 #95  crc4442 s3wgs           0.05 6.509959 0.3144060 6.489320
@@ -227,21 +230,6 @@ system("slack -F readcount.pdf ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```R
-library(ggplot2)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
-annot<-read.table("s3wgs_gcc.cellsummary.txt",header=T)
-
-ggplot(annot,aes(x=paste(assay,sample),y=mapd,color=paste(assay,sample)))+geom_jitter()+geom_boxplot()+ylim(c(0,1))+theme_bw()
-ggsave(file="mapd.png")
-ggsave(file="mapd.pdf")
-
-system("slack -F mapd.pdf ryan_todo")
-```
-{% endcapture %} {% include details.html %} 
-
 ### Generate Insert Size Distributions 
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -260,12 +248,10 @@ annot<-read.table("s3wgs_gcc.cellsummary.txt",header=T)
 annot<-annot[c("cellID_idx","assay","sample")]
 dat<-merge(dat,annot,by="cellID_idx")
 saveRDS(dat,"s3wgs_isize.annot.rds")
-
-
 ```
 {% endcapture %} {% include details.html %} 
 
-## Using SCOPE to analyze single-cell data on single cell bam directory
+##Using SCOPE to analyze single-cell data on single cell bam directory
 Library used for scWGS data analysis is [SCOPE](https://github.com/rujinwang/SCOPE) available as a [preprint](https://www.biorxiv.org/content/10.1101/594267v1.full). SCOPE works on pre-aligned deduplicated bam files. So I split files post-deduplication into a subdirectory to load in (above).
 
 Using R 4.0.0
@@ -298,7 +284,7 @@ bamdir <- file.path(bamfolder, bamFile)
 sampname_raw <- paste(sapply(strsplit(bamFile, ".", fixed = TRUE), "[", 1),sapply(strsplit(bamFile, ".", fixed = TRUE), "[", 3),sep=".")
 
 #set genomic window size to 500kb
-bambedObj <- get_bam_bed(bamdir = bamdir, sampname = sampname_raw, hgref = "hg38",resolution=250,sex=T)#resolution of 100 = 100kbp
+bambedObj <- get_bam_bed(bamdir = bamdir, sampname = sampname_raw, hgref = "hg38",resolution=500,sex=T)#resolution of 100 = 100kbp
 
 #Compute GC content and mappability for each reference bin.
 mapp <- get_mapp(bambedObj$ref, hgref = "hg38")
@@ -308,12 +294,15 @@ values(bambedObj$ref) <- cbind(values(bambedObj$ref), DataFrame(gc, mapp))
 #For 500kb bins
 coverageObj <- get_coverage_scDNA(bambedObj, mapqthres = 10, seq = 'paired-end', hgref = "hg38") #using a Q10 score for filtering
 
-saveRDS(coverageObj,"scope_covobj.250kb.rds")
-saveRDS(bambedObj,"scope_bambedObj.250kb.rds")
+saveRDS(coverageObj,"scope_covobj.500kb.rds")
+saveRDS(bambedObj,"scope_bambedObj.500kb.rds")
 ```
 {% endcapture %} {% include details.html %} 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
+
+Quality control of bins and cells via SCOPE
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
@@ -329,15 +318,15 @@ library(reshape2)
 library(circlize)
 library(parallel)
 
-coverageObj<-readRDS("scope_covobj.1mb.rds")
-bambedObj<-readRDS("scope_bambedObj.1mb.rds")
+coverageObj<-readRDS("scope_covobj.500kb.rds")
+bambedObj<-readRDS("scope_bambedObj.500kb.rds")
 #Perform QC and Ploidy Estimate
 #For 500kb bins
 #Perform QC
 #Quality control to remove samples/cells with low proportion of mapped reads, bins that have extreme GC content (less than 20% and greater than 80%) and low mappability (less than 0.9) to reduce artifacts.
 QCmetric_raw <- get_samp_QC(bambedObj)
-saveRDS(QCmetric_raw,"scope_qcmetric.250kb.rds")
-QCmetric_raw<-readRDS("scope_qcmetric.1mb.rds")
+saveRDS(QCmetric_raw,"scope_qcmetric.500kb.rds")
+QCmetric_raw<-readRDS("scope_qcmetric.500kb.rds")
 
 qcObj <- perform_qc(Y_raw = coverageObj$Y,sampname_raw = row.names(QCmetric_raw), ref_raw = bambedObj$ref, QCmetric_raw = QCmetric_raw)
 """Removed 0 samples due to failed library preparation.
@@ -348,11 +337,11 @@ Excluded 450 bins due to low mappability.
 Removed 0 samples due to excessive zero read counts in
             library size calculation.
 There are 1268 samples and 5449 bins after QC step."""
-saveRDS(qcObj,"scope_qcObj.250kb.rds")
+saveRDS(qcObj,"scope_qcObj.500kb.rds")
 
 #Generate gini coeffcients for 500kb binned data
 Gini<-get_gini(qcObj$Y) #SCOPE function
-saveRDS(Gini,"scope_gini.1mb.rds")
+saveRDS(Gini,"scope_gini.500kb.rds")
 
 #500 kb first pass normalization
 #First pass at estimating ploidy using no latent factors
@@ -360,18 +349,20 @@ norm_index_gini<-which(grepl("gm12878",colnames(qcObj$Y)))#grabbing 20 cells low
 
 # first-pass CODEX2 run with no latent factors
 normObj_gini<- normalize_codex2_ns_noK(Y_qc = qcObj$Y, gc_qc = qcObj$ref$gc, norm_index = norm_index_gini)
-saveRDS(normObj_gini,"scope_noKnorm.gini.1mb.rds")
+saveRDS(normObj_gini,"scope_noKnorm.gini.500kb.rds")
 
-normObj_gini<-readRDS("scope_noKnorm.gini.1mb.rds")
+normObj_gini<-readRDS("scope_noKnorm.gini.500kb.rds")
 ###Ploidy initialization 500kb
 #Generate ploidy estimate per cell from gini index
 ploidy <- initialize_ploidy(Y = qcObj$Y, Yhat = normObj_gini$Yhat, ref = qcObj$ref, SoS.plot = F)
-saveRDS(ploidy,"scope_ploidy.gini.1mb.rds")
+saveRDS(ploidy,"scope_ploidy.gini.500kb.rds")
 ```
 {% endcapture %} {% include details.html %} 
 
 
 ### Using ploidy estimates to assess copy number change
+
+SCOPE uses gini index to determine normal ploidy cells. I run here, but a priori set GM12878 cells at normal ploidy later in script.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -379,10 +370,10 @@ saveRDS(ploidy,"scope_ploidy.gini.1mb.rds")
 library(SCOPE)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
 #Performing normalization via gini euploid estimates
-qcObj<-readRDS("scope_qcObj.1mb.rds")
-ploidy<-readRDS("scope_ploidy.gini.1mb.rds")
+qcObj<-readRDS("scope_qcObj.500kb.rds")
+ploidy<-readRDS("scope_ploidy.gini.500kb.rds")
 norm_index<-which(grepl("gm12878",colnames(qcObj$Y)))
-normObj<-readRDS("scope_noKnorm.gini.1mb.rds")
+normObj<-readRDS("scope_noKnorm.gini.500kb.rds")
 
 #Normalize with no Latent Factors
 normObj.scope.gini <- normalize_scope_foreach(
@@ -394,11 +385,13 @@ normObj.scope.gini <- normalize_scope_foreach(
 	T = 1:6,
 	beta0 = normObj$beta.hat)
     
-saveRDS(normObj.scope.gini,"scope_normforeach.gini.1mb.rds")
+saveRDS(normObj.scope.gini,"scope_normforeach.gini.500kb.rds")
 ```
 {% endcapture %} {% include details.html %} 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
+Perform segmentation across chromosomes.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(SCOPE)
@@ -418,10 +411,10 @@ chr_cbs <- function(x,scope=normObj.scope.gini) {
 
 ###Processing gini index strategy
     #Read in files generated above
-    qcObj<-readRDS("scope_qcObj.1mb.rds")
-    ploidy<-readRDS("scope_ploidy.gini.1mb.rds")
+    qcObj<-readRDS("scope_qcObj.500kb.rds")
+    ploidy<-readRDS("scope_ploidy.gini.500kb.rds")
     norm_index<-head(order(Gini),n=20) #grabbing 20 cells lowest on gini index
-    normObj.scope.gini<-readRDS("scope_normforeach.gini.1mb.rds")
+    normObj.scope.gini<-readRDS("scope_normforeach.gini.50kb.rds")
 
     #Running CBS segmentation on 500kb windows (gini ploidy estimates)
     chrs <- unique(as.character(seqnames(qcObj$ref)))
@@ -431,9 +424,11 @@ chr_cbs <- function(x,scope=normObj.scope.gini) {
     segment_cs<-list()
     segment_cs<-mclapply(chrs,FUN=chr_cbs,mc.cores=length(chrs))
     names(segment_cs) <- chrs #mclapply returns jobs in same order as specified
-    saveRDS(segment_cs,"scope_segmentcs.gini.1mb.rds")
+    saveRDS(segment_cs,"scope_segmentcs.gini.500kb.rds")
 ```
 {% endcapture %} {% include details.html %} 
+
+Generate final segmentation plots.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -578,30 +573,6 @@ plt
 dev.off()
 system("slack -F scope.gini.CopyNumberHeatmap.gcconly.500kb.pdf ryan_todo")
 
-#Plot gene location CNV calls per cell line
-library(ggplot2)
-library(patchwork)
-
-# Barplot change to percentage rather than pie chart
-plot_piecharts<-function(x){
-    row_idx<-unlist(gene_loc[x])
-    gene_name<-gene_names[x]
-    tmp<-as.data.frame(cbind("cnv"=iCN_gcc[row_idx,],"sample"=sample_annot))
-    #tmp<-melt(table(tmp))
-    tmp$cnv<-as.integer(tmp$cnv)
-    plt_tmp<- ggplot(dat=tmp,aes(x=cnv,color=sample))+
-        geom_density(adjust=1/10,alpha=0.2)+
-        ggtitle(paste(gene_name,row.names(iCN_gcc)[row_idx])) + 
-        scale_x_discrete(name ="Copy Number", 
-                    limits=c(seq(0,6,1))) + xlim(c(0,6))
-        theme_bw()
-    return(plt_tmp)
-    }
-plt_list<-lapply(1:length(gene_loc),plot_piecharts)
-plt<-wrap_plots(plt_list,ncol=2)
-ggsave(plt,file="test.png",width=5,height=15)
-system("slack -F test.png ryan_todo")
-
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -619,7 +590,6 @@ MAPD, or the Median Absolute deviation of Pairwise Differences, is defined for a
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
-R
 library(ggplot2)
 library(SCOPE)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
@@ -670,10 +640,7 @@ ggsave(plt,file="mapd_scores.pdf")
 ```
 {% endcapture %} {% include details.html %} 
 
-Upon completion of normalization and segmentation at a first pass, SCOPE includes the option to cluster cells based on the matrix of normalized z-scores, estimated copy numbers, or estimated changepoints.
-Given the inferred subclones, SCOPE can opt to perform a second round of group-wise ploidy initialization and normalization
-I haven't doen this yet on the samples but is a good follow up once we have more sequencing.
-
+Generation of a cell summary file.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -717,14 +684,13 @@ write.table(annot,"s3wgsgcc_cellsummary.500kb.tsv",col.names=T)
 ```
 {% endcapture %} {% include details.html %} 
 
-SCOPE provides the cross-sample segmentation, which outputs shared breakpoints across cells from the same clone. This step processes the entire genome chromosome by chromosome. Shared breakpoints and integer copy-number profiles will be returned.
-Using circular binary segmentation (CBS) for breakpoint analysis
+
+### Clustering of cells via UMAP
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
-
 ```R
-
+library(SCOPE)
 
 normObj<-readRDS("SCOPE_normObj.noK.500kb.rds")
 qcObj<-readRDS("qcObj_coverage_500kb.rds")
@@ -844,9 +810,11 @@ fGC.hat.group <- normObj.scope.group$fGC.hat[[which.max(
 ```
 {% endcapture %} {% include details.html %} 
 
+Additional complexity plots.
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
-```python
+```R
 #annotation for cell line processing
 #annotation files stored on google drive
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
@@ -1141,7 +1109,6 @@ for (i in unique(dat_m$sample)){
 
 ```R
 #using 50kb windows
-
 library(SCOPE)
 library(ComplexHeatmap)
 library(circlize)
@@ -1308,22 +1275,10 @@ names(segment_cs) <- chrs #mclapply returns jobs in same order as specified
 saveRDS(segment_cs,"scope_segmentcs_clade_50kb.ns1.rds")
 segment_cs<-readRDS("scope_segmentcs_clade_50kb.rds")
 
-qcObj<-readRDS("scope_qcObj.1mb.rds")
-ploidy<-readRDS("scope_ploidy.gini.1mb.rds")
+qcObj<-readRDS("scope_qcObj.500kb.rds")
+ploidy<-readRDS("scope_ploidy.gini.500kb.rds")
 norm_index<-which(grepl("gm12878",colnames(qcObj$Y)))
-normObj<-readRDS("scope_noKnorm.gini.1mb.rds")
-
-# #Normalize with Latent Factors
-# normObj.scope <- normalize_scope_foreach(
-#     Y_qc = dat,
-#     gc_qc = as.data.frame(ref)$gc,
-#     K = 1,
-#     ploidyInt = unlist(clade_ploidy),
-#     norm_index = 6,
-#     T = 1:6,
-#     beta0 = normObj$beta.hat)
-    
-# saveRDS(normObj.scope,"scope_normforeach.50kb.rds")
+normObj<-readRDS("scope_noKnorm.gini.500kb.rds")
 
 #saveRDS(segment_cs,"scope_segmentcs_clade_50kb.ns6.rds")
 segment_cs<-readRDS("scope_segmentcs_clade_50kb.rds")

@@ -6,20 +6,15 @@ permalink: /s3preprocess/
 category: s3processing
 ---
 
-# Detailed run breakdown and experiment meta data is in the following google doc.
+The code provided here was used for initial processing of data up until the barcode-based duplicate removal and bam filtering.
+Code uses scitools initial processing.
 
-https://docs.google.com/spreadsheets/d/1mZ34KIwmr2vdjQlnqY7v_u0-Eca8mRc-HgI2r_WICXk/edit#gid=1567443037
+# Initial processing of sequencing data.
+
+Running bcl2fastq for sequencing runs.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
-rsync of NovaSeq files from the nix node:
-    
-rsync -rv mulqueen@nix:/data/LIB200619AA ./ & 
-#yDVZpuYk6mh7XWZMzD4m58
-rsync -rv mulqueen@nix:/data/LIB200716AA ./ &
-#yDVZpuYk6mh7XWZMzD4m58
-
-
 #Got raw bcl files and ran bcl2fastq
 module load bcl2fastq/2.19.0
 bcl2fastq -R /home/groups/oroaklab/adey_lab/projects/sciWGS/200701_NovaSeqRAW/LIB200619AA/200625_A01058_0053_BHN7HJDRXX-raw -o /home/groups/oroaklab/fastq/200630_NovaSeqSP_RM_s3 --create-fastq-for-index-reads --no-lane-splitting    
@@ -32,6 +27,7 @@ bcl2fastq --no-lane-splitting --create-fastq-for-index-reads -R /home/groups/oro
 
 ## FastQ Dump of reads into sci format
 
+Running 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
@@ -58,7 +54,8 @@ mkdir /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis
 ```
 {% endcapture %} {% include details.html %} 
 
-# Do the following plate splitting for all sequencing runs
+## Do the following plate splitting for all sequencing runs
+The following contains annotations for plate splitting across experiments.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -116,7 +113,12 @@ nano $demux/200728_NovaSeq_S2_RM_s3/plate_split.annot.simplified.txt
 #9	WGS	CellLine	Plate 1	J	Set 1
 #10	WGS	CellLine	Plate 2	K	Set 1
 #13	GCC	CellLine	Plate 3	L	Set 1
+```
+{% endcapture %} {% include details.html %} 
 
+## Generation of simplified annotation files
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+```python
 #python script for generating annotation files
 
 import pandas as pd
@@ -142,6 +144,8 @@ for x in run_list:
     plate_split_annot_generator(x)
 ```
 {% endcapture %} {% include details.html %} 
+
+## Continuation of annotation files
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -326,6 +330,8 @@ scitools fastq-align -n -r 20 -t 20 hg38 $out_name $fq1 $fq2; done ;
 
 ```
 {% endcapture %} {% include details.html %} 
+
+## Barcode based removal of duplicate and bam filter
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 

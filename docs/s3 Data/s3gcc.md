@@ -8,15 +8,19 @@ category: s3processing
 
 # s3-GCC Processing of PDAC Samples
 
-This notebook describes processing of s3GCC samples following the splitting of a deduplicated bwa mem aligned bam file which occurs in s3wgs processing ipynb.
+*Note: This processing is exploratory and not the final processing used for the manuscript*
+
+This notebook describes processing of s3GCC samples following the splitting of a deduplicated bwa mem aligned bam file which occurs in ["s3 Preprocessing"](https://mulqueenr.github.io/s3preprocess/)
 
 First create an annotation file from wet lab data and a working directory.
 
 Annotation data is listed in https://docs.google.com/spreadsheets/d/1mZ34KIwmr2vdjQlnqY7v_u0-Eca8mRc-HgI2r_WICXk/edit#gid=695371319
 
+## Generation of cell summaries
 
-```python
-R
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3gcc_data")
 
 #complexity data
@@ -71,9 +75,13 @@ library(ggplot2)
 plt<-ggplot(dat,aes(x=sample,y=log10(uniq_reads),color=as.factor(sample)))+geom_boxplot()+geom_jitter()
 ggsave(plt,file="s3gcc_uniqreads.png")
 ```
+{% endcapture %} {% include details.html %} 
 
+## Extraction of distal reads
 
-```python
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```bash
 #Extract distal reads based on >=1kb
 #or transchromosomal on different chromosomes
 #printing out distal connections (>=1kb or different chromosomes) using awk
@@ -131,10 +139,13 @@ done >> ./s3gcc_projected_reads.txt
 
 
 ```
+{% endcapture %} {% include details.html %} 
 
+## Projected complexity across cells
 
-```python
-R
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
 library(ggplot2)
 library(dplyr)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3gcc_data")
@@ -170,9 +181,13 @@ ggsave(file="gcc_projected_contacts.pdf")
 system("slack -F gcc_projected_contacts.png ryan_todo")
 system("slack -F gcc_projected_contacts.pdf ryan_todo")
 ```
+{% endcapture %} {% include details.html %} 
 
+## Mate fixing bam files
 
-```python
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```bash
 #For splitting to single cell bam files (NOT RUN)
 
 #add read groups to each bam file
@@ -190,11 +205,13 @@ find . -type f -name '*matefixed.bam' | parallel -j 20 scitools bam-rmdup {}
 find . -type f -name '*matefixed.bam' | parallel -j 20 scitools bam-project -r 500 -n 1 -X -e {} 
 
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Collate projections to single files for plotting
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
-```python
+```bash
 cd /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3gcc_data
 #read projections
 #distal
@@ -214,7 +231,11 @@ awk -v cellid=$cellid 'OFS="\t" {print $1,$2,$3,cellid,"trans"}' $i/cell_summari
 done > ./s3gcc_trans_projected_reads.txt 
 
 ```
+{% endcapture %} {% include details.html %} 
 
+## Make an analysis directory
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```python
 import os
@@ -227,9 +248,7 @@ if not os.path.exists(wd+sc_dir):
 print("Directory created or already present.")
         
 ```
-
-    Directory created or already present.
-
+{% endcapture %} {% include details.html %} 
 
 ### Split bam files into single cell triple-sparse format
 
@@ -237,6 +256,7 @@ Triple-sparse format will be the input for scHiCluster. This script will take in
 
 Currently works at a 1mb resolution.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```python
 import glob
@@ -329,10 +349,12 @@ for cellid_out in out_dict: #generate [cellID].[chr].txt files in triple sparse 
         Output.to_csv(fout,sep="\t",header=False,index=False)
         
 ```
+{% endcapture %} {% include details.html %} 
 
 
 ## Plotting distal reads per cell
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```python
 import glob
@@ -413,35 +435,16 @@ local_df.reset_index(inplace=True)
 df = pd.merge(left=distal_df, right=trans_df, left_on='cellID', right_on='cellID')
 df = pd.merge(left=df, right=local_df, left_on='cellID', right_on='cellID')
 df.to_csv(bam_dir+'s3gcc_hiccontacts.csv', index=False)
-
-                    
-R
-
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3gcc_data")
-dat<-read.table("s3gcc_cellsummary.tsv",header=T)
-interactions<-read.table("s3gcc_hiccontacts.csv",header=T,sep=",")
-dat<-merge(dat,interactions,by="cellID")
-dat$interaction_perc<-(dat$distal_cis_interactions+dat$trans_interactions)/(dat$distal_cis_interactions+dat$trans_interactions+dat$local_cis)*100
-
-library(dplyr)
-dat %>% group_by(sample) %>% summarize(mean=mean(interaction_perc))
-
-#  sample    mean
-#  <chr>    <dbl>
-#1 crc_4442 11.7
-#2 crc_4671 12.2
-#3 gm12878   4.70
-#4 hela      5.58
-#5 k562      5.23
-
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Run scHiCluster
 
 This script will run scHiCluster, with a harded length of hg38 chromosomes on the files produced from the script above. 
 
-It is currently set to generate 3 clusters (via K Means clustering). 
+It is currently set to generate 3 clusters (via K Means clustering). sciHiCluster source and example processing is available [here.](https://github.com/zhoujt1994/scHiCluster)
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```python
 import time
@@ -515,21 +518,15 @@ with open(wd+"scHiCluster.dims","w") as fout:
     embed.to_csv(fout,sep="\t",header=True,index=True)
 
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Clustering and visualization of cis-distal domain scHiCluster
 
 Next we will load in the output PCA dims file from sciHiCluster and use UMAP on a subset of PCs which define the most variance. For this, I'm just going to use an elbow plot to define the cutoff.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
-
-
-```python
-#%load_ext rpy2.ipython
-#With a working rpy2 install, this would allow for python and R scripts to run in the same notebook. However, for now I'll just leave the R scrips in place to be run via copy and paste into a terminal.
-```
-
-
-```python
+```R
 library(ggplot2)
 library(gridExtra)
 library(Rphenograph)
@@ -629,11 +626,11 @@ for (i in unique(dat_dims$scHiClus)){
 }
 
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Merging cells within clusters to prepare the running of TopDom to find intrachromosomal changes in topological domains
 
-
-
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```python
 import time
@@ -705,11 +702,12 @@ for network_file in network_file_list:
             Q = Q.reshape(ngene, ngene)
             output_topdom(cell,c, Q, res)
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Using R TopDom to find different topological domains from merged imputed regions.
 
 Note: as of now this script runs through each single cell as well. This isn't particularly useful, but it might be dependent on future analysis.
-
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 #R v4.0
@@ -729,8 +727,10 @@ out_name=paste0(out_name,".w5.domain")
 write.table(tad$bed[1:dim(tad$bed)[1],2:4], file=out_name, quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)}
 }
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Plot raw contact frequencies of single-cells
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(ggplot2)
@@ -776,6 +776,7 @@ plot_singlechr<-function(x){
 
 lapply(files_in,plot_singlechr)
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Using Python for statistical analysis on TopDom matrices
 Input:
@@ -793,7 +794,7 @@ sc_dom: domain boundaries in each single cell indicated by a binary matrix.
 dom_prob: domain boundary frequency in each cluster with the same order as in celltypelist.
 bins: The tested bins, since the bins with 0.0 or 1.0 domain frequency in any of the clusters were not tested.
 pvalue: The p-value of each bin in bins.
-
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 
 ```python
@@ -877,11 +878,12 @@ for chrom  in chromsize:
     pval_df.to_csv("chr"+chrom+"_scDomainProbabilities_pval.csv")
 
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Using Python to merge raw matrix output
 
 This is so we maintain transchromosomal interactions.
-
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```python
 #merge raw matrices for whole chr comparisons
@@ -998,15 +1000,16 @@ p = sp.Popen(cmd, stdin=sp.PIPE, stdout = sp.PIPE, stderr = sp.PIPE,shell=True)
 p.wait()
 
 ```
+{% endcapture %} {% include details.html %} 
 
 
 ### Finally using R for Knight Ruiz normalization of whole genome HiC data, and visualization
 
 I am both looping through individual clusters and performing a cluster by cluster difference in contacts.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
-#R
 library(ComplexHeatmap)
 library(HiCcompare)
 library(circlize)
@@ -1166,3 +1169,4 @@ lapply(c("clus0.hic.matrix","clus1.hic.matrix","clus2.hic.matrix"),FUN=diff_mat,
 #I've been having a strange bug with KRnorm, where within this function it stalls and doesn't complete, but if clusters are run individually it is fine.
 
 ```
+{% endcapture %} {% include details.html %} 
