@@ -114,7 +114,7 @@ mv *isize* ./isize
 ```
 {% endcapture %} {% include details.html %} 
 
-### QC Directory Structure 
+## QC Directory Structure 
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -130,7 +130,7 @@ mv *isize* ./isize
 ```
 {% endcapture %} {% include details.html %} 
 
-### Collate data into single files for plotting
+## Collate data into single files for plotting
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -170,7 +170,7 @@ done > ./s3wgs_isize.txt
 ```
 {% endcapture %} {% include details.html %} 
 
-### Generate complexity projections per cell
+## Generate complexity projections per cell
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -238,7 +238,7 @@ Using R 4.0.0
 Note a lot of this code and even the comments and explanation is directly taken from the SCOPE example given.
 
 
-### Read in files from directory
+## Read in files from directory
 First reading in the split bam files and setting up the reference genome.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -280,7 +280,7 @@ saveRDS(bambedObj,"scope_bambedObj.500kb.rds")
 {% endcapture %} {% include details.html %} 
 
 
-###Quality control of bins and cells via SCOPE
+##Quality control of bins and cells via SCOPE
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -332,7 +332,7 @@ normObj_gini<- normalize_codex2_ns_noK(Y_qc = qcObj$Y, gc_qc = qcObj$ref$gc, nor
 saveRDS(normObj_gini,"scope_noKnorm.gini.500kb.rds")
 
 normObj_gini<-readRDS("scope_noKnorm.gini.500kb.rds")
-###Ploidy initialization 500kb
+##Ploidy initialization 500kb
 #Generate ploidy estimate per cell from gini index
 ploidy <- initialize_ploidy(Y = qcObj$Y, Yhat = normObj_gini$Yhat, ref = qcObj$ref, SoS.plot = F)
 saveRDS(ploidy,"scope_ploidy.gini.500kb.rds")
@@ -340,7 +340,7 @@ saveRDS(ploidy,"scope_ploidy.gini.500kb.rds")
 {% endcapture %} {% include details.html %} 
 
 
-### Using ploidy estimates to assess copy number change
+## Using ploidy estimates to assess copy number change
 
 SCOPE uses gini index to determine normal ploidy cells. I run here, but a priori set GM12878 cells at normal ploidy later in script.
 
@@ -556,7 +556,7 @@ system("slack -F scope.gini.CopyNumberHeatmap.gcconly.500kb.pdf ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 
-### Coverage uniformity
+## Coverage uniformity
 Next generate MAPD and DIMAPD scores for all cells, using a custom script based on description from this website
 from https://support.10xgenomics.com/single-cell-dna/software/pipelines/latest/interpret/metrics
 
@@ -664,7 +664,7 @@ write.table(annot,"s3wgsgcc_cellsummary.500kb.tsv",col.names=T)
 ```
 {% endcapture %} {% include details.html %} 
 
-### Clustering of cells via UMAP
+## Clustering of cells via UMAP
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
