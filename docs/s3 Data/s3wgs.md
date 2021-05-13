@@ -7,9 +7,9 @@ category: s3processing
 ---
 
 # Processing for s3WGS portion of s3 paper.
-This notebook is a continuation of "s3 Preprocessing to Bam files" and details the processing of s3WGS libraries. This notebook starts with a merged, barcode-based removal of duplicate, >Q10 filtered bam file which was subset to barcodes >=10K unique reads
+This notebook is a continuation of ["s3 Preprocessing"](https://mulqueenr.github.io/s3preprocess/) and details the processing of s3WGS libraries. This notebook starts with a merged, barcode-based removal of duplicate, >Q10 filtered bam file which was subset to barcodes >=10K unique reads
 
-
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
 #Initial directory structure (filtered to relevant files):
 #Note GCC type libraries will also be processes as WGS files, so are included here.
@@ -32,10 +32,13 @@ This notebook is a continuation of "s3 Preprocessing to Bam files" and details t
 ├── s3gcc_data
 
 ```
+{% endcapture %} {% include details.html %} 
+
 
 # Filter bam files to just cells passing original QC
 Performing this on pre-barcode based remove duplicate bams for future complexity plotting and projection modeling.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #First going to subset un-rmdup bam files to just those passing QC
@@ -109,9 +112,11 @@ mv *isize* ./isize
 #s3wgs_crc4442_E.RG_ACGCGACGAGAGGACTTATTAGCT     s3wgs_crc4442_E s3wgs   crc4442 ACGCGACGAGAGGACTTATTAGCT
 #s3wgs_crc4442_E.RG_ACGCGACGCAATGAGAAGTTCAGG     s3wgs_crc4442_E s3wgs   crc4442 ACGCGACGCAATGAGAAGTTCAGG
 ```
+{% endcapture %} {% include details.html %} 
 
 ### QC Directory Structure 
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data
@@ -123,10 +128,11 @@ mv *isize* ./isize
     ├── undedup_bams #contains pre-bbrd bams
     
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Collate data into single files for plotting
  
-
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 
@@ -158,11 +164,13 @@ awk -v cellid=$cellid 'OFS="\t" {print $1,cellid}' $i;
 done > ./s3wgs_isize.txt 
 
 ```
+{% endcapture %} {% include details.html %} 
 
-Generate complexity projections per cell
+### Generate complexity projections per cell
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
-```python
+```R
 library(ggplot2)
 library(dplyr)
 
@@ -217,9 +225,11 @@ ggsave(file="readcount.pdf")
 
 system("slack -F readcount.pdf ryan_todo")
 ```
+{% endcapture %} {% include details.html %} 
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
-```python
+```R
 library(ggplot2)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
 annot<-read.table("s3wgs_gcc.cellsummary.txt",header=T)
@@ -230,12 +240,13 @@ ggsave(file="mapd.pdf")
 
 system("slack -F mapd.pdf ryan_todo")
 ```
+{% endcapture %} {% include details.html %} 
 
 ### Generate Insert Size Distributions 
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
-```python
-R
+```R
 library(ggplot2)
 library(dplyr)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
@@ -252,6 +263,7 @@ saveRDS(dat,"s3wgs_isize.annot.rds")
 
 
 ```
+{% endcapture %} {% include details.html %} 
 
 ## Using SCOPE to analyze single-cell data on single cell bam directory
 Library used for scWGS data analysis is [SCOPE](https://github.com/rujinwang/SCOPE) available as a [preprint](https://www.biorxiv.org/content/10.1101/594267v1.full). SCOPE works on pre-aligned deduplicated bam files. So I split files post-deduplication into a subdirectory to load in (above).
@@ -263,6 +275,7 @@ Note a lot of this code and even the comments and explanation is directly taken 
 ### Read in files from directory
 First reading in the split bam files and setting up the reference genome.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
@@ -298,6 +311,8 @@ coverageObj <- get_coverage_scDNA(bambedObj, mapqthres = 10, seq = 'paired-end',
 saveRDS(coverageObj,"scope_covobj.250kb.rds")
 saveRDS(bambedObj,"scope_bambedObj.250kb.rds")
 ```
+{% endcapture %} {% include details.html %} 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 
 ```R
@@ -353,9 +368,12 @@ normObj_gini<-readRDS("scope_noKnorm.gini.1mb.rds")
 ploidy <- initialize_ploidy(Y = qcObj$Y, Yhat = normObj_gini$Yhat, ref = qcObj$ref, SoS.plot = F)
 saveRDS(ploidy,"scope_ploidy.gini.1mb.rds")
 ```
+{% endcapture %} {% include details.html %} 
+
 
 ### Using ploidy estimates to assess copy number change
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(SCOPE)
@@ -378,6 +396,8 @@ normObj.scope.gini <- normalize_scope_foreach(
     
 saveRDS(normObj.scope.gini,"scope_normforeach.gini.1mb.rds")
 ```
+{% endcapture %} {% include details.html %} 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 
 ```R
@@ -413,7 +433,9 @@ chr_cbs <- function(x,scope=normObj.scope.gini) {
     names(segment_cs) <- chrs #mclapply returns jobs in same order as specified
     saveRDS(segment_cs,"scope_segmentcs.gini.1mb.rds")
 ```
+{% endcapture %} {% include details.html %} 
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(SCOPE)
@@ -581,40 +603,7 @@ ggsave(plt,file="test.png",width=5,height=15)
 system("slack -F test.png ryan_todo")
 
 ```
-
-
-```bash
-cd /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data
-#VarScan for WES
-module load varscan/2.3.7
-#http://varscan.sourceforge.net/copy-number-calling.html
-ref="/home/groups/oroaklab/refs/hg38/hg38.fa"
-
-#Load and run GATK
-module load GATK/3.2.2
-ref="/home/groups/oroaklab/refs/hg38/hg38.fa"
-
-for i in *RG.bam; do
-iname=${i::-4} ;
-samtools sort -m 5G -@ 30 -n $i > ${iname}.sorted.bam ;
-samtools fixmate -r -@ 10 ${iname}.sorted.bam ${iname}.sorted.fixedmatededup.bam ;
-samtools sort -@ 30 ${iname}.sorted.fixedmatededup.bam > ${iname}.sorted.fixedmatededup.sort.bam; &
-
-for i in *fixedmatededup.sort.bam; do
-samtools reheader -c 'grep -v ^@PG' $i >  ${i::-4}.reheader.bam;
-samtools index -@ 10 ${i::-4}.reheader.bam ${i::-4}.reheader.bai ; done & 
-
-#Load and run GATK
-gatk="java -jar -Xmx2g gatk-package-4.1.9.0-local.jar"
-ref="/home/groups/oroaklab/refs/hg38/hg38.fa"
-
-for i in *sort.reheader.bam; do
-gatk -T HaplotypeCaller \
--R $ref \
--I $i \
--bamout ${i::-4}.gatk_hc.bam > ${i::-4}.gatk_hc.vcf ; done &
-
-```
+{% endcapture %} {% include details.html %} 
 
 ### Coverage uniformity
 Next generate MAPD and DIMAPD scores for all cells, using a custom script based on description from this website
@@ -627,6 +616,7 @@ MAPD, or the Median Absolute deviation of Pairwise Differences, is defined for a
     -Performing genome coverage distribution on post GC corrected and mappability limited matrix (Y)
 
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 R
@@ -678,12 +668,14 @@ ggsave(plt,file="mapd_scores.pdf")
 
 #system("slack -F mapd_scores.pdf ryan_todo")
 ```
+{% endcapture %} {% include details.html %} 
 
 Upon completion of normalization and segmentation at a first pass, SCOPE includes the option to cluster cells based on the matrix of normalized z-scores, estimated copy numbers, or estimated changepoints.
 Given the inferred subclones, SCOPE can opt to perform a second round of group-wise ploidy initialization and normalization
 I haven't doen this yet on the samples but is a good follow up once we have more sequencing.
 
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 # Group-wise ploidy initialization
@@ -723,9 +715,12 @@ write.table(annot,"s3wgsgcc_cellsummary.500kb.tsv",col.names=T)
 
 
 ```
+{% endcapture %} {% include details.html %} 
 
 SCOPE provides the cross-sample segmentation, which outputs shared breakpoints across cells from the same clone. This step processes the entire genome chromosome by chromosome. Shared breakpoints and integer copy-number profiles will be returned.
 Using circular binary segmentation (CBS) for breakpoint analysis
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 
 ```R
@@ -847,7 +842,9 @@ fGC.hat.group <- normObj.scope.group$fGC.hat[[which.max(
                                     normObj.scope.group$BIC)]]
 
 ```
+{% endcapture %} {% include details.html %} 
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```python
 #annotation for cell line processing
@@ -924,9 +921,11 @@ theme(axis.text.x = element_text(angle = 90))
 
 ggsave(plt,file="s3wgs_complexity_platecellline_boxplot.pdf")
 ```
+{% endcapture %} {% include details.html %} 
 
 ## Now plotting those QC metrics out with ggplot and R
 This is a big old copy and paste script and can probably be parsed down by user defined functions.
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(ggplot2)
@@ -1134,60 +1133,13 @@ for (i in unique(dat_m$sample)){
 }
 
 ```
+{% endcapture %} {% include details.html %} 
 
-## Using bcftools to generate vcf files.
+## Combing clades of cell lines for high resolution annotation
 
-Going to look at mutations in 4442 (Sample 1) and 4671 (Sample 2) mutations. Both have a KRAS driver mutation at chr12:25245350. Sample 1 is G12D (C>T transistion), Sample 2 is G12C.
-
-
-```bash
-
-module load bcftools/1.1
-
-#vcf version
-#pileup
-pdac_genes="/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/pdac_gene.bed"
-ref="/home/groups/oroaklab/refs/hg38/hg38.fa"
-
-#Add RG to bam file to output on sc level
-#To add RG (cell IDs) to a bam file
-
-#generate list of cellIDs from input bam as temporary annotation
-#then make a RG bam from input
-N=30 #N cores for parallel sort
-
-for bam in hg38.s3WGS_GM12878.bbrd.q10.filt.bam hg38.s3GCC_4442.bbrd.q10.filt.bam hg38.s3GCC_4671.bbrd.q10.filt.bam hg38.s3WGS_4442.bbrd.q10.filt.bam hg38.s3WGS_4671.bbrd.q10.filt.bam;
-do samtools view $bam | awk 'OFS="\t" {split($1,a,":"); print a[1],"temp"}' | sort -k1,1 -T . --parallel=$N -S 2G | uniq > cellID_list.tmp.annot;
-{(samtools view -H $bam) ; 
-(awk 'OFS="\t" {print "@RG","ID:"$1,"SM:"$1,"LB:"$1,"PL:SCI"}' cellID_list.tmp.annot) ; 
-(echo -e "@PG\tID:scitools_bam-addrg\tVN:dev");
-(samtools view $bam | awk 'OFS="\t" {split($1,a,":"); print $0,"RG:Z:"a[1]}');
- } | samtools view -bS - > ${bam%.bam}.RG.bam;
- done &
-
-#Index output bam file
-for bam in hg38.s3WGS_GM12878.bbrd.q10.filt.bam hg38.s3GCC_4442.bbrd.q10.filt.bam hg38.s3GCC_4671.bbrd.q10.filt.bam hg38.s3WGS_4442.bbrd.q10.filt.bam hg38.s3WGS_4671.bbrd.q10.filt.bam; do
-samtools index -b -@ 10 ${bam%.bam}.RG.bam ; done &
-
-
-#Generate pileup and vcf
-for bam in hg38.s3WGS_GM12878.bbrd.q10.filt.bam hg38.s3GCC_4442.bbrd.q10.filt.bam hg38.s3GCC_4671.bbrd.q10.filt.bam hg38.s3WGS_4442.bbrd.q10.filt.bam hg38.s3WGS_4671.bbrd.q10.filt.bam; do
-/home/groups/oroaklab/src/bcftools/bcftools/bcftools mpileup -f $ref -R $pdac_genes --threads 10 -O z ${bam%.bam}.RG.bam > ${bam%.bam}.vcf.gz ; done
-
-#sort
-/home/groups/oroaklab/src/bcftools/bcftools/bcftools sort -T . -O z -o test_4442.pdac.mpileup.sort.vcf test_4442.pdac.mpileup.vcf
-
-#index for visualiztion in IGV
-~/tools/IGVTools/igvtools index test_4442.pdac.mpileup.sort.vcf 
-
-#Look at by hand
-awk '$1=="chr12" && $2=25235382 {print $0}' ${bam%.bam}.vcf | less-S
-
-```
-
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
-#Combing clades of cell lines for high resolution annotation
 #using 50kb windows
 
 library(SCOPE)
@@ -1465,63 +1417,5 @@ theme(axis.text.y = element_text(size=30),
 ggsave(plt,file="scope.merged.50kb.final.final.png",width=2000,height=1000,units="mm",limitsize=F)
 system("slack -F scope.merged.50kb.final.final.png ryan_todo")
 
-
-
-
-
-
-
-
-#Per chromosome
-chrs <- unique(as.character(seqnames(bambedObj$ref)))
-
-for (i in chrs[1:23]){
-plt_melt_chr<-plt_melt[plt_melt$contig==i,] 
-plt<-ggplot(plt_melt_chr,aes(x=row_order,y=(2^copy),label=gene))+
-geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=6,alpha=0.05))+scale_fill_manual(values=cols)+
-geom_point(aes(color = "black"),size=0.005,alpha=0.2)+scale_color_manual(values=cols_clade)+
-geom_text_repel(size=1,y=1,nudge_y= 2, direction="x",angle= 90, hjust= 0,segment.size = 0.2,max.iter = 1e4,min.segment.length=0)+
-facet_grid(plt_melt_chr$clade~plt_melt_chr$contig,space="free",scales="free_x")+theme_bw()+scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,6))+
-theme(axis.text.y = element_text(size=5),  axis.text.x = element_blank(), panel.grid.minor = element_blank(),panel.grid.major = element_blank(),panel.spacing.x=unit(0.1,"lines"))
-
-ggsave(plt,file=paste0("scope.merged.50kb.",i,"final.png"),width=400,height=100,units="mm")
-system(paste0("slack -F ","scope.merged.50kb.",i,"final.png"," ryan_todo"))
-
-}
-
-
-#Selected Regions
-i<-"chr_7_PRSS1"
-plt_melt_chr<-plt_melt[plt_melt$contig=="chr7" & plt_melt$end<145000000 & plt_melt$start>140000000,] 
-plt<-ggplot(plt_melt_chr,aes(x=row_order,y=(2^copy),label=gene))+
-geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=6,alpha=0.05))+scale_fill_manual(values=cols)+
-geom_point(aes(color = as.factor(clade)),size=0.5,alpha=0.5)+scale_color_manual(values=cols_clade)+
-geom_text_repel(size=1,y=1,nudge_y= 2, direction="x",angle= 90, hjust= 0,segment.size = 0.2,max.iter = 1e4,min.segment.length=0)+
-facet_grid(plt_melt_chr$clade~plt_melt_chr$contig,space="free",scales="free_x")+theme_bw()+scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,6))+
-theme(axis.text.y = element_text(size=5),  axis.text.x = element_blank(), panel.grid.minor = element_blank(),panel.grid.major = element_blank(),panel.spacing.x=unit(0.1,"lines"))
-
-ggsave(plt,file=paste0("scope.merged.50kb.",i,"final.png"),width=100,height=100,units="mm")
-system(paste0("slack -F ","scope.merged.50kb.",i,"final.png"," ryan_todo"))
-
-
-pdac_genes<-as.data.frame(pdac_genes)
-
-#Selected Regions
-for (i in unique(pdac_genes$gene)){
-gene_id<-i
-gene_contig<-as.character(pdac_genes[pdac_genes$gene==gene_id,]$seqnames)
-gene_start<-pdac_genes[pdac_genes$gene==gene_id,]$start
-gene_end<-pdac_genes[pdac_genes$gene==gene_id,]$end
-plt_melt_chr<-plt_melt[(as.character(plt_melt$contig)==gene_contig & plt_melt$start>gene_start-200000 & plt_melt$end<gene_end+200000),] 
-plt<-ggplot(plt_melt_chr,aes(x=row_order,y=(2^copy),label=gene))+
-geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=6,alpha=0.05))+scale_fill_manual(values=cols)+
-geom_point(aes(color = as.factor(clade)),size=0.5,alpha=0.5)+scale_color_manual(values=cols_clade)+
-geom_text_repel(size=1,y=1,nudge_y= 2, direction="x",angle= 90, hjust= 0,segment.size = 0.2,max.iter = 1e4,min.segment.length=0)+
-facet_grid(plt_melt_chr$clade~plt_melt_chr$contig,space="free",scales="free_x")+theme_bw()+scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,6))+
-theme(axis.text.y = element_text(size=5),  axis.text.x = element_blank(), panel.grid.minor = element_blank(),panel.grid.major = element_blank(),panel.spacing.x=unit(0.1,"lines"))
-
-ggsave(plt,file=paste0("scope.merged.50kb.",i,"final.png"),width=100,height=100,units="mm")
-system(paste0("slack -F ","scope.merged.50kb.",i,"final.png"," ryan_todo"))
-}
-
 ```
+{% endcapture %} {% include details.html %} 

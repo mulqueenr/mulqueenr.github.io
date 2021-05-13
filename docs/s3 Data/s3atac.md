@@ -7,7 +7,7 @@ category: s3processing
 ---
 
 # Processing for s3ATAC portion of s3 paper.
-This notebook is a continuation of "s3 Preprocessing to Bam files" and details the processing of s3ATAC libraries. This notebook starts with a merged, barcode-based removal of duplicate, >Q10 filtered bam file which was subset to barcodes >=10K unique reads.
+This notebook is a continuation of ["s3 Preprocessing"](https://mulqueenr.github.io/s3preprocess/)  and details the processing of s3ATAC libraries. This notebook starts with a merged, barcode-based removal of duplicate, >Q10 filtered bam file which was subset to barcodes >=10K unique reads.
 
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -961,6 +961,9 @@ for (j in unique(dat$assay)){
 #[1] "s3ATAC_Plate_C,dscATAC,1.5654951763642e-37,264133.506711409,34045.7355797055,greater,Welch Two Sample t-test"
 #[1] "s3ATAC_Plate_C,sciatac,9.87044162982429e-43,264133.506711409,12263.8299081767,greater,Welch Two Sample t-test"
 #[1] "s3ATAC_Plate_C,s3ATAC_Plate_C,0.5,264133.506711409,264133.506711409,greater,Welch Two Sample t-test"
+
+
+
 
 
 ```

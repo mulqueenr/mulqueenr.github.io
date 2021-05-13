@@ -10,6 +10,7 @@ category: s3processing
 
 https://docs.google.com/spreadsheets/d/1mZ34KIwmr2vdjQlnqY7v_u0-Eca8mRc-HgI2r_WICXk/edit#gid=1567443037
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
 rsync of NovaSeq files from the nix node:
     
@@ -27,9 +28,11 @@ bcl2fastq --no-lane-splitting --create-fastq-for-index-reads -R /home/groups/oro
 #Files located in /home/groups/oroaklab/fastq/200630_NovaSeqSP_RM_s3
 
 ```
+{% endcapture %} {% include details.html %} 
 
 ## FastQ Dump of reads into sci format
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 
@@ -53,9 +56,11 @@ scitools fastq-dump-sci-stdchem -V -R $fq_rundir & #output files in /home/groups
 mkdir /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis
 
 ```
+{% endcapture %} {% include details.html %} 
 
 # Do the following plate splitting for all sequencing runs
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #generating annotation file based on CPT i5 PCR index
@@ -136,7 +141,9 @@ def plate_split_annot_generator(x):
 for x in run_list:
     plate_split_annot_generator(x)
 ```
+{% endcapture %} {% include details.html %} 
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #Split out fastq files:
@@ -318,7 +325,9 @@ out_name=${fq1::-8}
 scitools fastq-align -n -r 20 -t 20 hg38 $out_name $fq1 $fq2; done ;
 
 ```
+{% endcapture %} {% include details.html %} 
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #Performing sorted bam-rmdup on bam files
@@ -370,50 +379,4 @@ mv s3atac* ../s3atac_data/
 mv s3wgs* ../s3wgs_data/
 
 ```
-
-
-#Files for upload (after all other processing)
-
-
-```bash
-#s3gcc/wgs
-cd /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data/singlecell_bam
-ls sorted_bams*bam.sorted.bam > bamfile.list
-samtools cat --threads 20 -b bamfile.list > s3wgsgcc.filtered.bam &
-cp ../../files_for_upload
-
-#s3atac
-cd /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data
-cp mm10.bbrd.q10.bam hg38.bbrd.q10.bam mm10_SeuratObject.Rds hg38_SeuratObject.Rds ../files_for_upload
-cp ./subclustering/hg38_inhibitory_neuron_SeuratObject.Rds ../../files_for_upload
-#rename files for readability
-mv mm10.bbrd.q10.bam s3atac.mm10.filtered.bam
-mv hg38.bbrd.q10.bam s3atac.hg38.filtered.bam
-mv hg38_SeuratObject.Rds s3atac.hg38_SeuratObject.Rds
-mv mm10_SeuratObject.Rds s3atac.mm10_SeuratObject.Rds
-mv hg38_inhibitory_neuron_SeuratObject.Rds s3atac.hg38_inhibitory_neuron_SeuratObject.Rds
-
-```
-```R
-#Extracting counts matrix and meta data per cell (in R)
-library(Signac)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/files_for_upload")
-
-extract_data<-function(object,prefix){
-    dat<-readRDS(object)
-    write.csv(as.data.frame(dat@meta.data),quote=F,file=paste0(prefix,".metadata.csv"))
-    write.csv(as.data.frame(dat[["peaks"]]@counts),quote=F,file=paste0(prefix,".counts.csv"))
-    
-}
-
-file_list<-c("s3atac.hg38"="s3atac.hg38_SeuratObject.Rds",
-            "s3atac.mm10"="s3atac.mm10_SeuratObject.Rds",
-            "s3atac.hg38.inhibNeu"="s3atac.hg38_inhibitory_neuron_SeuratObject.Rds")
-
-lapply(1:length(file_list),function(x) extract_data(object=file_list[x],prefix=names(file_list)[x]))
-
-#With all files in place, gzipped and tarballed
-gzip * &
-tar -czf s3.tgz *gz &
-
-```
+{% endcapture %} {% include details.html %} 
