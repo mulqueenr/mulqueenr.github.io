@@ -7,7 +7,7 @@ category: s3processing
 ---
 
 # Processing for s3WGS portion of s3 paper.
-This notebook is a continuation of ["s3 Preprocessing"](https://mulqueenr.github.io/s3preprocess/) and details the processing of s3WGS libraries. This notebook starts with a merged, barcode-based removal of duplicate, >Q10 filtered bam file which was subset to barcodes >=10K unique reads
+This notebook is a continuation of ["s3 Preprocessing"](https://mulqueenr.github.io/s3preprocess/) and details the processing of s3WGS libraries. This notebook starts with a merged, barcode-based removal of duplicate bam file.
 
 {% capture summary %} Initial Files and Directory Structure {% endcapture %} {% capture details %}  
 ```bash
@@ -150,6 +150,7 @@ do cellid=${i:37:-15};
 awk -v cellid=$cellid 'OFS="\t" {print $2,$3,$4,$5,cellid}' $i;
 done > ./s3wgs_complexity.txt
 ```
+Combine data for complexity files.
 
 ```R
 dat<-read.table("s3wgs_complexity.txt",header=F)
@@ -158,7 +159,7 @@ colnames(dat)<-c("cellID_idx","total_reads","uniq_reads","perc_uniq","cellID")
 dat<-merge(dat,annot,by="cellID_idx")
 write.table(dat,file="s3wgs_complexity.txt",sep="\t",col.names=T,quote=F)
 ```
-
+Collate insert size distribution.
 ```bash
 #isize
 for i in ./singlecell_bam/isize/*values;
@@ -230,27 +231,6 @@ system("slack -F readcount.pdf ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 
-### Generate Insert Size Distributions 
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```R
-library(ggplot2)
-library(dplyr)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
-
-dat<-read.table("s3wgs_isize.txt",header=F)
-colnames(dat)<-c("size","cellID")
-dat$cellID_idx<-unlist(lapply(strsplit(dat$cellID,"RG_"),"[",2))
-saveRDS(dat,"s3wgs_isize.rds")
-
-annot<-read.table("s3wgs_gcc.cellsummary.txt",header=T)
-annot<-annot[c("cellID_idx","assay","sample")]
-dat<-merge(dat,annot,by="cellID_idx")
-saveRDS(dat,"s3wgs_isize.annot.rds")
-```
-{% endcapture %} {% include details.html %} 
-
 ##Using SCOPE to analyze single-cell data on single cell bam directory
 Library used for scWGS data analysis is [SCOPE](https://github.com/rujinwang/SCOPE) available as a [preprint](https://www.biorxiv.org/content/10.1101/594267v1.full). SCOPE works on pre-aligned deduplicated bam files. So I split files post-deduplication into a subdirectory to load in (above).
 
@@ -300,7 +280,7 @@ saveRDS(bambedObj,"scope_bambedObj.500kb.rds")
 {% endcapture %} {% include details.html %} 
 
 
-Quality control of bins and cells via SCOPE
+###Quality control of bins and cells via SCOPE
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -684,7 +664,6 @@ write.table(annot,"s3wgsgcc_cellsummary.500kb.tsv",col.names=T)
 ```
 {% endcapture %} {% include details.html %} 
 
-
 ### Clustering of cells via UMAP
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
@@ -791,21 +770,6 @@ norm_index<-which(annot[match(annot$cellID,sampname),]$gini<=0.3)
 ploidy.group <- initialize_ploidy_group(Y = Y, Yhat = Yhat,
                                 ref = ref, groups = groups)
 saveRDS(ploidy.group,file="SCOPE_ploidygroup.rds")
-
-# Group-wise normalization
-normObj.scope.group <- normalize_scope_group(Y_qc = Y,
-                                    gc_qc = gc,
-                                    K = 1, ploidyInt = ploidy.group,
-                                    norm_index = norm_index,
-                                    groups = groups,
-                                    T = 1:5,
-                                    beta0 = beta.hat.noK)
-saveRDS(normObj.scope.group,file="SCOPE_normalizationgroup.rds")
-
-Yhat.group <- normObj.scope.group$Yhat[[which.max(
-                                    normObj.scope.group$BIC)]]
-fGC.hat.group <- normObj.scope.group$fGC.hat[[which.max(
-                                    normObj.scope.group$BIC)]]
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -1270,8 +1234,6 @@ segment_cs<-list()
 segment_cs<-mclapply(chrs,FUN=chr_cbs,mc.cores=25)
 names(segment_cs) <- chrs #mclapply returns jobs in same order as specified
 
-#saveRDS(segment_cs,"scope_segmentcs_clade_50kb.rds")
-#saveRDS(segment_cs,"scope_segmentcs_clade_100kb.ns1.rds")
 saveRDS(segment_cs,"scope_segmentcs_clade_50kb.ns1.rds")
 segment_cs<-readRDS("scope_segmentcs_clade_50kb.rds")
 
