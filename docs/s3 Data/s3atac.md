@@ -617,7 +617,7 @@ setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3a
     #determine model count to use for each cell type
     for (i in seurat_objects){
     	    outname<-unlist(strsplit(i,"_"))[[1]]
-    	    system(paste0("slack -F ",outname,"_model_selection.pdf"," ryan_todo"))}
+    	    system(paste0("slack -F ",outname,"_model_selection.pdf"," ryan_todo"))} #slack -F of ryan_todo just posts files from our cluster to a slack channel I have
 
     #selecting topics based on derivative, making a named vector 
     topic_count_list<-c(24,24,25,26,26,28,30,28,23,30,30,23,
