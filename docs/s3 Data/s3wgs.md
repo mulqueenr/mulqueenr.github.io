@@ -1070,7 +1070,7 @@ for (i in unique(k_clus_id)){
 clade_dat<-list()
 for (i in unique(k_clus_id)){
     clade<-names(k_clus_id[k_clus_id==i])
-    clade_combined<-rowSums(Y[,colnames(Y) %in% clade])
+    clade_combined<-rowMeans(Y[,colnames(Y) %in% clade],na.rm=T)
     clade_dat[[paste0("clade_",i)]]<-clade_combined
 }
 
@@ -1087,21 +1087,25 @@ clade_ploidy[[paste0("clade_",i)]]<-median(ploidy[colnames(Y) %in% clade],na.rm=
 clade_ploidy
 
 #manually filter bins for mappability and gc content (using the scope defaults)
-dat<-dat[ref$mapp>0.9 & ref$gc>=20 & ref$gc<=80,]
+ref<-as.data.frame(ref)
 ref<-ref[ref$mapp>0.9 & ref$gc>=20 & ref$gc<=80,]
+dat<-dat[paste0(ref$seqnames,":",ref$start,"_",ref$end),]
 
 #normalize clade data, clade 6 contains most gm12878 cells and is considered the normal index
 normObj<- normalize_codex2_ns_noK(Y_qc = dat, gc_qc = ref$gc, norm_index = 6)
+saveRDS(normObj,"scope.50kb.normalizedobj.mean.rds")
+normObj<-readRDS("scope.50kb.normalizedobj.mean.rds")
 
-#Perform CBS
-chr_cbs <- function(x,scope=normObj) {
+
+#Perform CBS originally run with ns=2
+chr_cbs <- function(x,scope=normObj,ns=1) {
     print(paste("Running for ",x))
     chr_seg<-segment_CBScs(Y = dat,
     Yhat = as.data.frame(scope$Yhat),
     sampname = colnames(dat),
-    ref = ref,
+    ref = makeGRangesFromDataFrame(ref),
     chr = x,
-    mode = "integer", max.ns = 2)
+    mode = "integer", max.ns = ns)
     return(chr_seg)
 }
 
@@ -1113,7 +1117,29 @@ segment_cs<-list()
 segment_cs<-mclapply(chrs,FUN=chr_cbs,mc.cores=25)
 names(segment_cs) <- chrs #mclapply returns jobs in same order as specified
 
-saveRDS(segment_cs,"scope_segmentcs_clade_50kb.rds")
+#saveRDS(segment_cs,"scope_segmentcs_clade_50kb.rds")
+#saveRDS(segment_cs,"scope_segmentcs_clade_100kb.ns1.rds")
+saveRDS(segment_cs,"scope_segmentcs_clade_50kb.ns1.rds")
+segment_cs<-readRDS("scope_segmentcs_clade_50kb.ns1.rds")
+
+qcObj<-readRDS("scope_qcObj.1mb.rds")
+ploidy<-readRDS("scope_ploidy.gini.1mb.rds")
+norm_index<-which(grepl("gm12878",colnames(qcObj$Y)))
+normObj<-readRDS("scope_noKnorm.gini.1mb.rds")
+
+# #Normalize with Latent Factors
+# normObj.scope <- normalize_scope_foreach(
+#     Y_qc = dat,
+#     gc_qc = as.data.frame(ref)$gc,
+#     K = 1,
+#     ploidyInt = unlist(clade_ploidy),
+#     norm_index = 6,
+#     T = 1:6,
+#     beta0 = normObj$beta.hat)
+    
+# saveRDS(normObj.scope,"scope_normforeach.50kb.rds")
+
+#saveRDS(segment_cs,"scope_segmentcs_clade_50kb.ns6.rds")
 segment_cs<-readRDS("scope_segmentcs_clade_50kb.rds")
 
 #remove chrY, it failed because the read count is low
@@ -1129,15 +1155,14 @@ iCN[which(iCN>5,arr.ind=T)]<-5
 iCN<-as.data.frame(t(iCN))
 
 
-```
+iCN<-iCN[1:6,]
 
-Final plotting of segmentation across genome.
 
-```R
 library(ggplot2)
 library(patchwork)
 library(reshape2)
 
+image.orig<-NULL
 image.orig <- do.call(rbind, lapply(segment_cs, function(z){names(z)}))
 image.orig <- do.call(rbind, lapply(segment_cs, function(z){z[["image.orig"]]}))
 row.names(image.orig)<-paste(bin_loci$seqnames,bin_loci$start,bin_loci$end,sep="_")
@@ -1149,7 +1174,7 @@ plt_melt<-plt_melt[,c(1,2,3,6)]
 colnames(plt_melt)<-c("clade","copy","gloc","state")
 plt_melt$row_order<-1:nrow(bin_loci)
 
-cols<-c("0"="#2166ac", "1"="#67a9cf", "2"="#f5f5f5","3"="#fddbc7","4"="#ef8a62","5"="#b2182b")
+cols<-c("0"="#2166ac", "1"="#d0e7f5", "2"="#f5f5f5","3"="#fddbc7","4"="#ef8a62","5"="#b2182b")
 #plot bins for a cell across a chromosome
 
 range_gc<-quantile(plt_melt$copy, na.rm = TRUE, prob = c(0.05,0.95))
@@ -1178,59 +1203,32 @@ plt_melt<-rbind(plt_melt,plt_melt_6)
 library(ggrepel)
 
 cols_clade<-c("na"="grey","clade_1"="#cccc99","clade_2"="#ffcc33","clade_3"="#ff99cc","clade_4"="#ff9966","clade_5"="#66cc99","clade_6"="#cccccc")
-plt<-ggplot(plt_melt,aes(x=row_order,y=(2^copy),label=gene))+
-geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=4,alpha=0.01))+scale_fill_manual(values=cols)+
-geom_point(aes(color = as.factor(clade)),size=2,alpha=1)+scale_color_manual(values=cols_clade)+ylab("")+xlab("")+
+
+plt<-ggplot(plt_melt,aes(x=row_order,y=(2^(copy)),label=gene))+
+geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=6,alpha=0.01))+
+scale_fill_manual(values=cols)+
+#geom_hline(yintercept=c(0,1,2,3,4,5),linetype="dashed")+
+geom_point(color="black",size=1,alpha=0.2)+
+scale_color_manual(values=cols_clade)+
+ylab("")+
+xlab("")+
 geom_text_repel(size=20,y=1,nudge_y= 2, direction="x",angle= 90, hjust= 0,segment.size = 2,max.iter = 1e4,min.segment.length=0)+
-facet_grid(plt_melt$clade~plt_melt$contig,space="free",scales="free_x")+theme_bw()+scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,4))+
-theme(axis.text.y = element_text(size=50),axis.text.x = element_blank(), panel.grid.minor = element_blank(),panel.grid.major = element_blank(),panel.spacing.x=unit(0.1,"lines"),strip.background = element_blank(), strip.text = element_blank(),legend.position="none",panel.border = element_rect(colour = "black", fill = NA,size=3))
+facet_grid(plt_melt$clade~plt_melt$contig,space="free",scales="free_x")+
+theme_minimal()+
+scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,6))+
+theme(axis.text.y = element_text(size=30),
+    axis.text.x = element_blank(), 
+    panel.grid.minor = element_blank(),
+    #panel.grid.major = element_blank(),
+    panel.spacing.x=unit(0.1,"lines"),
+    strip.background = element_blank(), 
+    strip.text = element_blank(),
+    legend.position="none",
+    panel.border = element_rect(colour = "black", fill = NA,size=3))
 
 
 
-ggsave(plt,file="scope.merged.50kb.final.png",width=2000,height=1000,units="mm",limitsize=F)
-system("slack -F scope.merged.50kb.final.png ryan_todo")
+ggsave(plt,file="scope.merged.50kb.final.final.png",width=2000,height=1000,units="mm",limitsize=F)
+system("slack -F scope.merged.50kb.final.final.png ryan_todo")
 
-write.table(plt_melt,file="SourceData_SuppFig2a.tsv",sep="\t",col.names=T,row.names=F)
-system("slack -F SourceData_SuppFig2a.tsv ryan_todo")
-
-
-#To be loaded into IGV for quick checks around genes
-plt_melt$copy_cor<-2^plt_melt$copy
-outbed<-split(plt_melt[c("contig","start","end","copy_cor")],f=plt_melt$clade)
-lapply(names(outbed), function(x) write.table(outbed[x],file=paste0(x,".bedGraph"),sep="\t",quote=F,col.names=F,row.names=F))
-for(i in names(outbed)){
-    system(paste0("slack -F ",i,".bedGraph"," ryan_todo"))
-}
-#Per chromosome
-chrs <- unique(as.character(seqnames(bambedObj$ref)))
-
-pdac_genes<-as.data.frame(pdac_genes)
-
-#Selected Regions
-for (i in unique(pdac_genes$gene)){
-gene_id<-i
-gene_contig<-as.character(pdac_genes[pdac_genes$gene==gene_id,]$seqnames)
-gene_start<-pdac_genes[pdac_genes$gene==gene_id,]$start
-gene_end<-pdac_genes[pdac_genes$gene==gene_id,]$end
-plt_melt_chr<-plt_melt[(as.character(plt_melt$contig)==gene_contig & plt_melt$start>gene_start-200000 & plt_melt$end<gene_end+200000),] 
-plt<-ggplot(plt_melt_chr,aes(x=row_order,y=(2^copy),label=gene))+
-geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=6,alpha=0.05))+scale_fill_manual(values=cols)+
-geom_point(aes(color = as.factor(clade)),size=0.5,alpha=0.5)+scale_color_manual(values=cols_clade)+
-geom_text_repel(size=1,y=1,nudge_y= 2, direction="x",angle= 90, hjust= 0,segment.size = 0.2,max.iter = 1e4,min.segment.length=0)+
-facet_grid(plt_melt_chr$clade~plt_melt_chr$contig,space="free",scales="free_x")+theme_bw()+scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,6))+
-theme(axis.text.y = element_text(size=5),  axis.text.x = element_blank(), panel.grid.minor = element_blank(),panel.grid.major = element_blank(),panel.spacing.x=unit(0.1,"lines"))
-
-ggsave(plt,file=paste0("scope.merged.50kb.",i,"final.png"),width=100,height=100,units="mm")
-system(paste0("slack -F ","scope.merged.50kb.",i,"final.png"," ryan_todo"))
-
-#Making another track to plot PDAC linked genes
-pdac_genes<-read.table("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/pdac_gene.bed",header=F)
-colnames(pdac_genes)<-c("chr","start","end","gene")
-pdac_genes<-pdac_genes[pdac_genes$gene %in% gene_id,]
-pdac_genes<-makeGRangesFromDataFrame(pdac_genes,keep.extra.columns=T)
-pdac_genes_idx<-as.data.frame(findOverlaps(pdac_genes,makeGRangesFromDataFrame(ref))) #overlap GRanges for plotting consistent matrix bins
-dat[pdac_genes_idx$subjectHits,]
-}
 ```
-
-{% endcapture %} {% include details.html %} 
