@@ -831,8 +831,8 @@ sc_dom: domain boundaries in each single cell indicated by a binary matrix.
 dom_prob: domain boundary frequency in each cluster with the same order as in celltypelist.
 bins: The tested bins, since the bins with 0.0 or 1.0 domain frequency in any of the clusters were not tested.
 pvalue: The p-value of each bin in bins.
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```python
 import time
@@ -1297,5 +1297,4 @@ loaded via a namespace (and not attached):
 [95] openssl_1.4.3               munsell_0.5.0
 [97] askpass_1.1
 ```
-
 {% endcapture %} {% include details.html %} 

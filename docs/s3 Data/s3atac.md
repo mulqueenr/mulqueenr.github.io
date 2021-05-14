@@ -3081,7 +3081,7 @@ out_data<-lapply(integration.files,function(i){
   	write.table(dat_out,file="SourceData_Fig2i.tsv",sep="\t",quote=F,row.names=F)
 	system("slack -F SourceData_Fig2i.tsv ryan_todo")
 ```
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+{% endcapture %} {% include details.html %} 
 
 
 ## Public Data RNA Comparison
