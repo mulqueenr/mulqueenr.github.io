@@ -1924,7 +1924,7 @@ for i in $celltype ; do convert `echo hg38_${i}_*geneactivity.pdf` markerset_hg8
 ```
 {% endcapture %} {% include details.html %} 
 
-# Differential Accessibillity on Clusters
+## Differential Accessibillity on Clusters
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
