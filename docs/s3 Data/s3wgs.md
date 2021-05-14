@@ -359,7 +359,7 @@ normObj<-readRDS("scope_noKnorm.gini.500kb.rds")
 normObj.scope.gini <- normalize_scope_foreach(
 	Y_qc = qcObj$Y,
 	gc_qc = qcObj$ref$gc,
-	K = 1,
+	K = 5,
 	ploidyInt = ploidy,
 	norm_index = norm_index,
 	T = 1:6,
@@ -369,189 +369,180 @@ saveRDS(normObj.scope.gini,"scope_normforeach.gini.500kb.rds")
 ```
 {% endcapture %} {% include details.html %} 
 
-## Perform segmentation across chromosomes.
+## Generate final segmentation plots.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
-library(SCOPE)
 
+#Clustering and plotting
+library(ComplexHeatmap)
+library(circlize)
+library(dplyr)
+library(philentropy)
+library(ape)
+library(ggdendro)
+library(dendextend)
+library(rpart)
+library(cluster)
+library(parallel)
+library(SCOPE)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
+
+
+#Apriori Ploidy Estimate
+annot<-read.table("s3wgs_gcc.cellsummary.txt")
+qcObj<-readRDS("scope_qcObj.500kb.rds")
+
+#Set up apriori ploidy estimate
+apriori_ploidy<-data.frame(sample=annot[match(qcObj$sampname, annot$cellID),]$sample, ploidy=c(2))
+apriori_ploidy[apriori_ploidy$sample=="crc4442",]$ploidy<-2.6 #4442 ploidy of 2.6 from karyotyping
+apriori_ploidy[apriori_ploidy$sample=="crc4671",]$ploidy<-2.6 #4671 ploidy of 2.6 from karyotyping
+saveRDS(apriori_ploidy,"scope_ploidy.apriori.500kb.rds")
+apriori_ploidy<-readRDS("scope_ploidy.apriori.500kb.rds")
+
+norm_index<-which(apriori_ploidy$sample=="gm12878") #effectively gm12878 cells
+
+# first-pass CODEX2 run with no latent factors
+normObj<- normalize_codex2_ns_noK(Y_qc = qcObj$Y, gc_qc = qcObj$ref$gc, norm_index = norm_index)
+saveRDS(normObj,"scope_noKnorm.500kb.rds")
+normObj<-readRDS("scope_noKnorm.500kb.rds")
+
+#Performing normalization via a priori euploid states
+#Normalize with 5 Latent Factors
+normObj.scope <- normalize_scope_foreach(Y_qc = qcObj$Y,gc_qc = qcObj$ref$gc,
+    K = 5,ploidyInt = apriori_ploidy$ploidy,
+    norm_index = norm_index,T = 1:6,beta0 = normObj$beta.hat,minCountQC=20,nCores=30)
+saveRDS(normObj.scope,"scope_normforeach.500kb_k5.rds") #K=5,ploidyInt = apriori_ploidy, norm_index=gm12878, 
+normObj.scope<-readRDS("scope_normforeach.500kb_k5.rds")
 
 #Perform CBS
-chr_cbs <- function(x,scope=normObj.scope.gini) {
+chr_cbs <- function(x,scope=normObj.scope) {
     print(paste("Running for ",x))
     chr_seg<-segment_CBScs(Y = qcObj$Y,
     Yhat = as.data.frame(scope$Yhat[[which.max(scope$BIC)]]),
     sampname = colnames(qcObj$Y),
     ref = qcObj$ref,
     chr = x,
-    mode = "integer", max.ns = 1)
+    mode = "integer", max.ns = 2)
     return(chr_seg)
 }
 
-###Processing gini index strategy
-    #Read in files generated above
-    qcObj<-readRDS("scope_qcObj.500kb.rds")
-    ploidy<-readRDS("scope_ploidy.gini.500kb.rds")
-    norm_index<-head(order(Gini),n=20) #grabbing 20 cells lowest on gini index
-    normObj.scope.gini<-readRDS("scope_normforeach.gini.50kb.rds")
+#Running CBS segmentation on 500kb windows (gini ploidy estimates)
+chrs <- unique(as.character(seqnames(qcObj$ref)))
+segment_cs <- vector('list',length = length(chrs))
+names(segment_cs) <- chrs
 
-    #Running CBS segmentation on 500kb windows (gini ploidy estimates)
-    chrs <- unique(as.character(seqnames(qcObj$ref)))
-    segment_cs <- vector('list',length = length(chrs))
-    names(segment_cs) <- chrs
+segment_cs<-list()
+segment_cs<-mclapply(chrs,FUN=chr_cbs,mc.cores=length(chrs))
+names(segment_cs) <- chrs #mclapply returns jobs in same order as specified
+saveRDS(segment_cs,"scope_segmentcs.500kb_k5.ns2.rds") #ns 2
+segment_cs<-readRDS("scope_segmentcs.500kb_k5.ns2.rds") #ns 2
 
-    segment_cs<-list()
-    segment_cs<-mclapply(chrs,FUN=chr_cbs,mc.cores=length(chrs))
-    names(segment_cs) <- chrs #mclapply returns jobs in same order as specified
-    saveRDS(segment_cs,"scope_segmentcs.gini.500kb.rds")
-```
-{% endcapture %} {% include details.html %} 
+#Plot raw reads
+Y <- as.data.frame(qcObj$Y)
+Y<-as.data.frame(Y %>% mutate_all(., ~ ifelse(.!=0, log10(.+0.00000000001), log10(1))))
+row.names(Y)<-row.names(qcObj$Y)
+Y<-as.data.frame(t(Y))
 
-## Generate final segmentation plots.
+#Plot normalized reads
+Yhat = as.data.frame(normObj.scope$Yhat[[which.max(normObj.scope$BIC)]])
+Yhat<-as.data.frame(Yhat %>% mutate_all(., ~ ifelse(.!=0, log10(.+0.00000000001), log10(1))))
+colnames(Yhat)<-qcObj$sampname
+row.names(Yhat)<-row.names(qcObj$Y)
+Yhat<-as.data.frame(t(Yhat))
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+col_fun_reads_raw=colorRamp2(quantile(unlist(Y),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
+c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
+col_fun_reads_normalized=colorRamp2(quantile(unlist(Yhat),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
+c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
 
-```R
-library(SCOPE)
-library(ComplexHeatmap)
-library(dplyr)
-library(ape)
-library(RColorBrewer)
-library(reshape2)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
+#Set up bins for plotting
+bin_loci<-data.frame(qcObj$ref)
+bin_loci$bin_name<-row.names(bin_loci)
+bin_loci_subject<-makeGRangesFromDataFrame(bin_loci,keep.extra.columns=T)
+iCN <- do.call(rbind, lapply(segment_cs, function(z){names(z)}))
+iCN <- do.call(rbind, lapply(segment_cs, function(z){z[["iCN"]]}))
+row.names(iCN)<-paste(bin_loci$seqnames,bin_loci$start,bin_loci$end,sep="_")
+iCN[which(iCN>5,arr.ind=T)]<-5 #limit copy number amplification to 5+
+iCN<-as.data.frame(t(iCN))
+col_fun_iCN = structure(c("#67a9cf","#d1e5f0","#f7f7f7","#fddbc7","#ef8a62","#b2182b"), names = c("0","1", "2", "3", "4", "5"))
 
-#PDAC common mutated genes 
-pdac_genes<-read.table("/home/groups/oroaklab/adey_lab/projects/sciWGS/200422_SearsCRCData/TCGA_PDAC_genes.txt")
-colnames(pdac_genes)<-c("gene","chr","start","end")
-pdac_genes<-makeGRangesFromDataFrame(pdac_genes,keep.extra.columns=T)
+#Set up clustering of cells
+x<-iCN
+x[which(x>2,arr.ind=T)]<-3
+x[which(x<2,arr.ind=T)]<-1 #categorize copy numer data to account for ploidy changes
+dist_method="jaccard"
+dist_x<-philentropy::distance(x,method=dist_method,as.dist.obj=T,use.row.names=T)
+#dist_x<-as.dist(cor(t(x),method=dist_method))
+dend <- dist_x %>%  hclust(method="ward.D") %>% as.dendrogram(edge.root=F,h=3) 
+k_search<-find_k(dend,krange=6:12)
+k_clus_number<-k_search$nc
+k_clus_id<-k_search$pamobject$clustering
+dend <- color_branches(dend, k = k_clus_number)    #split breakpoint object by clusters
 
-#Sample information
-cell_info<-read.table("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data/s3wgs_gcc.annot",header=T)
+#Perform k=3 clustering as well
+k_search_3<-find_k(dend,krange=3)
+k_clus_number_3<-k_search_3$nc
+k_clus_id_3<-k_search_3$pamobject$clustering
 
-###Processing gini index strategy
-    #Read in files generated above
-    qcObj<-readRDS("scope_qcObj.500kb.rds")
-    segment_cs<-readRDS("scope_segmentcs.gini.500kb.rds")
+saveRDS(dend,"scope_segmentcs.500kb_k2.maxns2.dendrogram.rds")
+saveRDS(k_clus_id,"scope_segmentcs.500kb_k2.maxns2.clusterID.rds")
+saveRDS(k_clus_id_3,"scope_segmentcs.500kb_k2.maxns2.clus3.clusterID.rds")
 
-#Inferred Copy Number 500kb
-    bin_loci<-data.frame(qcObj$ref)
-    bin_loci$bin_name<-row.names(bin_loci)
-    bin_loci_subject<-makeGRangesFromDataFrame(bin_loci,keep.extra.columns=T)
+annot<-read.table("s3wgs_gcc.cellsummary.txt")
+assay_annot<-annot$assay
+sample_annot<-annot$sample
+cluster_id<-as.factor(as.character(k_clus_id[match(annot$cellID,names(k_clus_id))]))
+cluster_id_3<-as.factor(as.character(k_clus_id_3[match(annot$cellID,names(k_clus_id_3))]))
 
-    chrs <- unique(as.character(seqnames(qcObj$ref)))
-    iCN <- do.call(rbind, lapply(segment_cs, function(z){z[["iCN"]]}))
-    row.names(iCN)<-paste(bin_loci$seqnames,bin_loci$start,bin_loci$end,sep="_")
+    #Read count raw
+    plt1<-Heatmap(Y,
+        show_row_names=F,
+        show_column_names=F,
+        column_order=1:ncol(Y),
+        cluster_rows=dend,
+        column_split=factor(unlist(lapply(strsplit(colnames(Y),":"),"[",1)),levels=unique(unlist(lapply(strsplit(colnames(Y),":"),"[",1)))),
+        col=col_fun_reads_raw,
+        row_title="Raw read count",
+        name="Log10 Reads",
+        left_annotation=rowAnnotation(assay=assay_annot,sample=sample_annot))
+
+    #Read count corrected
+    plt2<-Heatmap(Yhat,
+        show_row_names=F,
+        show_column_names=F,
+        column_order=1:ncol(Yhat),
+        cluster_rows=dend,
+        column_split=factor(unlist(lapply(strsplit(colnames(Yhat),":"),"[",1)),levels=unique(unlist(lapply(strsplit(colnames(Yhat),":"),"[",1)))),
+        col=col_fun_reads_normalized,
+        row_title="Normalized read count",
+        name="Log10 Reads",
+        left_annotation=rowAnnotation(assay=assay_annot,sample=sample_annot))
 
 
-#Breakpoint data from 500kb bins
-   bin_loci<-data.frame(qcObj$ref)
-    bin_loci$bin_name<-row.names(bin_loci)
+    plt3<-Heatmap(iCN,
+        show_row_names=F,
+        show_column_names=F,
+        column_order=1:ncol(iCN),
+        cluster_rows=dend,
+        column_split=factor(unlist(lapply(strsplit(colnames(iCN),"_"),"[",1)),levels=unique(unlist(lapply(strsplit(colnames(iCN),"_"),"[",1)))),
+        col=col_fun_iCN,
+        row_title="SCOPE Segmentation",  
+        name="copy_number",
+        left_annotation=rowAnnotation(assay=assay_annot,sample=sample_annot,cluster_3=cluster_id_3,cluster=cluster_id))
 
-    chrs <- unique(as.character(seqnames(qcObj$ref)))
-    breakpoint <-lapply(segment_cs, function(z){z[["finalcall"]]})
-    breakpoint<-do.call("rbind",breakpoint)    
-    breakpoint$chr<-unlist(lapply(strsplit(row.names(breakpoint),"[.]"),"[",1))
-    breakpoint$bin<-paste0(breakpoint$chr,":",
-                           breakpoint$st_bin,"-",
-                           breakpoint$ed_bin)
-    breakpoint<-breakpoint[c("sample_name","chr","bin","cnv_no")]
-    breakpoint<-dcast(breakpoint,sample_name~bin,value.var="cnv_no")
-    #uwot::umap(breakpoint)
-            
-    row.names(breakpoint)<-breakpoint$sample_name
-    breakpoint<-breakpoint[,2:ncol(breakpoint)]
-    breakpoint[which(is.na(breakpoint),arr.ind=T)]<-2
-    breakpoint_nj<-nj(dist(breakpoint,method="canberra"))
-
-#Set up annotations
-    assay_annot<-unlist(lapply(strsplit(breakpoint_nj$tip.label,"_"),"[",1))
-    sample_annot<-unlist(lapply(strsplit(breakpoint_nj$tip.label,"_"),"[",2))
-    annot<-paste(assay_annot,sample_annot)
-    levels(annot)<-unique(annot)
-    annot_colors = as.data.frame(cbind(levels(annot),I(brewer.pal(nlevels(annot),name="Set1"))))
-    
-#    pdf("scope.gini.breakpoint_phylo.pdf",height=20,width=20)
-#    plot.phylo(breakpoint_nj,type="fan",show.tip.label=T,tip.color=annot_colors[match(annot,annot_colors$V1),]$V2)
-#    dev.off()
-#    system("slack -F scope.gini.breakpoint_phylo.pdf ryan_todo")
-
-#Plotting 500kb bins
-    row.names(iCN)<-row.names(qcObj$Y)
-    chr_list<-unlist(lapply(strsplit(row.names(iCN),":"),"[",1))
-
-    cellid_order<-colnames(qcObj$Y)
-    assay_annot<-setNames(cell_info[match(cellid_order,cell_info$cellID),]$assay,colnames(qcObj$Y))
-    sample_annot<-setNames(cell_info[match(cellid_order,cell_info$cellID),]$sample,colnames(qcObj$Y))
-    
-    gene_loc<-as.data.frame(findOverlaps(pdac_genes,bin_loci_subject))
-    gene_names<-as.list(pdac_genes[order(gene_loc$subjectHits),]$gene)
-    gene_loc<-as.list(gene_loc[order(gene_loc$subjectHits),]$subjectHits)
-    gene_annot = columnAnnotation(PDAC_Genes = anno_mark(at = as.numeric(gene_loc), labels = gene_names))
-    column_order<-1:nrow(iCN)
-    library(circlize)
-    col_fun = colorRamp2(c(0,1,2,3,4,5), c("#2166ac", "#67a9cf", "#f7f7f7","#fddbc7","#ef8a62","#b2182b"))
-
-    
-plt<-Heatmap(as.data.frame(t(iCN)),
-    cluster_columns=F,
-    name="copy_number",
-    column_split=factor(chr_list,levels=unique(chr_list)),
-    column_order=column_order,
-    show_row_names=F,
-    left_annotation=rowAnnotation(assay=assay_annot,sample=sample_annot),
-    show_column_names=F,
-    col=col_fun,
-    bottom_annotation=gene_annot,
-    #row_km=3,
-    show_row_den=T,row_dend_side="right",use_raster=T
-)
-
-pdf("scope.gini.CopyNumberHeatmap.500kb.pdf",width=30)
-plt
+pdf("scope_final_scplot.pdf",width=10,height=3)
+par(mfrow=c(3,1))
+#plt1
+#plt2
+plt3
 dev.off()
-system("slack -F scope.gini.CopyNumberHeatmap.500kb.pdf ryan_todo")
 
+system("slack -F scope_final_scplot.pdf ryan_todo")
 
-    
-#Plotting 500kb bins
-    #gcc only
-    iCN_gcc<-iCN[,startsWith(colnames(iCN),"s3gcc")]
-    chr_list<-unlist(lapply(strsplit(row.names(iCN_gcc),":"),"[",1))
-
-    qcObj$Y_gcc<-qcObj$Y[,startsWith(colnames(qcObj$Y),"s3gcc_")]
-    cellid_order<-colnames(qcObj$Y_gcc)
-    assay_annot<-setNames(cell_info[match(cellid_order,cell_info$cellID),]$assay,colnames(qcObj$Y_gcc))
-    sample_annot<-setNames(cell_info[match(cellid_order,cell_info$cellID),]$sample,colnames(qcObj$Y_gcc))
-    
-    gene_loc<-as.data.frame(findOverlaps(pdac_genes,bin_loci_subject))
-    gene_names<-as.list(pdac_genes[order(gene_loc$subjectHits),]$gene)
-    gene_loc<-as.list(gene_loc[order(gene_loc$subjectHits),]$subjectHits)
-    gene_annot = columnAnnotation(PDAC_Genes = anno_mark(at = as.numeric(gene_loc), labels = gene_names))
-    column_order<-1:nrow(iCN_gcc)
-    library(circlize)
-    col_fun = colorRamp2(c(0,1,2,3,4,5), c("#2166ac", "#67a9cf", "#f7f7f7","#fddbc7","#ef8a62","#b2182b"))
-
-    
-plt<-Heatmap(as.data.frame(t(iCN_gcc)),
-    cluster_columns=F,
-    name="copy_number",
-    column_split=factor(chr_list,levels=unique(chr_list)),
-    column_order=column_order,
-    show_row_names=F,
-    left_annotation=rowAnnotation(assay=assay_annot,sample=sample_annot),
-    show_column_names=F,
-    col=col_fun,
-    bottom_annotation=gene_annot,
-    #row_km=3,
-    show_row_den=T,row_dend_side="right",use_raster=T
-)
-
-
-pdf("scope.gini.CopyNumberHeatmap.gcconly.500kb.pdf",width=30)
-plt
-dev.off()
-system("slack -F scope.gini.CopyNumberHeatmap.gcconly.500kb.pdf ryan_todo")
+write.table(iCN,file="SourceData_Fig5b.tsv",sep="\t",row.names=T,quote=F)
+system("slack -F SourceData_Fig5b.tsv ryan_todo")
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -664,93 +655,7 @@ write.table(annot,"s3wgsgcc_cellsummary.500kb.tsv",col.names=T)
 ```
 {% endcapture %} {% include details.html %} 
 
-## Clustering of cells via UMAP
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```R
-library(SCOPE)
-
-normObj<-readRDS("SCOPE_normObj.noK.500kb.rds")
-qcObj<-readRDS("qcObj_coverage_500kb.rds")
-normObj.scope<-readRDS("SCOPE_normObj.scope.k1.500kb.rds")
-
-#cluster by absolute copy number or corrected bins
-Y <- normObj$Y
-Yhat <- as.data.frame(normObj.scope$Yhat[[which.max(normObj.scope$BIC)]])
-alpha_hat<-as.data.frame(normObj.scope$alpha.hat[[which.max(normObj.scope$BIC)]])
-ref <- as.data.frame(qcObj$ref)
-
-row.names(Yhat)<-paste(ref$seqnames,ref$start,ref$end,sep="_")
-colnames(Yhat)<-colnames(Y)
-row.names(alpha_hat)<-paste(ref$seqnames,ref$start,ref$end,sep="_")
-colnames(alpha_hat)<-colnames(Y)
-
-library(dbscan)
-library(patchwork)
-#Clustering cells by normalized read count per bin
-Y_dims<-prcomp(alpha_hat,scale.=F) #PCA dim reduction
-dims<-as.data.frame(uwot::umap(t(Y_dims)[1:10],n_components=2))#just umap the whole thing?
-clus<-dbscan(t(alpha_hat),eps=1)
-dims$clus<-clus$cluster
-dims$cellID<-colnames(alpha_hat)
-dims$cellID_idx<-unlist(lapply(strsplit(dims$cellID,"_"),"[",3))
-dims<-merge(dims,annot,by="cellID_idx")
-plt1<-ggplot(dat=dims,aes(x=V1,y=V2,color=as.factor(paste(assay,sample))))+geom_point()+theme_bw()+ggtitle("PC1 and 2, Experiment")
-plt2<-ggplot(dat=dims,aes(x=V1,y=V2,color=as.factor(paste(clus))))+geom_point()+theme_bw()+ggtitle("PC1 and 2, cluster")
-plt<-plt1+plt2
-ggsave(plt,file="normalized_copynumber_PC.png",width=20)
-system("slack -F normalized_copynumber_PC.png ryan_todo")
-
-var_explained<-data.frame(summary(Y_dims)$importance) #variance explained per PC
-var_explained<-var_explained[3,]
-var_explained<-melt(var_explained)
-var_explained$pc<-1:nrow(var_explained)
-
-plt<-ggplot(dat=var_explained,aes(x=pc,y=value))+geom_point()+theme_bw()+ylim(c(0,1))+xlim(c(1,50))
-ggsave(plt,file="genomic_segment_pca_varexplained.500kb.svg") #plot variance explained
-system("slack -F genomic_segment_pca_varexplained.500kb.svg ryan_todo")
-
-
-#using multiple PCs
-#setting up a umap clustering function to be parallelized
-
-Y_dims<-prcomp(alpha_hat,scale.=F) #PCA dim reduction
-
-
-umap_clus<-function(z){
-Y_pc<-as.data.frame(Y_dims$rotation)[,1:z]
-clus<-dbscan(Y_pc,eps=0.05)
-dims<-as.data.frame(uwot::umap(Y_pc,n_components=2))
-row.names(dims)<-row.names(Y_pc)
-colnames(dims)<-c("x","y")    
-dims$clus<-clus$cluster
-dims$cellID_idx<-unlist(lapply(strsplit(row.names(Y_pc),"_"),"[",3))
-dims<-merge(dims,annot,by="cellID_idx")
-plt1<-ggplot(dat=dims,aes(x=x,y=y,color=as.factor(paste(assay,sample))))+geom_point()+theme_bw()+ggtitle(paste("sample.500kb.PC.",str(z)))
-plt2<-ggplot(dat=dims,aes(x=x,y=y,color=as.factor(paste(clus))))+geom_point()+theme_bw()+ggtitle(paste0("cluster.500kb.PC.",str(z)))
-plt<-plt1+plt2
-return(plt)
-}
-
-library(parallel)
-plt_list<-mclapply(c(5,10,15,20,25,30),FUN=umap_clus,mc.cores=5)
-plt_list<-wrap_plots(plt_list)
-ggsave(plt_list,file="umap_muliplePC_clustering.pdf",height=20,width=30)
-system("slack -F umap_muliplePC_clustering.pdf ryan_todo")
-
-Y_dims<-as.data.frame(uwot::umap(t(Y)))
-row.names(Y_dims)<-colnames(Y)
-Y_dims$cellID<-row.names(Y_dims)
-
-Y_dims<-merge(Y_dims,annot,by="cellID")
-plt<-ggplot(dat=Y_dims,aes(x=V1,y=V2,color=as.factor(experiment)))+geom_point()+theme_bw()
-ggsave(plt,file="genome_segment.umap.500kb.svg") #plot umap projection, honestly this isn't the most rigorous way to do this but I'm curious
-
-```
-{% endcapture %} {% include details.html %} 
-
-Additional complexity plots.
+## Additional complexity plots.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -1043,12 +948,14 @@ for (i in unique(dat_m$sample)){
 ```
 {% endcapture %} {% include details.html %} 
 
-## Combing clades of cell lines for high resolution annotation
+
+## Merging Cells for Clade Analysis and Plotting
+Combing clades of cell lines for high resolution annotation using 50kb windows
+
+First reading in libraries and setting up functions.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
-
 ```R
-#using 50kb windows
 library(SCOPE)
 library(ComplexHeatmap)
 library(circlize)
@@ -1107,7 +1014,11 @@ read_in_reads<-function(i,seq="paired-end"){
     return(Y)
 }
 
+```
 
+Now collating reads to 50kbp regions, normalizing and segmenting genomes.
+
+```R
 #Set up genome masking of duplicated regions and gaps
 # Get segmental duplication regions
 seg.dup <- read.table(system.file("extdata", "GRCh38GenomicSuperDup.tab", package = "WGSmapp"))
@@ -1124,10 +1035,8 @@ mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
 annot<-read.table("s3wgs_gcc.cellsummary.txt")
 resol=50
 bambedObj<-prepare_bam_bed_obj(resol=50) #500 is 500kbp
-saveRDS(bambedObj,"bambedObj.50kbp.rds")
-
-#saveRDS(bambedObj,file="bambedObj.50kbp.rds")
-bambedObj<-readRDS("bambedObj.50kbp.rds")
+saveRDS(bambedObj,file="bambedObj.50kbp.rds")
+bambedObj<-readRDS(file="bambedObj.50kbp.rds")
 ref <- bambedObj$ref
 bamdir <- bambedObj$bamdir
 sampname <- bambedObj$sampname
@@ -1138,10 +1047,8 @@ Y<-do.call("cbind",Y_out)
 colnames(Y)<-sampname
 ref<-as.data.frame(ref)
 row.names(Y)<-paste0(ref$seqnames,":",ref$start,"_",ref$end)
-#saveRDS(Y,file="rawcount.100kbp.rds")
-#saveRDS(Y,file="rawcount.50kbp.rds")
+saveRDS(Y,file="rawcount.50kbp.rds")
 Y<-readRDS(file="rawcount.50kbp.rds")
-
 
 #Apriori Ploidy Estimate
 annot<-read.table("s3wgs_gcc.cellsummary.txt")
@@ -1163,7 +1070,7 @@ for (i in unique(k_clus_id)){
 clade_dat<-list()
 for (i in unique(k_clus_id)){
     clade<-names(k_clus_id[k_clus_id==i])
-    clade_combined<-rowMeans(Y[,colnames(Y) %in% clade],na.rm=T)
+    clade_combined<-rowSums(Y[,colnames(Y) %in% clade])
     clade_dat[[paste0("clade_",i)]]<-clade_combined
 }
 
@@ -1180,25 +1087,21 @@ clade_ploidy[[paste0("clade_",i)]]<-median(ploidy[colnames(Y) %in% clade],na.rm=
 clade_ploidy
 
 #manually filter bins for mappability and gc content (using the scope defaults)
-ref<-as.data.frame(ref)
+dat<-dat[ref$mapp>0.9 & ref$gc>=20 & ref$gc<=80,]
 ref<-ref[ref$mapp>0.9 & ref$gc>=20 & ref$gc<=80,]
-dat<-dat[paste0(ref$seqnames,":",ref$start,"_",ref$end),]
 
 #normalize clade data, clade 6 contains most gm12878 cells and is considered the normal index
 normObj<- normalize_codex2_ns_noK(Y_qc = dat, gc_qc = ref$gc, norm_index = 6)
-saveRDS(normObj,"scope.50kb.normalizedobj.mean.rds")
-normObj<-readRDS("scope.50kb.normalizedobj.mean.rds")
 
-
-#Perform CBS originally run with ns=2
-chr_cbs <- function(x,scope=normObj,ns=1) {
+#Perform CBS
+chr_cbs <- function(x,scope=normObj) {
     print(paste("Running for ",x))
     chr_seg<-segment_CBScs(Y = dat,
     Yhat = as.data.frame(scope$Yhat),
     sampname = colnames(dat),
-    ref = makeGRangesFromDataFrame(ref),
+    ref = ref,
     chr = x,
-    mode = "integer", max.ns = ns)
+    mode = "integer", max.ns = 2)
     return(chr_seg)
 }
 
@@ -1210,15 +1113,7 @@ segment_cs<-list()
 segment_cs<-mclapply(chrs,FUN=chr_cbs,mc.cores=25)
 names(segment_cs) <- chrs #mclapply returns jobs in same order as specified
 
-saveRDS(segment_cs,"scope_segmentcs_clade_50kb.ns1.rds")
-segment_cs<-readRDS("scope_segmentcs_clade_50kb.rds")
-
-qcObj<-readRDS("scope_qcObj.500kb.rds")
-ploidy<-readRDS("scope_ploidy.gini.500kb.rds")
-norm_index<-which(grepl("gm12878",colnames(qcObj$Y)))
-normObj<-readRDS("scope_noKnorm.gini.500kb.rds")
-
-#saveRDS(segment_cs,"scope_segmentcs_clade_50kb.ns6.rds")
+saveRDS(segment_cs,"scope_segmentcs_clade_50kb.rds")
 segment_cs<-readRDS("scope_segmentcs_clade_50kb.rds")
 
 #remove chrY, it failed because the read count is low
@@ -1234,14 +1129,15 @@ iCN[which(iCN>5,arr.ind=T)]<-5
 iCN<-as.data.frame(t(iCN))
 
 
-iCN<-iCN[1:6,]
+```
 
+Final plotting of segmentation across genome.
 
+```R
 library(ggplot2)
 library(patchwork)
 library(reshape2)
 
-image.orig<-NULL
 image.orig <- do.call(rbind, lapply(segment_cs, function(z){names(z)}))
 image.orig <- do.call(rbind, lapply(segment_cs, function(z){z[["image.orig"]]}))
 row.names(image.orig)<-paste(bin_loci$seqnames,bin_loci$start,bin_loci$end,sep="_")
@@ -1253,7 +1149,7 @@ plt_melt<-plt_melt[,c(1,2,3,6)]
 colnames(plt_melt)<-c("clade","copy","gloc","state")
 plt_melt$row_order<-1:nrow(bin_loci)
 
-cols<-c("0"="#2166ac", "1"="#d0e7f5", "2"="#f5f5f5","3"="#fddbc7","4"="#ef8a62","5"="#b2182b")
+cols<-c("0"="#2166ac", "1"="#67a9cf", "2"="#f5f5f5","3"="#fddbc7","4"="#ef8a62","5"="#b2182b")
 #plot bins for a cell across a chromosome
 
 range_gc<-quantile(plt_melt$copy, na.rm = TRUE, prob = c(0.05,0.95))
@@ -1282,33 +1178,59 @@ plt_melt<-rbind(plt_melt,plt_melt_6)
 library(ggrepel)
 
 cols_clade<-c("na"="grey","clade_1"="#cccc99","clade_2"="#ffcc33","clade_3"="#ff99cc","clade_4"="#ff9966","clade_5"="#66cc99","clade_6"="#cccccc")
-
-plt<-ggplot(plt_melt,aes(x=row_order,y=(2^(copy)),label=gene))+
-geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=6,alpha=0.01))+
-scale_fill_manual(values=cols)+
-#geom_hline(yintercept=c(0,1,2,3,4,5),linetype="dashed")+
-geom_point(color="black",size=1,alpha=0.2)+
-scale_color_manual(values=cols_clade)+
-ylab("")+
-xlab("")+
+plt<-ggplot(plt_melt,aes(x=row_order,y=(2^copy),label=gene))+
+geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=4,alpha=0.01))+scale_fill_manual(values=cols)+
+geom_point(aes(color = as.factor(clade)),size=2,alpha=1)+scale_color_manual(values=cols_clade)+ylab("")+xlab("")+
 geom_text_repel(size=20,y=1,nudge_y= 2, direction="x",angle= 90, hjust= 0,segment.size = 2,max.iter = 1e4,min.segment.length=0)+
-facet_grid(plt_melt$clade~plt_melt$contig,space="free",scales="free_x")+
-theme_minimal()+
-scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,6))+
-theme(axis.text.y = element_text(size=30),
-    axis.text.x = element_blank(), 
-    panel.grid.minor = element_blank(),
-    #panel.grid.major = element_blank(),
-    panel.spacing.x=unit(0.1,"lines"),
-    strip.background = element_blank(), 
-    strip.text = element_blank(),
-    legend.position="none",
-    panel.border = element_rect(colour = "black", fill = NA,size=3))
+facet_grid(plt_melt$clade~plt_melt$contig,space="free",scales="free_x")+theme_bw()+scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,4))+
+theme(axis.text.y = element_text(size=50),axis.text.x = element_blank(), panel.grid.minor = element_blank(),panel.grid.major = element_blank(),panel.spacing.x=unit(0.1,"lines"),strip.background = element_blank(), strip.text = element_blank(),legend.position="none",panel.border = element_rect(colour = "black", fill = NA,size=3))
 
 
 
-ggsave(plt,file="scope.merged.50kb.final.final.png",width=2000,height=1000,units="mm",limitsize=F)
-system("slack -F scope.merged.50kb.final.final.png ryan_todo")
+ggsave(plt,file="scope.merged.50kb.final.png",width=2000,height=1000,units="mm",limitsize=F)
+system("slack -F scope.merged.50kb.final.png ryan_todo")
 
+write.table(plt_melt,file="SourceData_SuppFig2a.tsv",sep="\t",col.names=T,row.names=F)
+system("slack -F SourceData_SuppFig2a.tsv ryan_todo")
+
+
+#To be loaded into IGV for quick checks around genes
+plt_melt$copy_cor<-2^plt_melt$copy
+outbed<-split(plt_melt[c("contig","start","end","copy_cor")],f=plt_melt$clade)
+lapply(names(outbed), function(x) write.table(outbed[x],file=paste0(x,".bedGraph"),sep="\t",quote=F,col.names=F,row.names=F))
+for(i in names(outbed)){
+    system(paste0("slack -F ",i,".bedGraph"," ryan_todo"))
+}
+#Per chromosome
+chrs <- unique(as.character(seqnames(bambedObj$ref)))
+
+pdac_genes<-as.data.frame(pdac_genes)
+
+#Selected Regions
+for (i in unique(pdac_genes$gene)){
+gene_id<-i
+gene_contig<-as.character(pdac_genes[pdac_genes$gene==gene_id,]$seqnames)
+gene_start<-pdac_genes[pdac_genes$gene==gene_id,]$start
+gene_end<-pdac_genes[pdac_genes$gene==gene_id,]$end
+plt_melt_chr<-plt_melt[(as.character(plt_melt$contig)==gene_contig & plt_melt$start>gene_start-200000 & plt_melt$end<gene_end+200000),] 
+plt<-ggplot(plt_melt_chr,aes(x=row_order,y=(2^copy),label=gene))+
+geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=6,alpha=0.05))+scale_fill_manual(values=cols)+
+geom_point(aes(color = as.factor(clade)),size=0.5,alpha=0.5)+scale_color_manual(values=cols_clade)+
+geom_text_repel(size=1,y=1,nudge_y= 2, direction="x",angle= 90, hjust= 0,segment.size = 0.2,max.iter = 1e4,min.segment.length=0)+
+facet_grid(plt_melt_chr$clade~plt_melt_chr$contig,space="free",scales="free_x")+theme_bw()+scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,6))+
+theme(axis.text.y = element_text(size=5),  axis.text.x = element_blank(), panel.grid.minor = element_blank(),panel.grid.major = element_blank(),panel.spacing.x=unit(0.1,"lines"))
+
+ggsave(plt,file=paste0("scope.merged.50kb.",i,"final.png"),width=100,height=100,units="mm")
+system(paste0("slack -F ","scope.merged.50kb.",i,"final.png"," ryan_todo"))
+
+#Making another track to plot PDAC linked genes
+pdac_genes<-read.table("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/pdac_gene.bed",header=F)
+colnames(pdac_genes)<-c("chr","start","end","gene")
+pdac_genes<-pdac_genes[pdac_genes$gene %in% gene_id,]
+pdac_genes<-makeGRangesFromDataFrame(pdac_genes,keep.extra.columns=T)
+pdac_genes_idx<-as.data.frame(findOverlaps(pdac_genes,makeGRangesFromDataFrame(ref))) #overlap GRanges for plotting consistent matrix bins
+dat[pdac_genes_idx$subjectHits,]
+}
 ```
+
 {% endcapture %} {% include details.html %} 

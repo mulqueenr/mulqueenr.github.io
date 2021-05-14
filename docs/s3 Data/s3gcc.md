@@ -771,6 +771,47 @@ plot_singlechr<-function(x){
 }
 
 lapply(files_in,plot_singlechr)
+
+#writing out SourceData
+out_source<-lapply(c("CRC-4442CRC-4671_GCC_H_GGTTAGTTAAGATCAGTTCCTGTT_chr16.txt","CRC-4442CRC-4671_GCC_H_ATTGAGGATGACGCGATAATACAG_chr16.txt","CRC-4442CRC-4671_GCC_H_ATTGAGGACCTGCGTACAGTAGGC_chr16.txt"), function(x){
+    name_out<-paste0(basename(x),".inter.hic.pdf")
+    dat<-read.table(x,head=F,sep="\t")
+    dat$V1<-dat$V1+1 #make it start counting at 1 rather than 0
+    dat$V2<-dat$V2+1
+
+    for (i in 1:nrow(dat)){
+        if (dat[i,]$V2 < dat[i,]$V1) {
+            temp<-dat[i,]$V1
+            dat[i,]$V1 <- dat[i,]$V2
+            dat[i,]$V2 <- temp
+            } 
+    }
+    #create all the country combinations
+    df <- expand.grid(1:max(dat$V1,dat$V2), 1:max(dat$V1,dat$V2))
+    #change names
+    colnames(df) <- c('V1', 'V2')
+    #add a value of 0 for the new combinations (won't affect outcome)
+    df$V3 <- 0
+    #row bind with original dataset
+    df <- rbind(df, dat)
+    dat_cast<-as.data.frame(xtabs( V3 ~ V1 + V2, aggregate(V3~V1+V2,df,sum)))
+    dat_out<-dat_cast
+    dat_out$cellID<-basename(x)
+    dat_cast<-dcast(data=dat_cast,formula=V1~V2,value.var="Freq",fun.aggregate=sum)
+    dat_cast<-dat_cast[2:ncol(dat_cast)]
+    plt<-Heatmap(dat_cast,column_order=1:ncol(dat_cast),row_order=1:nrow(dat_cast),col=c("white","red"))
+    pdf(name_out)
+    print(plt)
+    dev.off()
+    system(paste0("slack -F ",name_out," ryan_todo"))#}
+    return(dat_out)
+    })
+
+out_source<-do.call("rbind",out_source)
+out_source$cellid<-unlist(lapply(strsplit(out_source$cellID,"_"),"[",4))
+out_source$chr<-unlist(lapply(strsplit(out_source$cellID,"_"),"[",5))
+write.table(out_source,file="SourceData_Fig5c.txt",sep="\t",row.names=F,quote=F)
+system("slack -F SourceData_Fig5c.txt ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 

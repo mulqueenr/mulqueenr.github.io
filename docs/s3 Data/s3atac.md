@@ -133,6 +133,8 @@ posttag_by_cellspassed<-nrow(dat[dat$i7_sample_designation =="equimolar_posttag_
 library(ggplot2)
 plt<-ggplot(dat[dat$i7_sample_designation =="equimolar_tagment_mix",],aes(x=hg38_q20,y=mm10_q20,color=as.factor(species_call)))+geom_point()+xlab("hg38 Reads")+ylab("mm10 Reads")+theme_bw()
 ggsave(plt,file="truebarnyard_readcount.pdf")
+write.table(dat[dat$i7_sample_designation =="equimolar_tagment_mix",c("hg38_q20","mm10_q20","species_call")],file="SourceData_Fig2b.tsv",sep="\t",quote=F)
+system("slack -F SourceData_Fig2b.tsv ryan_todo")
 
 plt<-ggplot(dat[dat$i7_sample_designation =="equimolar_tagment_mix",],aes(x=perc_human))+geom_histogram(bins=100)+xlab("Percent Human")+ylab("Cells")+theme_bw()
 ggsave(plt,file="truebarnyard_perchuman.pdf")
@@ -140,6 +142,8 @@ ggsave(plt,file="truebarnyard_perchuman.pdf")
 #Post tagmentation barnyard
 plt<-ggplot(dat[dat$i7_sample_designation =="equimolar_posttag_mix",],aes(x=hg38_q20,y=mm10_q20,color=as.factor(species_call)))+geom_point()+xlab("hg38 Reads")+ylab("mm10 Reads")+theme_bw()
 ggsave(plt,file="posttagbarnyard_readcount.pdf")
+write.table(dat[dat$i7_sample_designation =="equimolar_posttag_mix",c("hg38_q20","mm10_q20","species_call")],file="SourceData_Fig2c.tsv",sep="\t",quote=F)
+system("slack -F SourceData_Fig2c.tsv ryan_todo")
 
 plt<-ggplot(dat[dat$i7_sample_designation =="equimolar_posttag_mix",],aes(x=perc_human))+geom_histogram(bins=100)+xlab("Percent Human")+ylab("Cells")+theme_bw()
 ggsave(plt,file="posttagbarnyard_perchuman.pdf")
@@ -256,7 +260,19 @@ done > ./hg38_projected_reads.txt #change in cellid string slicing to account fo
 #isize distribution
 scitools isize hg38.bbrd.q10.bam &
 scitools isize mm10.bbrd.q10.bam &
+
+ awk 'OFS="\t" {print $1,"hg38"}' hg38.bbrd.q10.isize.values > SourceData_Fig2E.txt
+ awk 'OFS="\t" {print $1,"mm10"}' mm10.bbrd.q10.isize.values >> SourceData_Fig2E.txt
+ sort -k2,2 -k1,1n -T . --parallel=20 SourceData_Fig2E.txt | uniq -c > SourceData_Fig2E.counts.txt
 ```
+
+Going to compress file by making a frequency table instead of just a raw list
+```R
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
+dat<-read.table("SourceData_Fig2E.txt")
+
+```
+
 {% endcapture %} {% include details.html %} 
 
 ## Plotting TSS Enrichment
@@ -276,7 +292,12 @@ mm10_rangeR$species<-"mm10"
 dat<-rbind(hg38_rangeR,mm10_rangeR)
 ggplot(dat,aes(x=distance,y=count))+geom_area()+theme_bw()+facet_grid(species ~. )
 ggsave("s3atac_bulk_TSS.pdf")
+
+write.table(dat[,c("distance","count","species")],file="SourceData_Fig2f.tsv",sep="\t",quote=F,row.names=F)
+system("slack -F SourceData_Fig2f.tsv ryan_todo")
+
 ```
+
 {% endcapture %} {% include details.html %} 
 
 ## Tabix fragment file generation
@@ -711,6 +732,18 @@ clustering_loop<-function(topicmodel,topiccount,seuratobject,genome_name="hg38",
   	ggsave(plt_list_out,file="downsample.mm10.clustering.pdf",height=30,width=30,limitsize=F)
   	system("slack -F downsample.mm10.clustering.pdf ryan_todo")
 
+  	out_data<-lapply(c(hg38_seuratobjects,mm10_seuratobjects), function(i){
+  		obj<-readRDS(i)
+  		subset_amount<-unlist(lapply(strsplit(i,"[.]"),"[",2))
+  		species<-unlist(lapply(strsplit(i,"[.]"),"[",1))
+		dat_out<-cbind(as.data.frame(obj@reductions$umap@cell.embeddings[names(obj$celltype),]),obj$celltype,subset_amount,species)
+		return(dat_out)
+  	})
+
+  	dat_out<-do.call("rbind",out_data)
+  	write.table(dat_out,file="SourceData_SupFig1d.tsv",sep="\t",quote=F,row.names=F)
+	system("slack -F SourceData_SupFig1d.tsv ryan_todo")
+
 
 ```
 {% endcapture %} {% include details.html %} 
@@ -943,14 +976,18 @@ dat_s3_c$assay<-"s3ATAC_Plate_C"
 
 dat_10x<-dat_10x[dat_10x$uniq_reads>=1000,]
 
-dat<-rbind(dat_10x,dat_ren,dat_biorad,dat_sciatac,dat_s3_c)
-dat$assay  = factor(dat$assay, levels=c("snATAC", "10x_scATAC","dscATAC","sciatac","s3ATAC_Plate_C"))
+dat<-rbind(dat_10x,dat_ren,dat_biorad,dat_s3_c) #dat_sciatac
+dat$assay  = factor(dat$assay, levels=c("snATAC", "10x_scATAC","dscATAC","s3ATAC_Plate_C")) #"sciatac",
+
+write.table(dat[,c("assay","uniq_reads")],file="SourceData_Fig2d.tsv",sep="\t",quote=F,row.names=F)
+system("slack -F SourceData_Fig2d.tsv ryan_todo")
 
 library(ggplot2)
 ggplot(dat,aes(x=as.factor(assay),y=log10(uniq_reads),color=as.factor(assay)))+geom_boxplot()+theme_bw()+theme(axis.text.x = element_text(angle = 60, hjust=1))
 ggsave("adultmusbrain_atacprotocol_comparisons.svg")
 ggsave("adultmusbrain_atacprotocol_comparisons.pdf")
 ggsave("adultmusbrain_atacprotocol_comparisons.png")
+system("slack -F adultmusbrain_atacprotocol_comparisons.pdf ryan_todo")
 i="s3ATAC_Plate_C"
 for (j in unique(dat$assay)){
   ttemp<-t.test(dat[dat$assay==i,]$uniq_reads,dat[dat$assay==j,]$uniq_reads,alternative="greater")
@@ -1406,6 +1443,19 @@ mm10_atac <- FindClusters(
 ###save Seurat files
 saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
 saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
+
+
+out_data<-lapply(c("hg38_SeuratObject.Rds","mm10_SeuratObject.Rds"), function(i){
+	obj<-readRDS(i)
+	species<-unlist(lapply(strsplit(i,"_"),"[",1))
+	dat_out<-cbind(as.data.frame(obj@reductions$umap@cell.embeddings[names(obj$celltype),]),obj$celltype,obj$seurat_clusters,species)
+	return(dat_out)
+})
+
+  	dat_out<-do.call("rbind",out_data)
+  	write.table(dat_out,file="SourceData_Fig2h.tsv",sep="\t",quote=F,row.names=F)
+	system("slack -F SourceData_Fig2h.tsv ryan_todo")
+
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -2559,6 +2609,10 @@ dev.off()
 system("slack -F hg38_inhibitory_neuron.genebody.pdf ryan_todo")
 
 
+dat_out<-cbind(as.data.frame(iN@reductions$umap@cell.embeddings[names(iN$final_clusters),]),iN$final_clusters)
+write.table(dat_out,file="SourceData_Fig3a.tsv",sep="\t",quote=F,row.names=F)
+system("slack -F SourceData_Fig3a.tsv ryan_todo")
+
 #Read in cistopic object
 cistopic_object<-readRDS("hg38_inhibitory_neuron_.CisTopicObject.Rds")
 #binarize cistopic to obtain peaks
@@ -2628,9 +2682,11 @@ saveRDS(cistopic_object,"hg38_inhibitory_neuron_.CisTopicObject.processed.Rds")
 system("slack -F hg38_inhibitory_neurons.cisTopic_ChromvarSignature.pdf ryan_todo")
 system("slack -F hg38_inhibitoryNeurons.topic_TFsignatures.txt ryan_todo")
 
+```
 
-####New Session for Topic marker set enrichment####
+New Session for Topic marker set enrichment
 
+```R
 #Plotting markers https://celltypes.brain-map.org/rnaseq/human_m1_10x
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 library(org.Hs.eg.db)
@@ -2728,7 +2784,9 @@ cluster_annot<-setNames(iN@meta.data[match(cellid_order,iN@meta.data$cellID),]$f
 library(circlize)
 col_fun = colorRamp2(c(0,0.3), c("white","red"))
 
-    
+write.table(as.data.frame(cistopic_cell_embeddings),file="SourceData_Fig3c_top.tsv",row.names=T,sep="\t",quote=F)
+system("slack -F SourceData_Fig3c_top.tsv ryan_todo")
+   
 plt<-Heatmap(as.data.frame(cistopic_cell_embeddings),
     cluster_columns=T,
     show_row_names=F,
@@ -2769,8 +2827,12 @@ plt<-wrap_plots(plt2,plt3,ncol=1)
 ggsave(plt,file="hg38_inhibitory_neuron_gsea.pdf")
 system("slack -F hg38_inhibitory_neuron_gsea.pdf ryan_todo") 
     
-    
-    
+gsea_2$level<-"2"
+gsea_3$level<-"3"
+
+write.table(rbind(gsea_2,gsea_3),file="SourceData_Fig3c_bot.tsv",row.names=T,sep="\t",quote=F)
+system("slack -F SourceData_Fig3c_bot.tsv ryan_todo")
+
     
     
     
@@ -2917,7 +2979,106 @@ system("slack -F inhib_markers.pdf ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 
+## Integration across mouse scATAC data sets
+Using Harmony for integration across data sets for mouse brain data.
 
+```R
+setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
+
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Mmusculus.v79)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+library(Matrix)
+library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
+
+mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
+mm10_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+seqlevelsStyle(mm10_annotations) <- 'UCSC'
+genome(mm10_annotations) <- "mm10"
+
+#function to read in sparse matrix format from atac-count
+read_in_sparse<-function(x){ #x is character file prefix followed by .bbrd.q10.500.counts.sparseMatrix.values.gz
+IN<-as.matrix(read.table(paste0(x,".counts.sparseMatrix.values.gz")))
+IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
+COLS<-read.table(paste0(x,".counts.sparseMatrix.cols.gz"))
+colnames(IN)<-COLS$V1
+ROWS<-read.table(paste0(x,".counts.sparseMatrix.rows.gz"))
+row.names(IN)<-ROWS$V1
+writeMM(IN,file=paste0(x,".counts.mtx")) #this is to generate counts matrices in scrublet friendly format
+return(IN)
+}
+
+#tenx
+ours_in_tenx<-read_in_sparse("tenx.bed")
+ours_in_tenx_assay <- CreateChromatinAssay(counts = ours_in_tenx, genome="mm10", min.cells = 0, annotation=mm10_annotations, sep=c("_","_"))
+ours_in_tenx_object <- CreateSeuratObject(counts = ours_in_tenx_assay, assay = "peaks")
+ours_in_tenx_object$tech<-"s3"
+#snatac
+ours_in_snatac<-read_in_sparse("snatac.bed")
+ours_in_snatac_assay <- CreateChromatinAssay(counts = ours_in_snatac, genome="mm10", min.cells = 0, annotation=mm10_annotations, sep=c("_","_"))
+ours_in_snatac_object <- CreateSeuratObject(counts = ours_in_snatac_assay, assay = "peaks")
+ours_in_snatac_object$tech<-"s3"
+#scimap
+ours_in_scimap<-read_in_sparse("scimap.bed")
+ours_in_scimap_assay <- CreateChromatinAssay(counts = ours_in_scimap, genome="mm10", min.cells = 0, annotation=mm10_annotations, sep=c("_","_"))
+ours_in_scimap_object <- CreateSeuratObject(counts = ours_in_scimap_assay, assay = "peaks")
+ours_in_scimap_object$tech<-"s3"
+
+tenx<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/tenx_genomics_adultbrain_fresh_5k.Rds")
+tenx$tech<-"tenx"
+snatac<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/snatac_adultbrain.Rds")
+snatac$tech<-"snatac"
+scimap<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/scimapatac_adultbrain.Rds")
+scimap$tech<-"scimap"
+
+x<-ours_in_scimap_object
+y<-scimap
+
+integration_peaks<-function(x,y,prefix){
+y<-subset(y,features=row.names(x[["peaks"]]@counts))
+unintegrated <- merge(x,y)
+unintegrated <- RunTFIDF(unintegrated)
+unintegrated <- FindTopFeatures(unintegrated, min.cutoff = 50)
+unintegrated <- RunSVD(unintegrated)
+unintegrated <- RunUMAP(unintegrated, reduction = 'lsi', dims = 2:30)
+p1 <- DimPlot(unintegrated, group.by = 'tech', pt.size = 0.1) + ggplot2::ggtitle("Unintegrated")
+saveRDS(unintegrated,paste0(prefix,".unintegrated.Rds"))
+
+hm.integrated <- RunHarmony(object = unintegrated, group.by.vars = 'tech', reduction = 'lsi', assay.use = 'peaks', project.dim = FALSE )
+# re-compute the UMAP using corrected LSI embeddings
+hm.integrated <- RunUMAP(hm.integrated, dims = 2:30, reduction = 'harmony')
+p5 <- DimPlot(hm.integrated, group.by = 'tech', pt.size = 0.1) + ggplot2::ggtitle("Harmony integration")
+plt<-p1 + p5  #+ p2
+ggsave(plt,file=paste0(prefix,"_integration.pdf"))
+system(paste0("slack -F ",paste0(prefix,"_integration.pdf")," ryan_todo"))
+saveRDS(hm.integrated,paste0(prefix,".hm.integrated.Rds"))
+}
+
+integration_peaks(x=ours_in_tenx_object,y=tenx,prefix="ours_in_tenx")
+integration_peaks(x=ours_in_snatac_object,y=snatac,prefix="ours_in_snatac")
+integration_peaks(x=ours_in_scimap_object,y=scimap,prefix="ours_in_scimap")
+
+
+integration.files<-list.files(pattern="hm.integrated.Rds")
+
+out_data<-lapply(integration.files,function(i){
+	outname<-unlist(lapply(strsplit(i,"[.]"),"[",1))
+	obj<-readRDS(i)
+	dat_out<-cbind(as.data.frame(obj@reductions$umap@cell.embeddings[names(obj$tech),]),obj$tech,obj$celltype,outname)
+	return(dat_out)
+	})
+
+
+  	dat_out<-do.call("rbind",out_data)
+  	write.table(dat_out,file="SourceData_Fig2i.tsv",sep="\t",quote=F,row.names=F)
+	system("slack -F SourceData_Fig2i.tsv ryan_todo")
+```
 
 ## Public Data RNA Comparison
 ### Download data from Allen Brain-span
