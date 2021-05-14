@@ -231,7 +231,7 @@ system("slack -F readcount.pdf ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 
-##Using SCOPE to analyze single-cell data on single cell bam directory
+# Using SCOPE to analyze single-cell data on single cell bam directory
 Library used for scWGS data analysis is [SCOPE](https://github.com/rujinwang/SCOPE) available as a [preprint](https://www.biorxiv.org/content/10.1101/594267v1.full). SCOPE works on pre-aligned deduplicated bam files. So I split files post-deduplication into a subdirectory to load in (above).
 
 Using R 4.0.0
@@ -280,7 +280,7 @@ saveRDS(bambedObj,"scope_bambedObj.500kb.rds")
 {% endcapture %} {% include details.html %} 
 
 
-##Quality control of bins and cells via SCOPE
+## Quality control of bins and cells via SCOPE
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -547,7 +547,7 @@ system("slack -F SourceData_Fig5b.tsv ryan_todo")
 ```
 {% endcapture %} {% include details.html %} 
 
-## Coverage uniformity
+# Calculate coverage uniformity
 Next generate MAPD and DIMAPD scores for all cells, using a custom script based on description from this website
 from https://support.10xgenomics.com/single-cell-dna/software/pipelines/latest/interpret/metrics
 
@@ -611,7 +611,7 @@ ggsave(plt,file="mapd_scores.pdf")
 ```
 {% endcapture %} {% include details.html %} 
 
-Generation of a cell summary file.
+## Generation of a cell summary file.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -737,7 +737,7 @@ ggsave(plt,file="s3wgs_complexity_platecellline_boxplot.pdf")
 {% endcapture %} {% include details.html %} 
 
 
-## Merging Cells for Clade Analysis and Plotting
+# Merging Cells for Clade Analysis and Plotting
 Combing clades of cell lines for high resolution annotation using 50kb windows
 
 First reading in libraries and setting up functions, then merging cells by clade and taking mean read count per bin, then segmenting and plotting.
