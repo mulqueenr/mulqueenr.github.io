@@ -736,223 +736,11 @@ ggsave(plt,file="s3wgs_complexity_platecellline_boxplot.pdf")
 ```
 {% endcapture %} {% include details.html %} 
 
-## Now plotting those QC metrics out with ggplot and R
-This is a big old copy and paste script and can probably be parsed down by user defined functions.
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```R
-library(ggplot2)
-library(reshape2)
-###This is all kind of a mess since there is a lot of copy paste code and reassigning the same variable names
-
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200219_s3WGS_CRC_reprocessing/preprocessing")
-
-s3_s3GCC_4442<-read.table("hg38.s3GCC_4442.complexity.txt",header=F,row.names=2)
-colnames(s3_s3GCC_4442)<-c("row_carryover","tot_reads","uniq_reads","perc_uniq")
-s3_s3GCC_4442$sample<-c("4442")
-s3_s3GCC_4442$assay<-c("GCC")
-
-s3_s3GCC_4671<-read.table("hg38.s3GCC_4671.complexity.txt",header=F,row.names=2)
-colnames(s3_s3GCC_4671)<-c("row_carryover","tot_reads","uniq_reads","perc_uniq")
-s3_s3GCC_4671$sample<-c("4671")
-s3_s3GCC_4671$assay<-c("GCC")
-
-s3_s3WGS_4442<-read.table("hg38.s3WGS_4442.complexity.txt",header=F,row.names=2)
-colnames(s3_s3WGS_4442)<-c("row_carryover","tot_reads","uniq_reads","perc_uniq")
-s3_s3WGS_4442$sample<-c("4442")
-s3_s3WGS_4442$assay<-c("WGS")
-
-s3_s3WGS_4671<-read.table("hg38.s3WGS_4671.complexity.txt",header=F,row.names=2)
-colnames(s3_s3WGS_4671)<-c("row_carryover","tot_reads","uniq_reads","perc_uniq")
-s3_s3WGS_4671$sample<-c("4671")
-s3_s3WGS_4671$assay<-c("WGS")
-
-proj_uniq_reads <- function(x,df,proj_perc_num){
-df_temp<-df[df$cellID==x,]
-val<-df_temp[which.min(abs(proj_perc_num-df_temp$proj_perc)),]$proj_uniq
-return(val)
-}
-
-s3_s3GCC_4442_proj<-read.table("./hg38_prefilt.s3GCC.s3GCC_4442.read_projections/cell_projections.txt",header=F)
-colnames(s3_s3GCC_4442_proj)<-c("cellID","proj_depth","proj_tot","proj_uniq","proj_perc")
-s3_s3GCC_4442_proj_est<-data.frame(cellID=unique(s3_s3GCC_4442_proj$cellID),
-uniq_reads_50=unlist(lapply(X=unique(s3_s3GCC_4442_proj$cellID),proj_uniq_reads,df=s3_s3GCC_4442_proj,proj_perc_num=0.5)),
-uniq_reads_95=unlist(lapply(X=unique(s3_s3GCC_4442_proj$cellID),proj_uniq_reads,df=s3_s3GCC_4442_proj,proj_perc_num=0.05)))
-
-s3_s3GCC_4671_proj<-read.table("./hg38_prefilt.s3GCC.s3GCC_4671.read_projections/cell_projections.txt",header=F)
-colnames(s3_s3GCC_4671_proj)<-c("cellID","proj_depth","proj_tot","proj_uniq","proj_perc")
-s3_s3GCC_4671_proj_est<-data.frame(cellID=unique(s3_s3GCC_4671_proj$cellID),
-uniq_reads_50=unlist(lapply(X=unique(s3_s3GCC_4671_proj$cellID),proj_uniq_reads,df=s3_s3GCC_4671_proj,proj_perc_num=0.5)),
-uniq_reads_95=unlist(lapply(X=unique(s3_s3GCC_4671_proj$cellID),proj_uniq_reads,df=s3_s3GCC_4671_proj,proj_perc_num=0.05)))
-
-
-s3_s3WGS_4442_proj<-read.table("./hg38.s3WGS_4442.read_projections/cell_projections.txt",header=F)
-colnames(s3_s3WGS_4442_proj)<-c("cellID","proj_depth","proj_tot","proj_uniq","proj_perc")
-s3_s3WGS_4442_proj_est<-data.frame(cellID=unique(s3_s3WGS_4442_proj$cellID),
-uniq_reads_50=unlist(lapply(X=unique(s3_s3WGS_4442_proj$cellID),proj_uniq_reads,df=s3_s3WGS_4442_proj,proj_perc_num=0.5)),
-uniq_reads_95=unlist(lapply(X=unique(s3_s3WGS_4442_proj$cellID),proj_uniq_reads,df=s3_s3WGS_4442_proj,proj_perc_num=0.05)))
-
-
-s3_s3WGS_4671_proj<-read.table("./hg38_prefilt.s3WGS_4671.read_projections/cell_projections.txt",header=F)
-colnames(s3_s3WGS_4671_proj)<-c("cellID","proj_depth","proj_tot","proj_uniq","proj_perc")
-s3_s3WGS_4671_proj_est<-data.frame(cellID=unique(s3_s3WGS_4671_proj$cellID),
-uniq_reads_50=unlist(lapply(X=unique(s3_s3WGS_4671_proj$cellID),proj_uniq_reads,df=s3_s3WGS_4671_proj,proj_perc_num=0.5)),
-uniq_reads_95=unlist(lapply(X=unique(s3_s3WGS_4671_proj$cellID),proj_uniq_reads,df=s3_s3WGS_4671_proj,proj_perc_num=0.05)))
-
-#Also adding GM12878 to this
-
-
-s3_s3WGS_GM12878<-read.table("/home/groups/oroaklab/adey_lab/projects/sciWGS/191118_sciWG_96plex/191118_sciWG_96plex.complexity.txt",header=F,row.names=2)
-colnames(s3_s3WGS_GM12878)<-c("row_carryover","tot_reads","uniq_reads","perc_uniq")
-s3_s3WGS_GM12878$sample<-c("GM12878")
-s3_s3WGS_GM12878$assay<-c("WGS")
-
-
-s3_s3WGS_GM12878_proj<-read.table("/home/groups/oroaklab/adey_lab/projects/sciWGS/191118_sciWG_96plex/191118_sciWG_96plex.maxPopulation.filt.read_projections/cell_projections.txt",header=F)
-colnames(s3_s3WGS_GM12878_proj)<-c("cellID","proj_depth","proj_tot","proj_uniq","proj_perc")
-s3_s3WGS_GM12878_proj_est<-data.frame(cellID=unique(s3_s3WGS_GM12878_proj$cellID),
-uniq_reads_50=unlist(lapply(X=unique(s3_s3WGS_GM12878_proj$cellID),proj_uniq_reads,df=s3_s3WGS_GM12878_proj,proj_perc_num=0.5)),
-uniq_reads_95=unlist(lapply(X=unique(s3_s3WGS_GM12878_proj$cellID),proj_uniq_reads,df=s3_s3WGS_GM12878_proj,proj_perc_num=0.05)))
-
-#And finally the distal GCC reads
-
-s3_s3GCC_4671_distal<-read.table("hg38.s3GCC_4671.distal.complexity.txt",header=F,row.names=2)
-colnames(s3_s3GCC_4671_distal)<-c("row_carryover","dist_tot_reads","dist_uniq_reads","dist_perc_uniq")
-s3_s3GCC_4671_distal$sample<-c("4671")
-s3_s3GCC_4671_distal$assay<-c("GCC")
-
-s3_s3GCC_4442_distal<-read.table("hg38.s3GCC_4442.distal.complexity.txt",header=F,row.names=2)
-colnames(s3_s3GCC_4442_distal)<-c("row_carryover","dist_tot_reads","dist_uniq_reads","dist_perc_uniq")
-s3_s3GCC_4442_distal$sample<-c("4442")
-s3_s3GCC_4442_distal$assay<-c("GCC")
-
-s3_s3GCC_4671_transchr<-read.table("hg38.s3GCC_4671.transchr.complexity.txt",header=F,row.names=2)
-colnames(s3_s3GCC_4671_transchr)<-c("row_carryover","transchr_tot_reads","transchr_uniq_reads","transchr_perc_uniq")
-s3_s3GCC_4671_transchr$sample<-c("4671")
-s3_s3GCC_4671_transchr$assay<-c("GCC")
-
-s3_s3GCC_4442_transchr<-read.table("hg38.s3GCC_4442.transchr.complexity.txt",header=F,row.names=2)
-colnames(s3_s3GCC_4442_transchr)<-c("row_carryover","transchr_tot_reads","transchr_uniq_reads","transchr_perc_uniq")
-s3_s3GCC_4442_transchr$sample<-c("4442")
-s3_s3GCC_4442_transchr$assay<-c("GCC")
-
-s3_s3GCC_4442_distal_proj<-read.table("./hg38.s3GCC_4442.distal.read_projections/cell_projections.txt",header=F)
-colnames(s3_s3GCC_4442_distal_proj)<-c("cellID","proj_depth","proj_tot","proj_uniq","proj_perc")
-s3_s3GCC_4442_distal_proj_est<-data.frame(cellID=unique(s3_s3GCC_4442_distal_proj$cellID),type=c("distal"),
-dist_uniq_reads_50=unlist(lapply(X=unique(s3_s3GCC_4442_distal_proj$cellID),proj_uniq_reads,df=s3_s3GCC_4442_distal_proj,proj_perc_num=0.5)),
-dist_uniq_reads_95=unlist(lapply(X=unique(s3_s3GCC_4442_distal_proj$cellID),proj_uniq_reads,df=s3_s3GCC_4442_distal_proj,proj_perc_num=0.05)))
-
-s3_s3GCC_4671_distal_proj<-read.table("./hg38.s3GCC_4671.distal.read_projections/cell_projections.txt",header=F)
-colnames(s3_s3GCC_4671_distal_proj)<-c("cellID","proj_depth","proj_tot","proj_uniq","proj_perc")
-s3_s3GCC_4671_distal_proj_est<-data.frame(cellID=unique(s3_s3GCC_4671_distal_proj$cellID),type=c("distal"),
-dist_uniq_reads_50=unlist(lapply(X=unique(s3_s3GCC_4671_distal_proj$cellID),proj_uniq_reads,df=s3_s3GCC_4671_distal_proj,proj_perc_num=0.5)),
-dist_uniq_reads_95=unlist(lapply(X=unique(s3_s3GCC_4671_distal_proj$cellID),proj_uniq_reads,df=s3_s3GCC_4671_distal_proj,proj_perc_num=0.05)))
-
-s3_s3GCC_4442_transchr_proj<-read.table("./hg38.s3GCC_4442.transchr.read_projections/cell_projections.txt",header=F)
-colnames(s3_s3GCC_4442_transchr_proj)<-c("cellID","proj_depth","proj_tot","proj_uniq","proj_perc")
-s3_s3GCC_4442_transchr_proj_est<-data.frame(cellID=unique(s3_s3GCC_4442_transchr_proj$cellID),type=c("transchr"),
-trans_uniq_reads_50=unlist(lapply(X=unique(s3_s3GCC_4442_transchr_proj$cellID),proj_uniq_reads,df=s3_s3GCC_4442_transchr_proj,proj_perc_num=0.5)),
-trans_uniq_reads_95=unlist(lapply(X=unique(s3_s3GCC_4442_transchr_proj$cellID),proj_uniq_reads,df=s3_s3GCC_4442_transchr_proj,proj_perc_num=0.05)))
-
-s3_s3GCC_4671_transchr_proj<-read.table("./hg38.s3GCC_4671.transchr.read_projections/cell_projections.txt",header=F)
-colnames(s3_s3GCC_4671_transchr_proj)<-c("cellID","proj_depth","proj_tot","proj_uniq","proj_perc")
-s3_s3GCC_4671_transchr_proj_est<-data.frame(cellID=unique(s3_s3GCC_4671_transchr_proj$cellID),type=c("transchr"),
-trans_uniq_reads_50=unlist(lapply(X=unique(s3_s3GCC_4671_transchr_proj$cellID),proj_uniq_reads,df=s3_s3GCC_4671_transchr_proj,proj_perc_num=0.5)),
-trans_uniq_reads_95=unlist(lapply(X=unique(s3_s3GCC_4671_transchr_proj$cellID),proj_uniq_reads,df=s3_s3GCC_4671_transchr_proj,proj_perc_num=0.05)))
-
-
-dat<-rbind(s3_s3GCC_4442,s3_s3GCC_4671,s3_s3WGS_4442,s3_s3WGS_4671,s3_s3WGS_GM12878)
-dat_proj<-rbind(s3_s3GCC_4442_proj_est,s3_s3GCC_4671_proj_est,s3_s3WGS_4442_proj_est,s3_s3WGS_4671_proj_est,s3_s3WGS_GM12878_proj_est)
-
-dat$cellID<-row.names(dat)
-dat_m<-merge(dat,dat_proj,by="cellID")
-dat_m<-dat_m[,c("uniq_reads","uniq_reads_50","uniq_reads_95","sample","assay","cellID")]
-dat_m<-dat_m[dat_m$uniq_reads>=100000,]
-
-
-dat_m<-melt(dat_m)
-
-dat_m_wgs<-dat_m[dat_m$assay=="WGS",]
-
-ggplot(dat_m_wgs,aes(x=as.factor(paste(variable,assay,sample)),y=log10(value),color=paste(assay,sample)))+geom_jitter()+geom_boxplot()+theme_bw()
-ggsave(file="s3WGS_projected_complexity.svg")
-
-dat_m_gcc<-dat_m[dat_m$assay=="GCC",]
-
-ggplot(dat_m_gcc,aes(x=as.factor(paste(variable,assay,sample)),y=log10(value),color=as.factor(paste(assay,sample))))+geom_jitter()+geom_boxplot()+theme_bw()
-ggsave(file="s3GCC_projected_complexity.svg")
-
-#And now distal and trans read projections
-
-
-dat<-rbind(s3_s3GCC_4442,s3_s3GCC_4671)
-dat_proj<-rbind(s3_s3GCC_4442_proj_est,s3_s3GCC_4671_proj_est)
-
-dat$cellID<-row.names(dat)
-dat_m<-merge(dat,dat_proj,by="cellID")
-dat_m<-dat_m[,c("uniq_reads","uniq_reads_50","uniq_reads_95","sample","assay","cellID")]
-dat_m<-dat_m[dat_m$uniq_reads>=100000,]
-dat_m_gcc<-dat_m[dat_m$assay=="GCC",]
-
-
-
-dat<-rbind(s3_s3GCC_4671_distal,s3_s3GCC_4442_distal)
-dat_proj<-rbind(s3_s3GCC_4671_distal_proj_est,s3_s3GCC_4442_distal_proj_est)
-
-dat$cellID<-row.names(dat)
-dat_m_dist<-merge(dat,dat_proj,by="cellID") #merge to get cis
-
-dat<-rbind(s3_s3GCC_4442_transchr,s3_s3GCC_4671_transchr)
-dat_proj<-rbind(s3_s3GCC_4671_transchr_proj_est,s3_s3GCC_4442_transchr_proj_est)
-dat$cellID<-row.names(dat)
-dat_m_trans<-merge(dat,dat_proj,by="cellID") #merge to get trans
-
-cell_accepted<-c(row.names(s3_s3GCC_4442[s3_s3GCC_4442$uniq_reads>=100000,]),row.names(s3_s3GCC_4671[s3_s3GCC_4671$uniq_reads>=100000,]))
-dat_m_dist<-dat_m_dist[dat_m_dist$cellID %in% cell_accepted,] #filter distal reads to same cellIDs are unique defined by total reads
-dat_m_trans<-dat_m_trans[dat_m_trans$cellID %in% cell_accepted,] #filter trans reads to same cellIDs are unique defined by total reads
-
-dat_gcc_final<-merge(dat_m_gcc,dat_m_dist,by="cellID")
-dat_gcc_final<-merge(dat_gcc_final,dat_m_trans,by="cellID")
-
-
-dat_gcc_final<-dat_gcc_final[,c("cellID","sample","assay","uniq_reads","uniq_reads_50","uniq_reads_95","dist_tot_reads","dist_uniq_reads","dist_perc_uniq","dist_uniq_reads_50","dist_uniq_reads_95","transchr_tot_reads", "transchr_uniq_reads","transchr_perc_uniq","trans_uniq_reads_50", "trans_uniq_reads_95"  )]
-write.table(dat_gcc_final,file="s3GCC_cellQC.txt",sep="\t",col.names=T,row.names=F,quote=F)
-
-
-dat_gcc_trans<-dat_gcc_final[,c("cellID","sample","assay","uniq_reads","transchr_uniq_reads" )]
-dat_gcc_dist<-dat_gcc_final[,c("cellID","sample","assay","uniq_reads","dist_uniq_reads")]
-
-ggplot(dat_gcc_dist,aes(x=as.factor(paste(assay,sample)),y=dist_uniq_reads/uniq_reads,color=as.factor(paste(assay,sample))))+geom_jitter()+geom_boxplot()+theme_bw()
-ggsave(file="s3GCC_dist_percentreads_complexity.svg")
-
-ggplot(dat_gcc_trans,aes(x=as.factor(paste(assay,sample)),y=transchr_uniq_reads/uniq_reads,color=as.factor(paste(assay,sample))))+geom_jitter()+geom_boxplot()+theme_bw()
-ggsave(file="s3GCC_trans_percentreads_complexity.svg")
-
-dat_gcc_trans<-dat_gcc_final[,c("cellID","sample","assay","transchr_uniq_reads","trans_uniq_reads_50", "trans_uniq_reads_95"  )]
-dat_gcc_dist<-dat_gcc_final[,c("cellID","sample","assay","dist_uniq_reads","dist_perc_uniq","dist_uniq_reads_50","dist_uniq_reads_95"  )]
-
-dat_gcc_dist<-melt(dat_gcc_dist)
-ggplot(dat_gcc_dist,aes(x=as.factor(paste(variable,assay,sample)),y=log10(value),color=as.factor(paste(assay,sample))))+geom_jitter()+geom_boxplot()+theme_bw()
-ggsave(file="s3GCC_dist_projected_complexity.svg")
-
-dat_gcc_trans<-melt(dat_gcc_trans)
-ggplot(dat_gcc_trans,aes(x=as.factor(paste(variable,assay,sample)),y=log10(value),color=as.factor(paste(assay,sample))))+geom_jitter()+geom_boxplot()+theme_bw()
-ggsave(file="s3GCC_trans_projected_complexity.svg")
-
-for (i in unique(dat_m$sample)){
-	print(i)
-	print(nrow(dat_m[dat_m$sample==i,]))
-	print(summary(dat_m[dat_m$sample==i,]$uniq_reads_95))
-}
-
-```
-{% endcapture %} {% include details.html %} 
-
 
 ## Merging Cells for Clade Analysis and Plotting
 Combing clades of cell lines for high resolution annotation using 50kb windows
 
-First reading in libraries and setting up functions.
+First reading in libraries and setting up functions, then merging cells by clade and taking mean read count per bin, then segmenting and plotting.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 ```R
@@ -1014,11 +802,6 @@ read_in_reads<-function(i,seq="paired-end"){
     return(Y)
 }
 
-```
-
-Now collating reads to 50kbp regions, normalizing and segmenting genomes.
-
-```R
 #Set up genome masking of duplicated regions and gaps
 # Get segmental duplication regions
 seg.dup <- read.table(system.file("extdata", "GRCh38GenomicSuperDup.tab", package = "WGSmapp"))
@@ -1122,25 +905,10 @@ names(segment_cs) <- chrs #mclapply returns jobs in same order as specified
 saveRDS(segment_cs,"scope_segmentcs_clade_50kb.ns1.rds")
 segment_cs<-readRDS("scope_segmentcs_clade_50kb.ns1.rds")
 
-qcObj<-readRDS("scope_qcObj.1mb.rds")
-ploidy<-readRDS("scope_ploidy.gini.1mb.rds")
-norm_index<-which(grepl("gm12878",colnames(qcObj$Y)))
-normObj<-readRDS("scope_noKnorm.gini.1mb.rds")
-
-# #Normalize with Latent Factors
-# normObj.scope <- normalize_scope_foreach(
-#     Y_qc = dat,
-#     gc_qc = as.data.frame(ref)$gc,
-#     K = 1,
-#     ploidyInt = unlist(clade_ploidy),
-#     norm_index = 6,
-#     T = 1:6,
-#     beta0 = normObj$beta.hat)
-    
-# saveRDS(normObj.scope,"scope_normforeach.50kb.rds")
-
-#saveRDS(segment_cs,"scope_segmentcs_clade_50kb.ns6.rds")
-segment_cs<-readRDS("scope_segmentcs_clade_50kb.rds")
+#qcObj<-readRDS("scope_qcObj.500kb.rds")
+#ploidy<-readRDS("scope_ploidy.gini.500kb.rds")
+#norm_index<-which(grepl("gm12878",colnames(qcObj$Y)))
+#normObj<-readRDS("scope_noKnorm.gini.500kb.rds")
 
 #remove chrY, it failed because the read count is low
 segment_cs<-segment_cs[1:23]
@@ -1227,8 +995,10 @@ theme(axis.text.y = element_text(size=30),
     panel.border = element_rect(colour = "black", fill = NA,size=3))
 
 
-
 ggsave(plt,file="scope.merged.50kb.final.final.png",width=2000,height=1000,units="mm",limitsize=F)
 system("slack -F scope.merged.50kb.final.final.png ryan_todo")
 
+write.table(plt_melt,file="SourceData_SupFig2a.tsv",sep="\t",col.names=T,row.names=T,quote=F)
+system("slack -F SourceData_SupFig2a.tsv ryan_todo")
 ```
+{% endcapture %} {% include details.html %} 
