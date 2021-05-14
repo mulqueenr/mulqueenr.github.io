@@ -2982,6 +2982,8 @@ system("slack -F inhib_markers.pdf ryan_todo")
 ## Integration across mouse scATAC data sets
 Using Harmony for integration across data sets for mouse brain data.
 
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
 
@@ -3079,6 +3081,8 @@ out_data<-lapply(integration.files,function(i){
   	write.table(dat_out,file="SourceData_Fig2i.tsv",sep="\t",quote=F,row.names=F)
 	system("slack -F SourceData_Fig2i.tsv ryan_todo")
 ```
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 
 ## Public Data RNA Comparison
 ### Download data from Allen Brain-span
@@ -3224,5 +3228,169 @@ brainspan. <- FindVariableFeatures(object = brainspan.,nfeatures = 5000)
 predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10")
 
 
+```
+{% endcapture %} {% include details.html %} 
+
+
+## R Session Info with all packages loaded
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```bash
+R version 4.0.0 (2020-04-24)
+Platform: x86_64-pc-linux-gnu (64-bit)
+Running under: CentOS Linux 7 (Core)
+
+Matrix products: default
+BLAS:   /home/groups/oroaklab/src/R/R-4.0.0/lib/libRblas.so
+LAPACK: /home/groups/oroaklab/src/R/R-4.0.0/lib/libRlapack.so
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C
+
+attached base packages:
+ [1] grid      stats4    parallel  stats     graphics  grDevices utils
+ [8] datasets  methods   base
+
+other attached packages:
+ [1] harmony_1.0
+ [2] Rcpp_1.0.5
+ [3] ComplexHeatmap_2.5.5
+ [4] org.Hs.eg.db_3.12.0
+ [5] TxDb.Hsapiens.UCSC.hg38.knownGene_3.10.0
+ [6] BSgenome.Hsapiens.UCSC.hg38_1.4.3
+ [7] BSgenome_1.57.6
+ [8] rtracklayer_1.49.5
+ [9] Biostrings_2.57.2
+[10] XVector_0.29.3
+[11] TFBSTools_1.27.0
+[12] JASPAR2020_0.99.10
+[13] dplyr_1.0.2
+[14] ggrepel_0.8.2
+[15] cicero_1.3.4.10
+[16] Gviz_1.33.2
+[17] monocle3_0.2.3.0
+[18] SingleCellExperiment_1.11.6
+[19] SummarizedExperiment_1.19.6
+[20] DelayedArray_0.15.7
+[21] matrixStats_0.57.0
+[22] patchwork_1.0.1
+[23] cisTopic_0.3.0
+[24] SeuratWrappers_0.2.0
+[25] Matrix_1.2-18
+[26] EnsDb.Mmusculus.v79_2.99.0
+[27] EnsDb.Hsapiens.v86_2.99.0
+[28] ensembldb_2.13.1
+[29] AnnotationFilter_1.13.0
+[30] GenomicFeatures_1.41.3
+[31] AnnotationDbi_1.51.3
+[32] Biobase_2.49.1
+[33] GenomicRanges_1.41.6
+[34] GenomeInfoDb_1.25.11
+[35] IRanges_2.23.10
+[36] S4Vectors_0.27.12
+[37] BiocGenerics_0.35.4
+[38] Seurat_3.2.1
+[39] Signac_1.1.0
+[40] ggplot2_3.3.2
+[41] reshape2_1.4.4
+
+loaded via a namespace (and not attached):
+  [1] rappdirs_0.3.1              SnowballC_0.7.0
+  [3] GGally_2.0.0                R.methodsS3_1.8.1
+  [5] tidyr_1.1.2                 bit64_4.0.5
+  [7] knitr_1.30                  irlba_2.3.3
+  [9] R.utils_2.10.1              data.table_1.13.0
+ [11] rpart_4.1-15                KEGGREST_1.29.0
+ [13] RCurl_1.98-1.2              generics_0.0.2
+ [15] snow_0.4-3                  RhpcBLASctl_0.20-137
+ [17] cowplot_1.1.0               RSQLite_2.2.1
+ [19] VGAM_1.1-3                  RANN_2.6.1
+ [21] future_1.19.1               bit_4.0.4
+ [23] spatstat.data_1.4-3         httpuv_1.5.4
+ [25] assertthat_0.2.1            DirichletMultinomial_1.31.0
+ [27] viridis_0.5.1               xfun_0.20
+ [29] hms_0.5.3                   promises_1.1.1
+ [31] progress_1.2.2              caTools_1.18.0
+ [33] dbplyr_1.4.4                igraph_1.2.6
+ [35] DBI_1.1.0                   htmlwidgets_1.5.2
+ [37] reshape_0.8.8               feather_0.3.5
+ [39] rsparse_0.4.0               purrr_0.3.4
+ [41] ellipsis_0.3.1              backports_1.2.0
+ [43] annotate_1.67.1             biomaRt_2.45.2
+ [45] deldir_0.1-29               vctrs_0.3.4
+ [47] remotes_2.2.0               ROCR_1.0-11
+ [49] abind_1.4-5                 withr_2.3.0
+ [51] ggforce_0.3.2               checkmate_2.0.0
+ [53] sctransform_0.3             GenomicAlignments_1.25.3
+ [55] prettyunits_1.1.1           goftest_1.2-2
+ [57] cluster_2.1.0               seqLogo_1.55.5
+ [59] lazyeval_0.2.2              crayon_1.3.4
+ [61] pkgconfig_2.0.3             tweenr_1.0.1
+ [63] nlme_3.1-149                ProtGenerics_1.21.0
+ [65] nnet_7.3-14                 rlang_0.4.8
+ [67] globals_0.13.0              lifecycle_0.2.0
+ [69] miniUI_0.1.1.1              BiocFileCache_1.13.1
+ [71] doSNOW_1.0.18               rsvd_1.0.3
+ [73] dichromat_2.0-0             polyclip_1.10-0
+ [75] lmtest_0.9-38               graph_1.67.1
+ [77] ggseqlogo_0.1               zoo_1.8-8
+ [79] base64enc_0.1-3             GlobalOptions_0.1.2
+ [81] ggridges_0.5.2              rjson_0.2.20
+ [83] png_0.1-7                   viridisLite_0.3.0
+ [85] RcisTarget_1.9.1            float_0.2-4
+ [87] bitops_1.0-6                R.oo_1.24.0
+ [89] lda_1.4.2                   KernSmooth_2.23-17
+ [91] blob_1.2.1                  shape_1.4.5
+ [93] stringr_1.4.0               readr_1.4.0
+ [95] jpeg_0.1-8.1                CNEr_1.25.0
+ [97] scales_1.1.1                memoise_1.1.0
+ [99] GSEABase_1.51.1             magrittr_1.5
+[101] plyr_1.8.6                  ica_1.0-2
+[103] zlibbioc_1.35.0             compiler_4.0.0
+[105] RColorBrewer_1.1-2          clue_0.3-57
+[107] fitdistrplus_1.1-1          Rsamtools_2.5.3
+[109] listenv_0.8.0               pbapply_1.4-3
+[111] htmlTable_2.1.0             Formula_1.2-4
+[113] text2vec_0.6                MASS_7.3-53
+[115] mgcv_1.8-33                 tidyselect_1.1.0
+[117] stringi_1.5.3               askpass_1.1
+[119] latticeExtra_0.6-29         VariantAnnotation_1.35.3
+[121] fastmatch_1.1-0             tools_4.0.0
+[123] future.apply_1.6.0          circlize_0.4.10
+[125] rstudioapi_0.11             TFMPvalue_0.0.8
+[127] foreach_1.5.0               foreign_0.8-80
+[129] lsa_0.73.2                  AUCell_1.11.0
+[131] gridExtra_2.3               farver_2.0.3
+[133] Rtsne_0.15                  digest_0.6.27
+[135] BiocManager_1.30.10         pracma_2.2.9
+[137] shiny_1.5.0                 later_1.1.0.1
+[139] RcppAnnoy_0.0.16            OrganismDbi_1.31.0
+[141] httr_1.4.2                  ggbio_1.37.0
+[143] biovizBase_1.37.0           colorspace_1.4-1
+[145] XML_3.99-0.5                tensor_1.5
+[147] reticulate_1.16             splines_4.0.0
+[149] lgr_0.3.4                   uwot_0.1.8
+[151] RBGL_1.65.0                 RcppRoll_0.3.0
+[153] spatstat.utils_1.17-0       plotly_4.9.2.1
+[155] xtable_1.8-4                poweRlaw_0.70.6
+[157] jsonlite_1.7.1              spatstat_1.64-1
+[159] R6_2.5.0                    mlapi_0.1.0
+[161] Hmisc_4.4-1                 pillar_1.4.6
+[163] htmltools_0.5.0             mime_0.9
+[165] glue_1.4.2                  fastmap_1.0.1
+[167] BiocParallel_1.23.2         codetools_0.2-16
+[169] lattice_0.20-41             tibble_3.0.4
+[171] curl_4.3                    leiden_0.3.3
+[173] gtools_3.8.2                GO.db_3.11.4
+[175] openssl_1.4.3               survival_3.2-7
+[177] munsell_0.5.0               GetoptLong_1.0.3
+[179] GenomeInfoDbData_1.2.3      iterators_1.0.12
+[181] gtable_0.3.0
 ```
 {% endcapture %} {% include details.html %} 

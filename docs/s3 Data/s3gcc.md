@@ -1207,3 +1207,95 @@ lapply(c("clus0.hic.matrix","clus1.hic.matrix","clus2.hic.matrix"),FUN=diff_mat,
 
 ```
 {% endcapture %} {% include details.html %} 
+
+## R Session Info with all packaged loaded
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```bash
+R version 4.0.0 (2020-04-24)
+Platform: x86_64-pc-linux-gnu (64-bit)
+Running under: CentOS Linux 7 (Core)
+
+Matrix products: default
+BLAS:   /home/groups/oroaklab/src/R/R-4.0.0/lib/libRblas.so
+LAPACK: /home/groups/oroaklab/src/R/R-4.0.0/lib/libRlapack.so
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C
+
+attached base packages:
+ [1] stats4    parallel  grid      stats     graphics  grDevices utils
+ [8] datasets  methods   base
+
+other attached packages:
+ [1] EnsDb.Hsapiens.v86_2.99.0 ensembldb_2.13.1
+ [3] AnnotationFilter_1.13.0   GenomicFeatures_1.41.3
+ [5] AnnotationDbi_1.51.3      Biobase_2.49.1
+ [7] GenomicRanges_1.41.6      GenomeInfoDb_1.25.11
+ [9] IRanges_2.23.10           S4Vectors_0.27.12
+[11] BiocGenerics_0.35.4       circlize_0.4.10
+[13] HiCcompare_1.12.0         reshape2_1.4.4
+[15] ComplexHeatmap_2.5.5      TopDom_0.9.1
+[17] Rphenograph_0.99.1        igraph_1.2.6
+[19] gridExtra_2.3             dplyr_1.0.2
+[21] ggplot2_3.3.2
+
+loaded via a namespace (and not attached):
+ [1] colorspace_1.4-1            rjson_0.2.20
+ [3] ellipsis_0.3.1              CGHcall_2.52.0
+ [5] DNAcopy_1.63.0              XVector_0.29.3
+ [7] GlobalOptions_0.1.2         clue_0.3-57
+ [9] listenv_0.8.0               bit64_4.0.5
+[11] codetools_0.2-16            splines_4.0.0
+[13] R.methodsS3_1.8.1           impute_1.64.0
+[15] Rsamtools_2.5.3             cluster_2.1.0
+[17] dbplyr_1.4.4                png_0.1-7
+[19] R.oo_1.24.0                 pheatmap_1.0.12
+[21] compiler_4.0.0              httr_1.4.2
+[23] assertthat_0.2.1            Matrix_1.2-18
+[25] lazyeval_0.2.2              limma_3.45.13
+[27] prettyunits_1.1.1           tools_4.0.0
+[29] gtable_0.3.0                glue_1.4.2
+[31] GenomeInfoDbData_1.2.3      RANN_2.6.1
+[33] rappdirs_0.3.1              Rcpp_1.0.5
+[35] vctrs_0.3.4                 Biostrings_2.57.2
+[37] rhdf5filters_1.1.2          nlme_3.1-149
+[39] rtracklayer_1.49.5          QDNAseq_1.26.0
+[41] stringr_1.4.0               globals_0.13.0
+[43] lifecycle_0.2.0             gtools_3.8.2
+[45] XML_3.99-0.5                InteractionSet_1.18.0
+[47] future_1.19.1               zlibbioc_1.35.0
+[49] scales_1.1.1                ProtGenerics_1.21.0
+[51] hms_0.5.3                   SummarizedExperiment_1.19.6
+[53] rhdf5_2.33.7                RColorBrewer_1.1-2
+[55] curl_4.3                    memoise_1.1.0
+[57] biomaRt_2.45.2              CGHbase_1.50.0
+[59] stringi_1.5.3               RSQLite_2.2.1
+[61] BiocParallel_1.23.2         shape_1.4.5
+[63] rlang_0.4.8                 pkgconfig_2.0.3
+[65] matrixStats_0.57.0          bitops_1.0-6
+[67] lattice_0.20-41             purrr_0.3.4
+[69] Rhdf5lib_1.11.3             GenomicAlignments_1.25.3
+[71] bit_4.0.4                   tidyselect_1.1.0
+[73] plyr_1.8.6                  magrittr_1.5
+[75] R6_2.5.0                    generics_0.0.2
+[77] DelayedArray_0.15.7         DBI_1.1.0
+[79] pillar_1.4.6                withr_2.3.0
+[81] mgcv_1.8-33                 RCurl_1.98-1.2
+[83] tibble_3.0.4                future.apply_1.6.0
+[85] crayon_1.3.4                KernSmooth_2.23-17
+[87] BiocFileCache_1.13.1        GetoptLong_1.0.3
+[89] progress_1.2.2              data.table_1.13.0
+[91] marray_1.68.0               blob_1.2.1
+[93] digest_0.6.27               R.utils_2.10.1
+[95] openssl_1.4.3               munsell_0.5.0
+[97] askpass_1.1
+```
+
+{% endcapture %} {% include details.html %} 

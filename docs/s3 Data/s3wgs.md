@@ -8,6 +8,7 @@ category: s3processing
 
 # Processing for s3WGS portion of s3 paper.
 This notebook is a continuation of ["s3 Preprocessing"](https://mulqueenr.github.io/s3preprocess/) and details the processing of s3WGS libraries. This notebook starts with a merged, barcode-based removal of duplicate bam file.
+Note, in manuscript CRC4442 and CRC4671 are referred to as PDAC-1 and PDAC-2 for clarity.
 
 {% capture summary %} Initial Files and Directory Structure {% endcapture %} {% capture details %}  
 ```bash
@@ -35,8 +36,8 @@ This notebook is a continuation of ["s3 Preprocessing"](https://mulqueenr.github
 {% endcapture %} {% include details.html %} 
 
 
-# Filter bam files to just cells passing original QC
-Performing this on pre-barcode based remove duplicate bams for future complexity plotting and projection modeling.
+## Filter bam files to just cells passing original QC
+QC is based on (preprocessing steps.)[https://mulqueenr.github.io/s3preprocess/] Performing this on pre-barcode based remove duplicate bams for future complexity plotting and projection modeling.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -232,6 +233,7 @@ system("slack -F readcount.pdf ryan_todo")
 {% endcapture %} {% include details.html %} 
 
 # Using SCOPE to analyze single-cell data on single cell bam directory
+
 Library used for scWGS data analysis is [SCOPE](https://github.com/rujinwang/SCOPE) available as a [preprint](https://www.biorxiv.org/content/10.1101/594267v1.full). SCOPE works on pre-aligned deduplicated bam files. So I split files post-deduplication into a subdirectory to load in (above).
 
 Using R 4.0.0
@@ -340,36 +342,7 @@ saveRDS(ploidy,"scope_ploidy.gini.500kb.rds")
 {% endcapture %} {% include details.html %} 
 
 
-## Using ploidy estimates to assess copy number change
-
-SCOPE uses gini index to determine normal ploidy cells. I run here, but a priori set GM12878 cells at normal ploidy later in script.
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
-```R
-library(SCOPE)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
-#Performing normalization via gini euploid estimates
-qcObj<-readRDS("scope_qcObj.500kb.rds")
-ploidy<-readRDS("scope_ploidy.gini.500kb.rds")
-norm_index<-which(grepl("gm12878",colnames(qcObj$Y)))
-normObj<-readRDS("scope_noKnorm.gini.500kb.rds")
-
-#Normalize with no Latent Factors
-normObj.scope.gini <- normalize_scope_foreach(
-	Y_qc = qcObj$Y,
-	gc_qc = qcObj$ref$gc,
-	K = 5,
-	ploidyInt = ploidy,
-	norm_index = norm_index,
-	T = 1:6,
-	beta0 = normObj$beta.hat)
-    
-saveRDS(normObj.scope.gini,"scope_normforeach.gini.500kb.rds")
-```
-{% endcapture %} {% include details.html %} 
-
-## Generate final segmentation plots.
+## Generate segmentation plots.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -396,13 +369,18 @@ qcObj<-readRDS("scope_qcObj.500kb.rds")
 
 #Set up apriori ploidy estimate
 apriori_ploidy<-data.frame(sample=annot[match(qcObj$sampname, annot$cellID),]$sample, ploidy=c(2))
-apriori_ploidy[apriori_ploidy$sample=="crc4442",]$ploidy<-2.6 #4442 ploidy of 2.6 from karyotyping
-apriori_ploidy[apriori_ploidy$sample=="crc4671",]$ploidy<-2.6 #4671 ploidy of 2.6 from karyotyping
+apriori_ploidy[apriori_ploidy$sample=="crc4442",]$ploidy<-2.6 #4442 ploidy of 2.6 from karyotyping #crc4442 is refered to as pdac-1 in manuscript for clarity
+apriori_ploidy[apriori_ploidy$sample=="crc4671",]$ploidy<-2.6 #4671 ploidy of 2.6 from karyotyping #crc4671 is refered to as pdac-2 in manuscript for clarity
 saveRDS(apriori_ploidy,"scope_ploidy.apriori.500kb.rds")
 apriori_ploidy<-readRDS("scope_ploidy.apriori.500kb.rds")
 
 norm_index<-which(apriori_ploidy$sample=="gm12878") #effectively gm12878 cells
 
+```
+
+Now that files are read in, perform normalization on bins.
+
+```R
 # first-pass CODEX2 run with no latent factors
 normObj<- normalize_codex2_ns_noK(Y_qc = qcObj$Y, gc_qc = qcObj$ref$gc, norm_index = norm_index)
 saveRDS(normObj,"scope_noKnorm.500kb.rds")
@@ -416,6 +394,11 @@ normObj.scope <- normalize_scope_foreach(Y_qc = qcObj$Y,gc_qc = qcObj$ref$gc,
 saveRDS(normObj.scope,"scope_normforeach.500kb_k5.rds") #K=5,ploidyInt = apriori_ploidy, norm_index=gm12878, 
 normObj.scope<-readRDS("scope_normforeach.500kb_k5.rds")
 
+
+```
+Perform segmentation across bins with CBS.
+
+```R
 #Perform CBS
 chr_cbs <- function(x,scope=normObj.scope) {
     print(paste("Running for ",x))
@@ -439,6 +422,10 @@ names(segment_cs) <- chrs #mclapply returns jobs in same order as specified
 saveRDS(segment_cs,"scope_segmentcs.500kb_k5.ns2.rds") #ns 2
 segment_cs<-readRDS("scope_segmentcs.500kb_k5.ns2.rds") #ns 2
 
+```
+Generate data frames for plotting.
+
+```R
 #Plot raw reads
 Y <- as.data.frame(qcObj$Y)
 Y<-as.data.frame(Y %>% mutate_all(., ~ ifelse(.!=0, log10(.+0.00000000001), log10(1))))
@@ -452,6 +439,7 @@ colnames(Yhat)<-qcObj$sampname
 row.names(Yhat)<-row.names(qcObj$Y)
 Yhat<-as.data.frame(t(Yhat))
 
+#Set up color by quantiles
 col_fun_reads_raw=colorRamp2(quantile(unlist(Y),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
 c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
 col_fun_reads_normalized=colorRamp2(quantile(unlist(Yhat),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
@@ -473,7 +461,7 @@ x<-iCN
 x[which(x>2,arr.ind=T)]<-3
 x[which(x<2,arr.ind=T)]<-1 #categorize copy numer data to account for ploidy changes
 dist_method="jaccard"
-dist_x<-philentropy::distance(x,method=dist_method,as.dist.obj=T,use.row.names=T)
+dist_x<-philentropy::distance(x,method=dist_method,as.dist.obj=T,use.row.names=T) #use jaccard distance for clustering
 #dist_x<-as.dist(cor(t(x),method=dist_method))
 dend <- dist_x %>%  hclust(method="ward.D") %>% as.dendrogram(edge.root=F,h=3) 
 k_search<-find_k(dend,krange=6:12)
@@ -496,6 +484,10 @@ sample_annot<-annot$sample
 cluster_id<-as.factor(as.character(k_clus_id[match(annot$cellID,names(k_clus_id))]))
 cluster_id_3<-as.factor(as.character(k_clus_id_3[match(annot$cellID,names(k_clus_id_3))]))
 
+```
+Perform plotting via ComplexHeatmap
+
+```R
     #Read count raw
     plt1<-Heatmap(Y,
         show_row_names=F,
@@ -520,7 +512,7 @@ cluster_id_3<-as.factor(as.character(k_clus_id_3[match(annot$cellID,names(k_clus
         name="Log10 Reads",
         left_annotation=rowAnnotation(assay=assay_annot,sample=sample_annot))
 
-
+    #CNV called bins
     plt3<-Heatmap(iCN,
         show_row_names=F,
         show_column_names=F,
@@ -568,15 +560,14 @@ setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3w
 #qcObj (raw reads, filtered bins)
 qcObj<-readRDS("scope_qcObj.500kb.rds")
 #normObj (normalization and bin-specific factors)
-normObj.scope.gini<-readRDS("scope_normforeach.gini.500kb.rds")
+normObj.scope<-readRDS("scope_normforeach.500kb_k5.rds")
 
 #Sample information
 cell_info<-read.table("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data/s3wgs_gcc.annot",header=T)
 
-#CHANGE Read count matrix TO NORMALIZED Y VALUES
 #Mad calculated on bins prenormalized with library size and bin-specific factor based on SCOPE paper
 #Y(ij)/[N(j)B(j)]
-Bj <- unlist(normObj.scope.gini$beta.hat)
+Bj <- unlist(normObj.scope$beta.hat)
 Nj <- qcObj$QCmetric$mapq20
 Y<-qcObj$Y
 Y<-sweep(Y, MARGIN=1, Bj, `*`) #beta bin normalization
@@ -741,6 +732,8 @@ ggsave(plt,file="s3wgs_complexity_platecellline_boxplot.pdf")
 Combing clades of cell lines for high resolution annotation using 50kb windows
 
 First reading in libraries and setting up functions, then merging cells by clade and taking mean read count per bin, then segmenting and plotting.
+
+Code based on [SCOPE](https://github.com/rujinwang/SCOPE) and [HMMcopy](https://github.com/shahcompbio/hmmcopy_utils) scripts.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 ```R
@@ -1000,5 +993,83 @@ system("slack -F scope.merged.50kb.final.final.png ryan_todo")
 
 write.table(plt_melt,file="SourceData_SupFig2a.tsv",sep="\t",col.names=T,row.names=T,quote=F)
 system("slack -F SourceData_SupFig2a.tsv ryan_todo")
+```
+{% endcapture %} {% include details.html %} 
+
+
+
+## R session info with all packages loaded.
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+```bash
+R version 4.0.0 (2020-04-24)
+Platform: x86_64-pc-linux-gnu (64-bit)
+Running under: CentOS Linux 7 (Core)
+
+Matrix products: default
+BLAS:   /home/groups/oroaklab/src/R/R-4.0.0/lib/libRblas.so
+LAPACK: /home/groups/oroaklab/src/R/R-4.0.0/lib/libRlapack.so
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C
+
+attached base packages:
+ [1] grid      parallel  stats4    stats     graphics  grDevices utils
+ [8] datasets  methods   base
+
+other attached packages:
+ [1] ggrepel_0.8.2                     cluster_2.1.0
+ [3] rpart_4.1-15                      dendextend_1.14.0
+ [5] ggdendro_0.1.22                   ape_5.4-1
+ [7] philentropy_0.4.0                 dplyr_1.0.2
+ [9] SCOPE_1.1.0                       BSgenome.Hsapiens.UCSC.hg19_1.4.3
+[11] Rsamtools_2.5.3                   circlize_0.4.10
+[13] reshape2_1.4.4                    ComplexHeatmap_2.5.5
+[15] patchwork_1.0.1                   doParallel_1.0.15
+[17] iterators_1.0.12                  foreach_1.5.0
+[19] BSgenome.Hsapiens.UCSC.hg38_1.4.3 BSgenome_1.57.6
+[21] rtracklayer_1.49.5                Biostrings_2.57.2
+[23] XVector_0.29.3                    WGSmapp_1.1.0
+[25] GenomicRanges_1.41.6              GenomeInfoDb_1.25.11
+[27] IRanges_2.23.10                   S4Vectors_0.27.12
+[29] BiocGenerics_0.35.4               ggplot2_3.3.2
+
+loaded via a namespace (and not attached):
+ [1] viridis_0.5.1               Biobase_2.49.1
+ [3] viridisLite_0.3.0           gtools_3.8.2
+ [5] expm_0.999-5                GenomeInfoDbData_1.2.3
+ [7] pillar_1.4.6                lattice_0.20-41
+ [9] glue_1.4.2                  digest_0.6.27
+[11] RColorBrewer_1.1-2          colorspace_1.4-1
+[13] Matrix_1.2-18               plyr_1.8.6
+[15] XML_3.99-0.5                pkgconfig_2.0.3
+[17] GetoptLong_1.0.3            zlibbioc_1.35.0
+[19] purrr_0.3.4                 mvtnorm_1.1-1
+[21] scales_1.1.1                rootSolve_1.8.2.1
+[23] BiocParallel_1.23.2         tibble_3.0.4
+[25] generics_0.0.2              ellipsis_0.3.1
+[27] withr_2.3.0                 SummarizedExperiment_1.19.6
+[29] magrittr_1.5                crayon_1.3.4
+[31] nlme_3.1-149                MASS_7.3-53
+[33] gplots_3.1.0                tools_4.0.0
+[35] GlobalOptions_0.1.2         lifecycle_0.2.0
+[37] matrixStats_0.57.0          stringr_1.4.0
+[39] Exact_2.1                   munsell_0.5.0
+[41] DelayedArray_0.15.7         compiler_4.0.0
+[43] caTools_1.18.0              rlang_0.4.8
+[45] RCurl_1.98-1.2              rstudioapi_0.11
+[47] rjson_0.2.20                bitops_1.0-6
+[49] boot_1.3-25                 DNAcopy_1.63.0
+[51] DescTools_0.99.37           gtable_0.3.0
+[53] codetools_0.2-16            R6_2.5.0
+[55] gridExtra_2.3               GenomicAlignments_1.25.3
+[57] clue_0.3-57                 KernSmooth_2.23-17
+[59] shape_1.4.5                 stringi_1.5.3
+[61] Rcpp_1.0.5                  vctrs_0.3.4
+[63] png_0.1-7                   tidyselect_1.1.0
 ```
 {% endcapture %} {% include details.html %} 
