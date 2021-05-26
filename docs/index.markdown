@@ -37,6 +37,15 @@ Some of the basic processing (bcl2fastq to generation of a counts matrix) was pe
     {% endfor %}
 </ul>
 
+<h3>CEDAR Projects</h3>
+<ul>
+    {% for doc in site.pages %}
+      {% if doc.category == "CEDAR" %}
+        <li><a href="{{ doc.url }}">{{ doc.title }}</a></li>
+      {% endif %}
+    {% endfor %}
+</ul>
+
 <h3>Alternative Assays</h3>
 <ul>
     {% for doc in site.pages %}
@@ -45,5 +54,6 @@ Some of the basic processing (bcl2fastq to generation of a counts matrix) was pe
       {% endif %}
     {% endfor %}
 </ul>
+
 
 
