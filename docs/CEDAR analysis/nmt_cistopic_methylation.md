@@ -172,7 +172,7 @@ createcisTopicObjectFromMeth <- function(
 dat<-createcisTopicObjectFromMeth(methfiles=meth_files,regions=region)
 saveRDS(dat,file="cistopic_object.Rds")
 
-dat <- runWarpLDAModels(dat, topic=c(5:15, 20, 25, 40, 50), seed=123, nCores=14, addModels=FALSE,tmp="/home/groups/CEDAR/mulqueen/tmp")
+dat <- runWarpLDAModels(dat, topic=c(5:15, 20, 25, 40, 50), seed=123, nCores=14, addModels=FALSE,tmp="/home/groups/CEDAR/mulqueen/temp/")
 saveRDS(dat,file="cistopic_object.models.Rds")
 
 ```
