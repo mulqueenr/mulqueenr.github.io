@@ -139,17 +139,43 @@ for infile in files:
 Files are from a previous publication by Hisham (here.)[https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE68355]
 
 ```bash
-conda install sra-tools
+conda install sra-tools #have to set up SRA tools to get fastq files
+conda install bwa-mem
 
-#T47D
+mkdir /home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/
+cd /home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/
+
+#T47D 3 replicates of input DNA
 wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000691/SRR2000691.1
 wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000692/SRR2000692.1
 wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000693/SRR2000693.1
 
-#MCF7
+#MCF7 3 replicates of input DNA
 wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000750/SRR2000750.1
 wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000751/SRR2000751.1
 wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000752/SRR2000752.1
+
+
+fastq-dump * & #using sra to fastq-dump data
+gzip *fastq & #gzip those fastqs because I'm not a criminal
+
+mv SRR2000691.1.fastq.gz t74d_input.1.fq.gz
+mv SRR2000692.1.fastq.gz t74d_input.2.fq.gz
+mv SRR2000693.1.fastq.gz t74d_input.3.fq.gz
+mv SRR2000750.1.fastq.gz mcf7_input.1.fq.gz
+mv SRR2000751.1.fastq.gz mcf7_input.2.fq.gz
+mv SRR2000752.1.fastq.gz mcf7_input.3.fq.gz
+
+#using bwa mem for alignment
+#preparing human genome
+bwa index /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/genome.fa &
+
+#alignment of reads 
+for i in *fastq.gz; do
+outname=${i::-9}.bam
+bwa mem -t 10 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/genome.fa $i | samtools view -b - > $outname; done &
+
+
 ```
 ## Run HMMcopy using single-end deduplicated bam files as input
 Some functions taken from SCOPE for convenient bam file read in

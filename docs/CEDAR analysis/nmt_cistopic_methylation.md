@@ -174,5 +174,46 @@ saveRDS(dat,file="cistopic_object.Rds")
 
 dat <- runWarpLDAModels(dat, topic=c(5:15, 20, 25, 40, 50), seed=123, nCores=14, addModels=FALSE,tmp="/home/groups/CEDAR/mulqueen/temp/")
 saveRDS(dat,file="cistopic_object.models.Rds")
+dat<-readRDS(file="cistopic_object.models.Rds")
+#select best model
+pdf("cistopic_model_selection.pdf")
+par(mfrow=c(3,3))
+dat <- selectModel(dat, type='maximum')
+dat <- selectModel(dat, type='perplexity')
+dat <- selectModel(dat, type='derivative')
+dev.off()
+
+#going with 15 topics based on derivative
+
+dat<-cisTopic::selectModel(dat,select=15,keepModels=T)
+
+dat <- runUmap(dat, target='cell') #running umap using cistopics implementation
+
+#add sample cell line names as metadata
+dat@cell.data$cellLine<-unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",4))
+
+#set up treatment conditions
+dat@cell.data$treatment<-substr(unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",5)),1,1) #set up T47D cell treatment first
+dat@cell.data[startsWith(dat@cell.data$cellLine,"M7"),]$treatment<-substr(dat@cell.data[startsWith(dat@cell.data$cellLine,"M7"),]$cellLine,3,3)
+dat@cell.data[startsWith(dat@cell.data$cellLine,"BSM7"),]$treatment<-substr(dat@cell.data[startsWith(dat@cell.data$cellLine,"BSM7"),]$cellLine,5,5)
+
+dat@cell.data$cellLine_treatment<-paste(dat@cell.data$cellLine,dat@cell.data$treatment,sep="_")
+
+dat@cell.data$perc_met<-dat@cell.data$"Methylated reads"/dat@cell.data$"Total reads"
+
+
+pdf("cistopic_clustering.pdf")
+par(mfrow=c(1,3))
+plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('cellLine','treatment','cellLine_treatment'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
+
+par(mfrow=c(1,3))
+plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('Total reads','perc_met'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
+
+
+par(mfrow=c(2,5))
+plotFeatures(dat, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
+dev.off()
+
+saveRDS(dat,file="cistopic_object.Rds")
 
 ```
