@@ -43,7 +43,6 @@ $files_in
 {% endcapture %} {% include details.html %} 
 
 ## Using python pandas and bedtools wraper to summarize methylation over regions
-python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py [argv1] [argv2]
 
 * argv1 is yacht output from bismark_methylation_extraction
 * argv2 is a bed file with features to aggregate methylation over
@@ -80,10 +79,15 @@ out_dataframe=pd.merge(total_count,met_count,on=["chr","start","end","feat"])
 
 out_dataframe.to_csv(in_list[0].split("/")[-1].split(".")[0]+"."+in_list[1].split("/")[-1].split(".")[0]+".count.txt",header=False,index=False)
 ```
+Example running:
+```bash
+python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py [argv1] [argv2]
+```
+
 {% endcapture %} {% include details.html %} 
 
-Run as a slurm batch job.
-sbatch aggregate_over_genes.slurm.sh
+## Run as a slurm batch job.
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
@@ -101,9 +105,14 @@ files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov/*dedu
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py $files_in /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed
 
 ```
+
+```bash
+sbatch aggregate_over_genes.slurm.sh
+```
+
 {% endcapture %} {% include details.html %} 
 
-Running cistopic on methylated regions.
+## Running cistopic on methylated regions.
 
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
