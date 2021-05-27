@@ -8,7 +8,7 @@ category: CEDAR
 
 # Script to test Shah lab CNV calling using HMMcopy on SE bismark aligned reads
 
-##Preparing bam files from Aaron Doe's preprocessing
+## Preparing bam files from Aaron Doe's preprocessing
 Need to merge resequenced bam files and combine read 1 and read 2 into a single-end bam
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
@@ -28,7 +28,7 @@ Need to merge resequenced bam files and combine read 1 and read 2 into a single-
 ```
 {% endcapture %} {% include details.html %} 
 
-##Batch script for deduplication
+## Batch script for deduplication
 Using the bismark deduplication script.
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 

@@ -6,14 +6,21 @@ permalink: /cistopic_nmt/
 category: CEDAR
 ---
 
-### Script to test cistopic modeling for methylation regions ###
+# Script to test cistopic modeling for methylation regions
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```python
 #remotes::install_version("RSQLite", version = "2.2.5") #https://stackoverflow.com/questions/67279457/error-with-r-package-biomart-and-this-dependency-rsqlite
 #devtools::install_github("aertslab/RcisTarget")
 #devtools::install_github("aertslab/AUCell")
 #devtools::install_github("aertslab/cisTopic")
 ```
-#Set up methylation extraction
+{% endcapture %} {% include details.html %} 
+
+## Set up methylation extraction
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
@@ -33,10 +40,15 @@ srun bismark_methylation_extractor \
 --no_header \
 $files_in
 ```
-# python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py [argv1] [argv2]
+{% endcapture %} {% include details.html %} 
 
-argv1 is yacht output from bismark_methylation_extraction
-argv2 is a bed file with features to aggregate methylation over
+## Using python pandas and bedtools wraper to summarize methylation over regions
+python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py [argv1] [argv2]
+
+* argv1 is yacht output from bismark_methylation_extraction
+* argv2 is a bed file with features to aggregate methylation over
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```python
 #!/usr/bin/python
@@ -68,8 +80,11 @@ out_dataframe=pd.merge(total_count,met_count,on=["chr","start","end","feat"])
 
 out_dataframe.to_csv(in_list[0].split("/")[-1].split(".")[0]+"."+in_list[1].split("/")[-1].split(".")[0]+".count.txt",header=False,index=False)
 ```
+{% endcapture %} {% include details.html %} 
 
+Run as a slurm batch job.
 sbatch aggregate_over_genes.slurm.sh
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #!/bin/bash
@@ -86,6 +101,11 @@ files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov/*dedu
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py $files_in /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed
 
 ```
+{% endcapture %} {% include details.html %} 
+
+Running cistopic on methylated regions.
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(cisTopic)
@@ -217,3 +237,4 @@ dev.off()
 saveRDS(dat,file="cistopic_object.Rds")
 
 ```
+{% endcapture %} {% include details.html %} 
