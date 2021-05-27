@@ -47,7 +47,7 @@ $files_in
 * argv1 is yacht output from bismark_methylation_extraction
 * argv2 is a bed file with features to aggregate methylation over
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+{% capture summary %} Code {% endcapture %} {% capture details %}
 
 ```python
 #!/usr/bin/python
@@ -80,11 +80,12 @@ out_dataframe=pd.merge(total_count,met_count,on=["chr","start","end","feat"])
 out_dataframe.to_csv(in_list[0].split("/")[-1].split(".")[0]+"."+in_list[1].split("/")[-1].split(".")[0]+".count.txt",header=False,index=False)
 ```
 Example running:
+
 ```bash
 python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py [argv1] [argv2]
 ```
 
-{% endcapture %} {% include details.html %} 
+{% endcapture %} {% include details.html %}
 
 ## Run as a slurm batch job.
 
