@@ -10,6 +10,7 @@ category: CEDAR
 
 ##Preparing bam files from Aaron Doe's preprocessing
 Need to merge resequenced bam files and combine read 1 and read 2 into a single-end bam
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #mkdir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
@@ -25,9 +26,11 @@ Need to merge resequenced bam files and combine read 1 and read 2 into a single-
 #samtools cat -o ${outname}_merged.bam $r1 $r2 ;
 #done &
 ```
+{% endcapture %} {% include details.html %} 
 
 ##Batch script for deduplication
 Using the bismark deduplication script.
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #!/bin/bash
@@ -49,8 +52,12 @@ srun deduplicate_bismark \
 ${bam_in}
 
 ```
+{% endcapture %} {% include details.html %} 
+
 ## Perform modal copy number bin normalization similar to Shah sc-wgs work
 This takes the input of files that are generated in the hmm_generator function in the R script (files starting with "counts_")
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```python
 '''
 Created on Feb 21, 2018
@@ -134,10 +141,11 @@ for infile in files:
     print("Completed:",infile)
 
 ```
+{% endcapture %} {% include details.html %} 
 
 ## Preparing bulk WGS data for cell lines to check CNVs
 Files are from a previous publication by Hisham (here.)[https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE68355]
-
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
 conda install sra-tools #have to set up SRA tools to get fastq files
 conda install bwa-mem
@@ -177,8 +185,11 @@ bwa mem -t 10 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/ge
 
 
 ```
+{% endcapture %} {% include details.html %} 
+
 ## Run HMMcopy using single-end deduplicated bam files as input
 Some functions taken from SCOPE for convenient bam file read in
+{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 #install.packages("BiocManager")
@@ -508,3 +519,5 @@ library(patchwork)
 plt1<-ggplot(dist_df,aes(x=paste(sample),y=mapd,color=paste(sample)))+geom_jitter()+geom_boxplot(aes(fill=NULL))+theme_bw()+ylim(c(0,1))
 plt2<-ggplot(dist_df,aes(x=paste(sample),y=log10(read_count),color=paste(sample)))+geom_jitter()+geom_boxplot(aes(fill=NULL))+theme_bw()+ylim(c(0,7))
 ggsave(plt1/plt2,file="mapd_scores.pdf")
+```
+{% endcapture %} {% include details.html %} 
