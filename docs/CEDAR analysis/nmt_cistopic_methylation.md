@@ -248,3 +248,105 @@ saveRDS(dat,file="cistopic_object.Rds")
 
 ```
 {% endcapture %} {% include details.html %} 
+
+Additional processing for topic heatmap generation
+Following this (tutorial.)[https://www.neb.com/products/n0356-dm5ctp#Product%20Information]
+```R
+library(cisTopic)
+library(reshape2)
+library(GenomicRanges)
+library(Matrix)
+library(stats)
+library(ComplexHeatmap)
+library(circlize)
+library(rstatix)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(org.Hs.eg.db)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov")
+
+dat<-readRDS(file="cistopic_object.Rds")
+#clean up metadata a bit more
+dat@cell.data[dat@cell.data$cellLine %in% c("BSM7E6","M7C1A","M7C2B","M7E4C"),]$cellLine<-"MCF7"
+dat@cell.data[dat@cell.data$cellLine %in% c("T"),]$cellLine<-"T47D"
+dat@cell.data[dat@cell.data$treatment %in% c("C"),]$treatment<-"control"
+dat@cell.data[dat@cell.data$treatment %in% c("E"),]$treatment<-"estrogen"
+
+topicmat<-as.data.frame(dat@selected.model$document_expects)
+row.names(dat@cell.data) == colnames(topicmat) # order is maintained so using cell.data info for annotation
+cellline_annot<-dat@cell.data$cellLine
+treatment_annot<-dat@cell.data$treatment
+c_count_annot<-dat@cell.data$"Total reads"
+cellline_treatment_annot<-dat@cell.data$cellLine_treatment
+
+#color function
+col_fun=colorRamp2(quantile(unlist(topicmat),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
+c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
+
+row.names(topicmat)<-paste0("Topic_",row.names(topicmat))
+plt1<-Heatmap(topicmat,
+    show_column_names=F,
+    bottom_annotation=columnAnnotation(cellline=cellline_annot,treatment=treatment_annot,C_covered=c_count_annot,cellline_treatment=cellline_treatment_annot,
+    	    col = list(cellline = c("T47D"="red","M7"="blue"),
+               			treatment = c("control" = "white", "estrogen" = "black"),
+               			cellline_treatment = c("BSM7E6_E"="green","M7C1A_C"="brown","M7C2B_C"="purple","M7E4C_E"="blue","T_C"="orange","T_E"="red"))))
+
+pdf("cistopic_heatmap.pdf")
+plt1
+dev.off()
+
+
+#testing topic significance for cell line/ treatment
+dat_stat<-rbind(topicmat,cellline_annot,treatment_annot)
+dat_stat<-as.data.frame(t(dat_stat))
+dat_stat[1:15] <- lapply(dat_stat[1:15], as.numeric)
+dat_stat<-melt(dat_stat)
+colnames(dat_stat)<-c("cellline","treatment","topic","value")
+
+#testing topic specificity by treatment and cell line
+out_stats<-as.data.frame(dat_stat %>% 
+  group_by(topic) %>% 
+  anova_test(value ~ treatment*cellline) %>% adjust_pvalue()
+  )
+
+write.table(out_stats,file="cistopic_topic_enrichment.txt",quote=F,sep="\t",col.names=T)
+
+
+#predictive measurements of topics
+pred_matrix <- predictiveDistribution(dat)
+
+#get regions from topics
+dat <- getRegionsScores(dat, method='NormTop', scale=TRUE)
+
+#plot general annotations to topics 
+dat <- annotateRegions(dat, txdb=TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb='org.Hs.eg.db')
+
+#binarize cistopics to get genes driving topics
+dat<-binarizecisTopics(dat,thrP=0.975)
+getBedFiles(dat, path='cisTopic_beds')
+
+dat <- GREAT(dat, genome='hg38', fold_enrichment=1.5, geneHits=1, sign=0.05, request_interval=10)
+#We can visualize the enrichment results:
+pdf("cistopic_GO.pdf",width=30,height=30)
+ontologyDotPlot(dat, top=20, topics=c(1:15), var.y='name', order.by='Binom_Adjp_BH')
+dev.off()
+
+#Save cistopic object
+saveRDS(dat,file="cistopic_object.Rds")
+```
+{% endcapture %} {% include details.html %} 
+
+
+To do
+
+* re run on genome-wide bins
+* re run on defined enhancers
+* re run on promoters
+* re run on accessibility (GC met)
+* see if cistopic needs to be binarized
+* get gene lists per topic
+* change methylation rate cutoffs per gene

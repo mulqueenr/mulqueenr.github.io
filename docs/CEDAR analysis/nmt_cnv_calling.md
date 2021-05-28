@@ -179,11 +179,18 @@ mv SRR2000752.1.fastq.gz mcf7_input.3.fq.gz
 bwa index /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/genome.fa &
 
 #alignment of reads 
-for i in *fastq.gz; do
-outname=${i::-9}.bam
-bwa mem -t 10 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/genome.fa $i | samtools view -b - > $outname; done &
+for i in *fq.gz; do
+outname=${i::-6}.bam
+bwa mem -t 4 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/genome.fa $i | samtools view -b - > $outname; done &
 
+###alignment doesnt look right no end place
+#using bismark for deduplication
+for i in *bam; do
+samtools rmdup -s $i ${i::-4}.rmdup.bam ; done &
 
+#and a little filtering
+for i in *rmdup.bam; do
+samtools view -q20 -f 4 $i ${i::-4}.q20.bam ; done &
 ```
 {% endcapture %} {% include details.html %} 
 
