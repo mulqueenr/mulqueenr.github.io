@@ -89,6 +89,7 @@ $files_in
 ```bash
 sbatch meth_extract.slurm.sh
 ```
+
 {% endcapture %} {% include details.html %} 
 
 Generate cytosine NOME data for region summarization.
@@ -264,7 +265,6 @@ enhancer
 
 {% endcapture %} {% include details.html %} 
 
-
 {% capture summary %} CpG 100kb {% endcapture %} {% capture details %}  
 
 ```bash
@@ -337,7 +337,6 @@ promoter
 
 {% endcapture %} {% include details.html %} 
 
-
 {% capture summary %} GpC Enhancers {% endcapture %} {% capture details %}  
 
 ```bash
@@ -361,8 +360,6 @@ enhancer
 ```
 
 {% endcapture %} {% include details.html %} 
-
-
 
 {% capture summary %} GpC 100kb {% endcapture %} {% capture details %}  
 
