@@ -10,6 +10,7 @@ category: CEDAR
 
 ## Preparing bam files from Aaron Doe's preprocessing
 Need to merge resequenced bam files and combine read 1 and read 2 into a single-end bam
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
@@ -30,6 +31,7 @@ done &
 
 ## Batch script for deduplication
 Using the bismark deduplication script.
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
@@ -196,6 +198,7 @@ samtools view -q20 -f 4 $i ${i::-4}.q20.bam ; done &
 
 ## Run HMMcopy using single-end deduplicated bam files as input
 Some functions taken from SCOPE for convenient bam file read in
+
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
@@ -527,4 +530,5 @@ plt1<-ggplot(dist_df,aes(x=paste(sample),y=mapd,color=paste(sample)))+geom_jitte
 plt2<-ggplot(dist_df,aes(x=paste(sample),y=log10(read_count),color=paste(sample)))+geom_jitter()+geom_boxplot(aes(fill=NULL))+theme_bw()+ylim(c(0,7))
 ggsave(plt1/plt2,file="mapd_scores.pdf")
 ```
+
 {% endcapture %} {% include details.html %} 
