@@ -13,18 +13,18 @@ Need to merge resequenced bam files and combine read 1 and read 2 into a single-
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
-#mkdir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
-#cd /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
-#ls /home/groups/CEDAR/doe/projects/my_NMT/MCF7_reseq/merge_all_MCF7/scNMT_NOMeWorkFlow/bismarkSE/dedup/*merged.bam > files.txt
-#ls /home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scNMT_NOMeWorkFlow/bismarkSE/*bam | grep -v "M7" >> files.txt
-#for i in `cat files.txt`; do outname=`basename $i`; ln -s $i $outname; done
-#for i in *_R1.*bt2.bam; do 
-#r1=$i;
-#r2=`echo $i | sed "s/R1/R2/g"`;
-#r2=`echo $r2 | sed "s/val_1_/val_2_/g"`;
-#outname=`echo $i | awk 'OFS="_" {split($1,a,"_");print a[1],a[2],a[3]}'`;
-#samtools cat -o ${outname}_merged.bam $r1 $r2 ;
-#done &
+mkdir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
+cd /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
+ls /home/groups/CEDAR/doe/projects/my_NMT/MCF7_reseq/merge_all_MCF7/scNMT_NOMeWorkFlow/bismarkSE/dedup/*merged.bam > files.txt
+ls /home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scNMT_NOMeWorkFlow/bismarkSE/*bam | grep -v "M7" >> files.txt
+for i in `cat files.txt`; do outname=`basename $i`; ln -s $i $outname; done
+for i in *_R1.*bt2.bam; do 
+r1=$i;
+r2=`echo $i | sed "s/R1/R2/g"`;
+r2=`echo $r2 | sed "s/val_1_/val_2_/g"`;
+outname=`echo $i | awk 'OFS="_" {split($1,a,"_");print a[1],a[2],a[3]}'`;
+samtools cat -o ${outname}_merged.bam $r1 $r2 ;
+done &
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -64,7 +64,7 @@ Created on Feb 21, 2018
 @author: dgrewal
 https://github.com/shahcompbio/single_cell_pipeline/blob/master/single_cell/workflows/hmmcopy/scripts/correct_read_count.py
 Modified by mulqueenr to fit HMMcopy correction output for our own pipeline.
-'''counts_M7C2B_G09_merged.bam.tsv
+'''
 
 from __future__ import division
 import argparse
@@ -181,7 +181,7 @@ bwa index /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/genome
 #alignment of reads 
 for i in *fq.gz; do
 outname=${i::-6}.bam
-bwa mem -t 4 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/genome.fa $i | samtools view -b - > $outname; done &
+bwa mem -P -S -t 4 -T 20 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/genome.fa $i | samtools sort -@ 5 -T . -m 5G - | samtools rmdup -s - $outname; done &
 
 ###alignment doesnt look right no end place
 #using bismark for deduplication
