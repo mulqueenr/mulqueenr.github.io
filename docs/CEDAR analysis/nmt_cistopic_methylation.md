@@ -28,14 +28,16 @@ Regulatory information stored here:
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds
 ```
 
+Some of these features have redundancies (i.e. same start and end sites but different names). Have to filter that out.
+
 Generation of bed files:
 ```bash
 #Regulatory information from ensembl regulatory build
 wget http://ftp.ensembl.org/pub/release-104/regulation/homo_sapiens/homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gff.gz
 
-zcat homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gff.gz | awk 'OFS="\t" {if ($3=="enhancer") split($9,a,"=");split(a[2],b,";"); if (b[1] != "") print "chr"$1,$4,$5,b[1]}' > enhancers.bed
-zcat homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gff.gz | awk 'OFS="\t" {if ($3=="promoter") split($9,a,"=");split(a[2],b,";"); if (b[1] != "") print "chr"$1,$4,$5,b[1]}' > promoters.bed
-zcat homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gff.gz | awk 'OFS="\t" {if ($3=="CTCF_binding_site") split($9,a,"=");split(a[2],b,";"); if (b[1] != "") print "chr"$1,$4,$5,b[1]}' > ctcf.bed
+zcat homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gff.gz | awk 'OFS="\t" {if ($3=="enhancer") split($9,a,"=");split(a[2],b,";"); if (b[1] != "") print "chr"$1,$4,$5,b[1]}' | sort -u -k1,1 -k2,2n -k3,3n > enhancers.bed
+zcat homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gff.gz | awk 'OFS="\t" {if ($3=="promoter") split($9,a,"=");split(a[2],b,";"); if (b[1] != "") print "chr"$1,$4,$5,b[1]}' | sort -u -k1,1 -k2,2n -k3,3n > promoters.bed
+zcat homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gff.gz | awk 'OFS="\t" {if ($3=="CTCF_binding_site") split($9,a,"=");split(a[2],b,";"); if (b[1] != "") print "chr"$1,$4,$5,b[1]}' | sort -u -k1,1 -k2,2n -k3,3n > ctcf.bed
 
 awk 'OFS="\t" {print $1,1,$2}' /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/star/chrNameLength.txt | bedtools makewindows -b - -w 100000 | awk 'OFS="\t" {print $1,$2,$3,"bin_"NR}'> 100kb.bed
 
@@ -142,25 +144,25 @@ import os.path
 pybedtools.helpers.set_tempdir("/home/groups/CEDAR/mulqueen/temp")
 
 if len(sys.argv) != 5:
-	print("""
+        print("""
 * argv1 is a cov.gz output from coverage2cytosine report (either CG or GpC)
 * argv2 is a bed file with features to aggregate methylation over
 * argv3 is output directory
 * argv4 is a prefix used for the bed file annotation. Example: "genebody" or "promoter"
 
 Note: argv2 should be a bed file of format [chr]\t[start]\t[end]\t[feature_name]""")
-	sys.exit(0)
+        sys.exit(0)
 
- 
+
 in_list=[]
-#in_list.append(sys.argv[1])
-in_list.append("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/T_E8_G02_merged.deduplicated.bismark.NOMe.CpG.cov.gz")
-#in_list.append(sys.argv[2])
-in_list.append("/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed")
-#in_list.append(sys.argv[3])
-in_list.append("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
-#in_list.append(sys.argv[4])
-in_list.append("genes")
+in_list.append(sys.argv[1])
+#in_list.append("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/T_E8_G02_merged.deduplicated.bismark.NOMe.CpG.cov.gz")
+in_list.append(sys.argv[2])
+#in_list.append("/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed")
+in_list.append(sys.argv[3])
+#in_list.append("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
+in_list.append(sys.argv[4])
+#in_list.append("genes")
 
 outname=os.path.basename(in_list[0])[:len(os.path.basename(in_list[0]))-7]
 scmet=pd.read_csv(gzip.open(in_list[0], "rb"),header=None,sep="\t")[[0,1,2,4,5]]
@@ -175,9 +177,9 @@ scmet_intersect["total_sites"]=scmet_intersect["met"]+scmet_intersect["unmet"]
 out_dataframe=scmet_intersect.groupby(by=["chr", "start", "end", "feat"]).agg(met_cg=pd.NamedAgg(column="met",aggfunc="sum"),total_cg=pd.NamedAgg(column="total_sites",aggfunc="sum")).reset_index()
 
 if in_list[2].endswith("/"):
-	out_dataframe.to_csv(in_list[2]+outname+"."+in_list[3]+".count.txt",header=False,index=False)
+        out_dataframe.to_csv(in_list[2]+outname+"."+in_list[3]+".count.txt.gz",header=False,index=False,compression='gzip')
 else:
-	out_dataframe.to_csv(in_list[2]+"/"+outname+"."+in_list[3]+".count.txt",header=False,index=False)
+        out_dataframe.to_csv(in_list[2]+"/"+outname+"."+in_list[3]+".count.txt.gz",header=False,index=False,compression='gzip')
 
 ```
 Example running:
@@ -463,7 +465,7 @@ createcisTopicObjectFromMeth <- function(
   regions_frame <- read.table(regions)[,c(1:4)]
   colnames(regions_frame) <- c('seqnames', 'start', 'end','feat')
 
-  regions_frame<-regions_frame[!duplicated(regions_frame),] #ensure assayed regions are unique
+  regions_frame<-regions_frame[!duplicated(regions_frame[,c(1:3)]),] #ensure assayed regions are unique
 
   rownames(regions_frame) <- paste(regions_frame$seqnames, ':', regions_frame$start, '-', regions_frame$end, sep='')
   regions_granges <- makeGRangesFromDataFrame(as.data.frame(regions_frame))
