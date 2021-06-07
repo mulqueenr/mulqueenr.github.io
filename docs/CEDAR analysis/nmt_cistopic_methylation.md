@@ -430,17 +430,21 @@ set.seed(1234)
 library(EnsDb.Hsapiens.v86)
 library(org.Hs.eg.db)
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(data.table)
+library(BSgenome.Hsapiens.UCSC.hg38)
 setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
 
-#args <- commandArgs(trailingOnly=TRUE)
+#library(scMET)
 
-args<-list()
-args[1]<-"/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed" 
-args[2]<-"CpG"
-args[3]<-"enhancer"
-args<-unlist(args)
+args <- commandArgs(trailingOnly=TRUE)
 
-meth_files<-list.files(pattern=paste0(args[2],".",args[3],".count.txt$")) #use prefix to determine meth files to read in
+#args<-list()
+#args[1]<-"/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed" 
+#args[2]<-"CpG"
+#args[3]<-"gene"
+#args<-unlist(args)
+
+meth_files<-list.files(pattern=paste0(args[2],".",args[3],".count.txt.gz$")) #use prefix to determine meth files to read in
 region<-args[1] #region file to read through
 
 
@@ -463,11 +467,12 @@ createcisTopicObjectFromMeth <- function(
   colnames(regions_frame) <- c('seqnames', 'start', 'end','feat')
 
   regions_frame<-regions_frame[!duplicated(regions_frame[,c(1:3)]),] #ensure assayed regions are unique
+  regions_frame<-regions_frame[regions_frame$seqnames %in% paste0('chr',c(1:22,"X","Y")),] #remove alt chrs
 
   rownames(regions_frame) <- paste(regions_frame$seqnames, ':', regions_frame$start, '-', regions_frame$end, sep='')
   regions_granges <- makeGRangesFromDataFrame(as.data.frame(regions_frame))
 
-  # Prepare beta matrix, cell data and region data
+  # Prepxare beta matrix, cell data and region data
   beta.matrix <- Matrix(0, nrow(regions_frame), length(methfiles), sparse=TRUE)
   rownames(beta.matrix) <- rownames(regions_frame)
   colnames(beta.matrix) <- methfiles
@@ -480,40 +485,59 @@ createcisTopicObjectFromMeth <- function(
   rownames(region.data) <- rownames(regions_frame)
   colnames(region.data) <- c('Methylated reads', 'Total reads')
 
-  for (file in methfiles){
-  	#tester file file<-methfiles[1]
-    # Read data
-    print(paste('Reading file ', file, '...', sep=''))
-    sample <- read.table(file,sep=",")
-    sample <- sample[, c(1,2,3,6,5)] #4 is feature name, i also put total reads first in my data frames
-    colnames(sample) <- c('seqnames', 'start', 'end', 'Methylated', 'Total_reads')
-    sample_granges <- makeGRangesFromDataFrame(as.data.frame(sample), keep.extra.columns=TRUE)
+  #read in single-cell data and format for scmet
+  single_cell_in<-mclapply(methfiles,mc.cores=20, FUN= function(x) {
+	  	#tester file x<-methfiles[1]
+	    # Read data
+	    print(paste('Reading file ', x, '...', sep=''))
+	    sample <- fread(x,sep=",")
+	    sample <- sample[, c(1,2,3,5,6)] 
+	    colnames(sample) <- c('seqnames', 'start', 'end', 'Methylated', 'Total_reads')
+	    sample_granges <- makeGRangesFromDataFrame(as.data.frame(sample), keep.extra.columns=TRUE)
 
-    # Fill cell data
-    cell.data[file, 1] <- sum(sample_granges$Methylated)
-    cell.data[file, 2] <- sum(sample_granges$Total_reads)
+	    # Calculate aggregate reads per region (methylated and total)
+	    overlaps <- findOverlaps(sample_granges, regions_granges)
+	    sites <- sample_granges[queryHits(overlaps)]
 
-    # Calculate aggregate reads per region (methylated and total)
-    overlaps <- findOverlaps(sample_granges, regions_granges)
-    sites <- sample_granges[queryHits(overlaps)]
-    sumMethylated <- aggregate(sites$Methylated, list(subjectHits(overlaps)), sum)
-    sumReads <- aggregate(sites$Total_reads, list(subjectHits(overlaps)), sum)
+	    sumMethylated <- aggregate(sites$Methylated, list(subjectHits(overlaps)), sum)
+	    sumReads <- aggregate(sites$Total_reads, list(subjectHits(overlaps)), sum)
 
-    # Fill region data
-    rownames(sumMethylated) <- rownames(regions_frame)[sumMethylated[,1]]
-    region.data[rownames(sumMethylated),1] <- region.data[rownames(sumMethylated),1] + sumMethylated[,2]
+	    # Fill region data
+	    rownames(sumMethylated) <- rownames(regions_frame)[sumMethylated[,1]]
+	    region.data[rownames(sumMethylated),1] <- region.data[rownames(sumMethylated),1] + sumMethylated[,2]
 
-    rownames(sumReads) <- rownames(regions_frame)[sumReads[,1]]
-    region.data[rownames(sumReads),2] <- region.data[rownames(sumReads),2] + sumReads[,2]
+	    rownames(sumReads) <- rownames(regions_frame)[sumReads[,1]]
+	    region.data[rownames(sumReads),2] <- region.data[rownames(sumReads),2] + sumReads[,2]
 
-    # Calculate beta
-    aggrBeta <- sumMethylated[,2]/sumReads[,2]
-    names(aggrBeta) <- rownames(regions_frame)[sumMethylated[,1]]
-    beta.matrix[names(aggrBeta), file] <- aggrBeta
-  }
-  regions_frame <- read.table(regions)[,c(1:4)] #repopulate regions_frame for annotation field
-  regions_frame<-regions_frame[!duplicated(regions_frame),] #ensure assayed regions are unique
-  region.data<-cbind(region.data,regions_frame[4])#add in gene name
+	    total_met<-sum(region.data[,1])
+	    total_count<-sum(region.data[,2])
+	    # Calculate beta
+  		aggrBeta <- sumMethylated[,2]/sumReads[,2]
+  		names(aggrBeta) <- rownames(regions_frame)[sumMethylated[,1]]
+  		return(list(total_met=total_met,total_count=total_count,beta=aggrBeta))
+  })
+
+  cell_met_count<-unlist(lapply(single_cell_in,"[[",1))
+  cell_total_count<-unlist(lapply(single_cell_in,"[[",2))
+  cell.data<-cbind(cell.data,CG_met_count=cell_met_count,CG_total_count=cell_total_count)
+  beta.matrix_sc<-lapply(1:length(single_cell_in), FUN= function(x) single_cell_in[[x]][3])
+
+  #populate the sparse matrix with a for loop. probably not the best, but whatever
+  print("Populating Sparse Matrix.")
+	for (i in 1:length(beta.matrix_sc)){
+		beta_dat<-unlist(beta.matrix_sc[[i]]$beta,use.names=T)
+		beta.matrix[names(beta_dat),methfiles[i]]<-unname(beta_dat)
+	}
+
+  #compute CG density across regions
+  #https://www.biostars.org/p/478444/
+  #Get the sequences and compute the GC content
+  print("Calculating region specific CG density.")
+  region_seq<-getSeq(BSgenome.Hsapiens.UCSC.hg38, regions_granges)
+  freqs <- letterFrequency(region_seq,letters="CG")
+  cg_density <- freqs/region_seq@ranges@width
+
+  region.data<-cbind(region.data,regions_frame[4],cg_density=cg_density)#add in gene name and cg density
   object <- createcisTopicObject(count.matrix = beta.matrix, project.name = project.name, min.cells = min.cells, min.regions = min.regions, is.acc = is.acc, ...)
   object <- addCellMetadata(object, cell.data = as.data.frame(cell.data))
   object <- addRegionMetadata(object, region.data = as.data.frame(region.data))
@@ -521,37 +545,33 @@ createcisTopicObjectFromMeth <- function(
 }
 
 dat<-createcisTopicObjectFromMeth(methfiles=meth_files,regions=region)
-saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
-
 dat <- runWarpLDAModels(dat, topic=c(5:15, 20, 25, 40, 50), seed=123, nCores=14, addModels=FALSE,tmp="/home/groups/CEDAR/mulqueen/temp/")
-saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.models.Rds"))
-dat<-readRDS(file=paste0(args[2],".",args[3],".cistopic_object.models.Rds"))
 
 #select best model
-pdf(paste0(argv[1],".cistopic_model_selection.pdf"))
+pdf(paste0(args[2],".",args[3],".cistopic_model_selection.pdf"))
 par(mfrow=c(3,3))
 dat <- selectModel(dat, type='maximum')
 dat <- selectModel(dat, type='perplexity')
 dat <- selectModel(dat, type='derivative')
 dev.off()
 
-#going with 15 topics based on derivative
+#going with topics counts based on derivative
 
-dat<-cisTopic::selectModel(dat,select=15,keepModels=T)
+dat<-cisTopic::selectModel(dat,type="derivative",keepModels=T)
 
 dat <- runUmap(dat, target='cell') #running umap using cistopics implementation
 
 #add sample cell line names as metadata
-dat@cell.data$cellLine<-unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",4))
+dat@cell.data$cellLine<-unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",1))
 
 #set up treatment conditions
-dat@cell.data$treatment<-substr(unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",5)),1,1) #set up T47D cell treatment first
+dat@cell.data$treatment<-substr(unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",2)),1,1) #set up T47D cell treatment first
 dat@cell.data[startsWith(dat@cell.data$cellLine,"M7"),]$treatment<-substr(dat@cell.data[startsWith(dat@cell.data$cellLine,"M7"),]$cellLine,3,3)
 dat@cell.data[startsWith(dat@cell.data$cellLine,"BSM7"),]$treatment<-substr(dat@cell.data[startsWith(dat@cell.data$cellLine,"BSM7"),]$cellLine,5,5)
 
 dat@cell.data$cellLine_treatment<-paste(dat@cell.data$cellLine,dat@cell.data$treatment,sep="_")
 
-dat@cell.data$perc_met<-dat@cell.data$"Methylated reads"/dat@cell.data$"Total reads"
+dat@cell.data$perc_met<-dat@cell.data$"CG_met_count"/dat@cell.data$"CG_total_count"
 
 #clean up metadata a bit more
 dat@cell.data[dat@cell.data$cellLine %in% c("BSM7E6","M7C1A","M7C2B","M7E4C"),]$cellLine<-"MCF7"
@@ -559,12 +579,12 @@ dat@cell.data[dat@cell.data$cellLine %in% c("T"),]$cellLine<-"T47D"
 dat@cell.data[dat@cell.data$treatment %in% c("C"),]$treatment<-"control"
 dat@cell.data[dat@cell.data$treatment %in% c("E"),]$treatment<-"estrogen"
 
-pdf(paste0(args[2],".",args[3],".cistopic_clustering.pdf")
+pdf(paste0(args[2],".",args[3],".cistopic_clustering.pdf"))
 par(mfrow=c(1,3))
 plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('cellLine','treatment','cellLine_treatment'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
 
 par(mfrow=c(1,3))
-plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('Total reads','perc_met'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
+plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c("CG_total_count","perc_met"), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
 
 
 par(mfrow=c(2,5))
@@ -576,10 +596,10 @@ saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
 
 #should probably make this Z-scored for plotting
 topicmat<-as.data.frame(dat@selected.model$document_expects)
-row.names(dat@cell.data) == colnames(topicmat) # order is maintained so using cell.data info for annotation
+topicmat<-as.data.frame(t(scale(t(topicmat))))
 cellline_annot<-dat@cell.data$cellLine
 treatment_annot<-dat@cell.data$treatment
-c_count_annot<-dat@cell.data$"Total reads"
+c_count_annot<-dat@cell.data$CG_total_count
 cellline_treatment_annot<-dat@cell.data$cellLine_treatment
 
 #color function
@@ -588,24 +608,25 @@ c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
 
 row.names(topicmat)<-paste0("Topic_",row.names(topicmat))
 plt1<-Heatmap(topicmat,
+	name="Z-score",
     show_column_names=F,
     bottom_annotation=columnAnnotation(cellline=cellline_annot,treatment=treatment_annot,C_covered=c_count_annot,cellline_treatment=cellline_treatment_annot,
-    	    col = list(cellline = c("T47D"="red","M7"="blue"),
+    	    col = list(cellline = c("T47D"="red","MCF7"="blue"),
                			treatment = c("control" = "white", "estrogen" = "black"),
                			cellline_treatment = c("BSM7E6_E"="green","M7C1A_C"="brown","M7C2B_C"="purple","M7E4C_E"="blue","T_C"="orange","T_E"="red"))))
 
-pdf(paste0(args[2],".",args[3],".cistopic_heatmap.pdf")
+pdf(paste0(args[2],".",args[3],".cistopic_heatmap.pdf"))
 plt1
 dev.off()
 
 
 #testing topic significance for cell line/ treatment
-dat_stat<-rbind(topicmat,cellline_annot,treatment_annot)
+dat_stat<-rbind(as.data.frame(dat@selected.model$document_expects),cellline_annot,treatment_annot)
 dat_stat<-as.data.frame(t(dat_stat))
-dat_stat[1:15] <- lapply(dat_stat[1:15], as.numeric)
+dat_stat[1:(ncol(dat_stat)-2)] <- lapply(dat_stat[1: (ncol(dat_stat)-2)], as.numeric)
 dat_stat<-melt(dat_stat)
 colnames(dat_stat)<-c("cellline","treatment","topic","value")
-
+dat_stat$topic<-paste0("topic_",sub('.', '', dat_stat$topic))
 #testing topic specificity by treatment and cell line
 out_stats<-as.data.frame(dat_stat %>% 
   group_by(topic) %>% 
@@ -619,14 +640,15 @@ write.table(out_stats,file=paste0(args[2],".",args[3],".cistopic_topic_enrichmen
 ```
 {% endcapture %} {% include details.html %} 
 
-```bash
 Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R [argv1] [argv2] [argv3]
+
+```bash
 
 #CpG features
 Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed \
 CpG \
-gene
+gene 
 
 Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed \
@@ -637,6 +659,7 @@ Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed \
 CpG \
 enhancer
+###done###
 
 Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed \
