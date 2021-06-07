@@ -166,8 +166,11 @@ wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000751/
 wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000752/SRR2000752.1
 
 
-fastq-dump * & #using sra to fastq-dump data
-gzip *fastq & #gzip those fastqs because I'm not a criminal
+for i in SRR*1; do 
+    fastq-dump --split-3 $i & done & #using sra to fastq-dump data
+
+for i in *fastq; do
+    gzip $i & done & #gzip those fastqs because I'm not a criminal
 
 mv SRR2000691.1.fastq.gz t74d_input.1.fq.gz
 mv SRR2000692.1.fastq.gz t74d_input.2.fq.gz
@@ -176,23 +179,19 @@ mv SRR2000750.1.fastq.gz mcf7_input.1.fq.gz
 mv SRR2000751.1.fastq.gz mcf7_input.2.fq.gz
 mv SRR2000752.1.fastq.gz mcf7_input.3.fq.gz
 
-#using bwa mem for alignment
-#preparing human genome
-bwa index /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/genome.fa &
 
-#alignment of reads 
+#using bowtie2 for alignment
+#preparing human genome
+wget http://igenomes.illumina.com.s3-website-us-east-1.amazonaws.com/Homo_sapiens/NCBI/GRCh38/Homo_sapiens_NCBI_GRCh38.tar.gz
+
+#alignment of reads using either bwa mem or bowtie2
+for i in *fq.gz; do
+bwa mem -P -S -t 10 -T 20 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/genome.fa $i 2>>align.log | samtools sort -@ 5 -T . -m 5G - | samtools rmdup -s - $outname; done &
+
 for i in *fq.gz; do
 outname=${i::-6}.bam
-bwa mem -P -S -t 4 -T 20 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/genome.fa $i | samtools sort -@ 5 -T . -m 5G - | samtools rmdup -s - $outname; done &
+bowtie2 --threads 20 -x /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/Bowtie2Index/genome -U $i | samtools sort -@ 5 -T . -m 5G - | samtools rmdup -s - $outname; done &
 
-###alignment doesnt look right no end place
-#using bismark for deduplication
-for i in *bam; do
-samtools rmdup -s $i ${i::-4}.rmdup.bam ; done &
-
-#and a little filtering
-for i in *rmdup.bam; do
-samtools view -q20 -f 4 $i ${i::-4}.q20.bam ; done &
 ```
 {% endcapture %} {% include details.html %} 
 
@@ -223,8 +222,17 @@ prepare_bam_bed_obj<-function(resol=resol){
     #Initalization
     bamfolder <- "/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/dedup_bams"
     bamFile <- list.files(bamfolder, pattern = 'deduplicated.bam$')
+    #add reference bam files
+    ref_bamfolder<-"/home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata"
+    ref_bamFile <- list.files(ref_bamfolder, pattern = '.bam$')
     bamdir <- file.path(bamfolder, bamFile)
+    ref_bamdir<-file.path(ref_bamfolder,ref_bamFile)
     sampname_raw <- sapply(strsplit(bamFile, ".", fixed = TRUE), "[", 1)
+    refname_raw<-substr(ref_bamFile,1, nchar(ref_bamFile)-4)
+    
+    bamdir<-append(bamdir,ref_bamdir)
+    sampname_raw<-append(sampname_raw,refname_raw)
+
     #set genomic window size to 500kb
     bambedObj <- get_bam_bed(bamdir = bamdir, sampname = sampname_raw, hgref = "hg38",resolution=resol,sex=T)#resolution of 100 = 100kbp
     #Compute GC content and mappability for each reference bin.
@@ -347,7 +355,7 @@ saveRDS(bambedObj,file="bambedObj.500kbp.rds")
 bambedObj<-readRDS(file="bambedObj.500kbp.rds")
 
 #Get read count per bin per cell
-Y_out<-mclapply(1:length(sampname),read_in_reads,mc.cores=10) #can be set to "paired-end" for paired-end reads
+Y_out<-mclapply(1:length(sampname),read_in_reads,mc.cores=20) #can be set to "paired-end"
 Y<-do.call("cbind",Y_out)
 colnames(Y)<-sampname
 ref<-as.data.frame(ref)

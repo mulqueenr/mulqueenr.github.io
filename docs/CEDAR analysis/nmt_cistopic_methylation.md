@@ -659,7 +659,6 @@ Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed \
 CpG \
 enhancer
-###done###
 
 Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed \
