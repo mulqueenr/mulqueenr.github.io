@@ -404,9 +404,9 @@ sbatch GpC_100kb.slurm.sh
 
 Making an R script for cistopic processing of methylation files.
 
-* argv1 is a bed file with features to aggregate methylation over. Same as aggregate_methylation_over_region.py input.
-* argv2 is the methylation moeity. This is set up in argv3 of the python script. Example is \*[GpC|CpG].[prefix].count.txt.
-* argv3 is prefix from aggregate_methylation_over_region.py output. This is set up in argv3 of the python script. Example is \*.[prefix].count.txt.
++ argv1 is a bed file with features to aggregate methylation over. Same as aggregate_methylation_over_region.py input.
++ argv2 is the methylation moeity. This is set up in argv3 of the python script. Example is \*[GpC/CpG].[prefix].count.txt.
++ argv3 is prefix from aggregate_methylation_over_region.py output. This is set up in argv3 of the python script. Example is \*.[prefix].count.txt.
 
 
 ```bash
@@ -638,7 +638,10 @@ write.table(out_stats,file=paste0(args[2],".",args[3],".cistopic_topic_enrichmen
 
 
 ```
+
 {% endcapture %} {% include details.html %} 
+
+
 
 Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R [argv1] [argv2] [argv3]
 
@@ -688,6 +691,7 @@ GpC \
 
 ```
 
+
 <!---
 Additional processing for topic heatmap generation
 Following this (tutorial.)[https://www.neb.com/products/n0356-dm5ctp#Product%20Information]
@@ -733,15 +737,4 @@ dev.off()
 #Save cistopic object
 saveRDS(dat,file="cistopic_object.Rds")
 ```
-{% endcapture %} {% include details.html %} 
---->
-
-To do
-
-* re run on genome-wide bins
-* re run on defined enhancers
-* re run on promoters
-* re run on accessibility (GC met)
-* see if cistopic needs to be binarized
-* get gene lists per topic
-* change methylation rate cutoffs per gene
+-->

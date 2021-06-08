@@ -6,7 +6,7 @@ title: Single cell omics technologies
 
 ## Welcome!
 
-The following pages include my full code for processing of various projects while working in the <a href="https://www.ohsu.edu/school-of-medicine/oroak-lab">O'Roak</a> and <a href="https://adeylab.org">Adey labs</a>. I also added some background information about the state of the field for various single-cell assays (as of 2020-ish) which can be found in the "Background" section.
+The following pages include my full code for processing of various projects while working in the <a href="https://www.ohsu.edu/school-of-medicine/oroak-lab">O'Roak</a> and <a href="https://adeylab.org">Adey labs</a>. More recently, I joined <a href="https://www.ohsu.edu/knight-cancer-institute/cedar">CEDAR</a>, with actively developed code available as well. I also added some background information about the state of the field for various single-cell assays (as of 2020-ish) which can be found in the "Background" section.
 
 Some of the basic processing (bcl2fastq to generation of a counts matrix) was performed in our bash environment or with the Adey lab developed <a href="https://github.com/adeylab/scitools-dev">scitools helper functions</a>. The rest was performed in either R or python environments. All of this is a work of progress and will likely change quite a bit as projects progress.
 
