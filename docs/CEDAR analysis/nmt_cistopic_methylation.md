@@ -40,6 +40,7 @@ zcat homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gff.gz | 
 zcat homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gff.gz | awk 'OFS="\t" {if ($3=="CTCF_binding_site") split($9,a,"=");split(a[2],b,";"); if (b[1] != "") print "chr"$1,$4,$5,b[1]}' | sort -u -k1,1 -k2,2n -k3,3n > ctcf.bed
 
 awk 'OFS="\t" {print $1,1,$2}' /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/star/chrNameLength.txt | bedtools makewindows -b - -w 100000 | awk 'OFS="\t" {print $1,$2,$3,"bin_"NR}'> 100kb.bed
+awk 'OFS="\t" {print $1,1,$2}' /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/star/chrNameLength.txt | bedtools makewindows -b - -w 10000 | awk 'OFS="\t" {print $1,$2,$3,"bin_"NR}'> 10kb.bed
 
 
 ``` 
@@ -289,6 +290,30 @@ $files_in \
 
 {% endcapture %} {% include details.html %} 
 
+{% capture summary %} CpG 10kb {% endcapture %} {% capture details %}  
+
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
+#SBATCH --array=1-374
+#SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
+#SBATCH --time=1:00:00 ## ask for 1 hour on the node
+#SBATCH --
+
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+
+srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
+$files_in \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/10kb.bed \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+10kb
+
+```
+
+{% endcapture %} {% include details.html %} 
+
 {% capture summary %} GpC Gene body {% endcapture %} {% capture details %}  
 
 ```bash
@@ -385,17 +410,43 @@ $files_in \
 
 {% endcapture %} {% include details.html %} 
 
+
+{% capture summary %} GpC 10kb {% endcapture %} {% capture details %}  
+
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
+#SBATCH --array=1-374
+#SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
+#SBATCH --time=1:00:00 ## ask for 1 hour on the node
+#SBATCH --
+
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+
+srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
+$files_in \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/10kb.bed \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+10kb
+
+```
+
+{% endcapture %} {% include details.html %} 
 Running all of these as batch jobs
 
 ```bash
-sbatch CpG_genes.slurm.sh #done
-sbatch CpG_enhancers.slurm.sh  #done
+sbatch CpG_genes.slurm.sh 
+sbatch CpG_enhancers.slurm.sh  
 sbatch CpG_promoters.slurm.sh  
-sbatch CpG_100kb.slurm.sh  #done
+sbatch CpG_100kb.slurm.sh  
+sbatch CpG_10kb.slurm.sh  
 
 sbatch GpC_genes.slurm.sh
 sbatch GpC_enhancers.slurm.sh
 sbatch GpC_promoters.slurm.sh
+sbatch GpC_100kb.slurm.sh  
 sbatch GpC_100kb.slurm.sh  
 
 ```
@@ -404,25 +455,20 @@ sbatch GpC_100kb.slurm.sh
 
 Making an R script for cistopic processing of methylation files.
 
-+ argv1 is a bed file with features to aggregate methylation over. Same as aggregate_methylation_over_region.py input.
-+ argv2 is the methylation moeity. This is set up in argv3 of the python script. Example is \*[GpC/CpG].[prefix].count.txt.
-+ argv3 is prefix from aggregate_methylation_over_region.py output. This is set up in argv3 of the python script. Example is \*.[prefix].count.txt.
-
-
-```bash
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R [argv1] [argv2] [argv3]
-```
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+{% capture summary %} cistopic_methylation.R {% endcapture %} {% capture details %}  
 
 ```R
 library(cisTopic)
 library(reshape2)
 library(GenomicRanges)
 library(Matrix)
+library(mefa4)
 library(stats)
+library(dplyr)
 library(ComplexHeatmap)
 library(circlize)
+library(RColorBrewer)
+library(patchwork)
 library(rstatix)
 library(GenomeInfoDb)
 library(ggplot2)
@@ -432,9 +478,9 @@ library(org.Hs.eg.db)
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 library(data.table)
 library(BSgenome.Hsapiens.UCSC.hg38)
-setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
+library(Ckmeans.1d.dp)
 
-#library(scMET)
+setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
 
 args <- commandArgs(trailingOnly=TRUE)
 
@@ -457,7 +503,8 @@ createcisTopicObjectFromMeth <- function(
   project.name = "cisTopicProject",
   min.cells = 1,
   min.regions = 1,
-  is.acc = 0.5, #this could probably be modified as well
+  is.acc = 0.5, 
+  return.norm.beta=T,
   ...
 ) {
   # Prepare annotation
@@ -511,12 +558,32 @@ createcisTopicObjectFromMeth <- function(
 
 	    total_met<-sum(region.data[,1])
 	    total_count<-sum(region.data[,2])
-	    # Calculate beta
+
+	    # Calculate beta (mean methylation) old way of processing
   		aggrBeta <- sumMethylated[,2]/sumReads[,2]
+
+      #calculate beta-binomial distribution to account for coverage
+      if(return.norm.beta){
+        #beta binomial distribution correction based on https://www.biorxiv.org/content/10.1101/2019.12.11.873398v1.full
+        #sample mean methylation across features
+        m=mean(sumMethylated[,2]/sumReads[,2])
+        v=var(sumMethylated[,2]/sumReads[,2])
+        #shape parameters of beta distribution by method of moments
+        alpha=m*(m*(1-m)/v-1)
+        beta=(1-m)*(m*(1-m)/v-1)
+        #calculate posterior
+        mhat_c=(alpha+sumMethylated[,2])/(alpha+beta+sumReads[,2])
+        norm_mhat_c=mhat_c/(alpha/alpha+beta)
+        aggrBeta<-norm_mhat_c
+      }
+
   		names(aggrBeta) <- rownames(regions_frame)[sumMethylated[,1]]
   		return(list(total_met=total_met,total_count=total_count,beta=aggrBeta))
   })
 
+
+
+#posterior rate calculation and normalization
   cell_met_count<-unlist(lapply(single_cell_in,"[[",1))
   cell_total_count<-unlist(lapply(single_cell_in,"[[",2))
   cell.data<-cbind(cell.data,CG_met_count=cell_met_count,CG_total_count=cell_total_count)
@@ -534,17 +601,47 @@ createcisTopicObjectFromMeth <- function(
   #Get the sequences and compute the GC content
   print("Calculating region specific CG density.")
   region_seq<-getSeq(BSgenome.Hsapiens.UCSC.hg38, regions_granges)
-  freqs <- letterFrequency(region_seq,letters="CG")
-  cg_density <- freqs/region_seq@ranges@width
+  if(args[3]=="GpC"){
+    freqs <- letterFrequency(region_seq,letters="GC")
+    } else {
+    freqs <- letterFrequency(region_seq,letters="CG")}
+  nuc_density <- freqs/region_seq@ranges@width
 
-  region.data<-cbind(region.data,regions_frame[4],cg_density=cg_density)#add in gene name and cg density
+  region.data<-cbind(region.data,regions_frame[4],nuc_density=nuc_density)#add in gene name and cg density
   object <- createcisTopicObject(count.matrix = beta.matrix, project.name = project.name, min.cells = min.cells, min.regions = min.regions, is.acc = is.acc, ...)
   object <- addCellMetadata(object, cell.data = as.data.frame(cell.data))
   object <- addRegionMetadata(object, region.data = as.data.frame(region.data))
   return(object)
 }
 
+
 dat<-createcisTopicObjectFromMeth(methfiles=meth_files,regions=region)
+
+print("Generating an automatic methylation cutoff by univariate k means.")
+#generate plot of beta values per features
+feat_dat<-Melt(dat@count.matrix)
+
+feat_var<-data.frame(var=apply(dat@count.matrix,1,sd),nuc_density=as.numeric(dat@region.data$"C|G"))
+
+feat_dat<-merge(feat_dat,feat_var,by.x="rows",by.y="row.names")
+#perform univariate clustering to determine optimal sample segmentation https://cran.r-project.org/web/packages/Ckmeans.1d.dp/vignettes/Ckmeans.1d.dp.html
+#similar to this paper https://academic.oup.com/bioinformatics/article/36/20/5027/5866975?login=true
+#provide cg density as weight?
+clus<-Ckmeans.1d.dp(x=feat_dat$value,k=2,y=feat_dat$nuc_density)
+cutoff_value<-max(feat_dat$value[clus$cluster==1])
+print(paste0("Cutoff value set to: ",cutoff_value))
+
+plt1<-ggplot(feat_dat,aes(x=value,y=var))+stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE)+xlab("Methylation")+ylab("Feature SD")+scale_fill_distiller(palette = 1)+geom_vline(xintercept=cutoff_value,color="red") 
+plt2<-ggplot(feat_dat,aes(x=value,y=nuc_density))+stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE)+xlab("Methylation")+ylab("Feature Dinuc Density")+scale_fill_distiller(palette = 2) + geom_vline(xintercept=cutoff_value,color="red") 
+ggsave(plt1/plt2,file=paste0(args[2],".",args[3],".feature_stats.pdf"))
+system(paste0("slack ",paste0(args[2],".",args[3],".feature_stats.pdf")) )
+
+print("Binarize Data by automatic cutoff.")
+backup<-dat@binary.count.matrix
+dat@binary.count.matrix<-dat@count.matrix
+dat@binary.count.matrix[which(dat@binary.count.matrix>=cutoff_value,arr.ind=T)]<-1
+dat@binary.count.matrix[which(dat@binary.count.matrix<cutoff_value,arr.ind=T)]<-0
+
 dat <- runWarpLDAModels(dat, topic=c(5:15, 20, 25, 40, 50), seed=123, nCores=14, addModels=FALSE,tmp="/home/groups/CEDAR/mulqueen/temp/")
 
 #select best model
@@ -554,6 +651,246 @@ dat <- selectModel(dat, type='maximum')
 dat <- selectModel(dat, type='perplexity')
 dat <- selectModel(dat, type='derivative')
 dev.off()
+
+system(paste0("slack ",paste0(args[2],".",args[3],".cistopic_model_selection.pdf")) )
+
+#going with topics counts based on derivative
+
+dat<-cisTopic::selectModel(dat,type="derivative",keepModels=T)
+
+dat <- runUmap(dat, target='cell') #running umap using cistopics implementation
+
+#add sample cell line names as metadata
+dat@cell.data$cellLine<-unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",1))
+
+#set up treatment conditions
+dat@cell.data$treatment<-substr(unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",2)),1,1) #set up T47D cell treatment first
+dat@cell.data[startsWith(dat@cell.data$cellLine,"M7"),]$treatment<-substr(dat@cell.data[startsWith(dat@cell.data$cellLine,"M7"),]$cellLine,3,3)
+dat@cell.data[startsWith(dat@cell.data$cellLine,"BSM7"),]$treatment<-substr(dat@cell.data[startsWith(dat@cell.data$cellLine,"BSM7"),]$cellLine,5,5)
+
+dat@cell.data$cellLine_treatment<-paste(dat@cell.data$cellLine,dat@cell.data$treatment,sep="_")
+
+dat@cell.data$perc_met<-dat@cell.data$"CG_met_count"/dat@cell.data$"CG_total_count"
+
+#clean up metadata a bit more
+dat@cell.data[dat@cell.data$cellLine %in% c("BSM7E6","M7C1A","M7C2B","M7E4C"),]$cellLine<-"MCF7"
+dat@cell.data[dat@cell.data$cellLine %in% c("T"),]$cellLine<-"T47D"
+dat@cell.data[dat@cell.data$treatment %in% c("C"),]$treatment<-"control"
+dat@cell.data[dat@cell.data$treatment %in% c("E"),]$treatment<-"estrogen"
+
+write.table(dat@cell.data,file=paste0(args[2],".",args[3],".cellData.tsv"),col.names=T,row.names=T,sep="\t",quote=F)
+
+pdf(paste0(args[2],".",args[3],".cistopic_clustering.pdf"))
+par(mfrow=c(1,3))
+plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('cellLine','treatment','cellLine_treatment'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
+
+par(mfrow=c(1,3))
+plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c("CG_total_count","perc_met"), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
+
+
+par(mfrow=c(2,5))
+plotFeatures(dat, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
+dev.off()
+
+system(paste0("slack ",paste0(args[2],".",args[3],".cistopic_clustering.pdf")) )
+
+
+saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
+
+
+#should probably make this Z-scored for plotting
+topicmat<-as.data.frame(dat@selected.model$document_expects)
+write.table(topicmat,file=paste0(args[2],".",args[3],".cellbytopic.cistopic.tsv"),col.names=T,row.names=T,sep="\t",quote=F)
+
+topicmat<-as.data.frame(t(scale(t(topicmat))))
+cellline_annot<-dat@cell.data$cellLine
+treatment_annot<-dat@cell.data$treatment
+c_count_annot<-dat@cell.data$CG_total_count
+cellline_treatment_annot<-dat@cell.data$cellLine_treatment
+
+#color function
+col_fun=colorRamp2(quantile(unlist(topicmat),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
+c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
+
+row.names(topicmat)<-paste0("Topic_",row.names(topicmat))
+plt1<-Heatmap(topicmat,
+	name="Z-score",
+    show_column_names=F,
+    bottom_annotation=columnAnnotation(cellline=cellline_annot,treatment=treatment_annot,C_covered=c_count_annot,cellline_treatment=cellline_treatment_annot,
+    	    col = list(cellline = c("T47D"="red","MCF7"="blue"),
+               			treatment = c("control" = "white", "estrogen" = "black"),
+               			cellline_treatment = c("BSM7E6_E"="green","M7C1A_C"="brown","M7C2B_C"="purple","M7E4C_E"="blue","T_C"="orange","T_E"="red"))))
+
+pdf(paste0(args[2],".",args[3],".cistopic_heatmap.pdf"))
+plt1
+dev.off()
+
+system(paste0("slack ",paste0(args[2],".",args[3],".cistopic_heatmap.pdf")) )
+
+
+#testing topic significance for cell line/ treatment
+dat_stat<-rbind(as.data.frame(dat@selected.model$document_expects),cellline_annot,treatment_annot)
+dat_stat<-as.data.frame(t(dat_stat))
+dat_stat[1:(ncol(dat_stat)-2)] <- lapply(dat_stat[1: (ncol(dat_stat)-2)], as.numeric)
+dat_stat<-melt(dat_stat)
+colnames(dat_stat)<-c("cellline","treatment","topic","value")
+dat_stat$topic<-paste0("topic_",sub('.', '', dat_stat$topic))
+#testing topic specificity by treatment and cell line
+out_stats<-as.data.frame(dat_stat %>% 
+  group_by(topic) %>% 
+  anova_test(value ~ treatment*cellline) %>% adjust_pvalue()
+  )
+
+write.table(out_stats,file=paste0(args[2],".",args[3],".cistopic_topic_enrichment.txt"),quote=F,sep="\t",col.names=T)
+
+#region annotations
+dat<-readRDS(file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
+
+pred_matrix <- predictiveDistribution(dat) #predictive measurements of topics
+dat <- getRegionsScores(dat, method='NormTop', scale=TRUE) #get regions from topics
+dat <- annotateRegions(dat, txdb=TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb='org.Hs.eg.db') #plot general annotations to topics 
+dat<-binarizecisTopics(dat,thrP=0.975) #binarize cistopics to get genes driving topics
+
+#grab top 10 regions per topic
+topic_enrich<-melt(as.matrix(dat@region.data[which(grepl(colnames(dat@region.data),pattern="Scores_Topic"))]))
+region_plt<-dat@region.data[as.data.frame(topic_enrich %>% group_by(Var2) %>% slice_max(order_by = value, n = 10))[,1],]
+row.names(region_plt)<-paste(row.names(region_plt),region_plt$SYMBOL)
+region_plt<-region_plt[,which(grepl(pattern="Scores_Topic",colnames(region_plt)))]
+col_order<-1:ncol(region_plt)
+plt2<-Heatmap(region_plt,name="Topic Scores",column_order=col_order)
+pdf(paste0(args[2],".",args[3],".TopicScoreRegions.pdf"),height=50)
+plt2
+dev.off()
+system(paste0("slack ",paste0(args[2],".",args[3],".TopicScoreRegions.pdf")) )
+
+#getBedFiles(dat, path=paste0(args[2],".",args[3],"_cisTopic_beds")
+
+dat <- GREAT(dat, genome='hg38', fold_enrichment=1.5, geneHits=1, sign=0.05, request_interval=10)
+pdf(paste0(args[2],".",args[3],"cistopic_GO.pdf"),width=30,height=30)
+ontologyDotPlot(dat, top=20, topics=c(1:ncol(dat@selected.model$document_expects)), var.y='name', order.by='Binom_Adjp_BH')
+dev.off()
+system(paste0("slack ",paste0(args[2],".",args[3],".GO.pdf")) )
+
+#Save cistopic object
+saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
+
+
+```
+
+{% endcapture %} {% include details.html %} 
+
+
+
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R [argv1] [argv2] [argv3]
+
+
++ argv1 is a bed file with features to aggregate methylation over. Same as aggregate_methylation_over_region.py input.
++ argv2 is the methylation moeity. This is set up in argv3 of the python script. Example is \*[GpC/CpG].[prefix].count.txt.
++ argv3 is prefix from aggregate_methylation_over_region.py output. This is set up in argv3 of the python script. Example is \*.[prefix].count.txt.
+
+
+```bash
+
+#CpG features
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed \
+CpG \
+gene 
+
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed \
+CpG \
+promoter
+
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed \
+CpG \
+enhancer
+
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed \
+CpG \
+100kb
+
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed \
+CpG \
+10kb
+
+#GpC features
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed \
+GpC \
+gene
+
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed \
+GpC \
+promoter
+
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed \
+GpC \
+enhancer
+
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed \
+GpC \
+100kb
+
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/10kb.bed \
+GpC \
+10kb
+
+```
+
+Combine multiple binarized matrices prior to running cistopic
+
+```R
+library(cisTopic)
+library(reshape2)
+library(GenomicRanges)
+library(Matrix)
+library(mefa4)
+library(stats)
+library(dplyr)
+library(ComplexHeatmap)
+library(circlize)
+library(RColorBrewer)
+library(patchwork)
+library(rstatix)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(org.Hs.eg.db)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(data.table)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(Ckmeans.1d.dp)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
+
+args <- commandArgs(trailingOnly=TRUE)
+
+dat_1<-readRDS(args[1])
+dat_2<-readRDS(args[2])
+
+dat<-dat_1
+dat@binary.count.matrix<-rbind(dat@binary.count.matrix,dat_2@binary.count.matrix)
+dat@region.data<-rbind(dat@binary.count.matrix,dat_2@region.data)
+dat <- runWarpLDAModels(dat, topic=c(5:15, 20, 25, 40, 50), seed=123, nCores=14, addModels=FALSE,tmp="/home/groups/CEDAR/mulqueen/temp/")
+
+#select best model
+pdf(paste0(args[2],".",args[3],".cistopic_model_selection.pdf"))
+par(mfrow=c(3,3))
+dat <- selectModel(dat, type='maximum')
+dat <- selectModel(dat, type='perplexity')
+dat <- selectModel(dat, type='derivative')
+dev.off()
+
+system(paste0("slack ",paste0(args[2],".",args[3],".cistopic_model_selection.pdf")) )
 
 #going with topics counts based on derivative
 
@@ -591,150 +928,8 @@ par(mfrow=c(2,5))
 plotFeatures(dat, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
 dev.off()
 
+system(paste0("slack ",paste0(args[2],".",args[3],".cistopic_clustering.pdf")) )
+
+
 saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
-
-
-#should probably make this Z-scored for plotting
-topicmat<-as.data.frame(dat@selected.model$document_expects)
-topicmat<-as.data.frame(t(scale(t(topicmat))))
-cellline_annot<-dat@cell.data$cellLine
-treatment_annot<-dat@cell.data$treatment
-c_count_annot<-dat@cell.data$CG_total_count
-cellline_treatment_annot<-dat@cell.data$cellLine_treatment
-
-#color function
-col_fun=colorRamp2(quantile(unlist(topicmat),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
-c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
-
-row.names(topicmat)<-paste0("Topic_",row.names(topicmat))
-plt1<-Heatmap(topicmat,
-	name="Z-score",
-    show_column_names=F,
-    bottom_annotation=columnAnnotation(cellline=cellline_annot,treatment=treatment_annot,C_covered=c_count_annot,cellline_treatment=cellline_treatment_annot,
-    	    col = list(cellline = c("T47D"="red","MCF7"="blue"),
-               			treatment = c("control" = "white", "estrogen" = "black"),
-               			cellline_treatment = c("BSM7E6_E"="green","M7C1A_C"="brown","M7C2B_C"="purple","M7E4C_E"="blue","T_C"="orange","T_E"="red"))))
-
-pdf(paste0(args[2],".",args[3],".cistopic_heatmap.pdf"))
-plt1
-dev.off()
-
-
-#testing topic significance for cell line/ treatment
-dat_stat<-rbind(as.data.frame(dat@selected.model$document_expects),cellline_annot,treatment_annot)
-dat_stat<-as.data.frame(t(dat_stat))
-dat_stat[1:(ncol(dat_stat)-2)] <- lapply(dat_stat[1: (ncol(dat_stat)-2)], as.numeric)
-dat_stat<-melt(dat_stat)
-colnames(dat_stat)<-c("cellline","treatment","topic","value")
-dat_stat$topic<-paste0("topic_",sub('.', '', dat_stat$topic))
-#testing topic specificity by treatment and cell line
-out_stats<-as.data.frame(dat_stat %>% 
-  group_by(topic) %>% 
-  anova_test(value ~ treatment*cellline) %>% adjust_pvalue()
-  )
-
-write.table(out_stats,file=paste0(args[2],".",args[3],".cistopic_topic_enrichment.txt"),quote=F,sep="\t",col.names=T)
-
-
-
 ```
-
-{% endcapture %} {% include details.html %} 
-
-
-
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R [argv1] [argv2] [argv3]
-
-```bash
-
-#CpG features
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed \
-CpG \
-gene 
-
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed \
-CpG \
-promoter
-
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed \
-CpG \
-enhancer
-
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed \
-CpG \
-100kb
-
-#GpC features
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed \
-GpC \
-gene
-
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed \
-GpC \
-promoter
-
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed \
-GpC \
-enhancer
-
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed \
-GpC \
-100kb
-
-```
-
-
-<!---
-Additional processing for topic heatmap generation
-Following this (tutorial.)[https://www.neb.com/products/n0356-dm5ctp#Product%20Information]
-```R
-library(cisTopic)
-library(reshape2)
-library(GenomicRanges)
-library(Matrix)
-library(stats)
-library(ComplexHeatmap)
-library(circlize)
-library(rstatix)
-library(GenomeInfoDb)
-library(ggplot2)
-set.seed(1234)
-library(EnsDb.Hsapiens.v86)
-library(org.Hs.eg.db)
-library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-
-setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov")
-
-dat<-readRDS(file="cistopic_object.Rds")
-
-#predictive measurements of topics
-pred_matrix <- predictiveDistribution(dat)
-
-#get regions from topics
-dat <- getRegionsScores(dat, method='NormTop', scale=TRUE)
-
-#plot general annotations to topics 
-dat <- annotateRegions(dat, txdb=TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb='org.Hs.eg.db')
-
-#binarize cistopics to get genes driving topics
-dat<-binarizecisTopics(dat,thrP=0.975)
-getBedFiles(dat, path='cisTopic_beds')
-
-dat <- GREAT(dat, genome='hg38', fold_enrichment=1.5, geneHits=1, sign=0.05, request_interval=10)
-#We can visualize the enrichment results:
-pdf("cistopic_GO.pdf",width=30,height=30)
-ontologyDotPlot(dat, top=20, topics=c(1:15), var.y='name', order.by='Binom_Adjp_BH')
-dev.off()
-
-#Save cistopic object
-saveRDS(dat,file="cistopic_object.Rds")
-```
--->

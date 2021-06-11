@@ -201,9 +201,7 @@ Some functions taken from SCOPE for convenient bam file read in
 {% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
-#install.packages("BiocManager")
-#BiocManager::install(c("WGSmapp","HMMcopy","BSgenome.Hsapiens.UCSC.hg38","SCOPE"))
-#install.packages(c("ggplot2","parallel"))
+
 library(parallel)
 library(BSgenome.Hsapiens.UCSC.hg38)
 library(WGSmapp)
@@ -214,11 +212,13 @@ library(ComplexHeatmap)
 library(circlize)
 library(ggplot2)
 library(patchwork)
+library(philentropy)
+library(dendextend)
 setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test")
 
 
 #set up single cell bam files from given directory
-prepare_bam_bed_obj<-function(resol=resol){
+prepare_bam_bed_obj<-function(resol.){
     #Initalization
     bamfolder <- "/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/dedup_bams"
     bamFile <- list.files(bamfolder, pattern = 'deduplicated.bam$')
@@ -288,21 +288,6 @@ copy_segmentation<-function(i){
     return(out_segs)
 }
 
-#segmentation for shah correction
-shah_segmentation<-function(i,param.=param){
-    print(i)
-    dat<-shah_correction[[i]]
-    dat$chr<-as.factor(dat$chr)
-    dat$copy<-log2(dat$copy)
-    dat<-HMMsegment(dat,param=param.) #run HMMsegment
-    segs<-makeGRangesFromDataFrame(dat$segs,keep.extra.columns=T)   #make granges object
-    out_segs_idx<-as.data.frame(findOverlaps(segs,ref_granges)) #overlap GRanges for plotting consistent matrix bins
-    out_segs<-segs[out_segs_idx$queryHits,]$state #return list of states length of reference bins
-    return(out_segs)
-}
-
-
-
 #parameter initials
 strength<-rep(1e+30,7)
 #e<-rep(0.995,7) #shah suggested for scwgs
@@ -320,18 +305,19 @@ gamma<-rep(3,7)
 S<-rep(35,7)
 #S<-rep(0.01858295,7)
 param<-data.frame(strength=strength,e=e,mu=mu,lambda=lambda,nu=nu,kappa=kappa,m=m,eta=eta,gamma=gamma,S=S)
+
 #Seven copy number states were used; the m values were set to 0, 0.5, 1.0, 1.5, 2.0, 2.5, and 3.0 for copy number states 0, 1, 2, 3, 4, 5, and 6, respectively;
 #the μ values were set to 0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0 for copy number states 0, 1, 2, 3, 4, 5, and 6, respectively;
 #the κ values were set to  25, 50, 800, 50, 25, 25, 25 for copy number states 0, 1, 2, 3, 4, 5, and 6, respectively; 
 #the e value was set to 0.995; and the S value was set to 35.
 #https://www.biorxiv.org/content/10.1101/696179v1.full.pdf suggests e>=0.999999, nu=4 and strength=1e+07
 
-
-#param$m <- c(0, 0.5, 1, 1.5, 2, 2.5, 3)
-#param$mu <- c(0, 0.5, 1, 1.5, 2, 2.5, 3)
-#param$kappa <- c(25, 50, 800, 50, 25, 25, 25)
-#param$e <- 0.995
-#param$S <- 35
+#based on https://www.nature.com/articles/nmeth.4140#Sec8
+param$m <- c(0, 0.5, 1, 1.5, 2, 2.5, 3)
+param$mu <- c(0, 0.5, 1, 1.5, 2, 2.5, 3)
+param$kappa <- c(25, 50, 800, 50, 25, 25, 25)
+param$e <- 0.995
+param$S <- 35
 
 #Set up genome masking of duplicated regions and gaps
 # Get segmental duplication regions
@@ -346,91 +332,79 @@ gaps <- GRanges(seqnames = gaps[,2], ranges = IRanges(start = gaps[,3], end = ga
 mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
 
 #generate bam bed object
-resol=500
-bambedObj<-prepare_bam_bed_obj(resol=500) #500 is 500kbp
-ref <- bambedObj$ref
-bamdir <- bambedObj$bamdir
-sampname <- bambedObj$sampname
-saveRDS(bambedObj,file="bambedObj.500kbp.rds")
-bambedObj<-readRDS(file="bambedObj.500kbp.rds")
+    resol=500
+    bambedObj<-prepare_bam_bed_obj(resol.=resol) #500 is 500kbp
+    saveRDS(bambedObj,file="bambedObj.500kbp.rds")
+
+    bambedObj<-readRDS(file="bambedObj.500kbp.rds")
+    ref <- bambedObj$ref
+    bamdir <- bambedObj$bamdir
+    sampname <- bambedObj$sampname
 
 #Get read count per bin per cell
-Y_out<-mclapply(1:length(sampname),read_in_reads,mc.cores=20) #can be set to "paired-end"
-Y<-do.call("cbind",Y_out)
-colnames(Y)<-sampname
-ref<-as.data.frame(ref)
-row.names(Y)<-paste0(ref$seqnames,":",ref$start,"_",ref$end)
-saveRDS(Y,file="rawcount.500kbp.rds")
-Y<-readRDS(file="rawcount.500kbp.rds")
-#filter Y to cells with >100000 reads
-Y<-Y[,colSums(Y)>100000] #with fewer reads i was getting errors
+    Y_out<-mclapply(1:length(sampname),read_in_reads,mc.cores=20)
+    Y<-do.call("cbind",Y_out)
+    colnames(Y)<-sampname
+    ref<-as.data.frame(ref)
+    row.names(Y)<-paste0(ref$seqnames,":",ref$start,"_",ref$end)
+    saveRDS(Y,file="rawcount.500kbp.rds")
+    Y<-readRDS(file="rawcount.500kbp.rds")
+    #filter Y to cells with >100000 reads
+    Y<-Y[,colSums(Y)>100000] #with fewer reads i was getting errors
 
 #Prepare windows with gc and mappability data
-ref <- as.data.frame(bambedObj$ref)
-ref$gc<-ref$gc/100 #fitting to HMMcopy analysis
-ref$chr<-ref$seqname
-#ref$chr<-substr(ref$seqname,4,6)
-ref<-ref[c("chr","start","end","gc","mapp")]
-colnames(ref)<-c("chr","start","end","gc","map")
-ref_granges<-makeGRangesFromDataFrame(ref,keep.extra.columns=T) #used in the next few functions for overlapping consistent windows
+    ref <- as.data.frame(bambedObj$ref)
+    ref$gc<-ref$gc/100 #fitting to HMMcopy analysis
+    ref$chr<-ref$seqname
+    #ref$chr<-substr(ref$seqname,4,6)
+    ref<-ref[c("chr","start","end","gc","mapp")]
+    colnames(ref)<-c("chr","start","end","gc","map")
+    ref_granges<-makeGRangesFromDataFrame(ref,keep.extra.columns=T) #used in the next few functions for overlapping consistent windows
 
-copy_estimate<-lapply(1:ncol(Y),hmm_generator) #correct bins by gc content, 
-names(copy_estimate)<-colnames(Y)
-saveRDS(copy_estimate,file="copyestimate.500kb.rds")
-copy_estimate<-readRDS(file="copyestimate.500kb.rds")
+#Normalize bins
+    copy_estimate<-lapply(1:ncol(Y),hmm_generator) #correct bins by gc content, 
+    names(copy_estimate)<-colnames(Y)
+    saveRDS(copy_estimate,file="copyestimate.500kb.rds")
+    copy_estimate<-readRDS(file="copyestimate.500kb.rds")
 
 #segmentation for plotting
-copy_segmentation<-lapply(1:length(copy_estimate),copy_segmentation) #segment genome by copy estimate (log2 of cor.map)
-copy_segmentation<-lapply(copy_segmentation,as.numeric)
-names(copy_segmentation)<-colnames(Y)
-copy_segmentation<-as.data.frame(do.call("cbind",copy_segmentation))
-row.names(copy_segmentation)<-paste0(ref$chr,":",ref$start,"_",ref$end)
-copy_segmentation<-as.data.frame(t(copy_segmentation))
-saveRDS(copy_segmentation,file="copysegmentation.500kb.rds")
-copy_segmentation<-readRDS(file="copysegmentation.500kb.rds")
+    copy_segmentation<-lapply(1:length(copy_estimate),copy_segmentation) #segment genome by copy estimate (log2 of cor.map)
+    copy_segmentation<-lapply(copy_segmentation,as.numeric)
+    names(copy_segmentation)<-colnames(Y)
+    copy_segmentation<-as.data.frame(do.call("cbind",copy_segmentation))
+    row.names(copy_segmentation)<-paste0(ref$chr,":",ref$start,"_",ref$end)
+    copy_segmentation<-as.data.frame(t(copy_segmentation))
+    saveRDS(copy_segmentation,file="copysegmentation.500kb.rds")
+    copy_segmentation<-readRDS(file="copysegmentation.500kb.rds")
 
-#Correction via modal correction used for single cell data by Shah lab
-#https://github.com/shahcompbio/single_cell_pipeline/blob/master/single_cell/workflows/hmmcopy/scripts/correct_read_count.py
-#on counts_* data output by copy_estimate call, 
-#running a python script and then reading back in 
-#python 
+#filter to qc cells and set up annotations
+    Y_plot<-as.data.frame(t(Y))
+    Y_plot<-as.data.frame(Y_plot %>% mutate_all(., ~ ifelse(.!=0, log10(.+0.00000000001), log10(1))))
 
-shah_files<-list.files(path="/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test",pattern="modal_corrected.tsv",full.names=T)
-shah_correction<-lapply(shah_files,read.table,head=T,sep=",")
-saveRDS(shah_correction,file="modular_copycorrection.500kbp.rds")
-shah_correction<-readRDS("modular_copycorrection.500kbp.rds")
+    col_fun_cn=structure(c("#2166ac", "#67a9cf", "#f7f7f7","#fddbc7","#ef8a62","#b2182b","#630410"), names = c("1", "2", "3", "4", "5", "6","7"))
 
-shah_copy<-as.data.frame(lapply(1:length(shah_correction),function(x) unlist(shah_correction[[x]]$copy))) #make data frame
-row.names(shah_copy)<-paste0(ref$chr,":",ref$start,"_",ref$end)
-names(shah_copy)<-unlist(lapply(strsplit(unlist(lapply(strsplit(unlist(lapply(strsplit(shah_files,"/"),"[",9)) ,"counts_"),"[",2)),".bam"),"[",1)) 
-shah_copy<-as.data.frame(t(shah_copy))
-saveRDS(shah_copy,file="modular_copyestimate.500kbp.rds")
-shah_copy<-readRDS(file="modular_copyestimate.500kbp.rds")
+    ha = HeatmapAnnotation(which="row",assay=unlist(lapply(strsplit(row.names(Y_plot),"_"),"[",1)),
+        col = list(assay = c("BSM7E6"="red","M7C1A"="blue","M7C2B"="purple","M7E4C"="brown","T"="green","mcf7bulk"="yellow","t47dbulk"="orange")))
 
-#segmentation of shah correction
-shah_segment<-mclapply(1:length(shah_correction),shah_segmentation, mc.cores=20) #segment genome by copy estimate (log2 of cor.map)
-shah_segment<-lapply(shah_segment,as.numeric)
-names(shah_segment)<-unlist(lapply(strsplit(unlist(lapply(strsplit(unlist(lapply(strsplit(shah_files,"/"),"[",9)) ,"counts_"),"[",2)),".bam"),"[",1)) 
-shah_segment<-as.data.frame(do.call("cbind",shah_segment))
-row.names(shah_segment)<-paste0(seqnames(ref_granges),":",as.data.frame(ranges(ref_granges))$start,"_",as.data.frame(ranges(ref_granges))$end)
-shah_segment<-as.data.frame(t(shah_segment))
-saveRDS(shah_segment,file="modular_copysegment.500kbp.rds")
+    cellcount=data.frame(sampname=row.names(Y_plot),cellno=rep(1,nrow(Y_plot)))
+    cellcount[grepl("input",cellcount$sampname),]$cellno<-"bulk"
 
-#filter to qc cells
-Y_plot<-as.data.frame(t(Y))
-Y_plot<-as.data.frame(Y_plot %>% mutate_all(., ~ ifelse(.!=0, log10(.+0.00000000001), log10(1))))
+    col_fun_reads=colorRamp2(quantile(unlist(Y_plot),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
+    c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
 
-#shah_copy<-as.data.frame(shah_copy %>% mutate_all(., ~ ifelse(.!=0, log2(.+0.00000000001), log2(1))))
 
-col_fun_cn=structure(c("#2166ac", "#67a9cf", "#f7f7f7","#fddbc7","#ef8a62","#b2182b","#630410"), names = c("1", "2", "3", "4", "5", "6","7"))
-ha = HeatmapAnnotation(which="row",assay=unlist(lapply(strsplit(row.names(Y_plot),"_"),"[",1)),
-    col = list(assay = c("BSM7E6"="red","M7C1A"="blue","M7C2B"="purple","M7E4C"="brown","T"="green")))
+#optimize segmentation 
+#https://github.com/shahcompbio/single_cell_pipeline/blob/master/single_cell/workflows/hmmcopy/scripts/hmmcopy.R
+#https://advances.sciencemag.org/content/6/50/eabd6454
 
-col_fun_reads=colorRamp2(quantile(unlist(Y_plot),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
-c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
-
-col_shah_copy=colorRamp2(quantile(unlist(shah_copy),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
-c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
+#Set up clustering of cells
+    dist_method="jaccard"
+    dist_x<-philentropy::distance(copy_segmentation,method=dist_method,as.dist.obj=T,use.row.names=T)
+    dend <- dist_x %>%  hclust(method="ward.D2") %>% as.dendrogram(edge.root=F,h=2) 
+    k_search<-find_k(dend,krange=3:10) #search for optimal K from 2-10
+    k_clus_number<-k_search$nc
+    k_clus_id<-k_search$pamobject$clustering
+    dend <- color_branches(dend, k = k_clus_number)    #split breakpoint object by clusters
 
 #Read count raw
 plt1<-Heatmap(Y_plot,
@@ -438,6 +412,7 @@ plt1<-Heatmap(Y_plot,
     show_column_names=F,
     column_order=1:ncol(Y_plot),
     col=col_fun_reads,
+    cluster_rows=dend,
     row_title="Raw read count",
     name="Log10 Reads",#,
     left_annotation=ha,
@@ -445,11 +420,12 @@ plt1<-Heatmap(Y_plot,
     )
 
 #HMM segmentation
-plt3<-Heatmap(copy_segmentation,
+plt2<-Heatmap(copy_segmentation,
     show_row_names=F,
     show_column_names=F,
     column_order=1:ncol(copy_segmentation),
     col=col_fun_cn,
+    cluster_rows=dend,
     row_title="Segmentation",
     name="copy state",
     left_annotation=ha,
@@ -457,40 +433,11 @@ plt3<-Heatmap(copy_segmentation,
     )
 
 
-plt5<-Heatmap(shah_copy,
-   show_row_names=F,
-   show_column_names=F,
-   column_order=1:ncol(shah_copy),
-   column_split=factor(unlist(lapply(strsplit(colnames(shah_copy),":"),"[",1)),levels=unique(unlist(lapply(strsplit(colnames(shah_copy),":"),"[",1)))),
-   col=col_shah_copy,
-   row_title="Bin counts after Shah correction",
-   name="copy_number",
-   left_annotation=ha
-   )
-
-plt6<-Heatmap(shah_segment,
-   show_row_names=F,
-   show_column_names=F,
-   column_order=1:ncol(shah_segment),
-   column_split=factor(unlist(lapply(strsplit(colnames(shah_segment),":"),"[",1)),levels=unique(unlist(lapply(strsplit(colnames(shah_segment),":"),"[",1)))),
-   col=col_fun_cn,
-   row_title="Segmentation after Shah correction",
-   name="copy_number",
-   left_annotation=ha
-   )
-
 pdf("HMMcopy_test.pdf",width=10,height=3)
-par(mfrow=c(7,1))
+par(mfrow=c(2,1))
 plt1
-#plt2
-plt3
-#plt4
-plt5
-plt6
-#plt7
+plt2
 dev.off()
-
-
 
 #custom mapd function
 mapd<-function(cell){
@@ -508,34 +455,31 @@ mapd_corrected<-function(cell){
   return(mad)
 }
 
-mapd_corrected<-function(cell){
-  d<-unlist(lapply(1:ncol(shah_copy)-1, function(x) 
-        (shah_copy[cell,x]-shah_copy[cell,x+1])/mean(shah_copy[cell,])
-  ))
-  mad<-median(abs(d-median(d)))
-  return(mad)
-}
-
-mapd_list<-unlist(mclapply(colnames(Y),mapd,mc.cores=10)) #25 cores
-mapd_corrected_list<-unlist(mclapply(row.names(shah_copy),mapd_corrected,mc.cores=10)) #25 cores
+mapd_list<-unlist(mclapply(colnames(Y),mapd,mc.cores=20)) #25 cores
+mapd_corrected_list<-unlist(mclapply(row.names(shah_copy),mapd_corrected,mc.cores=20)) #25 cores
 
 dist_df<-data.frame("cellID"=colnames(Y),"mapd"=mapd_list) #making a MAPD matrix
 dist_df$read_count<-colSums(Y)
 dist_df$sample<-unlist(lapply(strsplit(dist_df$cellID,"_"),"[",1))
 library(dplyr)
-dist_df %>% group_by(sample) %>% summarize(mean_MAD=mean(mapd),median_MAD=median(mapd),sd_MAD=sd(mapd),mead_readcount=mean(read_count),median_readcount=median(read_count))
-#  sample mean_MAD median_MAD sd_MAD mead_readcount median_readcount
-#  <chr>     <dbl>      <dbl>  <dbl>          <dbl>            <dbl>
-#1 BSM7E6    0.196      0.190 0.0293       3187439.          2226462
-#2 M7C1A     0.288      0.290 0.0301       1128324.          1069844
-#3 M7C2B     0.333      0.344 0.0411        718630.           592200
-#4 M7E4C     0.301      0.299 0.0284        304512.           327448
-#5 T         0.272      0.262 0.0473        752268.           570749
+dist_df %>% group_by(sample) %>% summarize(mean_MAD=mean(mapd),median_MAD=median(mapd),sd_MAD=sd(mapd),mean_readcount=mean(read_count),median_readcount=median(read_count))
 
-library(ggplot2)
-library(patchwork)
+
+## A tibble: 7 x 6
+#  sample   mean_MAD median_MAD  sd_MAD mead_readcount median_readcount
+#  <chr>       <dbl>      <dbl>   <dbl>          <dbl>            <dbl>
+#1 BSM7E6     0.196      0.190  0.0293        3187439.          2226462
+#2 M7C1A      0.288      0.290  0.0301        1128324.          1069844
+#3 M7C2B      0.333      0.344  0.0411         718630.           592200
+#4 M7E4C      0.301      0.299  0.0284         304512.           327448
+#5 mcf7bulk   0.0905     0.0921 0.0140       22368933.         20262739
+#6 T          0.272      0.262  0.0473         752268.           570749
+#7 t47dbulk   0.0901     0.0917 0.00733      30191789.         32174336
+
+
+
 plt1<-ggplot(dist_df,aes(x=paste(sample),y=mapd,color=paste(sample)))+geom_jitter()+geom_boxplot(aes(fill=NULL))+theme_bw()+ylim(c(0,1))
-plt2<-ggplot(dist_df,aes(x=paste(sample),y=log10(read_count),color=paste(sample)))+geom_jitter()+geom_boxplot(aes(fill=NULL))+theme_bw()+ylim(c(0,7))
+plt2<-ggplot(dist_df,aes(x=paste(sample),y=log10(read_count),color=paste(sample)))+geom_jitter()+geom_boxplot(aes(fill=NULL))+theme_bw()+ylim(c(0,9))
 ggsave(plt1/plt2,file="mapd_scores.pdf")
 ```
 
