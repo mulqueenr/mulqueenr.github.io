@@ -166,7 +166,8 @@ results = extractor(tf.constant(content_image))
 print('Styles:')
 for name, output in sorted(results['style'].items()):
   print("  ", name)
-  print("    shape: ", output.numpy().shape)
+  print("    shape: ", output.numpy(
+  	).shape)
   print("    min: ", output.numpy().min())
   print("    max: ", output.numpy().max())
   print("    mean: ", output.numpy().mean())
