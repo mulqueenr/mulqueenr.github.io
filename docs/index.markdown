@@ -55,5 +55,14 @@ Some of the basic processing (bcl2fastq to generation of a counts matrix) was pe
     {% endfor %}
 </ul>
 
+<h3>Side Projects</h3>
+<ul>
+    {% for doc in site.pages %}
+      {% if doc.category == "side_projects" %}
+        <li><a href="{{ doc.url }}">{{ doc.title }}</a></li>
+      {% endif %}
+    {% endfor %}
+</ul>
+
 
 

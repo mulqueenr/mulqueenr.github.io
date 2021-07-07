@@ -2447,7 +2447,7 @@ library(Seurat)
 library(Signac)
 library(ggplot2)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
-hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
 
 marker_list<-NULL
 marker_list[["Oligodendrocyte"]]<-c('Mobp','Cldn1','Prox1','Olig1')
@@ -2618,6 +2618,206 @@ celltype=`ls hg38*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}
 for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` markerset_hg38_${i}.pdf; done
 
 
+
+```
+
+{% endcapture %} {% include details.html %} 
+
+
+## Save final seurat files for UCSC cellbrowser and set up.
+
+To view data in an interactive way, I converted the final seurat object for UCSCs cell browser.
+
+I then hosted locally to test.
+Install cellbrowser via this (guide.)[https://cellbrowser.readthedocs.io/en/master/installation.html]
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```R
+#Downloaded seurat objects off clusters
+#Prepare seurat data as cellbrowser file
+
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+library(Signac)
+library(Seurat)
+library(Matrix)
+library(R.utils)
+library(dplyr)
+
+
+#modified function from https://github.com/satijalab/seurat-wrappers/blob/master/R/cellbrowser.R just for export
+ExportToCellbrowser <- function(
+object,
+reduction="umap",
+assay.name="GeneActivity",
+dir,
+dataset.name,
+marker.file,
+marker.n=5,
+cluster.field="seurat_clusters",
+gene_list,
+skip.expr.mat=FALSE) {
+
+  reducNames = reduction
+  # see https://satijalab.org/seurat/essential_commands.html
+    idents <- Idents(object = object)
+    cellOrder <- row.names(object@meta.data)
+    counts <-  object@assays[[assay.name]]@data
+    counts<-counts[,cellOrder]
+    genes <- rownames(x = counts)
+    dr<-object@reductions[[reduction]]
+    meta.fields<-object@meta.data
+  if (!dir.exists(paths = dir)) {
+    dir.create(path = dir)}
+
+  # Export expression matrix
+    # we have to write the matrix to an mtx file
+    matrixPath <- file.path(dir, "matrix.mtx")
+    genesPath <- file.path(dir, "features.tsv")
+    barcodesPath <- file.path(dir, "barcodes.tsv")
+if(!skip.expr.mat){
+    message("Writing expression matrix to ", matrixPath)
+    message("This may take a couple of minutes...")
+    writeMM(counts, matrixPath)
+    # easier to load if the genes file has at least two columns. Even though seurat objects
+    write.table(as.data.frame(cbind(rownames(counts), rownames(counts))), file=genesPath, sep="\t", row.names=F, col.names=F, quote=F)
+    write(colnames(counts), file = barcodesPath)
+
+    message("Gzipping expression matrix")
+    gzip(matrixPath,overwrite=T,remove=T)
+    gzip(genesPath,overwrite=T,remove=T)
+    gzip(barcodesPath,overwrite=T,remove=T)
+}
+    matrixOutPath <- "matrix.mtx.gz"
+
+    #Export embeddings
+    df <- dr@cell.embeddings
+    if (ncol(x = df) > 2) {
+      warning('Embedding ', embedding, ' has more than 2 coordinates, taking only the first 2')
+      df <- df[, 1:2]
+    }
+    colnames(x = df) <- c("x", "y")
+    df <- data.frame(cellId = rownames(x = df), df, check.names = FALSE)
+    fname <- file.path(dir,"umap.coords.tsv")
+    message("Writing embeddings to ", fname)
+    write.table(df[cellOrder, ], sep="\t", file=fname, quote = FALSE, row.names = FALSE)
+  embeddings.conf <- sprintf('{"file": "%s.coords.tsv", "shortLabel": "Seurat %1$s"}',reduction)
+  coords.string <- paste0("[",paste(embeddings.conf, collapse = ",\n"),"]")
+
+  # Export metadata
+  enum.fields=colnames(object@meta.data)[colnames(object@meta.data) %in% c("cellid","pcr_idx","tn5_idx",cluster.field,"seurat_clusters","cluster_ID","predicted.id","celltype")]
+  fname <- file.path(dir, "meta.tsv")
+  message("Writing meta data to ", fname)
+  out.meta<-as.matrix(object@meta.data[cellOrder, enum.fields])
+  write.table(out.meta, sep = "\t", file = fname, quote = FALSE, row.names = FALSE)
+  enum.string <- paste0("[",paste(paste0('"', enum.fields, '"'), collapse = ", "), "]")
+
+  # Export markers
+    file <- file.path("markers.tsv")
+    fname <- file.path(dir, file)
+      da_ga<-read.table(file=marker.file)
+        da_ga$label<-""
+        for (x in unique(da_ga$enriched_group)){
+        selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==x) %>% dplyr::arrange(p_val_adj) %>% dplyr::slice(1:marker.n))$da_region
+        da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$label<- da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$da_region
+        }
+    da_ga<-da_ga[da_ga$label!="",]
+      message("Writing top ", marker.n, " cluster markers to ", fname)
+    da_ga$cluster<-unlist(lapply(strsplit(da_ga$enriched_group,"_"),"[",1))
+      da_ga<-da_ga[c("cluster","label","p_val_adj","enriched_group")]
+      colnames(da_ga)<-c("cluster","symbol","Adjusted p Value","Subcluster Enrichment")
+      write.table(x = da_ga, file = fname, quote = FALSE, sep = "\t", col.names = T,row.names=F)
+    markers.string <- sprintf('markers = [{"file": "%s", "shortLabel": "Seurat Cluster Markers"}]',file)
+
+#Export Gene list
+  file <- file.path("quickGenes.csv")
+  fname <- file.path(dir, file)
+  write.table(gene_list,sep=",",file = fname, quote = FALSE, row.names = FALSE)
+
+  config <- '
+# This is a bare-bones cellbrowser config file auto-generated from R.
+# Look at https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf
+# for a full file that shows all possible options
+name="%s"
+shortLabel="%1$s"
+exprMatrix="%s"
+tags = ["sciatac"]
+meta="meta.tsv"
+# possible values: "gencode-human", "gencode-mouse", "symbol" or "auto"
+geneIdType="auto"
+# file with gene,description (one per line) with highlighted genes, called "Dataset Genes" in the user interface
+quickGenesFile="quickGenes.csv"
+clusterField="%s"
+labelField="%s"
+enumFields=%s
+%s
+coords=%s
+geneLabel="Gene Activity"
+unit="GA"'
+
+  config <- sprintf(
+    config,
+    dataset.name,
+    matrixOutPath,
+    cluster.field,
+    cluster.field,
+    enum.string,
+    markers.string,
+    coords.string
+  )
+  confPath = file.path(dir, "cellbrowser.conf")
+  message("Writing cellbrowser config to ", confPath)
+  cat(config, file = confPath)
+  message("Prepared cellbrowser directory ", dir)
+}
+
+
+hg38_atac<-readRDS(file="hg38_SeuratObject.PF.Rds")
+
+marker_list<-readRDS("grosscelltype_markerlist.rds")
+hg38_marker_list<-toupper(unname(unlist(marker_list)))
+
+ExportToCellbrowser(
+object=hg38_atac,
+reduction="umap",
+assay.name="GeneActivity",
+dir="hg38_cb",
+dataset.name="hg38",
+marker.file="hg38.onevrest.da_ga.txt",
+marker.n=5,
+cluster.field="seurat_clusters",
+gene_list=hg38_marker_list,
+skip.expr.mat=FALSE)
+
+mm10_atac<-readRDS(file="mm10_SeuratObject.PF.Rds")
+mm10_marker_list<-unname(unlist(marker_list))
+
+ExportToCellbrowser(
+object=mm10_atac,
+reduction="umap",
+assay.name="GeneActivity",
+dir="mm10_cb",
+dataset.name="mm10",
+marker.file="mm10.onevrest.da_ga.txt",
+marker.n=5,
+cluster.field="seurat_clusters",
+gene_list=mm10_marker_list,
+skip.expr.mat=TRUE)
+```
+
+Locally building and hosting the cell browser.
+Using windows wsl2 ubuntu environment
+
+```bash
+#install cellbrowser via conda
+conda install -c bioconda ucsc-cell-browser
+
+cd /mnt/c/Users/mulqueen/Documents/sciDROP/hg38_cb
+cbBuild -o hg38_cellbrowser -p 8888
+
+cd /mnt/c/Users/mulqueen/Documents/sciDROP/mm10_cb
+cbBuild -o mm10_cellbrowser -p 8888
+#Go to http://localhost:8888/ to use the interactive viewer
 
 ```
 
