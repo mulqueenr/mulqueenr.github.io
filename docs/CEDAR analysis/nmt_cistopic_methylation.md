@@ -314,6 +314,30 @@ $files_in \
 
 {% endcapture %} {% include details.html %} 
 
+{% capture summary %} CpG Breast Cancer Enhancers {% endcapture %} {% capture details %}  
+
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
+#SBATCH --array=1-374
+#SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
+#SBATCH --time=1:00:00 ## ask for 1 hour on the node
+#SBATCH --
+
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+
+srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
+$files_in \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/Enhancer_hg38_SI_RI.bed \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+bcEnhance
+
+```
+
+{% endcapture %} {% include details.html %} 
+
 {% capture summary %} GpC Gene body {% endcapture %} {% capture details %}  
 
 ```bash
@@ -434,6 +458,31 @@ $files_in \
 ```
 
 {% endcapture %} {% include details.html %} 
+
+{% capture summary %} GpC Breast Cancer Enhancers {% endcapture %} {% capture details %}  
+
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
+#SBATCH --array=1-374
+#SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
+#SBATCH --time=1:00:00 ## ask for 1 hour on the node
+#SBATCH --
+
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+
+srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
+$files_in \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/Enhancer_hg38_SI_RI.bed \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+bcEnhance
+
+```
+
+{% endcapture %} {% include details.html %} 
+
 Running all of these as batch jobs
 
 ```bash
@@ -442,13 +491,14 @@ sbatch CpG_enhancers.slurm.sh
 sbatch CpG_promoters.slurm.sh  
 sbatch CpG_100kb.slurm.sh  
 sbatch CpG_10kb.slurm.sh  
+sbatch CpG_bcEnhancer.slurm.sh
 
 sbatch GpC_genes.slurm.sh
 sbatch GpC_enhancers.slurm.sh
 sbatch GpC_promoters.slurm.sh
 sbatch GpC_100kb.slurm.sh  
 sbatch GpC_100kb.slurm.sh  
-
+sbatch GpC_bcEnhancer.slurm.sh
 ```
 
 ## Running cistopic on methylated regions.
@@ -484,11 +534,11 @@ setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
 
 args <- commandArgs(trailingOnly=TRUE)
 
-args<-list()
-args[1]<-"/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed" 
-args[2]<-"CpG"
-args[3]<-"gene"
-args<-unlist(args)
+#args<-list()
+#args[1]<-"/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed" 
+#args[2]<-"CpG"
+#args[3]<-"gene"
+#args<-unlist(args)
 
 meth_files<-list.files(pattern=paste0(args[2],".",args[3],".count.txt.gz$")) #use prefix to determine meth files to read in
 region<-args[1] #region file to read through
@@ -851,6 +901,12 @@ Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 CpG \
 10kb
 
+
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/Enhancer_hg38_SI_RI.bed \
+CpG \
+bcEnhance
+
 #GpC features
 Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed \
@@ -876,6 +932,11 @@ Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/10kb.bed \
 GpC \
 10kb
+
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/Enhancer_hg38_SI_RI.bed \
+CpG \
+bcEnhance
 
 ```
 
