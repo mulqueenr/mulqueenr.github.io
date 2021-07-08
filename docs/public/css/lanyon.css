@@ -39,7 +39,7 @@ html,
 body {
   overflow-x: hidden;
   font-size:16px;
-  background-color: #303f46;
+  background-color: #15202B;
 
 }
 
@@ -50,7 +50,7 @@ html {
 h1, h2, h3, h4, h5, h6 {
   font-family: "PT Sans", Helvetica, Arial, sans-serif;
   font-weight: 400;
-  color: #313131;
+  color: #FFFFFF;
   letter-spacing: -.025rem;
 }
 
@@ -602,7 +602,7 @@ a.pagination-item:hover {
 
 /* On mouse-over */
 .sidenav a:hover, .dropdown-btn:hover {
-  color: #1d262a;
+  color: #f1f1f1;
 }
 
 /* Main content */
@@ -614,14 +614,14 @@ a.pagination-item:hover {
 
 /* Add an active class to the active dropdown button */
 .active {
-  background-color: #303f46;
+  background-color: #666699;
   color: white;
 }
 
 /* Dropdown container (hidden by default). Optional: add a lighter background color and some left padding to change the design of the dropdown content */
 .dropdown-container {
   display: none;
-  background-color: #3a4b53;
+  background-color: #262626;
   padding-left: 0.3rem;
   font-size: 1rem; /* Increased text to enable scrolling */
   padding: .5rem 1rem;
