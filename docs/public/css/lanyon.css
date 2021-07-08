@@ -602,7 +602,7 @@ a.pagination-item:hover {
 
 /* On mouse-over */
 .sidenav a:hover, .dropdown-btn:hover {
-  color: #f1f1f1;
+  color: #1d262a;
 }
 
 /* Main content */
@@ -614,14 +614,14 @@ a.pagination-item:hover {
 
 /* Add an active class to the active dropdown button */
 .active {
-  background-color: #666699;
+  background-color: #303f46;
   color: white;
 }
 
 /* Dropdown container (hidden by default). Optional: add a lighter background color and some left padding to change the design of the dropdown content */
 .dropdown-container {
   display: none;
-  background-color: #262626;
+  background-color: #3a4b53;
   padding-left: 0.3rem;
   font-size: 1rem; /* Increased text to enable scrolling */
   padding: .5rem 1rem;
