@@ -151,13 +151,13 @@ h1, h2, h3, h4, h5, h6 {
   top: 0;
   bottom: 0;
   left: -14rem;
-  width: 35rem; /*originally 14*/
+  width: 20rem; /*originally 14*/
   visibility: hidden;
   overflow-y: auto;
   font-family: "PT Sans", Helvetica, Arial, sans-serif;
   font-size: .65rem; /* 15px */ /*/ was .865*/
   color: rgba(255,255,255,.6);
-  background-color: #202020;
+  background-color: #192734;
   -webkit-transition: all .3s ease-in-out;
           transition: all .3s ease-in-out;
 }
