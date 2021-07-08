@@ -44,6 +44,11 @@ body {
 
 }
 
+title {
+  font-size:18px;
+  background-color: #15202B;
+  color: #e1e9ed; 
+}
 html {
   font-family: "PT Serif", Georgia, "Times New Roman", serif;
 }
