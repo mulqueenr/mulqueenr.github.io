@@ -663,6 +663,7 @@ html {
 /* 2. Make nav sticky */
 main > nav {
   position: sticky;
+  float:  right;
   top: 2rem;
   align-self: start;
 }
