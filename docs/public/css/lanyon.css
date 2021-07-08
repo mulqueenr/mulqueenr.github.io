@@ -671,6 +671,7 @@ main > nav {
 .section-nav li.active > a {
   color: #333;
   font-weight: 500;
+  font-size:6px;
 }
 /* Sidebar Navigation */
 .section-nav {
@@ -681,7 +682,6 @@ main > nav {
 
 .section-nav a {
   text-decoration: none;
-  font-size:6px;
   display: block;
   padding: .125rem 0;
   color: #ccc;
