@@ -116,7 +116,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 .masthead-title a {
   color: #8899A6;
-  padding-left: 5rem;
+  padding-left: -5rem;
 }
 .masthead-title small {
   font-size: 75%;
@@ -627,7 +627,7 @@ a.pagination-item:hover {
 /* Dropdown container (hidden by default). Optional: add a lighter background color and some left padding to change the design of the dropdown content */
 .dropdown-container {
   display: none;
-  background-color: #262626;
+  background-color: #22303C;
   padding-left: 0.3rem;
   font-size: 1rem; /* Increased text to enable scrolling */
   padding: .5rem 1rem;
