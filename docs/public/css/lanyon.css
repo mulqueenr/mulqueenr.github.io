@@ -667,6 +667,11 @@ main > nav {
   align-self: start;
 }
 
+/* 3. ScrollSpy active styles (see JS tab for activation) */
+.section-nav li.active > a {
+  color: #333;
+  font-weight: 500;
+}
 /* Sidebar Navigation */
 .section-nav {
   margin-top: 2rem;
@@ -690,3 +695,4 @@ main > nav {
 .section-nav a {
     transition: all 100ms ease-in-out;
 }
+
