@@ -17,7 +17,7 @@ This is the end result, with marble PLA glued to some cheap unfinished wood canv
 
 Front View             |  Side View         | Mount Hood Zoom        
 :-------------------------:|:-------------------------:|:-------------------------:
-![mountains forward](/assets/images/mt_1.jpg){: width="30%"}  |  ![mountains side](/assets/images/mt_2.jpg){: width="30%"}  | ![mountains zoom](/assets/images/mt_3.jpg){: width="30%"}
+![mountains forward](/assets/images/mt_1.jpg) |  ![mountains side](/assets/images/mt_2.jpg)  | ![mountains zoom](/assets/images/mt_3.jpg)
 
 ### For this project you will need:
 Required materials
