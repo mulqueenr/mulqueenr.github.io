@@ -44,6 +44,14 @@ body {
 
 }
 
+main {
+  display: grid;
+  grid-template-columns: 1fr 15em;
+  max-width: 100em;
+  width: 90%;
+  margin: 0 auto;
+}
+
 title {
   font-size:18px;
   background-color: #1F2833;
@@ -606,6 +614,7 @@ a.pagination-item:hover {
 
 }
 
+
 /* On mouse-over */
 .sidenav a:hover, .dropdown-btn:hover {
   color: #f1f1f1;
@@ -641,3 +650,38 @@ a.pagination-item:hover {
   font-size: 0.5rem; /* Increased text to enable scrolling */
 }
 
+/* 1. Enable smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* 2. Make nav sticky */
+main > nav {
+  position: sticky;
+  top: 2rem;
+  align-self: start;
+}
+
+/* Sidebar Navigation */
+.section-nav {
+  margin-top: 2rem;
+  padding-left: 0;
+  border-left: 1px solid #efefef;
+}
+
+.section-nav a {
+  text-decoration: none;
+  display: block;
+  padding: .125rem 0;
+  color: #ccc;
+  transition: all 50ms ease-in-out; /* 💡 This small transition makes setting of the active state smooth */
+}
+
+.section-nav a:hover,
+.section-nav a:focus {
+  color: #666;
+}
+
+.section-nav a {
+    transition: all 100ms ease-in-out;
+}
