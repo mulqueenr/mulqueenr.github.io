@@ -711,7 +711,7 @@ plt2<-ggplot(feat_dat,aes(x=value,y=nuc_density))+geom_density_2d(aes(colour = a
 plt3<-ggplot(feat_dat,aes(x=value,y=perc_gc_covered))+geom_density_2d(aes(colour = after_stat(level)))+xlab("Methylation")+ylab("Feature Coverage Percent")+scale_color_distiller(palette = 3,direction=-1)+ylim(ylim_feat_cov)+geom_vline(xintercept=cutoff_value,color="red")+xlim(c(0,1))
 
 ggsave(plt1/plt2/plt3,file=paste0(args[2],".",args[3],".feature_stats.pdf"))
-system(paste0("slack -F ",paste0(args[2],".",args[3],".feature_stats.pdf"," ryan_todo"))
+system(paste0("slack -F ",args[2],".",args[3],".feature_stats.pdf"," ryan_todo"))
 
 print("Binarize Data by automatic cutoff.")
 backup<-dat@binary.count.matrix
