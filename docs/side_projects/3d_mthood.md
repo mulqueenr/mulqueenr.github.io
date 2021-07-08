@@ -7,4 +7,4 @@ category: side_projects
 ---
 
 
-<blockquote class="imgur-embed-pub" lang="en" data-id="a/8wpXtUm"  ><a href="//imgur.com/a/8wpXtUm">3D Topography of Mt. Hood</a></blockquote><script async src="//s.imgur.com/min/embed.js" charset="utf-8"></script>
+<blockquote class="imgur-embed-pub" lang="en" data-id="a/sZ8jhwG"  ><a href="//imgur.com/a/sZ8jhwG">3D Mount Hood Topography</a></blockquote><script async src="//s.imgur.com/min/embed.js" charset="utf-8"></script>
