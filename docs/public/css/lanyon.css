@@ -37,11 +37,10 @@
 /* Prevent scroll on narrow devices */
 html,
 body {
-  overflow-x: hidden;
+  overflow: hidden;
   font-size:16px;
   background-color: #1F2833;
   color: #F0F4F8;
-
 }
 
 main {
@@ -73,7 +72,7 @@ h1, h2, h3, h4, h5, h6 {
  * Wrapper
  *
  * The wrapper is used to position site content when the sidebar is toggled. We
- * use an outter wrap to position the sidebar without interferring with the
+ * use an outer wrap to position the sidebar without interferring with the
  * regular page content.
  */
 
@@ -631,6 +630,11 @@ a.pagination-item:hover {
 .active {
   background-color: #666699;
   color: white;
+  -webkit-transition: all .25s ease;
+  -moz-transition: all .25s ease;
+  -ms-transition: all .25s ease;
+  -o-transition: all .25s ease;
+  transition: all .25s ease;
 }
 
 /* Dropdown container (hidden by default). Optional: add a lighter background color and some left padding to change the design of the dropdown content */
@@ -641,11 +645,6 @@ a.pagination-item:hover {
   font-size: 1rem; /* Increased text to enable scrolling */
   padding: .5rem 1rem;
   border-top: 0.1rem;
-  -webkit-transition: all .25s ease;
-  -moz-transition: all .25s ease;
-  -ms-transition: all .25s ease;
-  -o-transition: all .25s ease;
-  transition: all .25s ease;
 }
 
 /* Optional: Style the caret down icon */
