@@ -225,7 +225,7 @@ a.sidebar-nav-item:focus {
   display: flex;
   align-items: center;
   padding: .25rem .75rem;
-  color: #505050;
+  color: #22303C;
   background-color: #fff;
   border-radius: .25rem;
   cursor: pointer;
@@ -242,7 +242,7 @@ a.sidebar-nav-item:focus {
 .sidebar-toggle:active,
 #sidebar-checkbox:focus ~ .sidebar-toggle,
 #sidebar-checkbox:checked ~ .sidebar-toggle {
-  color: #fff;
+  color: #8899A6;
   background-color: #555;
 }
 
@@ -593,7 +593,7 @@ a.pagination-item:hover {
   padding: 6px 8px 6px 16px;
   text-decoration: none;
   font-size: 15px;
-  color: #818181;
+  color: #8899A6;
   display: block;
   border: none;
   background: none;
