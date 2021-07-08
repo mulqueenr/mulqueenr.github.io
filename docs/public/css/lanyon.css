@@ -678,7 +678,6 @@ main > nav {
   margin-top: 2rem;
   padding-left: 0;
   border-left: 1px solid #efefef;
-  z-index:  2;
 }
 
 .section-nav a {
