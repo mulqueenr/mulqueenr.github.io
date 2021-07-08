@@ -6,7 +6,7 @@ permalink: /3d_mthood/
 category: side_projects
 ---
 
-# 3D printing accurate topographical models of Oregon's mountains
+### Introduction
 
 Not to go full cooking blog in my description, but I wanted to give a shout out to the inspiration for this project. I was walking around the Oregon Convention Center during a winter craft festival and came across a booth with a really great local artist that goes by TimPlusApril. There were selling beautiful topographical map prints of Oregon mountains. They can be purchased [here.](https://www.etsy.com/listing/491138531/oregon-mountains-topographic-map-art?gpla=1&gao=1&&utm_source=google&utm_medium=cpc&utm_campaign=shopping_us_-art_and_collectibles&utm_custom1=_k_Cj0KCQjwxJqHBhC4ARIsAChq4auyhaJXLQ4InKe10-dtyfBzqeF02XTUXafrZDXcosWE-Pq_1SdbBx4aAkRiEALw_wcB_k_&utm_content=go_12665398257_121762925993_511610210343_aud-1184785539738:pla-314954651933_c__491138531_102375588&utm_custom2=12665398257&gclid=Cj0KCQjwxJqHBhC4ARIsAChq4auyhaJXLQ4InKe10-dtyfBzqeF02XTUXafrZDXcosWE-Pq_1SdbBx4aAkRiEALw_wcB)
 
@@ -17,7 +17,7 @@ This is the end result, with marble PLA glued to some cheap unfinished wood canv
 
 ![mountains forward](/assets/images/mt_1.jpg){: width="30%"} ![mountains side](/assets/images/mt_2.jpg){: width="30%"} ![mountains zoom](/assets/images/mt_3.jpg){: width="30%"}
 
-For this project you will need:
+### For this project you will need:
 Required materials
 - Marble PLA [link](https://www.amazon.com/Filament-Printing-Printer-Materials-CC3D/dp/B07P8YTQB5/ref=asc_df_B07P8YTQB5/?tag=hyprod-20&linkCode=df0&hvadid=366410018054&hvpos=&hvnetw=g&hvrand=14439563713112049163&hvpone=&hvptwo=&hvqmt=&hvdev=c&hvdvcmdl=&hvlocint=&hvlocphy=9061081&hvtargid=pla-791322433906&psc=1&tag=&ref=&adgrpid=83059705144&hvpone=&hvptwo=&hvadid=366410018054&hvpos=&hvnetw=g&hvrand=14439563713112049163&hvqmt=&hvdev=c&hvdvcmdl=&hvlocint=&hvlocphy=9061081&hvtargid=pla-791322433906) 
 - Unfinished Wooden Canvases (I used 10"x10"; [link](https://www.dickblick.com/products/blick-super-value-wood-panel-packs/?clickTracking=true&wmcp=pla&wmcid=items&wmckw=07061-1608&gclid=Cj0KCQjwxJqHBhC4ARIsAChq4avVZf8adbKHumjeqGcknYRuoJ7rSoHcb4mYJD6Mik7LKAmOusKN1PkaAiOwEALw_wcB))
