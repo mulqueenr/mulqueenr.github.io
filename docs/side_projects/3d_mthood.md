@@ -15,7 +15,9 @@ This inspired me to generate similar prints but through a 3D printer to really c
 There are a bunch of different tutorials out there for using LIDAR or other public domain topographical data to generate landscapes and city scapes for 3d printing. I wanted to try my hand at it for a minimalistic wall piece.
 This is the end result, with marble PLA glued to some cheap unfinished wood canvases. The whole project ended up costing a bit less than $10 per mountain. Support your local businesses if you can. 
 
-![mountains forward](/assets/images/mt_1.jpg){: width="30%"} ![mountains side](/assets/images/mt_2.jpg){: width="30%"} ![mountains zoom](/assets/images/mt_3.jpg){: width="30%"}
+Front View             |  Side View         | Mount Hood Zoom        
+:-------------------------:|:-------------------------:|:-------------------------:
+![mountains forward](/assets/images/mt_1.jpg){: width="30%"}  |  ![mountains side](/assets/images/mt_2.jpg){: width="30%"}  | ![mountains zoom](/assets/images/mt_3.jpg){: width="30%"}
 
 ### For this project you will need:
 Required materials
