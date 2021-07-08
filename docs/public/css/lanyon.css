@@ -681,6 +681,7 @@ main > nav {
 
 .section-nav a {
   text-decoration: none;
+  font-size:6px;
   display: block;
   padding: .125rem 0;
   color: #ccc;
