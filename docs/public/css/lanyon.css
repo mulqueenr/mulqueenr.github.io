@@ -662,6 +662,7 @@ html {
 /* 2. Make nav sticky */
 main > nav {
   position: fixed;
+  display:  block;
   float:  right;
   top: 2rem;
   align-self: start;
@@ -694,7 +695,13 @@ main > nav {
 
 .section-nav a {
     transition: all 100ms ease-in-out;
-    font-size: 8px;
-    margin: -8px;
+    margin-bottom: 1em;
+    position: sticky !important; /* added to make toc scroll with page */
+    float: right !important; /* added to make toc scroll with page */
+    top: 0;
+    right: 0;
+    width: 10rem;
+    padding-top: 1em !important; /* added to make toc scroll with page */
+    z-index: 10;
 }
 
