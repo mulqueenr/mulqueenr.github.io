@@ -34,16 +34,27 @@
  * Update the foundational and global aspects of the page.
  */
 
+ /* Set color variables*/
+
+ element {
+  --main-text-color: #5C5F58;
+  --main-background-color: #DCE1E3;
+  --code-box-color: #B0BEC4;
+  --highlight-color1: #B73225;
+  --highlight-color2: #800000;
+  --highlight-color3: #004E7C;
+ }
+
 /* Prevent scroll on narrow devices */
 html,
 body {
   font-size:16px;
-  background-color: #1F2833;
-  color: #F0F4F8;
+  background-color: var(--main-background-color);
+  color: var(--main-text-color);
 }
 
 main {
-  display: block;
+  display: grid;
   grid-template-columns: 1fr 15em;
   max-width: 100em;
   width: 90%;
@@ -53,8 +64,7 @@ main {
 
 title {
   font-size:18px;
-  background-color: #1F2833;
-  color: #D9E2EC; 
+  color: var(--main-text-color); 
 }
 html {
   font-family: "PT Serif", Georgia, "Times New Roman", serif;
@@ -63,7 +73,7 @@ html {
 h1, h2, h3, h4, h5, h6 {
   font-family: "PT Sans", Helvetica, Arial, sans-serif;
   font-weight: 400;
-  color: #F0F4F8;
+  color: var(--main-text-color); 
   letter-spacing: -.025rem;
 }
 
@@ -115,21 +125,21 @@ h1, h2, h3, h4, h5, h6 {
   padding-bottom: 1rem;
   padding-left: 5rem;
   margin-bottom: 3rem;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--highlight-color2);
 }
 .masthead-title {
   margin-top: 0;
   margin-bottom: 0;
-  color: #45A29E;
+  color: var(--highlight-color1);
 }
 .masthead-title a {
-  color: #45A29E;
+  color: var(--highlight-color2);
   padding-left: -5rem;
 }
 .masthead-title small {
   font-size: 75%;
   font-weight: 400;
-  color: #45A29E;
+  color: var(--highlight-color2);
   letter-spacing: 0;
 }
 
@@ -170,7 +180,7 @@ h1, h2, h3, h4, h5, h6 {
   font-family: "PT Sans", Helvetica, Arial, sans-serif;
   font-size: .65rem; /* 15px */ /*/ was .865*/
   color: rgba(255,255,255,.6);
-  background-color: #334E68;
+  background-color: var(--highlight-color3);
   -webkit-transition: all .3s ease-in-out;
           transition: all .3s ease-in-out;
 }
@@ -183,7 +193,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Sidebar content */
 .sidebar a {
   font-weight: normal;
-  color: #8899A6;
+  color: var(--highlight-color1);
 }
 .sidebar-item {
   padding: 1rem;
@@ -234,7 +244,7 @@ a.sidebar-nav-item:focus {
   align-items: center;
   padding: .25rem .75rem;
   color: #22303C;
-  background-color: #fff;
+  background-color: var(--highlight-color3);
   border-radius: .25rem;
   cursor: pointer;
 }
@@ -250,8 +260,8 @@ a.sidebar-nav-item:focus {
 .sidebar-toggle:active,
 #sidebar-checkbox:focus ~ .sidebar-toggle,
 #sidebar-checkbox:checked ~ .sidebar-toggle {
-  color: #8899A6;
-  background-color: #555;
+  color: var(--highlight-color1);
+  background-color: var(--highlight-color3);
 }
 
 .sidebar-toggle:active:before,
@@ -327,7 +337,7 @@ a.sidebar-nav-item:focus {
 .page-title,
 .post-title,
 .post-title a {
-  color: #ECBC55;
+  color: var(--color-highlight3);
 }
 .page-title,
 .post-title {
@@ -444,135 +454,6 @@ a.pagination-item:hover {
           transform: translateX(-14rem);
 }
 
-
-/*
- * Themes
- *
- * Apply custom color schemes by adding the appropriate class to the `body`.
- * Based on colors from Base16: http://chriskempson.github.io/base16/#default.
- */
-
-/* Red */
-.theme-base-08 .sidebar,
-.theme-base-08 .sidebar-toggle:active,
-.theme-base-08 #sidebar-checkbox:checked ~ .sidebar-toggle {
-  background-color: #ac4142;
-}
-.theme-base-08 .container a,
-.theme-base-08 .sidebar-toggle,
-.theme-base-08 .related-posts li a:hover {
-  color: #ac4142;
-}
-
-/* Orange */
-.theme-base-09 .sidebar,
-.theme-base-09 .sidebar-toggle:active,
-.theme-base-09 #sidebar-checkbox:checked ~ .sidebar-toggle {
-  background-color: #d28445;
-}
-.theme-base-09 .container a,
-.theme-base-09 .sidebar-toggle,
-.theme-base-09 .related-posts li a:hover {
-  color: #d28445;
-}
-
-/* Yellow */
-.theme-base-0a .sidebar,
-.theme-base-0a .sidebar-toggle:active,
-.theme-base-0a #sidebar-checkbox:checked ~ .sidebar-toggle {
-  background-color: #f4bf75;
-}
-.theme-base-0a .container a,
-.theme-base-0a .sidebar-toggle,
-.theme-base-0a .related-posts li a:hover {
-  color: #f4bf75;
-}
-
-/* Green */
-.theme-base-0b .sidebar,
-.theme-base-0b .sidebar-toggle:active,
-.theme-base-0b #sidebar-checkbox:checked ~ .sidebar-toggle {
-  background-color: #90a959;
-}
-.theme-base-0b .container a,
-.theme-base-0b .sidebar-toggle,
-.theme-base-0b .related-posts li a:hover {
-  color: #90a959;
-}
-
-/* Cyan */
-.theme-base-0c .sidebar,
-.theme-base-0c .sidebar-toggle:active,
-.theme-base-0c #sidebar-checkbox:checked ~ .sidebar-toggle {
-  background-color: #75b5aa;
-}
-.theme-base-0c .container a,
-.theme-base-0c .sidebar-toggle,
-.theme-base-0c .related-posts li a:hover {
-  color: #75b5aa;
-}
-
-/* Blue */
-.theme-base-0d .sidebar,
-.theme-base-0d .sidebar-toggle:active,
-.theme-base-0d #sidebar-checkbox:checked ~ .sidebar-toggle {
-  background-color: #6a9fb5;
-}
-.theme-base-0d .container a,
-.theme-base-0d .sidebar-toggle,
-.theme-base-0d .related-posts li a:hover {
-  color: #6a9fb5;
-}
-
-/* Magenta */
-.theme-base-0e .sidebar,
-.theme-base-0e .sidebar-toggle:active,
-.theme-base-0e #sidebar-checkbox:checked ~ .sidebar-toggle {
-  background-color: #aa759f;
-}
-.theme-base-0e .container a,
-.theme-base-0e .sidebar-toggle,
-.theme-base-0e .related-posts li a:hover {
-  color: #aa759f;
-}
-
-/* Brown */
-.theme-base-0f .sidebar,
-.theme-base-0f .sidebar-toggle:active,
-.theme-base-0f #sidebar-checkbox:checked ~ .sidebar-toggle {
-  background-color: #8f5536;
-}
-.theme-base-0f .container a,
-.theme-base-0f .sidebar-toggle,
-.theme-base-0f .related-posts li a:hover {
-  color: #8f5536;
-}
-
-
-/*
- * Overlay sidebar
- *
- * Make the sidebar content overlay the viewport content instead of pushing it
- * aside when toggled.
- */
-
-.sidebar-overlay #sidebar-checkbox:checked ~ .wrap {
-  -webkit-transform: translateX(0);
-      -ms-transform: translateX(0);
-          transform: translateX(0);
-}
-.sidebar-overlay #sidebar-checkbox:checked ~ .sidebar-toggle {
-  box-shadow: 0 0 0 .25rem #fff;
-}
-.sidebar-overlay #sidebar-checkbox:checked ~ .sidebar {
-  box-shadow: .25rem 0 .5rem rgba(0,0,0,.1);
-}
-
-/* Only one tweak for a reverse layout */
-.layout-reverse.sidebar-overlay #sidebar-checkbox:checked ~ .sidebar {
-  box-shadow: -.25rem 0 .5rem rgba(0,0,0,.1);
-}
-
 /* added stylish things
 */
 
@@ -591,7 +472,7 @@ a.pagination-item:hover {
   z-index: 1;
   top: 0;
   left: 0;
-  background-color: #111;
+  background-color: var(--color-highlight3);
   overflow-x: hidden;
   padding-top: 20px;
 }
@@ -601,7 +482,7 @@ a.pagination-item:hover {
   padding: 6px 8px 6px 16px;
   text-decoration: none;
   font-size: 15px;
-  color: #8899A6;
+  color: var(--color-highlight3);
   display: block;
   border: none;
   background: none;
@@ -617,7 +498,7 @@ a.pagination-item:hover {
 
 /* On mouse-over */
 .sidenav a:hover, .dropdown-btn:hover {
-  color: #f1f1f1;
+  color: var(--color-highlight2);
 }
 
 /* Main content */
@@ -629,14 +510,14 @@ a.pagination-item:hover {
 
 /* Add an active class to the active dropdown button */
 .active {
-  background-color: #666699;
+  background-color: var(--color-highlight1);
   color: white;
 }
 
 /* Dropdown container (hidden by default). Optional: add a lighter background color and some left padding to change the design of the dropdown content */
 .dropdown-container {
   display: none;
-  background-color: #486581;
+  background-color: var(--color-highlight2);
   padding-left: 0.3rem;
   font-size: 1rem; /* Increased text to enable scrolling */
   border-top: 0.1rem;
@@ -673,7 +554,7 @@ main > nav {
 /* Sidebar Navigation */
 .section-nav {
   margin-top: 2rem;
-  border-left: 1px solid #efefef;
+  border-left: 1px solid var(--color-highlight1);
   font-size: 0.5rem;
   margin: -0.5rem;
   list-style: none;
@@ -691,13 +572,13 @@ main > nav {
 .section-nav a {
   text-decoration: none;
   display: block;
-  color: #ccc;
+  color: var(--color-highlight2);
   transition: all 100ms ease-in-out; /* 💡 This small transition makes setting of the active state smooth */
 }
 
 .section-nav a:hover,
 .section-nav a:focus {
-  color: #666;
+  color: var(--color-highlight2);
   text-decoration: underline;
 }
 
