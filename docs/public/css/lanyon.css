@@ -43,7 +43,7 @@ body {
 }
 
 main {
-  display: grid;
+  display: block;
   grid-template-columns: 1fr 15em;
   max-width: 100em;
   width: 90%;
@@ -678,7 +678,7 @@ main > nav {
   margin: -0.5rem;
   list-style: none;
   overflow-wrap: normal;
-  width: 9rem;
+  width: 12rem;
   z-index: 10;
   padding-left: 0;
   top: 4rem;

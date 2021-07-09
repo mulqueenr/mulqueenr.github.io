@@ -166,17 +166,18 @@ pre {
   margin-top: 0;
   margin-bottom: 1rem;
   padding: 0.5rem;
-  font-size: .8rem;
+  font-size: .6rem;
   line-height: 1.4;
   white-space: pre;
   white-space: pre-wrap;
   word-break: break-all;
   word-wrap: break-word;
   background-color: #192734;
+  right: -8rem;
 }
 pre code {
   padding: 0;
-  font-size: 100%;
+  font-size: 75%;
   color: inherit;
   background-color: transparent;
 }
