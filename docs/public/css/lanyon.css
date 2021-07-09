@@ -631,11 +631,6 @@ a.pagination-item:hover {
 .active {
   background-color: #666699;
   color: white;
-  -webkit-transition: all .25s ease;
-  -moz-transition: all .25s ease;
-  -ms-transition: all .25s ease;
-  -o-transition: all .25s ease;
-  transition: all .25s ease;
 }
 
 /* Dropdown container (hidden by default). Optional: add a lighter background color and some left padding to change the design of the dropdown content */
@@ -644,8 +639,9 @@ a.pagination-item:hover {
   background-color: #486581;
   padding-left: 0.3rem;
   font-size: 1rem; /* Increased text to enable scrolling */
-  padding: .5rem 1rem;
   border-top: 0.1rem;
+  transition: all 50ms ease-in-out; /* 💡 This small transition makes setting of the active state smooth */
+
 }
 
 /* Optional: Style the caret down icon */
@@ -662,7 +658,7 @@ html {
 
 /* 2. Make nav sticky */
 main > nav {
-  position: sticky;
+  position: fixed;
   top: 2rem;
   align-self: start;
 }
@@ -678,15 +674,16 @@ main > nav {
 .section-nav {
   margin-top: 2rem;
   padding-left: 0;
+  top: 0;
+  bottom: 0s;
   border-left: 1px solid #efefef;
 }
 
 .section-nav a {
   text-decoration: none;
   display: block;
-  padding: .125rem 0;
   color: #ccc;
-  transition: all 50ms ease-in-out; /* 💡 This small transition makes setting of the active state smooth */
+  transition: all 100ms ease-in-out; /* 💡 This small transition makes setting of the active state smooth */
 }
 
 .section-nav a:hover,
@@ -703,6 +700,13 @@ main > nav {
 
 .section-nav a {
     transition: all 100ms ease-in-out;
+    font-size: 0.5rem;
+    margin: -0.5rem;
+    list-style: none;
+    overflow-wrap: normal;
+    width: 9rem;
+    z-index: 10;
+    padding-left: 0;
 }
 
 ul, ol {
