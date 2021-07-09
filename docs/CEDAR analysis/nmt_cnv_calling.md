@@ -212,6 +212,7 @@ library(ComplexHeatmap)
 library(circlize)
 library(ggplot2)
 library(patchwork)
+library(reshape2)
 library(philentropy)
 library(dendextend)
 setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test")
@@ -279,7 +280,7 @@ hmm_generator<-function(i){
 }
 
 #standard segmentation
-copy_segmentation<-function(i){
+copy_seg_func<-function(i){
     dat<-copy_estimate[[i]]
     dat<-HMMsegment(dat) #run HMMsegment
     segs<-makeGRangesFromDataFrame(dat$segs,keep.extra.columns=T)   #make granges object
@@ -335,7 +336,6 @@ mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
     resol=500
     bambedObj<-prepare_bam_bed_obj(resol.=resol) #500 is 500kbp
     saveRDS(bambedObj,file="bambedObj.500kbp.rds")
-
     bambedObj<-readRDS(file="bambedObj.500kbp.rds")
     ref <- bambedObj$ref
     bamdir <- bambedObj$bamdir
@@ -349,8 +349,9 @@ mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
     row.names(Y)<-paste0(ref$seqnames,":",ref$start,"_",ref$end)
     saveRDS(Y,file="rawcount.500kbp.rds")
     Y<-readRDS(file="rawcount.500kbp.rds")
-    #filter Y to cells with >100000 reads
-    Y<-Y[,colSums(Y)>100000] #with fewer reads i was getting errors
+    
+    #filter Y to cells with >500000 reads
+    Y<-Y[,colSums(Y)>500000] #with fewer reads i was getting errors
 
 #Prepare windows with gc and mappability data
     ref <- as.data.frame(bambedObj$ref)
@@ -368,7 +369,7 @@ mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
     copy_estimate<-readRDS(file="copyestimate.500kb.rds")
 
 #segmentation for plotting
-    copy_segmentation<-lapply(1:length(copy_estimate),copy_segmentation) #segment genome by copy estimate (log2 of cor.map)
+    copy_segmentation<-lapply(1:length(copy_estimate),copy_seg_func) #segment genome by copy estimate (log2 of cor.map)
     copy_segmentation<-lapply(copy_segmentation,as.numeric)
     names(copy_segmentation)<-colnames(Y)
     copy_segmentation<-as.data.frame(do.call("cbind",copy_segmentation))
@@ -377,14 +378,39 @@ mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
     saveRDS(copy_segmentation,file="copysegmentation.500kb.rds")
     copy_segmentation<-readRDS(file="copysegmentation.500kb.rds")
 
+    copy_segmentation<-copy_segmentation[,!grepl("Y",colnames(copy_segmentation))]
+
 #filter to qc cells and set up annotations
     Y_plot<-as.data.frame(t(Y))
+    Y_plot<-Y_plot[,!grepl("Y",colnames(Y_plot))]
+
     Y_plot<-as.data.frame(Y_plot %>% mutate_all(., ~ ifelse(.!=0, log10(.+0.00000000001), log10(1))))
+
+    #add sample cell line names as metadata
+    cell_annot<-data.frame(basename=unlist(lapply(strsplit(row.names(Y_plot),"_"),"[",1)))
+
+    #set up treatment conditions
+    cell_annot$treatment<-substr(unlist(lapply(strsplit(row.names(Y_plot),"_"),"[",2)),1,1) #set up T47D cell treatment first
+    cell_annot[startsWith(cell_annot$basename,"M7"),]$treatment<-substr(cell_annot[startsWith(cell_annot$basename,"M7"),]$basename,3,3)
+    cell_annot[startsWith(cell_annot$basename,"BSM7"),]$treatment<-substr(cell_annot[startsWith(cell_annot$basename,"BSM7"),]$basename,5,5)
+
+    cell_annot$cellLine_treatment<-paste(cell_annot$basename,cell_annot$treatment,sep="_")
+
+    #clean up metadata a bit more
+    cell_annot$cellLine<-"T47D"
+    cell_annot[cell_annot$basename %in% c("BSM7E6","M7C1A","M7C2B","M7E4C","mcf7bulk"),]$cellLine<-"MCF7"
+    cell_annot[cell_annot$treatment %in% c("C"),]$treatment<-"control"
+    cell_annot[cell_annot$treatment %in% c("E"),]$treatment<-"estrogen"
+    cell_annot$bulk<-"single-cell"
+    cell_annot[cell_annot$basename=="mcf7bulk",]$bulk<-"MCF7"
+    cell_annot[cell_annot$basename=="t47dbulk",]$bulk<-"T47D"
 
     col_fun_cn=structure(c("#2166ac", "#67a9cf", "#f7f7f7","#fddbc7","#ef8a62","#b2182b","#630410"), names = c("1", "2", "3", "4", "5", "6","7"))
 
-    ha = HeatmapAnnotation(which="row",assay=unlist(lapply(strsplit(row.names(Y_plot),"_"),"[",1)),
-        col = list(assay = c("BSM7E6"="red","M7C1A"="blue","M7C2B"="purple","M7E4C"="brown","T"="green","mcf7bulk"="yellow","t47dbulk"="orange")))
+    ha = HeatmapAnnotation(which="row",cellline=cell_annot$cellLine,treatment=cell_annot$treatment,assay=cell_annot$cellLine_treatment,readcount=log10(colSums(Y)),
+        col = list(assay = c("BSM7E6_E"="red","M7C1A_C"="blue","M7C2B_C"="purple","M7E4C_E"="brown","T_C"="green","T_E"="gray","mcf7bulk_i"="yellow","t47dbulk_i"="orange"),
+            cellline=c("T47D"="red","MCF7"="blue"),
+            treatment=c("control"="white","estrogen"="black","i"="green")))
 
     cellcount=data.frame(sampname=row.names(Y_plot),cellno=rep(1,nrow(Y_plot)))
     cellcount[grepl("input",cellcount$sampname),]$cellno<-"bulk"
@@ -396,12 +422,11 @@ mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
 #optimize segmentation 
 #https://github.com/shahcompbio/single_cell_pipeline/blob/master/single_cell/workflows/hmmcopy/scripts/hmmcopy.R
 #https://advances.sciencemag.org/content/6/50/eabd6454
-
 #Set up clustering of cells
-    dist_method="jaccard"
+    dist_method="euclidean"
     dist_x<-philentropy::distance(copy_segmentation,method=dist_method,as.dist.obj=T,use.row.names=T)
     dend <- dist_x %>%  hclust(method="ward.D2") %>% as.dendrogram(edge.root=F,h=2) 
-    k_search<-find_k(dend,krange=3:10) #search for optimal K from 2-10
+    k_search<-find_k(dend,krange=4:10) #search for optimal K from 5-10
     k_clus_number<-k_search$nc
     k_clus_id<-k_search$pamobject$clustering
     dend <- color_branches(dend, k = k_clus_number)    #split breakpoint object by clusters
@@ -409,10 +434,11 @@ mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
 #Read count raw
 plt1<-Heatmap(Y_plot,
     show_row_names=F,
+    row_split=cell_annot$bulk,
     show_column_names=F,
     column_order=1:ncol(Y_plot),
     col=col_fun_reads,
-    cluster_rows=dend,
+    #cluster_rows=dend,
     row_title="Raw read count",
     name="Log10 Reads",#,
     left_annotation=ha,
@@ -423,9 +449,10 @@ plt1<-Heatmap(Y_plot,
 plt2<-Heatmap(copy_segmentation,
     show_row_names=F,
     show_column_names=F,
+    row_split=cell_annot$bulk,
     column_order=1:ncol(copy_segmentation),
     col=col_fun_cn,
-    cluster_rows=dend,
+    #cluster_rows=dend,
     row_title="Segmentation",
     name="copy state",
     left_annotation=ha,
@@ -439,6 +466,8 @@ plt1
 plt2
 dev.off()
 
+system("slack HMMcopy_test.pdf")
+
 #custom mapd function
 mapd<-function(cell){
   d<-unlist(lapply(1:nrow(Y)-1, function(x) (Y[x,cell]-Y[x+1,cell])/mean(Y[,cell])))
@@ -446,17 +475,8 @@ mapd<-function(cell){
   return(mad)
 }
 
-mapd_corrected<-function(cell){
-  d<-unlist(lapply(1:ncol(shah_copy)-1, function(x) 
-    if(is.finite(shah_copy[cell,x]) & is.finite(shah_copy[cell,x+1])){
-        (shah_copy[cell,x]-shah_copy[cell,x+1])/mean(shah_copy[cell,])}
-  ))
-  mad<-median(abs(d-median(d)))
-  return(mad)
-}
 
 mapd_list<-unlist(mclapply(colnames(Y),mapd,mc.cores=20)) #25 cores
-mapd_corrected_list<-unlist(mclapply(row.names(shah_copy),mapd_corrected,mc.cores=20)) #25 cores
 
 dist_df<-data.frame("cellID"=colnames(Y),"mapd"=mapd_list) #making a MAPD matrix
 dist_df$read_count<-colSums(Y)
@@ -481,6 +501,131 @@ dist_df %>% group_by(sample) %>% summarize(mean_MAD=mean(mapd),median_MAD=median
 plt1<-ggplot(dist_df,aes(x=paste(sample),y=mapd,color=paste(sample)))+geom_jitter()+geom_boxplot(aes(fill=NULL))+theme_bw()+ylim(c(0,1))
 plt2<-ggplot(dist_df,aes(x=paste(sample),y=log10(read_count),color=paste(sample)))+geom_jitter()+geom_boxplot(aes(fill=NULL))+theme_bw()+ylim(c(0,9))
 ggsave(plt1/plt2,file="mapd_scores.pdf")
+system("slack mapd_scores.pdf")
+
+### Merge single-cell data by clades for read depth visualization
+#Restructure bins to finer resolution
+
+    bambedObj<-readRDS(file="bambedObj.500kbp.rds")
+    ref <- as.data.frame(bambedObj$ref)
+    bamdir <- bambedObj$bamdir
+    sampname <- bambedObj$sampname
+    ref$gc<-ref$gc/100 #fitting to HMMcopy analysis
+    ref$chr<-ref$seqname
+    #ref$chr<-substr(ref$seqname,4,6)
+    ref<-ref[c("chr","start","end","gc","mapp")]
+    colnames(ref)<-c("chr","start","end","gc","map")
+    ref_granges<-makeGRangesFromDataFrame(ref,keep.extra.columns=T) #used in the next few functions for overlapping consistent windows
+
+    Y<-readRDS(file="rawcount.500kbp.rds")
+
+    #Merge data by row means
+    #arbitrarily set bulk data as separate clades
+    k_clus_id[which(grepl("mcf7bulk",names(k_clus_id)))]<-"mcf7bulk"
+    k_clus_id[which(grepl("t47dbulk",names(k_clus_id)))]<-"t47dbulk"
+    clade_dat<-list()
+    for (i in unique(k_clus_id)){
+        clade<-names(k_clus_id[k_clus_id==i])
+        clade_combined<-rowSums(Y[,colnames(Y) %in% clade],na.rm=T)
+        clade_dat[[paste0("clade_",i)]]<-clade_combined
+    }
+
+    Ybulk<-do.call("cbind",clade_dat)
+    colnames(Ybulk)<-names(clade_dat)
+
+
+#standard read correction
+hmm_generator_bulk<-function(i){
+    cellname<-colnames(Ybulk)[i]
+    dat<-cbind(ref,Ybulk[,i])
+    colnames(dat)[ncol(dat)]<-"reads"
+    dat_copy <- suppressWarnings(correctReadcount(dat))
+    write.table(dat_copy,
+    file=paste0("bulkcounts_",cellname,".tsv"),
+    sep="\t",quote=F,row.names=T,col.names=T)
+    return(dat_copy)
+}
+
+#Normalize bins
+    copy_estimate<-lapply(1:ncol(Ybulk),hmm_generator_bulk) #correct bins by gc content, 
+    names(copy_estimate)<-colnames(Ybulk)
+    saveRDS(copy_estimate,file="copyestimate.bulk.500kb.rds")
+
+#segmentation for plotting
+    copy_segmentation<-lapply(1:length(copy_estimate),copy_seg_func) #segment genome by copy estimate (log2 of cor.map)
+    copy_segmentation<-lapply(copy_segmentation,as.numeric)
+    names(copy_segmentation)<-colnames(Ybulk)
+    copy_segmentation<-as.data.frame(do.call("cbind",copy_segmentation))
+    row.names(copy_segmentation)<-paste0(ref$chr,":",ref$start,"_",ref$end)
+    copy_segmentation<-as.data.frame(t(copy_segmentation))
+    saveRDS(copy_segmentation,file="copysegmentation.bulk.500kb.rds")
+
+
+    copy_segmentation<-readRDS(file="copysegmentation.bulk.500kb.rds")
+    copy_estimate<-readRDS(file="copyestimate.bulk.500kb.rds")
+
+#prepare data frames for plotting
+    #remove chrY and set up data frames for plotting
+    copy_segmentation<-copy_segmentation[,!grepl("Y",colnames(copy_segmentation))]
+    copy_segmentation<-as.data.frame(t(copy_segmentation))
+    copy_estimate_plot<-as.data.frame(do.call("cbind",lapply(1:length(copy_estimate),function(x) copy_estimate[[x]]$cor.map)))
+    colnames(copy_estimate_plot)<-colnames(Ybulk)
+    row.names(copy_estimate_plot)<-row.names(Ybulk)
+    copy_estimate_plot<-copy_estimate_plot[row.names(copy_estimate_plot)%in%row.names(copy_segmentation),]
+
+    #convert copy estimates to integer copy number state via https://static-content.springer.com/esm/art%3A10.1038%2Fnmeth.4140/MediaObjects/41592_2017_BFnmeth4140_MOESM175_ESM.pdf
+    copy_estimate_plot<-lapply(1:ncol(copy_estimate_plot), function(x) {
+        int_val<-median(as.numeric(copy_estimate_plot[which(copy_segmentation[,x]==2),x]),na.rm=T)/2
+        return(copy_estimate_plot[,x]/int_val)
+        })
+    copy_estimate_plot<-as.data.frame(do.call("cbind",copy_estimate_plot))
+    colnames(copy_estimate_plot)<-colnames(copy_segmentation)
+    row.names(copy_estimate_plot)<-row.names(copy_segmentation)
+
+    est_plt<-melt(as.matrix(copy_estimate_plot))
+    seg_plt<-melt(as.matrix(copy_segmentation))
+    colnames(seg_plt)<-c("gloc","clade","state")
+    plt_melt<-cbind(seg_plt,copy_est=est_plt$value)
+
+    cols<-c("1"="#2166ac", "2"="#d0e7f5", "3"="#f5f5f5","4"="#fddbc7","5"="#ef8a62","6"="#b2182b")
+    #plot bins for a cell across a chromosome
+
+    range_gc<-quantile(plt_melt$copy_est, na.rm = TRUE, prob = c(0.05,0.95))
+    plt_melt$contig<-unlist(lapply(strsplit(as.character(plt_melt$gloc),":"),"[",1))
+    plt_melt$contig<-factor(plt_melt$contig,level=unique(plt_melt$contig))
+    plt_melt$start<-as.numeric(unlist(lapply(strsplit(unlist(lapply(strsplit(as.character(plt_melt$gloc),"_"),"[",1)),":"),"[",2)))
+    plt_melt$end<-as.numeric(unlist(lapply(strsplit(as.character(plt_melt$gloc),"_"),"[",2)))
+
+    plt_melt$row_order<-1:(nrow(plt_melt)/length(unique(plt_melt$clade)))
+
+    plt<-ggplot(plt_melt,aes(x=row_order,y=copy_est))+
+    geom_rect(aes(fill=as.character(state),xmin=row_order,xmax=row_order+1,ymin=0,ymax=6,alpha=0.01))+
+    scale_fill_manual(values=cols)+
+    geom_point(color="black",size=1,alpha=0.2)+
+    ylab("")+
+    xlab("")+
+    facet_grid(plt_melt$clade~plt_melt$contig,space="free",scales="free_x")+
+    theme_minimal()+
+    scale_y_continuous(breaks=c(0,1,2,3,4,5,6),limits=c(0,6))+
+    theme(axis.text.y = element_text(size=30),
+        axis.text.x = element_blank(), 
+        panel.grid.minor = element_blank(),
+        #panel.grid.major = element_blank(),
+        panel.spacing.x=unit(0.1,"lines"),
+        strip.background = element_blank(), 
+        strip.text = element_blank(),
+        legend.position="none",
+        panel.border = element_rect(colour = "black", fill = NA,size=3))
+
+
+    ggsave(plt,file="HMMcopy.merged.500kb.png",width=2000,height=1000,units="mm",limitsize=F)
+
+system("slack HMMcopy.merged.500kb.png")
+
 ```
 
 {% endcapture %} {% include details.html %} 
+
+```R
+
+```
