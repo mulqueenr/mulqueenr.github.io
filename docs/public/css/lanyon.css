@@ -37,7 +37,6 @@
 /* Prevent scroll on narrow devices */
 html,
 body {
-  overflow-x: hidden;
   font-size:16px;
   background-color: #1F2833;
   color: #F0F4F8;
@@ -641,7 +640,7 @@ a.pagination-item:hover {
   padding-left: 0.3rem;
   font-size: 1rem; /* Increased text to enable scrolling */
   border-top: 0.1rem;
-  transition: all 50ms ease-in-out; /* 💡 This small transition makes setting of the active state smooth */
+  transition: 0.4s; /* 💡 This small transition makes setting of the active state smooth */
 
 }
 
