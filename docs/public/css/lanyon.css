@@ -673,10 +673,19 @@ main > nav {
 /* Sidebar Navigation */
 .section-nav {
   margin-top: 2rem;
-  padding-left: 0;
-  top: 0;
-  bottom: 0s;
   border-left: 1px solid #efefef;
+  font-size: 0.5rem;
+  margin: -0.5rem;
+  list-style: none;
+  overflow-wrap: normal;
+  width: 9rem;
+  z-index: 10;
+  padding-left: 0;
+  top: 4rem;
+  bottom: 0rem;
+  position: fixed;
+  display: grid;
+  right: 0rem;
 }
 
 .section-nav a {
@@ -700,18 +709,6 @@ main > nav {
 
 .section-nav a {
     transition: all 100ms ease-in-out;
-    font-size: 0.5rem;
-    margin: -0.5rem;
-    list-style: none;
-    overflow-wrap: normal;
-    width: 9rem;
-    z-index: 10;
-    padding-left: 0;
-    top: 4rem;
-    bottom: 0rem;
-    position: fixed;
-    display: grid;
-    right: 0rem;
 }
 
 ul, ol {
