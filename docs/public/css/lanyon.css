@@ -697,13 +697,17 @@ main > nav {
 .section-nav a {
     transition: all 100ms ease-in-out;
     margin-bottom: 1em;
-    position: sticky !important; /* added to make toc scroll with page */
-    float: right !important; /* added to make toc scroll with page */
+    position: sticky;
+    float: right ;
     top: 0;
     right: 0;
     width: 10rem;
-    padding-top: 1em !important; /* added to make toc scroll with page */
+    padding-top: 1em ;
     z-index: 10;
     line-height: 0;
+    overflow:  hidden;
+    display: block;
+    top: 2rem;
+    align-self: start;
 }
 
