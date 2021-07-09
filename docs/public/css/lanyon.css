@@ -671,7 +671,6 @@ main > nav {
 .section-nav li.active > a {
   color: #333;
   font-weight: 500;
-  font-size:6px;
 }
 /* Sidebar Navigation */
 .section-nav {
@@ -695,5 +694,7 @@ main > nav {
 
 .section-nav a {
     transition: all 100ms ease-in-out;
+    font-size: 8px;
+    margin: -8px;
 }
 
