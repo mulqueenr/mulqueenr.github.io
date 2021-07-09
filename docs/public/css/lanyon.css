@@ -691,6 +691,7 @@ main > nav {
 .section-nav a:hover,
 .section-nav a:focus {
   color: #666;
+  text-decoration: underline;
 }
 
 .section-nav a {
@@ -703,5 +704,6 @@ main > nav {
     width: 10rem;
     padding-top: 1em !important; /* added to make toc scroll with page */
     z-index: 10;
+    line-height: 0;
 }
 
