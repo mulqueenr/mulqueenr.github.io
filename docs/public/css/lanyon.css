@@ -51,6 +51,7 @@ main {
   margin: 0 auto;
 }
 
+
 title {
   font-size:18px;
   background-color: #1F2833;
@@ -706,8 +707,16 @@ main > nav {
     z-index: 10;
     line-height: 0;
     overflow:  hidden;
-    display: block;
+    display: grid;
     top: 2rem;
     align-self: start;
 }
 
+ul, ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+li {
+  margin-left: 1rem;
+}
