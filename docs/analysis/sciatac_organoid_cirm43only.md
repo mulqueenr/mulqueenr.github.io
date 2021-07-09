@@ -10,7 +10,6 @@ category: sciATAC
 I ran multiple sequecing runs for the sciATAC. For now I am just processing the most recent, but I will loop back to the original Pitstop2 experiments.
 
 ### BCL File Locations
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   #First Prep
@@ -25,12 +24,10 @@ I ran multiple sequecing runs for the sciATAC. For now I am just processing the 
   /home/groups/oroaklab/seq/madbum/191118_NS500556_0362_AHVYV7AFXY
   /home/groups/oroaklab/seq/madbum/191119_NS500556_0363_AHTVL7AFXY
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Initial Processing of Files
 Includes barcode assignment, fastq splitting, alignment, removal of duplicate reads, calling peaks and looking at TSS enrichment.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   #200722 Organoid Processing
@@ -86,12 +83,10 @@ Includes barcode assignment, fastq splitting, alignment, removal of duplicate re
   #Generating sparse matrix format counts matrix
   scitools atac-counts orgo.ID.bam orgo.500.bed &
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ### Generation of thorough annotation file and all meta data per cell 
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #generated organoid annotation file from google sheet https://docs.google.com/spreadsheets/d/1k93smqwxmYVUMLqq9SG8UjgjFeTinERzOflWUMRN8n8/edit#gid=1394545516
@@ -240,7 +235,6 @@ Includes barcode assignment, fastq splitting, alignment, removal of duplicate re
   write.table(treatment_annot,file=paste0(first_prep_annot_path,"/","first_prep_treatment.annot"),sep="\t",col.names=F,row.names=F,quote=F)
   write.table(organoid_annot,file=paste0(first_prep_annot_path,"/","first_prep_organoid.annot"),sep="\t",col.names=F,row.names=F,quote=F)
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Tabix fragment file generation
 
@@ -254,7 +248,6 @@ Tabix file format is a tab separated multicolumn data structure.
 |4 |barcode | The 10x (or sci) cell barcode of this fragment. This corresponds to the CB tag attached to the corresponding BAM file records for this fragment. |
 |5 |duplicateCount |The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeq instrument are excluded from this count. |
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   input_bam="orgo.ID.bam"
@@ -265,7 +258,6 @@ Tabix file format is a tab separated multicolumn data structure.
   $tabix -p bed $output_name.fragments.tsv.gz &
 ```
 
-{% endcapture %} {% include details.html %} 
 
 ## sciATAC Generalized Processing in R
 
@@ -273,7 +265,6 @@ Tabix file format is a tab separated multicolumn data structure.
 
 Using R v4.0 and Signac v1.0 for processing.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -329,7 +320,6 @@ Using R v4.0 and Signac v1.0 for processing.
   #saving unprocessed SeuratObject
   saveRDS(orgo_atac,file="orgo_SeuratObject.Rds")
 ```
-{% endcapture %} {% include details.html %} 
 
 
 
@@ -337,7 +327,6 @@ Using R v4.0 and Signac v1.0 for processing.
 
 Code from tutorial here.[https://github.com/AllonKleinLab/scrublet/blob/master/examples/scrublet_basics.ipynb]
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   #using a conda environment set up by ARSN
@@ -388,12 +377,10 @@ doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2,
 df = pd.DataFrame({'cellid':cellid, 'doublet_scores':doublet_scores,'predicted_doublets':predicted_doublets})
 df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ### Plotting and updating metadata
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #renaming annot for simplified annotation file making
@@ -489,12 +476,10 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   orgo_atac<-subset(orgo_atac,cell_line=="CIRM43") #just cirm43 cell line and two differentiations
   saveRDS(orgo_atac,file="orgo_cirm43.SeuratObject.Rds")
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ### ChromVar for Transcription Factor Motifs
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -542,11 +527,9 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   orgo_cirm43 <- RunChromVAR( object = orgo_cirm43,genome = BSgenome.Hsapiens.UCSC.hg38)
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.chromvar.Rds")
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Performing cisTopic and UMAP
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -691,12 +674,10 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")   ###save Seurat file
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ### Cicero for Coaccessible Networks
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -792,11 +773,9 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   )
   saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Plotting and filtering cells
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -883,7 +862,6 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Organoid Cell type analysis
 
@@ -895,7 +873,6 @@ Doing this in three parts.
 2. Using bulk sorted RG, IPC, eN and iN ATAC motifs compared to our ATAC cluster motifs
 3. Using single-cell Primary Cortex RG, IPC, eN and iN annotated cells to define signatures and perform CCA for label transfer
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #https://satijalab.org/seurat/v3.1/atacseq_integration_vignette.html://satijalab.org/seurat/v3.1/atacseq_integration_vignette.html
@@ -1105,8 +1082,6 @@ Doing this in three parts.
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 ```
 
-{% endcapture %} {% include details.html %} 
-
 ### Cell cycle testing
 
 Seurat has a stored set of cell cycle genes that we can use to assess cell cycle signatures.
@@ -1114,8 +1089,6 @@ Seurat has a stored set of cell cycle genes that we can use to assess cell cycle
 [Following this.](https://satijalab.org/seurat/v3.2/cell_cycle_vignette.html)
 Using gene lists based on cell cycle markers listed in https://www.cell.com/neuron/pdf/S0896-6273(19)30561-6.pdf
 Supplementary Table 7.
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
@@ -1155,8 +1128,6 @@ Supplementary Table 7.
   length(which(orgo_cirm43$S.Score > 0.1))
   #710
 ```
-
-{% endcapture %} {% include details.html %} 
 
 
 
@@ -1204,7 +1175,6 @@ Supplementary Table 7.
 Generated bar plots of cell count per organoid. 
 Also looking at FOXG1+ Expression per organoid to make sure they are forebrain specified.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```R
   library(Seurat)
   library(Signac)
@@ -1245,12 +1215,8 @@ Also looking at FOXG1+ Expression per organoid to make sure they are forebrain s
   system("slack -F uniq_orgID3.pdf ryan_todo")
 ```
 
-{% endcapture %} {% include details.html %} 
-
-
 ### Feature values from https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6544371/#SD2
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```R
 library(Signac)
 library(Seurat)
@@ -1317,8 +1283,6 @@ saveRDS(orgo_cirm43_wip,file="orgo_cirm43.SeuratObject.Rds")
 
 
 ```
-{% endcapture %} {% include details.html %} 
---->
 
 ### Transcription Factor Modules
 
@@ -1326,7 +1290,6 @@ https://www.cell.com/neuron/pdf/S0896-6273(19)30561-6.pdf Defined waves of trans
 Supplementary table 8 details this. We looked at these in both gene activity and transcription factor motif accessibility where available.
 The regulon is defined by the transcription factor (ChromVar Motif Score) and acts on the listed genes (Gene Activity Score). We can then relate these regulons within our subclusters to that of the human mid-gestational data (Supp table 9).
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 
@@ -1417,11 +1380,9 @@ The regulon is defined by the transcription factor (ChromVar Motif Score) and ac
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ### Marker Plotting Function
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(Signac)
@@ -1439,7 +1400,6 @@ library(ggplot2)
   plt3<-FeaturePlot(orgo_cirm43,features=c('STMN2'),pt.size=0.1,order=T,min.cutoff='q10')
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ## Public ATAC Comparison
@@ -1454,7 +1414,6 @@ wget https://atlas.fredhutch.org/data/bbi/descartes/human_atac/downloads/cerebru
 Have to convert hg19 to hg38 genomic locations
 Following https://satijalab.org/signac/articles/integration.html?q=liftover#preprocessing
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
@@ -1806,14 +1765,12 @@ saveRDS(combined,"orgo_primary.integration.SeuratObject.Rds")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 
 
 ### Differential Gene Activity through Clusters
 
-{% capture summary %} For orgo cirm43 {% endcapture %} {% capture details %}  
 
 ```R
   library(JASPAR2020)
@@ -1925,13 +1882,11 @@ write.table(da_ga_df,file="orgo_cirm43.onevrest.da_tfmodules.txt",sep="\t",col.n
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 
 ### Differential Accessibility between Clusters (one v one)
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 
 ```R
@@ -2228,12 +2183,10 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ### Performing GREAT on DA peaks
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #mkdir GREAT_analysis
@@ -2303,7 +2256,6 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
 
 ```
 
-{% endcapture %} {% include details.html %} 
 
 ## Check Accelerated Regions
 ```R
@@ -2329,7 +2281,6 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
 
 ## Monocle
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
@@ -2431,10 +2382,8 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Statistical analysis across pseudotime
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 
@@ -2575,14 +2524,12 @@ setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_fina
 #Include differentiation experiment in model as well
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ### Analysis of ChromVAR TF motifs and Gene Activity Through Pseudotime
 
 Decided to use a binning strategy to assess pseudotime signal.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 
@@ -2874,11 +2821,9 @@ Decided to use a binning strategy to assess pseudotime signal.
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Plotting Pseudotime Bins And Defined Regulatory Waves
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 
@@ -3302,10 +3247,8 @@ Decided to use a binning strategy to assess pseudotime signal.
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Plot interactive scatter plot
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #Generating a 3D Plot via Plotly of the umap projection.
@@ -3333,10 +3276,8 @@ Decided to use a binning strategy to assess pseudotime signal.
 
   system("slack -F cirm43_umap.html ryan_todo")
 ```
-{% endcapture %} {% include details.html %} 
 
 ### 3D Plotting for better trajectory visualization
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
@@ -3515,7 +3456,6 @@ Decided to use a binning strategy to assess pseudotime signal.
 
   system("slack -F cirm43_umap.3d.html ryan_todo")
 ```
-{% endcapture %} {% include details.html %} 
 
 
 
@@ -3523,7 +3463,6 @@ Decided to use a binning strategy to assess pseudotime signal.
 
  The following code is exploratory but in the end wasn't included in analysis for the manuscript.
 I mainly just wanted to play around with network analysis a bit.
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
@@ -3595,7 +3534,6 @@ I mainly just wanted to play around with network analysis a bit.
   dev.off()
   system("slack -F tf_motif.igraph.pdf ryan_todo")
 ```
-{% endcapture %} {% include details.html %} 
 
 
 
