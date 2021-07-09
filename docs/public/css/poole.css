@@ -46,7 +46,7 @@ html,
 body {
   margin: 0;
   padding: 0;
-  width: 50rem;
+  width: 70rem;
 }
 
 html {
@@ -159,7 +159,7 @@ pre {
 }
 code {
   padding: .25em .25em;
-  font-size: 80%;
+  font-size: 90%;
   color: #bf616a;
   background-color: #192734;
   border-radius: 3px;
@@ -176,7 +176,7 @@ pre {
   word-break: break-all;
   word-wrap: break-word;
   background-color: #192734;
-  width: 70%;
+  width: 90%;
 }
 pre code {
   padding: 0;
