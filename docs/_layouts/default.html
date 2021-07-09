@@ -6,7 +6,6 @@
   <body>
 
     {% include sidebar.html %}
-    {% include section_nav.html %}
 
     <!-- Wrap is the content to shift when toggling the sidebar. We wrap the
          content to avoid any CSS collisions with our real content. -->
@@ -23,11 +22,10 @@
       <div col-lg-12 class="container content">
         {{ content }}
       </div>
+      {% include section_nav.html %}
     </div>
 
     <label for="sidebar-checkbox" class="sidebar-toggle"></label>
-      test4
-
     <script src='{{ site.baseurl }}/public/js/script.js'></script>
   </body>
 </html>
