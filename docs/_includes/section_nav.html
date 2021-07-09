@@ -1,5 +1,5 @@
 <nav class="section-nav">
-    <ul id="sidebar" class="nav nav-stacked fixed">
+    <ul id="sidebar">
         <!-- Find the h2 group and any h3 subgroups -->
         {% assign groups = content | split:'<h2 id="' %}
         {% for group in groups offset:1 %}
