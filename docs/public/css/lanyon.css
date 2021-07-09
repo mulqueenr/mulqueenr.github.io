@@ -455,6 +455,13 @@ a.pagination-item:hover {
 }
 
 /*
+ * Themes
+ *
+ * Apply custom color schemes by adding the appropriate class to the `body`.
+ * Based on colors from Base16: http://chriskempson.github.io/base16/#default.
+ */
+
+/*
  * Overlay sidebar
  *
  * Make the sidebar content overlay the viewport content instead of pushing it
@@ -496,7 +503,7 @@ a.pagination-item:hover {
   z-index: 1;
   top: 0;
   left: 0;
-  background-color: var(--color-highlight3);
+  background-color: var(--highlight-color3);
   overflow-x: hidden;
   padding-top: 20px;
 }
@@ -506,7 +513,7 @@ a.pagination-item:hover {
   padding: 6px 8px 6px 16px;
   text-decoration: none;
   font-size: 15px;
-  color: var(--color-highlight3);
+  color: var(--highlight-color3);
   display: block;
   border: none;
   background: none;
@@ -522,7 +529,7 @@ a.pagination-item:hover {
 
 /* On mouse-over */
 .sidenav a:hover, .dropdown-btn:hover {
-  color: var(--color-highlight2);
+  color: var(--highlight-color3);
 }
 
 /* Main content */
@@ -534,14 +541,14 @@ a.pagination-item:hover {
 
 /* Add an active class to the active dropdown button */
 .active {
-  background-color: var(--color-highlight1);
+  background-color: var(--highlight-color1);
   color: white;
 }
 
 /* Dropdown container (hidden by default). Optional: add a lighter background color and some left padding to change the design of the dropdown content */
 .dropdown-container {
   display: none;
-  background-color: var(--color-highlight2);
+  background-color: var(--highlight-color2);
   padding-left: 0.3rem;
   font-size: 1rem; /* Increased text to enable scrolling */
   border-top: 0.1rem;
