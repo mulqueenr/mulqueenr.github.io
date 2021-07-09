@@ -707,6 +707,11 @@ main > nav {
     width: 9rem;
     z-index: 10;
     padding-left: 0;
+    top: 4rem;
+    bottom: 0rem;
+    position: fixed;
+    display: grid;
+    right: 0rem;
 }
 
 ul, ol {
