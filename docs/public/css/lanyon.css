@@ -39,7 +39,7 @@
 :root {
   --main-text-color: #5C5F58;
   --main-background-color: #DCE1E3;
-  --code-box-color: #B0BEC4;
+  --code-box-color: #C5CDD1;
   --highlight-color1: #B73225;
   --highlight-color2: #800000;
   --highlight-color3: #004E7C;
@@ -174,7 +174,7 @@ h1, h2, h3, h4, h5, h6 {
   top: 0;
   bottom: 0;
   left: -14rem;
-  width: 20rem; /*originally 14*/
+  width: 15rem; /*originally 14*/
   visibility: hidden;
   overflow-y: hidden;
   font-family: "PT Sans", Helvetica, Arial, sans-serif;
@@ -193,7 +193,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Sidebar content */
 .sidebar a {
   font-weight: normal;
-  color: var(--highlight-color3);
+  color: var(--main-background-color);
 }
 .sidebar-item {
   padding: 1rem;
@@ -238,13 +238,13 @@ a.sidebar-nav-item:focus {
 /* Style the `label` that we use to target the `.sidebar-checkbox` */
 .sidebar-toggle {
   position: absolute;
-  top:  .8rem;
-  left: 1rem;
+  top: .8rem;
+  left: 0rem;
   display: flex;
   align-items: center;
-  padding: .25rem .75rem;
-  color: #22303C;
-  background-color: var(--highlight-color2);
+  padding: 0.1rem .75rem;
+  color: white;
+  background-color: var(--highlight-color3);
   border-radius: .25rem;
   cursor: pointer;
 }
@@ -260,7 +260,7 @@ a.sidebar-nav-item:focus {
 .sidebar-toggle:active,
 #sidebar-checkbox:focus ~ .sidebar-toggle,
 #sidebar-checkbox:checked ~ .sidebar-toggle {
-  color: var(--highlight-color1);
+  color: white;
   background-color: var(--highlight-color3);
 }
 
@@ -529,7 +529,7 @@ a.pagination-item:hover {
 
 /* On mouse-over */
 .sidenav a:hover, .dropdown-btn:hover {
-  color: var(--highlight-color3);
+  color: white;
 }
 
 /* Main content */
