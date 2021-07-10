@@ -193,7 +193,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Sidebar content */
 .sidebar a {
   font-weight: normal;
-  color: var(--highlight-color2);
+  color: var(--highlight-color3);
 }
 .sidebar-item {
   padding: 1rem;
@@ -225,7 +225,7 @@ a.sidebar-nav-item:focus {
     padding: 1.5rem;
   }
   .sidebar-nav-item {
-    padding-left:  1.5rem;
+    padding-left:  1rem;
     padding-right: 1.5rem;
   }
 }
@@ -541,14 +541,15 @@ a.pagination-item:hover {
 
 /* Add an active class to the active dropdown button */
 .active {
-  background-color: var(--highlight-color1);
+  background-color: var(--highlight-color3);
   color: white;
 }
 
 /* Dropdown container (hidden by default). Optional: add a lighter background color and some left padding to change the design of the dropdown content */
 .dropdown-container {
   display: none;
-  background-color: var(--highlight-color2);
+  background-color: var(--highlight-color3);
+  color: white;
   padding-left: 0.3rem;
   font-size: 1rem; /* Increased text to enable scrolling */
   border-top: 0.1rem;
