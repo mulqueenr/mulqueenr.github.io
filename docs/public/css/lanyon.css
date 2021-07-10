@@ -36,7 +36,7 @@
 
  /* Set color variables*/
 
- element {
+:root {
   --main-text-color: #5C5F58;
   --main-background-color: #DCE1E3;
   --code-box-color: #B0BEC4;
