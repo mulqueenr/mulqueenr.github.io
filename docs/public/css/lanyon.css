@@ -641,7 +641,7 @@ code {
   padding: .25em .25em;
   font-size: 90%;
   color: var(--main-background-color);
-  background-color: var(--main-text-color);
+  background-color: var(--code-box-color);
   border-radius: 3px;
 }
 pre {
@@ -655,7 +655,7 @@ pre {
   white-space: pre-wrap;
   word-break: break-all;
   word-wrap: break-word;
-  background-color: var(--main-text-color);
+  background-color: var(--code-box-color);
   width: 90%;
 }
 pre code {
