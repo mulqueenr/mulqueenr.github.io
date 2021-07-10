@@ -180,7 +180,7 @@ h1, h2, h3, h4, h5, h6 {
   font-family: "PT Sans", Helvetica, Arial, sans-serif;
   font-size: .65rem; /* 15px */ /*/ was .865*/
   color: rgba(255,255,255,.6);
-  background-color: var(--highlight-color3);
+  background-color: var(--code-box-color);
   -webkit-transition: all .3s ease-in-out;
           transition: all .3s ease-in-out;
 }
@@ -193,7 +193,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Sidebar content */
 .sidebar a {
   font-weight: normal;
-  color: var(--highlight-color1);
+  color: var(--highlight-color2);
 }
 .sidebar-item {
   padding: 1rem;
@@ -244,7 +244,7 @@ a.sidebar-nav-item:focus {
   align-items: center;
   padding: .25rem .75rem;
   color: #22303C;
-  background-color: var(--highlight-color3);
+  background-color: var(--highlight-color2);
   border-radius: .25rem;
   cursor: pointer;
 }
@@ -651,10 +651,7 @@ pre {
   padding: 0.5rem;
   font-size: 0.8rem;
   line-height: 1.4;
-  white-space: pre;
-  white-space: pre-wrap;
-  word-break: break-all;
-  word-wrap: break-word;
+  overflow-x: scroll;
   background-color: var(--code-box-color);
   width: 90%;
 }
