@@ -54,7 +54,7 @@ body {
 }
 
 main {
-  display: grid;
+  display: block;
   grid-template-columns: 1fr 15em;
   max-width: 100em;
   width: 90%;
