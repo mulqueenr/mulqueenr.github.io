@@ -14,7 +14,6 @@ Full breakdown of experimental setup is located [here.](https://docs.google.com/
 
 ## BCL File Locations
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   #"firstplates" Plates 1,10 (10% of run pool); Plates 1,2,10
@@ -26,7 +25,6 @@ Full breakdown of experimental setup is located [here.](https://docs.google.com/
   #"thirdplates" Plates 9,12,14,2(5% spike-in),10(5% spike-in)
   /home/groups/oroaklab/seq/madbum/210223_NS500556_0463_AHNNH7BGXH
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ## BCL to FASTQ Conversion
@@ -40,7 +38,6 @@ And output fastq files in:
 
 We repeated for all runs in firstplates, secondplates, and thirdplates.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   run_name="201203_NS500556_0442_AH7FJGBGXG"
@@ -57,7 +54,6 @@ We repeated for all runs in firstplates, secondplates, and thirdplates.
   #@POSSIBLE_OUTS = ("Undetermined_S0_R1_001.fastq.gz", "Undetermined_S0_R2_001.fastq.gz", "Undetermined_S0_I1_001.fastq.gz", "Undetermined_S0_I2_001.fastq.gz");
 
 ``` 
-{% endcapture %} {% include details.html %} 
 
 
 ## Demultiplexing the FASTQ files
@@ -84,13 +80,10 @@ We use a scitools function which is a perl script to do this. This demultiplexer
   * It writes out properly assigned reads (all four indexes have a proper match in the hash) in the sci-format, where the read name becomes the corrected list of indexes (referred to as a library barcode).
 
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   scitools fastq-dump -R $run_name
 ```
-
-{% endcapture %} {% include details.html %} 
 
 
 This will output to:
@@ -104,7 +97,6 @@ This will output to:
 ```
 I then set up a working directory and moved the properly assigned reads.
 
-{% capture summary %} Code (firstplates) {% endcapture %} {% capture details %}  
 
 ```bash
   mkdir /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates
@@ -117,10 +109,6 @@ I then set up a working directory and moved the properly assigned reads.
   /home/groups/oroaklab/demultiplex/201203_NS500556_0442_AH7FJGBGXG/201203_NS500556_0442_AH7FJGBGXG.2.fq.gz \
   /home/groups/oroaklab/adey_lab/projects/tbr1_mus/201117_firstplates
 ```
-{% endcapture %} {% include details.html %} 
-
-
-{% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
 
 ```bash
   mkdir /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210212_secondplates
@@ -133,10 +121,7 @@ I then set up a working directory and moved the properly assigned reads.
   /home/groups/oroaklab/demultiplex/210210_NS500556_0458_AHVGCTBGXG/210210_NS500556_0458_AHVGCTBGXG.unassigned.2.fq.gz \
   /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210212_secondplates
 ```
-{% endcapture %} {% include details.html %}
 
-
-{% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
 
 ```bash
   mkdir /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210224_thirdplates
@@ -145,7 +130,6 @@ I then set up a working directory and moved the properly assigned reads.
   /home/groups/oroaklab/demultiplex/210223_NS500556_0463_AHNNH7BGXH/210223_NS500556_0463_AHNNH7BGXH.2.fq.gz \
   /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210224_thirdplates
 ```
-{% endcapture %} {% include details.html %}
 
 
 ### Generation of thorough annotation file and all meta data per cell 
@@ -163,7 +147,6 @@ For this, I am once again looking at our experimental design from  [here.](https
 
 I'm going to use a scitools helper function to do this, but a simple for loop through the index master list would work as well.
 
-{% capture summary %} Code (firstplates) {% endcapture %} {% capture details %}  
 
 ``` bash
 #Since all plates are a random assortment of all Tn5 tagmentation, we can generate a simplified annotation schematic for PCR plates.
@@ -181,10 +164,6 @@ Plate_10+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,A
 Plate_2+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,CB=ALL \
 > firstplates.annot
 ```
-{% endcapture %} {% include details.html %} 
-
-
-{% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
 
 ``` bash
 #secondplates_annot.txt
@@ -209,10 +188,8 @@ Plate_11+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,C
 Plate_13+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,GH=ALL \
 > secondplates.annot
 ```
-{% endcapture %} {% include details.html %}
 
 
-{% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
 
 ``` bash
 #thirdplates_annot.txt
@@ -231,7 +208,6 @@ Plate_12+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,C
 Plate_14+NEX,AB=ALL+NEX,CB=ALL+NEX,CC=ALL+NEX,BB=ALL+NEX,AC=ALL+NEX,CA=ALL+PCR,HG=ALL \
 > thirdplates.annot
 ```
-{% endcapture %} {% include details.html %}
 
 
 ### Splitting out our reads from the demultiplexed fastqs
@@ -240,7 +216,6 @@ Now that we know which barcodes belong to our reads, we can split them out from 
 
 To do this we will use a scitools function that looks at fastq read 1 and read 2 and splits it into new files based on matches to our annotation.
 
-{% capture summary %} Code (firstplates) {% endcapture %} {% capture details %}  
 
 ```bash
 #Combine fastq files across runs
@@ -257,10 +232,8 @@ tbr1.2.fq.gz &
 #Annot: Plate_10, count = 78801321
 #Annot: Plate_2, count = 70776718
 ```
-{% endcapture %} {% include details.html %} 
 
 
-{% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
 
 ```bash
 #Combine fastq files across runs
@@ -280,10 +253,8 @@ scitools fastq-split -X -A secondplates.annot \
 #Annot: Plate_5, count = 77743124
 #Annot: Plate_6, count = 17561992
 ```
-{% endcapture %} {% include details.html %}
 
 
-{% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
 
 ```bash
 scitools fastq-split -X -A thirdplates.annot \
@@ -296,7 +267,6 @@ scitools fastq-split -X -A thirdplates.annot \
 #Annot: Plate_2, count = 14610178
 #Annot: Plate_9, count = 112807352
 ```
-{% endcapture %} {% include details.html %}
 
 
 ## Alignment
@@ -305,7 +275,6 @@ We have our reads, so now we can align them to the mouse reference genome. ATAC 
 
 We use another scitools function for convenience. It wraps bwa mem. We will use -t 10 threads for alignment and -r 10 threads for samtools sort afterwards.
 
-{% capture summary %} Code (firstplates) {% endcapture %} {% capture details %}  
 
 ```bash
   #For plate 1
@@ -315,10 +284,7 @@ We use another scitools function for convenience. It wraps bwa mem. We will use 
   #For plate 2
   scitools fastq-align -t 10 -r 10 mm10 plate2 firstplates.Plate_2.1.fq.gz firstplates.Plate_2.2.fq.gz &
 ```
-{% endcapture %} {% include details.html %} 
 
-
-{% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
 
 ```bash
   #For plate 3
@@ -338,10 +304,8 @@ We use another scitools function for convenience. It wraps bwa mem. We will use 
   #For plate 13
   scitools fastq-align -t 10 -r 10 mm10 plate13 secondplates.Plate_13.1.fq.gz secondplates.Plate_13.2.fq.gz &
 ```
-{% endcapture %} {% include details.html %}
 
 
-{% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
 
 ```bash
   #For plate 2
@@ -355,14 +319,12 @@ We use another scitools function for convenience. It wraps bwa mem. We will use 
   #For plate 14
   scitools fastq-align -t 10 -r 10 mm10 plate14 thirdplates.Plate_14.1.fq.gz thirdplates.Plate_14.2.fq.gz &
 ```
-{% endcapture %} {% include details.html %}
 
 
 ## Removal of Duplicate Reads
 
 Once we have aligned reads, we can mark PCR duplicates. Because we are sampling across the genome, it is highly unlikely that we capture the same exact start and end region twice. So we can use a combination of our barcode, and the start and end positions of a read to mark duplication rates.
 
-{% capture summary %} Code (firstplates) {% endcapture %} {% capture details %}  
 
 ```bash
   #For plate 1
@@ -377,10 +339,7 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
   scitools plot-complexity plate1.complexity.txt &
   scitools plot-complexity plate2.complexity.txt &
 ```
-{% endcapture %} {% include details.html %}
 
-
-{% capture summary %} Code (secondplates) {% endcapture %} {% capture details %}  
 
 ```bash
   #For plate 3
@@ -410,10 +369,8 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
   scitools plot-complexity plate11.complexity.txt &
   scitools plot-complexity plate13.complexity.txt &
 ```
-{% endcapture %} {% include details.html %}
 
 
-{% capture summary %} Code (thirdplates) {% endcapture %} {% capture details %}  
 
 ```bash
 
@@ -448,14 +405,12 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
   scitools plot-complexity plate12.complexity.txt &
   scitools plot-complexity plate14.complexity.txt &
 ```
-{% endcapture %} {% include details.html %}
 
 
 ## Checking Plates and Sequencing Depth
 
 ### Reads Per Plate
 
-{% capture summary %} Code {% endcapture %} {% capture details %}
 
 ```bash
   for j in /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210224_thirdplates \
@@ -464,7 +419,6 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
     do for i in ${j}/*Plate*1.fq.gz;
     do echo $i `zcat $i | grep "^@" - | wc -l` ; done ; done &
 ```
-{% endcapture %} {% include details.html %}
 
 
 | Plate Prep  | Plate   | Reads Devoted |
@@ -490,7 +444,6 @@ Once we have aligned reads, we can mark PCR duplicates. Because we are sampling 
 
 Make combined complexity file for all plates.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}
 ```bash
   #Create new working directory for all plates
   mkdir /home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates
@@ -506,12 +459,9 @@ Make combined complexity file for all plates.
   do for i in ${j}/plate*.complexity.txt;
   do awk 'OFS="\t" { split(FILENAME,a,"/");split(a[9],b,"[.]"); print $2,$3,$4,$5,b[1]}' $i ; done; done > allplates.complexity.txt
 ```
-{% endcapture %} {% include details.html %}
-
 
 Make table in R with cell counts, median and mean unique reads per cell, and mean percent unique reads per cell.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   setwd("/home/groups/oroaklab/adey_lab/projects/tbr1_mus/210225_allplates")
@@ -522,8 +472,6 @@ Make table in R with cell counts, median and mean unique reads per cell, and mea
   dat %>% group_by(plate_name) %>% summarize(cell_count=n(),median_uniq_reads=median(unique_reads),mean_uniq_reads=mean(unique_reads),mean_percent_uniq=mean(percent_uniq))
 
 ```
-
-{% endcapture %} {% include details.html %}
 
 
 | plate_name | cell_count | median_uniq_reads | mean_uniq_reads | mean_percent_uniq |
@@ -544,8 +492,6 @@ Make table in R with cell counts, median and mean unique reads per cell, and mea
 | plate14 | 4307 | 22072 | 33249 | 89.0 |
 
 ## Merging All BAM Files and Filtering
-
-{% capture summary %} Code {% endcapture %} {% capture details %}
 
 ```bash
   #Link to final bam files for merging
@@ -576,12 +522,10 @@ Make table in R with cell counts, median and mean unique reads per cell, and mea
   #Make merged complexity plot colored by plate
   scitools plot-complexity -A allplates.annot allplates.complexity.txt
 ```
-{% endcapture %} {% include details.html %}
 
 
 Based on the complexity plot we filtered the merged BAM file to exclude cells with <1000 unique reads per cell.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}
 
 ```bash
   
@@ -589,12 +533,10 @@ Based on the complexity plot we filtered the merged BAM file to exclude cells wi
   scitools bam-filter -N 1000 tbr1_ko.bam
 
 ```
-{% endcapture %} {% include details.html %}
  
  
 ## Peak Calling and TSS Enrichment
  
-{% capture summary %} Code {% endcapture %} {% capture details %}
 
 ```bash
 
@@ -610,7 +552,6 @@ Based on the complexity plot we filtered the merged BAM file to exclude cells wi
   #Per cell method
   scitools bam-tssenrich tbr1_ko.filt.bam mm10 &
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Alternative approach to peak calling
 
@@ -634,7 +575,6 @@ Tabix file format is a tab separated multicolumn data structure.
 |4 |barcode | The 10x (or sci) cell barcode of this fragment. This corresponds to the CB tag attached to the corresponding BAM file records for this fragment. |
 |5 |duplicateCount |The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeq instrument are excluded from this count. |
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   #Tabix fragment file generation
@@ -647,14 +587,11 @@ Tabix file format is a tab separated multicolumn data structure.
 
 ```
 
-{% endcapture %} {% include details.html %} 
-
 
 ## Testing out called peaks against other available data sets
 
 WashU study of mouse organogenesis
 
-{% capture summary %} Code {% endcapture %} {% capture details %}
 ```bash
 #Using https://atlas.gs.washington.edu/mouse-atac/ data set peaks on mouse development
 wget http://krishna.gs.washington.edu/content/members/ajh24/mouse_atlas_data_release/matrices/atac_matrix.binary.qc_filtered.peaks.txt
@@ -676,7 +613,6 @@ wc -l tbr1_ko.macs3.keepdup_summits.bed
 
 ```
 
-{% endcapture %} {% include details.html %} 
 
 | In Ours Only | Shared | In WashU Only |
 |:--------:|:-------:|:--------:|
@@ -684,7 +620,6 @@ wc -l tbr1_ko.macs3.keepdup_summits.bed
 
  Using ARSN peak set generated from all ENCODE data
 
-{% capture summary %} Code {% endcapture %} {% capture details %}
 
 ```bash 
 #Using ARSN peak set
@@ -705,8 +640,6 @@ wc -l tbr1_ko.macs3.keepdup_summits.bed
 #277699 tbr1_ko.macs3.keepdup_summits.bed
 
 ```
-{% endcapture %} {% include details.html %} 
-
 
 | In Ours Only | Shared | In Masterset |
 |:--------:|:-------:|:--------:|
@@ -717,7 +650,6 @@ wc -l tbr1_ko.macs3.keepdup_summits.bed
 
 Annotation file was generated below after seurat object meta data was made
 
-{% capture summary %} Code {% endcapture %} {% capture details %}
 
 ```bash
  samtools index -@ 20 -b tbr1_ko.filt.bam tbr1_ko.filt.bai & #generate an index
@@ -726,12 +658,10 @@ scitools plot-reads -A devel_line_geno.annot -B tbr1_ko.filt.500.bed -F 0.1 -p 0
 scitools plot-reads -A devel_line_geno.annot -B tbr1_ko.macs3_summits.bed -F 0.1 -p 0.1 -G mm10 tbr1_ko.filt.bam Pax6 Neurod1 Tbr1
 
 ```
-{% endcapture %} {% include details.html %} 
 
 Based on this, I'm going to continue with the conservative macs3 peaks for clustering.
 
 ### Counts matrix generation on called peaks
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
   #Generate counts matrix for macs2 peak set
@@ -741,7 +671,6 @@ Based on this, I'm going to continue with the conservative macs3 peaks for clust
   #Generate counts matrix for macs3 peak set
   scitools atac-counts -O tbr1_ko.macs3 tbr1_ko.filt.bam tbr1_ko.macs3.keepdup_summits.bed &
 ```
-{% endcapture %} {% include details.html %} 
 
 # sciATAC Full Processing in R
 
@@ -749,7 +678,6 @@ Based on this, I'm going to continue with the conservative macs3 peaks for clust
 
 Using R v4.0 and Signac v1.0 for processing.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 
 ```R
@@ -808,14 +736,12 @@ Using R v4.0 and Signac v1.0 for processing.
   #saveRDS(obj,file="tbr1_ko.macs3.SeuratObject.Rds") #old peak set
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ## Performing cisTopic and UMAP
 
 Used multiple clustering and dim reduc attempts. Commented out irrelevant ones.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -965,12 +891,10 @@ Used multiple clustering and dim reduc attempts. Commented out irrelevant ones.
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ### Plotting and updating metadata
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #renaming annot for simplified annotation file making
@@ -1059,12 +983,7 @@ tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21"_"$22"_
 
 ```
 
-{% endcapture %} {% include details.html %} 
-
-
 ### Statistics on cell reads
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 
 ```R
@@ -1109,10 +1028,8 @@ tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21"_"$22"_
   system("slack -F unique_reads.pdf ryan_todo")
 ```
 
-{% endcapture %} {% include details.html %} 
 
 ## Bias in Dimensionality Reduction 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```R
   library(Signac)
   library(Seurat)
@@ -1221,11 +1138,9 @@ tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21"_"$22"_
   system("slack -F lsi.v.litterfactor.pdf ryan_todo")
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Cicero for Coaccessible Networks
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -1317,7 +1232,6 @@ tail -n +2 summary_statistics_per_cell.tsv| awk 'OFS="\t" {print $13,$21"_"$22"_
 
 ```
 
-{% endcapture %} {% include details.html %} 
 
 ### Plots
 ```R
@@ -1372,7 +1286,6 @@ system("slack -F stacked_bar_plot.png ryan_todo")
 
 ### ChromVar for Transcription Factor Motifs
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
     library(Signac)
@@ -1423,12 +1336,10 @@ system("slack -F stacked_bar_plot.png ryan_todo")
     saveRDS(obj,"tbr1_ko.SeuratObject.Rds")
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ### Differential Motif Accessibility
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   ###Differential TF Accessibility by cluster###
@@ -1578,11 +1489,9 @@ system("slack -F stacked_bar_plot.png ryan_todo")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Performing GREAT on DA peaks
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   #mkdir GREAT_analysis
@@ -1642,7 +1551,6 @@ system("slack -F stacked_bar_plot.png ryan_todo")
   library(parallel)
   mclapply(unique(obj_da_peaks$enriched_group), FUN=great_processing, peak_dataframe=obj_da_peaks,prefix="tbr1_ko",mc.cores=10)
 ```
-{% endcapture %} {% include details.html %} 
 
 ```R
 

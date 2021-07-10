@@ -10,8 +10,6 @@ category: CEDAR
 
 Generate bed files for annotation regions to sum methylation data over.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
 Gene location information stored here:
 
 ```bash
@@ -44,7 +42,6 @@ awk 'OFS="\t" {print $1,1,$2}' /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh3
 
 
 ``` 
-{% endcapture %} {% include details.html %} 
 
 List of genomic annotation bed files:
 ```bash
@@ -60,7 +57,6 @@ Perform methylation extraction with bismark methylation extractor. Output cov.gz
 
 Here I'm using 10 nodes, 20 cpus per node (since parallelization is 3x5), with 20gb per node. It's a lot of resources, but hopefully it will finish fast.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 meth_extract.slurm.sh
 ```bash
@@ -91,11 +87,7 @@ $files_in
 sbatch meth_extract.slurm.sh
 ```
 
-{% endcapture %} {% include details.html %} 
-
 Generate cytosine NOME data for region summarization.
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #!/bin/bash
@@ -123,7 +115,6 @@ $files_in
 sbatch nome_extract.slurm.sh
 ```
 
-{% endcapture %} {% include details.html %} 
 
 ## Using python pandas and bedtools wraper to summarize methylation over regions
 
@@ -134,7 +125,6 @@ sbatch nome_extract.slurm.sh
 
 Note: argv2 should be a bed file of format [chr]\t[start]\t[end]\t[feature_name]
 
-{% capture summary %} Code {% endcapture %} {% capture details %}
 
 ```python
 #!/usr/bin/python
@@ -189,8 +179,6 @@ Example running:
 ```bash
 python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py [argv1] [argv2] [arg3] [argv4]
 ```
-
-{% endcapture %} {% include details.html %}
 
 ## Run as a slurm batch jobs.
 
@@ -505,7 +493,6 @@ sbatch GpC_bcEnhancer.slurm.sh
 
 Making an R script for cistopic processing of methylation files.
 
-{% capture summary %} cistopic_methylation.R {% endcapture %} {% capture details %}  
 
 ```R
 library(cisTopic)
@@ -860,9 +847,6 @@ saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
 
 
 ```
-
-{% endcapture %} {% include details.html %} 
-
 
 
 Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R [argv1] [argv2] [argv3]

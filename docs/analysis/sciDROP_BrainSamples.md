@@ -13,8 +13,6 @@ category: alternative
 
 This notebook details the processing of the "20K" and "70K" loaded mouse brain and human cortex samples. It begins with scitools wrapper functions for intial alignment to a concatenated mouse and human genome, following with splitting of reads and realignment to separate human and mouse genomes. It then follows the established scitools formation of a counts matrix and Signac processing.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
 ```bash
 #libraries were generated as two separate lanes of a NovaSeq S4 flowcell.
 #bcl2fastq was run prior to the run transfer
@@ -132,11 +130,9 @@ tree $wd
 2 directories, 76 files
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Combine 10% Sampling of 20K Experiment with current run data
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 dir_20k_10perc="/home/groups/oroaklab/adey_lab/projects/sciDROP/201007_BrainBarnyard_Test"
@@ -160,11 +156,8 @@ $dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_dem
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Calculate collision rate from barnyard experiment
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 #Processing of barnyard comparisons
@@ -316,11 +309,9 @@ $dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_dem
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Split out species from barnyard experiments
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 sciDROP_20k_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_20K"
@@ -374,8 +365,6 @@ scitools bam-tssenrich mm10.merged.bbrd.q10.bam mm10 &
 scitools bam-tssenrich hg38.merged.bbrd.q10.bam hg38 &
 
 ```
-{% endcapture %} {% include details.html %} 
-
 
 ### Tabix fragment file generation
 
@@ -388,8 +377,6 @@ Tabix file format is a tab separated multicolumn data structure.
 |3 |chromEnd   | Adjusted end position of fragment on chromosome. The end position is exclusive, so represents the position immediately following the fragment interval. |
 |4 |barcode | The 10x (or sci) cell barcode of this fragment. This corresponds to the CB tag attached to the corresponding BAM file records for this fragment. |
 |5 |duplicateCount |The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeq instrument are excluded from this count. |
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 tabix="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/tabix"
@@ -406,17 +393,11 @@ samtools view --threads 20 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3
 $tabix -p bed $output_name.fragments.tsv.gz &
 ```
 
-{% endcapture %} {% include details.html %} 
-
-
 # sciDROP Full Processing
 
 ### Generating Seurat Objects
 
 Using R v4.0.0 and Signac v1.0
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
 
 ```R
 library(Signac)
@@ -497,14 +478,10 @@ saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
 saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 ```
 
-{% endcapture %} {% include details.html %} 
-
-
 ### Perform Scrublet on Data to Ensure Single-cells
 
 Code from tutorial here.[https://github.com/AllonKleinLab/scrublet/blob/master/examples/scrublet_basics.ipynb]
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```python
 #using a conda environment set up by ARSN
 #source /home/groups/oroaklab/nishida/scitools_env/bin/activate
@@ -567,12 +544,9 @@ doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2,
 df = pd.DataFrame({'cellid':cellid, 'doublet_scores':doublet_scores,'predicted_doublets':predicted_doublets})
 df.to_csv('hg38.scrublet.tsv', index=False, sep="\t")
 ```
-{% endcapture %} {% include details.html %} 
-
 
 ### Add library complexity data to RDS files.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
  cat ./sciDROP_20K/hg38.complexity.txt ./sciDROP_20K/mm10.complexity.txt ./sciDROP_70k/hg38.complexity.txt ./sciDROP_70k/mm10.complexity.txt > complexity.txt
@@ -647,12 +621,8 @@ system("slack -F mm10.hg38.complexity.2d.pdf ryan_todo")
 
 ```
 
-{% endcapture %} {% include details.html %} 
-
 ## Running Initial Clustering of Cells
 Using CisTopic for Dimensionality reduction and UMAP for projection.
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(cisTopic)
@@ -844,11 +814,9 @@ system("slack -F mm10.umap.scrub.pdf ryan_todo")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Correcting for systematic bias with harmony
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(cisTopic)
@@ -907,14 +875,10 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Subclustering 
 
 Going to exclude cells in subclustering that are identified by scrublet as potential doublets.
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
 
 ```R
 library(Signac)
@@ -1137,13 +1101,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
 
 ```
 
-{% endcapture %} {% include details.html %} 
-
-
 ### Recoloring subclusters
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
 
 ```R
     library(Signac)
@@ -1414,12 +1372,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
 ```
-{% endcapture %} {% include details.html %} 
-
-
 ## Cicero for Coaccessible Networks
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -1526,14 +1479,12 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Public Data RNA Comparison
 ### Download data from Allen Brain-span
 For human: https://portal.brain-map.org/atlases-and-data/rnaseq/human-m1-10x
 For mouse: https://portal.brain-map.org/atlases-and-data/rnaseq/mouse-whole-cortex-and-hippocampus-10x
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
 #Human download
 cd /home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex
@@ -1552,12 +1503,10 @@ wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_mouse_ctx-hip_10
 wget https://www.dropbox.com/s/kqsy9tvsklbu7c4/allen_brain.rds?dl=0
 
 ```
-{% endcapture %} {% include details.html %} 
-
 
 ### Process Data into Seurat Object
 Following https://satijalab.org/seurat/v3.2/pbmc3k_tutorial.html
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```R
 library(Seurat)
 library(ggplot2)
@@ -1611,12 +1560,10 @@ saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Integration of ATAC and RNA for cell type identification
 
 Retry mouse cluster id just straight up following https://satijalab.org/signac/articles/mouse_brain_vignette.html?
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(Seurat)
@@ -1671,13 +1618,11 @@ predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Add TF Motif Usage through ChromVAR
 
 ### ChromVar for Transcription Factor Motifs
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
   library(Signac)
@@ -1752,11 +1697,9 @@ mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
   saveRDS(mm10_atac,file="mm10_SeuratObject.PF.Rds")
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Differential Gene Activity through Subclusters
 
-{% capture summary %} For hg38 {% endcapture %} {% capture details %}  
 
 ```R
 library(JASPAR2020)
@@ -2085,9 +2028,7 @@ system("slack -F hg38.tf.heatmap.motif.pdf ryan_todo")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
-{% capture summary %} For mm10 {% endcapture %} {% capture details %}  
 ```R
 library(Seurat)
 library(Signac)
@@ -2436,11 +2377,9 @@ ggsave(plt,file="mm10.tf.heatmap.motif.pdf",height=100,width=2,limitsize=F)
 system("slack -F mm10.tf.heatmap.motif.pdf ryan_todo")
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Marker Plotting for cell type refinement
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(Seurat)
@@ -2548,11 +2487,9 @@ celltype=`ls hg38*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}
 for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` markerset_hg38_${i}.pdf; done
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Plotting of subcluster marker sets
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
@@ -2621,8 +2558,6 @@ for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` mar
 
 ```
 
-{% endcapture %} {% include details.html %} 
-
 
 ## Save final seurat files for UCSC cellbrowser and set up.
 
@@ -2630,8 +2565,6 @@ To view data in an interactive way, I converted the final seurat object for UCSC
 
 I then hosted locally to test.
 Install cellbrowser via this (guide.)[https://cellbrowser.readthedocs.io/en/master/installation.html]
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 #Downloaded seurat objects off clusters
@@ -2821,7 +2754,6 @@ cbBuild -o mm10_cellbrowser -p 8888
 
 ```
 
-{% endcapture %} {% include details.html %} 
 
 <!---
 

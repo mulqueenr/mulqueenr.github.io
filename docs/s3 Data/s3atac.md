@@ -10,7 +10,6 @@ category: s3processing
 This notebook is a continuation of ["s3 Preprocessing"](https://mulqueenr.github.io/s3preprocess/)  and details the processing of s3ATAC libraries. This notebook starts with a merged, barcode-based removal of duplicate, >Q10 filtered bam file which was subset to barcodes >=10K unique reads.
 
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
 #Initial directory structure (filtered to relevant files):
 /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis
@@ -47,12 +46,10 @@ This notebook is a continuation of ["s3 Preprocessing"](https://mulqueenr.github
 │   ├── Barnyard_ATAC_E.2.fq.gz
 
 ``` 
-{% endcapture %} {% include details.html %} 
 
 
 ### List of starting files
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
 #Barnyard analysis to measure per cell collision rates and split merged bam by species for realignment
 scitools barnyard-compare s3atac_barnyard.bbrd.q10.filt.bam &
@@ -63,14 +60,11 @@ s3atac_barnyard.bbrd.q10.filt.barnyard_cells.plot.pdf  s3atac_barnyard.bbrd.q10.
 s3atac_barnyard.bbrd.q10.filt.barnyard_cells.plot.png  s3atac_barnyard.bbrd.q10.filt.barnyard_stats.txt
 
 ```
-{% endcapture %} {% include details.html %} 
 
 # R processing to generate a list of cellIDs which are >95% human or >95% mouse
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
-R
 library(reshape2)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
 
@@ -178,7 +172,6 @@ write.table(dat[c("cellID","PCR_Pol")],file="barnyard_polymerase.annot",sep="\t"
 write.table(dat,file="barnyard_full_cell_summary.tsv",sep="\t",quote=F,col.names=T,row.names=F)
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ## Analysis of barnyard output
@@ -188,7 +181,6 @@ Split Human and mouse cells at the fastq level based on the barnyard output. The
 Further processing after human and mouse cells were split
 
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
 #Merge original fastqs, and split original fastqs by called species for downstream processing
 cat /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/raw_fq/Barnyard_ATAC*.1.fq.gz > /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/Barnyard_ATAC.merged.1.fq.gz &
@@ -273,11 +265,9 @@ dat<-read.table("SourceData_Fig2E.txt")
 
 ```
 
-{% endcapture %} {% include details.html %} 
 
 ## Plotting TSS Enrichment
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 #Plotting hg38 tss enrichment
@@ -298,7 +288,6 @@ system("slack -F SourceData_Fig2f.tsv ryan_todo")
 
 ```
 
-{% endcapture %} {% include details.html %} 
 
 ## Tabix fragment file generation
 
@@ -314,7 +303,6 @@ Tabix file format is a tab separated multicolumn data structure.
 |5 |duplicateCount |The number of PCR duplicate read pairs observed for this fragment. Sequencer-created duplicates, such as Exclusion Amp duplicates created by the NovaSeq instrument are excluded from this count. |
 
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
 #human processing
 input_bam="hg38.bbrd.q10.bam"
@@ -329,11 +317,9 @@ output_name=${input_bam::-13}
 samtools view --threads 10 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=10 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz
 $tabix -p bed $output_name.fragments.tsv.gz &
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Downsampling of BAM Files
-
-{% capture summary %} Split out single-cell bams from *deduplicated* bams {% endcapture %} {% capture details %}  
+Split out single-cell bams from *deduplicated* bams
 
 ```bash
 
@@ -361,9 +347,8 @@ for i in *.cellID.subset.temp.cellID.list;
 for i in *temp.rehead.bam; do samtools split -@20 -f './single_cell_splits/%*_%!.full.%.' $i; done & #perform samtools split on RG (cellIDs)
 
 ```
-{% endcapture %} {% include details.html %} 
 
-{% capture summary %} Split out single-cell bams from *raw* bams for projections {% endcapture %} {% capture details %}  
+Split out single-cell bams from *raw* bams for projections
 
 ```bash
 
@@ -389,9 +374,8 @@ for i in *.cellID.subset.temp.cellID.list;
 for i in *temp.rehead.bam; do samtools split -@20 -f './single_cell_splits/%*_%!.prededup.%.' $i; done & #perform samtools split on RG (cellIDs)
 
 ```
-{% endcapture %} {% include details.html %} 
 
-{% capture summary %} Process single-cell bams {% endcapture %} {% capture details %}  
+Process single-cell bams 
 
 ```bash
 cd single_cell_splits
@@ -409,9 +393,8 @@ parallel -j 30 "java -jar /home/groups/oroaklab/src/picard/picard-tools-1.70/Est
 
 ```
 
-{% endcapture %} {% include details.html %} 
 
-{% capture summary %} Process single-cell pre-deduplicated bams {% endcapture %} {% capture details %}  
+Process single-cell pre-deduplicated bams
 
 ```bash
 cd single_dedup_bams
@@ -491,11 +474,9 @@ samtools view $i | awk '{split($1,a,":");print a[1]}' | sort --parallel 10 | uni
 
 ````
 
-{% endcapture %} {% include details.html %} 
 
 Generate Seurat Objects of downsampled data.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(Signac)
@@ -554,11 +535,9 @@ saveRDS(atac,file=paste0(x,"_SeuratObject.Rds"))
 lapply(file_in,make_seurat_object)
 
 ```
-{% endcapture %} {% include details.html %} 
 
 Perform cisTopic on each subset seurat object
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 This is a custom R script to be run in bash with argument 1 being the seurat objects. This is because cistopic seems to have a memory leak if run in R internally.
 
@@ -603,21 +582,17 @@ cistopic_generation<-function(x){
 	cistopic_generation(x=args[1])
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 Using a bash loop for cistopic clustering. 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 for i in *SeuratObject.Rds; 
 do Rscript cistopic.loop.r $i; done &
 #cistopic.loop.r is the above R code
 ```
-{% endcapture %} {% include details.html %} 
 
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(Signac)
@@ -746,11 +721,9 @@ clustering_loop<-function(topicmodel,topiccount,seuratobject,genome_name="hg38",
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ### Gene activity score comparison between downsampled seurat objects
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(SeuratWrappers)
@@ -859,12 +832,10 @@ generate_ga<-function(x){
 cicero_objects<-list.files(pattern="Seurat.cicero.Rds")
 lapply(cicero_objects,generate_ga)
 ```
-{% endcapture %} {% include details.html %} 
 
 
 # Comparison of s3ATAC adult mouse brain reads with available data sets
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 * dscATAC
 	* from https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/mousebrain/data/mousebrain-master_dataframe.rds They only get single reads. So "uniqueNuclearFrags" is the correct column to use.
@@ -1004,11 +975,9 @@ for (j in unique(dat$assay)){
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Comparison between peak sets
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #snATAC peaks
@@ -1036,7 +1005,6 @@ bedtools intersect -wa -a /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_
 bedtools intersect -wa -a /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data/mm10.bbrd.q10.500.bed -b /home/groups/oroaklab/adey_lab/projects/sciWGS/Public_Data/s3ATAC_AdultMusBrain_Comparison/biorad_peaks.bed | wc -l
 
 ```
-{% endcapture %} {% include details.html %} 
 
 # s3 ATAC Full Processing
 
@@ -1044,7 +1012,6 @@ bedtools intersect -wa -a /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_
 
 Using R v4.0.0 and Signac v1.0
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(Signac)
@@ -1122,12 +1089,9 @@ mm10_atac <- CreateSeuratObject(
 saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
 saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Plotting and updating metadata
 
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 #renaming annot for simplified annotation file making
@@ -1191,12 +1155,10 @@ saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
 saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Performing cisTopic and UMAP
 
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 #continued from above session
@@ -1457,11 +1419,9 @@ out_data<-lapply(c("hg38_SeuratObject.Rds","mm10_SeuratObject.Rds"), function(i)
 	system("slack -F SourceData_Fig2h.tsv ryan_todo")
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Plotting and writing out cell table summaries
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
@@ -1538,15 +1498,12 @@ write.table(dat_hg38,file="hg38_cell_summary.txt",col.names=T,row.names=T,sep="\
 write.table(dat_mm10,file="mm10_cell_summary.txt",col.names=T,row.names=T,sep="\t",quote=F)
 ```
 
-{% endcapture %} {% include details.html %} 
-
 ## Adding gene activity matrix to ATAC processing
 ### Cicero for co-accessible sites and gene activity score generation
 
 Currently testing k argument in make_cicero_cds to see if lower cell count (using out higher reads) does a better job.
 Also need to make sure that it is assigning cells correctly while adding to the Seurat object. Genebody analysis looks like GA should be working better.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(Signac)
@@ -1691,12 +1648,9 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 
 ```
 
-{% endcapture %} {% include details.html %} 
-
 ### Adding additional gene activity via read count across gene bodies 
 This is the signac default method of calculating gene activity
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(Signac)
@@ -1749,11 +1703,8 @@ saveRDS(hg38_atac,file="hg38_SeuratObject.signacGA.Rds")
 ```
 
 
-{% endcapture %} {% include details.html %} 
-
 ## Plotting Coverage Plots
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 #Making a set of marker lists for human cortex and mouse whole brain
@@ -1815,11 +1766,9 @@ saveRDS(marker_list,"grosscelltype_markerlist.rds")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Plot Cell Type Markers
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 #Function to plot cell type markers
@@ -1922,11 +1871,9 @@ for i in $celltype ; do convert `echo hg38_${i}_*geneactivity.pdf` markerset_hg8
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Differential Accessibillity on Clusters
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 
@@ -2075,11 +2022,9 @@ write.table(mm10_da_peaks,file="mm10.onevone.da_peaks.txt",sep="\t",col.names=T,
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Labeling Cell Types
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 
@@ -2143,11 +2088,9 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Output Data
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
@@ -2177,11 +2120,9 @@ mm10_dat<-as.data.frame(mm10_atac@meta.data)
 write.table(hg38_dat,"hg38_cellsummaries.tsv",col.names=T,row.names=F,sep="\t",quote=F)
 write.table(mm10_dat,"mm10_cellsummaries.tsv",col.names=T,row.names=F,sep="\t",quote=F)
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Plotting projected read counts for human and mouse cells
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(ggplot2)
@@ -2218,12 +2159,10 @@ ggsave(file="projected_readcount.png")
 ggsave(file="projected_readcount.pdf")
 system("slack -F projected_readcount.pdf s3")
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Subclustering of Cell Types
 Starting with human cells
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(Signac)
@@ -2562,12 +2501,10 @@ da_peaks_loop<-function(celltype.x){
     #Run Gene Activity Score differences
     for (i in celltype_list){geneactivity_loop(celltype.x=i,resolution_list.=resolution_list)}
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Get Topic Enrichment for Subcluster
 Focusing on human inhibitory neurons
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(Signac)
@@ -2977,12 +2914,10 @@ system("slack -F inhib_markers.pdf ryan_todo")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Integration across mouse scATAC data sets
 Using Harmony for integration across data sets for mouse brain data.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
@@ -3081,7 +3016,6 @@ out_data<-lapply(integration.files,function(i){
   	write.table(dat_out,file="SourceData_Fig2i.tsv",sep="\t",quote=F,row.names=F)
 	system("slack -F SourceData_Fig2i.tsv ryan_todo")
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ## Public Data RNA Comparison
@@ -3089,7 +3023,6 @@ out_data<-lapply(integration.files,function(i){
 For human: https://portal.brain-map.org/atlases-and-data/rnaseq/human-m1-10x
 For mouse: https://portal.brain-map.org/atlases-and-data/rnaseq/mouse-whole-cortex-and-hippocampus-10x
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
 #Human download
 cd /home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex
@@ -3108,12 +3041,10 @@ wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_mouse_ctx-hip_10
 wget https://www.dropbox.com/s/kqsy9tvsklbu7c4/allen_brain.rds?dl=0
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ### Process Data into Seurat Object
 Following https://satijalab.org/seurat/v3.2/pbmc3k_tutorial.html
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```R
 library(Seurat)
 library(ggplot2)
@@ -3165,12 +3096,10 @@ saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ### Integration of ATAC and RNA for cell type identification
 
 Retry mouse cluster id just straight up following https://satijalab.org/signac/articles/mouse_brain_vignette.html?
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(ComplexHeatmap)
@@ -3229,7 +3158,6 @@ predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10")
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ## R Session Info with all packages loaded

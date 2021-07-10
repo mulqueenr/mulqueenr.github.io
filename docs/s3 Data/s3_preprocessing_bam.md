@@ -15,7 +15,6 @@ Annotation data is listed [here.](https://docs.google.com/spreadsheets/d/1mZ34KI
 
 Running bcl2fastq for sequencing runs.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```bash
 #Got raw bcl files and ran bcl2fastq
 module load bcl2fastq/2.19.0
@@ -25,13 +24,11 @@ bcl2fastq --no-lane-splitting --create-fastq-for-index-reads -R /home/groups/oro
 #Files located in /home/groups/oroaklab/fastq/200630_NovaSeqSP_RM_s3
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## FastQ Dump of reads into sci format
 
 Performing FastQ dump on reads.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 
@@ -55,12 +52,9 @@ scitools fastq-dump-sci-stdchem -V -R $fq_rundir & #output files in /home/groups
 mkdir /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Do the following plate splitting for all sequencing runs
 The following contains annotations for plate splitting across experiments.
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #generating annotation file based on CPT i5 PCR index
@@ -117,10 +111,8 @@ nano $demux/200728_NovaSeq_S2_RM_s3/plate_split.annot.simplified.txt
 #10	WGS	CellLine	Plate 2	K	Set 1
 #13	GCC	CellLine	Plate 3	L	Set 1
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Generation of simplified annotation files
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```python
 #python script for generating annotation files
 
@@ -146,11 +138,9 @@ def plate_split_annot_generator(x):
 for x in run_list:
     plate_split_annot_generator(x)
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Continuation of annotation files
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #Split out fastq files:
@@ -332,11 +322,9 @@ out_name=${fq1::-8}
 scitools fastq-align -n -r 20 -t 20 hg38 $out_name $fq1 $fq2; done ;
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Barcode based removal of duplicate and bam filter
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #Performing sorted bam-rmdup on bam files
@@ -388,4 +376,3 @@ mv s3atac* ../s3atac_data/
 mv s3wgs* ../s3wgs_data/
 
 ```
-{% endcapture %} {% include details.html %} 

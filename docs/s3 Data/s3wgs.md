@@ -10,7 +10,7 @@ category: s3processing
 This notebook is a continuation of ["s3 Preprocessing"](https://mulqueenr.github.io/s3preprocess/) and details the processing of s3WGS libraries. This notebook starts with a merged, barcode-based removal of duplicate bam file.
 Note, in manuscript CRC4442 and CRC4671 are referred to as PDAC-1 and PDAC-2 for clarity.
 
-{% capture summary %} Initial Files and Directory Structure {% endcapture %} {% capture details %}  
+## Initial Files and Directory Structure
 ```bash
 #Initial directory structure (filtered to relevant files):
 #Note GCC type libraries will also be processes as WGS files, so are included here.
@@ -33,13 +33,11 @@ Note, in manuscript CRC4442 and CRC4671 are referred to as PDAC-1 and PDAC-2 for
 ├── s3gcc_data
 
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ## Filter bam files to just cells passing original QC
 QC is based on (preprocessing steps.)[https://mulqueenr.github.io/s3preprocess/] Performing this on pre-barcode based remove duplicate bams for future complexity plotting and projection modeling.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #First going to subset un-rmdup bam files to just those passing QC
@@ -113,11 +111,9 @@ mv *isize* ./isize
 #s3wgs_crc4442_E.RG_ACGCGACGAGAGGACTTATTAGCT     s3wgs_crc4442_E s3wgs   crc4442 ACGCGACGAGAGGACTTATTAGCT
 #s3wgs_crc4442_E.RG_ACGCGACGCAATGAGAAGTTCAGG     s3wgs_crc4442_E s3wgs   crc4442 ACGCGACGCAATGAGAAGTTCAGG
 ```
-{% endcapture %} {% include details.html %} 
 
 ## QC Directory Structure 
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 /home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data
@@ -129,11 +125,9 @@ mv *isize* ./isize
     ├── undedup_bams #contains pre-bbrd bams
     
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Collate data into single files for plotting
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 
@@ -169,11 +163,9 @@ awk -v cellid=$cellid 'OFS="\t" {print $1,cellid}' $i;
 done > ./s3wgs_isize.txt 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Generate complexity projections per cell
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(ggplot2)
@@ -230,7 +222,6 @@ ggsave(file="readcount.pdf")
 
 system("slack -F readcount.pdf ryan_todo")
 ```
-{% endcapture %} {% include details.html %} 
 
 # Using SCOPE to analyze single-cell data on single cell bam directory
 
@@ -243,7 +234,6 @@ Note a lot of this code and even the comments and explanation is directly taken 
 ## Read in files from directory
 First reading in the split bam files and setting up the reference genome.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
@@ -279,12 +269,10 @@ coverageObj <- get_coverage_scDNA(bambedObj, mapqthres = 10, seq = 'paired-end',
 saveRDS(coverageObj,"scope_covobj.500kb.rds")
 saveRDS(bambedObj,"scope_bambedObj.500kb.rds")
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ## Quality control of bins and cells via SCOPE
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3wgs_data")
@@ -339,12 +327,10 @@ normObj_gini<-readRDS("scope_noKnorm.gini.500kb.rds")
 ploidy <- initialize_ploidy(Y = qcObj$Y, Yhat = normObj_gini$Yhat, ref = qcObj$ref, SoS.plot = F)
 saveRDS(ploidy,"scope_ploidy.gini.500kb.rds")
 ```
-{% endcapture %} {% include details.html %} 
 
 
 ## Generate segmentation plots.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 
@@ -537,7 +523,6 @@ write.table(iCN,file="SourceData_Fig5b.tsv",sep="\t",row.names=T,quote=F)
 system("slack -F SourceData_Fig5b.tsv ryan_todo")
 
 ```
-{% endcapture %} {% include details.html %} 
 
 # Calculate coverage uniformity
 Next generate MAPD and DIMAPD scores for all cells, using a custom script based on description from this website
@@ -550,7 +535,6 @@ MAPD, or the Median Absolute deviation of Pairwise Differences, is defined for a
     -Performing genome coverage distribution on post GC corrected and mappability limited matrix (Y)
 
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 library(ggplot2)
@@ -600,11 +584,9 @@ ggsave(plt,file="mapd_scores.pdf")
 
 #system("slack -F mapd_scores.pdf ryan_todo")
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Generation of a cell summary file.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 # Group-wise ploidy initialization
@@ -644,11 +626,9 @@ write.table(annot,"s3wgsgcc_cellsummary.500kb.tsv",col.names=T)
 
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Additional complexity plots.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 #annotation for cell line processing
@@ -725,7 +705,6 @@ theme(axis.text.x = element_text(angle = 90))
 
 ggsave(plt,file="s3wgs_complexity_platecellline_boxplot.pdf")
 ```
-{% endcapture %} {% include details.html %} 
 
 
 # Merging Cells for Clade Analysis and Plotting
@@ -735,7 +714,6 @@ First reading in libraries and setting up functions, then merging cells by clade
 
 Code based on [SCOPE](https://github.com/rujinwang/SCOPE) and [HMMcopy](https://github.com/shahcompbio/hmmcopy_utils) scripts.
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 ```R
 library(SCOPE)
 library(ComplexHeatmap)
@@ -994,7 +972,6 @@ system("slack -F scope.merged.50kb.final.final.png ryan_todo")
 write.table(plt_melt,file="SourceData_SupFig2a.tsv",sep="\t",col.names=T,row.names=T,quote=F)
 system("slack -F SourceData_SupFig2a.tsv ryan_todo")
 ```
-{% endcapture %} {% include details.html %} 
 
 
 

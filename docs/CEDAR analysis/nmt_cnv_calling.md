@@ -11,8 +11,6 @@ category: CEDAR
 ## Preparing bam files from Aaron Doe's preprocessing
 Need to merge resequenced bam files and combine read 1 and read 2 into a single-end bam
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
-
 ```bash
 mkdir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
 cd /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
@@ -27,12 +25,9 @@ outname=`echo $i | awk 'OFS="_" {split($1,a,"_");print a[1],a[2],a[3]}'`;
 samtools cat -o ${outname}_merged.bam $r1 $r2 ;
 done &
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Batch script for deduplication
 Using the bismark deduplication script.
-
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```bash
 #!/bin/bash
@@ -54,11 +49,9 @@ srun deduplicate_bismark \
 ${bam_in}
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Perform modal copy number bin normalization similar to Shah sc-wgs work
 This takes the input of files that are generated in the hmm_generator function in the R script (files starting with "counts_")
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```python
 '''
@@ -143,11 +136,10 @@ for infile in files:
     print("Completed:",infile)
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Preparing bulk WGS data for cell lines to check CNVs
 Files are from a previous publication by Hisham (here.)[https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE68355]
-{% capture summary %} Code {% endcapture %} {% capture details %}  
+
 ```bash
 conda install sra-tools #have to set up SRA tools to get fastq files
 conda install bwa-mem
@@ -193,12 +185,10 @@ outname=${i::-6}.bam
 bowtie2 --threads 20 -x /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/Bowtie2Index/genome -U $i | samtools sort -@ 5 -T . -m 5G - | samtools rmdup -s - $outname; done &
 
 ```
-{% endcapture %} {% include details.html %} 
 
 ## Run HMMcopy using single-end deduplicated bam files as input
 Some functions taken from SCOPE for convenient bam file read in
 
-{% capture summary %} Code {% endcapture %} {% capture details %}  
 
 ```R
 
@@ -624,8 +614,3 @@ system("slack HMMcopy.merged.500kb.png")
 
 ```
 
-{% endcapture %} {% include details.html %} 
-
-```R
-
-```
