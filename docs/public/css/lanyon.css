@@ -43,6 +43,7 @@
   --highlight-color1: #B73225;
   --highlight-color2: #800000;
   --highlight-color3: #004E7C;
+  --highlight-color4: #0191e3;
  }
 
 /* Prevent scroll on narrow devices */
@@ -207,7 +208,7 @@ h1, h2, h3, h4, h5, h6 {
   border-bottom: 1px solid rgba(255,255,255,.1);
 }
 .sidebar-nav-item {
-  font-size: 15px;
+  font-size: 16px;
   display: block;
   padding: .5rem 1rem;
   border-top: 1px solid rgba(255,255,255,.1);
@@ -244,7 +245,7 @@ a.sidebar-nav-item:focus {
   align-items: center;
   padding: 0.1rem .75rem;
   color: white;
-  background-color: var(--highlight-color3);
+  background-color: var(--highlight-color4);
   border-radius: .25rem;
   cursor: pointer;
 }
@@ -548,7 +549,7 @@ a.pagination-item:hover {
 /* Dropdown container (hidden by default). Optional: add a lighter background color and some left padding to change the design of the dropdown content */
 .dropdown-container {
   display: none;
-  background-color: var(--highlight-color3);
+  background-color: var(--highlight-color4);
   color: white;
   padding-left: 0.3rem;
   font-size: 1rem; /* Increased text to enable scrolling */
