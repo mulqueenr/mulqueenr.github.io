@@ -54,7 +54,7 @@ body {
 }
 
 main {
-  display: block;
+  display: grid;
   grid-template-columns: 1fr 15em;
   max-width: 100em;
   width: 90%;
@@ -100,7 +100,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .container {
   max-width: 60rem;
-  display: block;
+  display: grid;
 }
 @media (min-width: 38em) {
   .container {
