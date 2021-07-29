@@ -60,13 +60,6 @@ html {
   }
 }
 
-body {
-  color: #515151;
-  background-color: #303f46;
-  -webkit-text-size-adjust: 100%;
-      -ms-text-size-adjust: 100%;
-  font-size: 16px;
-}
 
 /* No `:visited` state is required by default (browsers will use `a`) */
 a {

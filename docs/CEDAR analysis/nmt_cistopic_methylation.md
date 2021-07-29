@@ -40,8 +40,17 @@ zcat homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gff.gz | 
 awk 'OFS="\t" {print $1,1,$2}' /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/star/chrNameLength.txt | bedtools makewindows -b - -w 100000 | awk 'OFS="\t" {print $1,$2,$3,"bin_"NR}'> 100kb.bed
 awk 'OFS="\t" {print $1,1,$2}' /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/star/chrNameLength.txt | bedtools makewindows -b - -w 10000 | awk 'OFS="\t" {print $1,$2,$3,"bin_"NR}'> 10kb.bed
 
-
 ``` 
+
+Also given a list of enhancer regions that are breast cancer specific from Hisham
+````bash
+#Raw file stored here:
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/Enhancer_hg38_SI_RI.bed
+
+#Converted to same bed format with metadata bin names
+grep -v "_" /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/Enhancer_hg38_SI_RI.bed | awk 'OFS="\t" {print $1,$2,$3,"bin_"NR}' > /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed
+
+````
 
 List of genomic annotation bed files:
 ```bash
@@ -49,6 +58,10 @@ List of genomic annotation bed files:
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/ctcf.bed
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/10kb.bed
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed
+
 ```
 
 ## Set up methylation extraction
@@ -318,7 +331,7 @@ files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*
 
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
 $files_in \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/Enhancer_hg38_SI_RI.bed \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed \
 /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
 bcEnhance
 
@@ -463,7 +476,7 @@ files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*
 
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
 $files_in \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/Enhancer_hg38_SI_RI.bed \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed \
 /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
 bcEnhance
 
@@ -522,9 +535,9 @@ setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
 args <- commandArgs(trailingOnly=TRUE)
 
 #args<-list()
-#args[1]<-"/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed" 
+#args[1]<-"/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed" 
 #args[2]<-"CpG"
-#args[3]<-"gene"
+#args[3]<-"bcEnhance"
 #args<-unlist(args)
 
 meth_files<-list.files(pattern=paste0(args[2],".",args[3],".count.txt.gz$")) #use prefix to determine meth files to read in
@@ -713,8 +726,12 @@ count_mat<-as.matrix(dat@count.matrix)
 count_mat[which(count_mat>=cutoff_value,arr.ind=T)]<-1
 count_mat[which(count_mat<cutoff_value,arr.ind=T)]<-0
 
-dat@binary.count.matrix<-Matrix(count_mat)
 
+#remove cells with no methylated regions (due to low coverage)
+filt_keep<-which(colMeans(count_mat)>0)
+dat@binary.count.matrix<-Matrix(count_mat[,filt_keep])
+dat@cell.data<-dat@cell.data[filt_keep,]
+dat@cell.names<-dat@cell.names[filt_keep]
 
 dat <- runWarpLDAModels(dat, topic=c(5:15, 20, 25), seed=123, nCores=12, addModels=FALSE,tmp="/home/groups/CEDAR/mulqueen/temp/")
 
@@ -731,6 +748,8 @@ system(paste0("slack -F ",args[2],".",args[3],".cistopic_model_selection.pdf"," 
 #going with topics counts based on derivative
 
 dat<-cisTopic::selectModel(dat,type="derivative",keepModels=T)
+
+
 
 dat <- runUmap(dat, target='cell') #running umap using cistopics implementation
 
@@ -885,11 +904,10 @@ Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 CpG \
 10kb
 
-
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/Enhancer_hg38_SI_RI.bed \
-CpG \
-bcEnhance
+        Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+        /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed \
+        CpG \
+        bcEnhance
 
 #GpC features
 Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
@@ -917,10 +935,10 @@ Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 GpC \
 10kb
 
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/Enhancer_hg38_SI_RI.bed \
-CpG \
-bcEnhance
+        Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
+        /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed \
+        GpC \
+        bcEnhance
 
 ```
 
