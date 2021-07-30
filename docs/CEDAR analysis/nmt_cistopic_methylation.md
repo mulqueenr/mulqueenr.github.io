@@ -720,7 +720,8 @@ count_mat<-as.matrix(dat@count.matrix)
 # #Apply coverage filter, require at 5 or more CG measurements
  dat_cov<-as.matrix(dat_cov)
  dat_cov<-dat_cov[row.names(dat_cov) %in% row.names(count_mat),colnames(dat_cov) %in% colnames(count_mat)]
- count_mat[which(dat_cov<5,arr.ind=T)]<-0
+#removed coverage filter for now
+ #count_mat[which(dat_cov<5,arr.ind=T)]<-0
 
 
 count_mat[which(count_mat>=cutoff_value,arr.ind=T)]<-1

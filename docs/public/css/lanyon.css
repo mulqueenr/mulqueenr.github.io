@@ -101,7 +101,7 @@ h1, h2, h3, h4, h5, h6 {
 .container {
   max-width: 65rem;
   display: block;
-  padding-left: 10rem;
+  padding-left: 1rem;
 }
 @media (min-width: 38em) {
   .container {
@@ -339,6 +339,7 @@ a.sidebar-nav-item:focus {
 .page,
 .post {
   margin-bottom: 4em;
+  max-width: 55rem;
 }
 
 /* Blog post or page title */
@@ -539,21 +540,23 @@ main > nav {
 .section-nav {
   margin-top: 2rem;
   border-left: 0.2rem solid var(--highlight-color1);
-  font-size: 0.7rem;
+  border-right: 0.2rem solid var(--highlight-color1);
+  border-top: 0.2rem solid var(--highlight-color2);
+  border-bottom: 0.2rem solid var(--highlight-color1);
   margin: 0.5rem;
   overflow-wrap: normal;
   width: 20%;
   z-index: 10;
-  padding-left: -3rem;
   top: 3rem;
   position: fixed;
   float: right;
-  right: 1rem;
+  right: 0.2rem;
   overflow-y: auto;
-  overflow-x: hidden;
-  border-block: initial;
   background: var(--code-box-color);
   line-height: 1.8;
+  top: 0;
+  bottom: 0;
+  font-size: 80%;
 }
 
 
@@ -582,7 +585,7 @@ main > nav {
 
 .section-nav ul, ol {
   list-style: none;
-  font-size: 90%;
+  font-size: 70%;
   margin-left: -1rem;
 }
 
