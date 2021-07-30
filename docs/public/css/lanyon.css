@@ -99,18 +99,18 @@ h1, h2, h3, h4, h5, h6 {
  */
 
 .container {
-  max-width: 85rem;
+  max-width: 65rem;
   display: block;
   padding-left: 10rem;
 }
 @media (min-width: 38em) {
   .container {
-    max-width: 85rem;
+    max-width: 65rem;
   }
 }
 @media (min-width: 56em) {
   .container {
-    max-width: 85rem;
+    max-width: 65rem;
   }
 }
 
@@ -542,10 +542,10 @@ main > nav {
   font-size: 0.7rem;
   margin: 0.5rem;
   overflow-wrap: normal;
-  width: 15%;
+  width: 20%;
   z-index: 10;
-  padding-left: -1rem;
-  top: 2rem;
+  padding-left: -3rem;
+  top: 3rem;
   position: fixed;
   float: right;
   right: 1rem;
@@ -582,11 +582,13 @@ main > nav {
 
 .section-nav ul, ol {
   list-style: none;
+  font-size: 90%;
+  margin-left: -1rem;
 }
 
 .section-nav li a {
   display: inline-block;
-  color: #aaa;
+  color: var(--main-text-color);
   text-decoration: none;
   transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
 }

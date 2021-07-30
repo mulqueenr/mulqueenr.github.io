@@ -219,7 +219,7 @@ figcaption {
 /* Tables */
 table {
   margin-bottom: 1rem;
-  width: 100%;
+  width: 65%;
   border: 1px solid #e5e5e5;
   border-collapse: collapse;
 }
@@ -230,7 +230,7 @@ th {
 }
 tbody tr:nth-child(odd) td,
 tbody tr:nth-child(odd) th {
-  background-color: #192734;
+  background-color: #808080;
 }
 
 
