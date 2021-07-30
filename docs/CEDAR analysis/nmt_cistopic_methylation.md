@@ -484,7 +484,7 @@ bcEnhance
 
 {% endcapture %} {% include details.html %} 
 
-Running all of these as batch jobs
+### Running all of these as batch jobs
 
 ```bash
 sbatch CpG_genes.slurm.sh 
@@ -869,7 +869,7 @@ saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
 ```
 
 
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R [argv1] [argv2] [argv3]
+## Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R [argv1] [argv2] [argv3]
 
 
 + argv1 is a bed file with features to aggregate methylation over. Same as aggregate_methylation_over_region.py input.
@@ -900,11 +900,6 @@ Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 CpG \
 100kb
 
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/10kb.bed \
-CpG \
-10kb
-
         Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
         /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed \
         CpG \
@@ -931,11 +926,6 @@ Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
 GpC \
 100kb
 
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/10kb.bed \
-GpC \
-10kb
-
         Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
         /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed \
         GpC \
@@ -943,7 +933,14 @@ GpC \
 
 ```
 
-Combine multiple binarized matrices prior to running cistopic
+## Combine multiple binarized matrices prior to running cistopic
+
+Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R [argv1] [argv2] [argvN]
+
+This script will merge binarized counts matrices prior to re-running cistopic and plotting.
+
++ argv1 through N are cistopic object .Rds files generated from cistopic_methylation.R 
+This script is written to handle 2 or more cistopic objects.
 
 ```R
 library(cisTopic)
@@ -972,28 +969,53 @@ setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
 
 args <- commandArgs(trailingOnly=TRUE)
 
-dat_1<-readRDS(args[1])
-dat_2<-readRDS(args[2])
+#args<-list()
+#args[1]<-"CpG.promoter.cistopic_object.Rds"
+#args[2]<-"CpG.gene.cistopic_object.Rds"
+#args<-unlist(args)
 
-dat<-dat_1
-dat@binary.count.matrix<-rbind(dat@binary.count.matrix,dat_2@binary.count.matrix)
-dat@region.data<-rbind(dat@binary.count.matrix,dat_2@region.data)
-dat <- runWarpLDAModels(dat, topic=c(5:15, 20, 25, 40, 50), seed=123, nCores=14, addModels=FALSE,tmp="/home/groups/CEDAR/mulqueen/temp/")
+
+dat<-lapply(args,readRDS) #read in data as list of cistopic objects
+
+c_type<-unlist(lapply(args,function(x) strsplit(x,"[.]")[[1]][1])) #extract c type
+regions<-unlist(lapply(args,function(x) strsplit(x,"[.]")[[1]][2])) #extract region info
+
+#rename cell names for consistency
+dat<-lapply(dat,function(x){
+        colnames(x@binary.count.matrix)<-unlist(lapply(strsplit(colnames(x@binary.count.matrix),"[.]"),"[",1))
+        row.names(x@cell.data)<-unlist(lapply(strsplit(row.names(x@cell.data),"[.]"),"[",1))
+        return(x)
+        })
+
+#determine shared cells across cistopic objects
+cells_to_keep<-Reduce(intersect,lapply(dat,function(x){row.names(x@cell.data)}))
+
+dat_merged<-dat[[1]] #use first element as cistopic object for formatting
+
+#set up merged object
+dat_merged@binary.count.matrix<-do.call(rbind,lapply(dat,function(x){x@binary.count.matrix[,cells_to_keep]}))
+dat_merged@region.data<-do.call(rbind,lapply(dat,function(x){x@region.data}))
+dat_merged@cell.names<-colnames(dat_merged@binary.count.matrix)
+dat_merged@cell.data<-dat_merged@cell.data[which(cells_to_keep %in% row.names(dat[[1]]@cell.data)),]
+#run warp lda and overwrite dat object
+dat <- runWarpLDAModels(dat_merged, topic=c(5:15, 20, 25, 40, 50), seed=123, nCores=14, addModels=FALSE,tmp="/home/groups/CEDAR/mulqueen/temp/")
+
+#set up output name by
+out_name<-paste(unlist(lapply(1:length(c_type), function(i) paste(c_type[i],regions[i],sep="_"))),collapse=".")
 
 #select best model
-pdf(paste0(args[2],".",args[3],".cistopic_model_selection.pdf"))
+pdf(paste(out_name,"cistopic_model_selection.pdf",sep="."))
 par(mfrow=c(3,3))
 dat <- selectModel(dat, type='maximum')
 dat <- selectModel(dat, type='perplexity')
 dat <- selectModel(dat, type='derivative')
 dev.off()
 
-system(paste0("slack ",paste0(args[2],".",args[3],".cistopic_model_selection.pdf")) )
+system(paste0("slack -F ",paste(out_name,"cistopic_model_selection.pdf",sep=".")," ryan_todo") )
 
 #going with topics counts based on derivative
 
 dat<-cisTopic::selectModel(dat,type="derivative",keepModels=T)
-
 dat <- runUmap(dat, target='cell') #running umap using cistopics implementation
 
 #add sample cell line names as metadata
@@ -1014,7 +1036,7 @@ dat@cell.data[dat@cell.data$cellLine %in% c("T"),]$cellLine<-"T47D"
 dat@cell.data[dat@cell.data$treatment %in% c("C"),]$treatment<-"control"
 dat@cell.data[dat@cell.data$treatment %in% c("E"),]$treatment<-"estrogen"
 
-pdf(paste0(args[2],".",args[3],".cistopic_clustering.pdf"))
+pdf(paste(out_name,"combined.cistopic.clustering.pdf",sep="."))
 par(mfrow=c(1,3))
 plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('cellLine','treatment','cellLine_treatment'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
 
@@ -1026,8 +1048,18 @@ par(mfrow=c(2,5))
 plotFeatures(dat, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
 dev.off()
 
-system(paste0("slack ",paste0(args[2],".",args[3],".cistopic_clustering.pdf")) )
+system(paste0("slack -F ",paste(out_name,"combined.cistopic.clustering.pdf",sep="."), " ryan_todo") )
 
 
-saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
+saveRDS(dat,file=paste(out_name,"cistopic_object.Rds",sep="."))
+```
+
+```bash
+
+Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
+CpG.gene.cistopic_object.Rds \
+CpG.promoter.cistopic_object.Rds \
+GpC.gene.cistopic_object.Rds
+
+
 ```
