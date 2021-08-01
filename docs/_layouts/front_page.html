@@ -47,6 +47,22 @@ h1 {
 
 }
 
+
+.background_img2 {
+  min-height: 120vh;
+  background-image: url("{{site.baseurl}}/assets/images/dna_background2.png");
+  color: white;
+  display: flex;
+  isolation: isolate;
+  width: 120%;
+
+  /* Create the parallax scrolling effect */
+  background-attachment: fixed;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+
+}
 .hero-intro {
   width: 100%;
   padding: 2em;
@@ -56,16 +72,20 @@ h1 {
 
 <div class="background_img">
   <div class="hero-intro">
-    <h1><code style="font-weight: 1000; font-family: 'PT Sans'" >single cell analysis</code></h1>
+    <h1><code style="font-weight: 1000; font-family: 'PT Sans'" >single cell technologies</code></h1>
   </div>
 </div>
     <!-- Wrap is the content to shift when toggling the sidebar. We wrap the
          content to avoid any CSS collisions with our real content. -->
     <div class="wrap">
-      <div col-lg-12 class="container content">
+      <div col-lg-12 class="container content" style="padding-left:5rem">
         {{ content }}
       </div>
     </div>
+
+<div class="background_img2">
+</div>
+
     <label for="sidebar-checkbox" class="sidebar-toggle"></label>
     <script src='{{ site.baseurl }}/public/js/script.js'></script>
   </body>
