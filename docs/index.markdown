@@ -1,8 +1,8 @@
 ---
-layout: default
+layout: front_page
 title: Single cell omics technologies
 ---
-![omics overview](/assets/images/omics_overviews.png){: .center-image width="60%"}
+
 
 ## Welcome!
 
