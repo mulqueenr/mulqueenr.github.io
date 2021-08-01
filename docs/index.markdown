@@ -6,7 +6,7 @@ title: Single cell omics technologies
 
 ## Welcome!
 
-My field of study is in the development of single cell technologies and their applications to cancer early detection and neurodevelopment. A summary of single cell methods for various regulatory features can be found here. 
+My field of study is in the development of single cell technologies and their applications to cancer early detection and neurodevelopment. A summary of the motivation and state of single cell methods for various regulatory features can be found here:
 
 <h3>Background</h3>
 <ul>
@@ -16,8 +16,8 @@ My field of study is in the development of single cell technologies and their ap
         {% endif %}
     {% endfor %}
 </ul>
-
-My full code for processing of various projects while working in the <a href="https://www.ohsu.edu/school-of-medicine/oroak-lab">O'Roak</a> and <a href="https://adeylab.org">Adey labs</a> for my graduate work is available. Some of the basic processing (bcl2fastq to generation of a counts matrix) was performed in our bash environment or with the Adey lab developed <a href="https://github.com/adeylab/scitools-dev">scitools helper functions</a>. The rest was performed in either R or python environments. All of this is a work of progress and will likely change quite a bit as projects progress. 
+  
+My full code for processing of various projects while working towards my graduate thesis in the <a href="https://www.ohsu.edu/school-of-medicine/oroak-lab">O'Roak</a> and <a href="https://adeylab.org">Adey labs</a> is available below. Some of the basic processing (bcl2fastq to generation of a counts matrix) was performed in our bash environment or with the Adey lab developed <a href="https://github.com/adeylab/scitools-dev">scitools helper functions</a>. The rest was performed in either R or python environments. 
 
 <h3>sciATAC</h3>
 <ul>

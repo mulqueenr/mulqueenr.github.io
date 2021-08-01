@@ -165,6 +165,6 @@ Finally we have our solid mountain model! All that is left to do in Blender is t
 
 - Export GCode and print.
 
-##Final assembly.
+## Final assembly.
 
 Once it is done printing, I clean up any malformations with an exacto knife, and then use the rubber cement to glue it to the board. I use a pencil to mark the area the mountain will cover on the board, then give both the board and the print a generous coating of the glue. I tend to due multiple coats for the print, I think the plastic absorbs it a bit. After drying for about 30 minutes I attach the two together and use a Command Strip to attach it to the wall. There's my whole process! For any questions feel free to reach out to my email (mulqueenr@gmail.com) or use a ticket on github. 
