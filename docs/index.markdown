@@ -57,7 +57,7 @@ More recently, I joined <a href="https://www.ohsu.edu/knight-cancer-institute/ce
     {% endfor %}
 </ul>
 
-Finally, I include some side projects from hobbies including 3D printing and rendering. Have a look around!
+Finally, I include some side projects from hobbies including 3D printing and rendering. 
 
 <h3>Side Projects</h3>
 <ul>
@@ -68,5 +68,6 @@ Finally, I include some side projects from hobbies including 3D printing and ren
     {% endfor %}
 </ul>
 
+Have a look around!
 
 
