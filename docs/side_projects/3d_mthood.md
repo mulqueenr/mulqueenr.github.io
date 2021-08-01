@@ -6,6 +6,61 @@ permalink: /3d_mthood/
 category: side_projects
 ---
 
+
+<style>
+
+h1 {
+  text-transform: uppercase;
+  font-size: clamp(5rem, 5vw + 0.5rem, 5rem);
+  line-height: 0.9;
+  margin: 0;
+  color: antiquewhite;
+  mix-blend-mode: hard-light;
+  position:absolute; left:2rem; top: 4em;
+
+  code {
+    display: block;
+    width: max-content;
+    background: white;
+    font-size: 0.5em;
+    color: #355f08;
+    padding: 0.1em;
+    border-radius: 0.125em;
+    margin-bottom: 0.05em;
+    font-family: 'PT Sans';
+    font-weight: 1000;
+  }
+}
+
+.background_img {
+  min-height: 75vh;
+  background-image: url("{{site.baseurl}}/assets/images/mthood_render.png");
+  color: white;
+  display: flex;
+  isolation: isolate;
+  width: 100%;
+
+  /* Create the parallax scrolling effect */
+  background-attachment: fixed;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+
+}
+
+.hero-intro {
+  width: 100%;
+  padding: 2em;
+}
+
+</style>
+
+<div class="background_img">
+  <div class="hero-intro">
+    <h1><code style="font-weight: 1000; font-family: 'PT Sans'" >3d printed mountains</code></h1>
+  </div>
+</div>
+
 ### Introduction
 
 Not to go full cooking blog in my description, but I wanted to give a shout out to the inspiration for this project. I was walking around the Oregon Convention Center during a winter craft festival and came across a booth with a really great local artist that goes by TimPlusApril. There were selling beautiful topographical map prints of Oregon mountains. They can be purchased [here.](https://www.etsy.com/listing/491138531/oregon-mountains-topographic-map-art?gpla=1&gao=1&&utm_source=google&utm_medium=cpc&utm_campaign=shopping_us_-art_and_collectibles&utm_custom1=_k_Cj0KCQjwxJqHBhC4ARIsAChq4auyhaJXLQ4InKe10-dtyfBzqeF02XTUXafrZDXcosWE-Pq_1SdbBx4aAkRiEALw_wcB_k_&utm_content=go_12665398257_121762925993_511610210343_aud-1184785539738:pla-314954651933_c__491138531_102375588&utm_custom2=12665398257&gclid=Cj0KCQjwxJqHBhC4ARIsAChq4auyhaJXLQ4InKe10-dtyfBzqeF02XTUXafrZDXcosWE-Pq_1SdbBx4aAkRiEALw_wcB)
