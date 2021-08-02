@@ -532,12 +532,14 @@ library(Ckmeans.1d.dp)
 
 setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
 
+# read in arguments
 args <- commandArgs(trailingOnly=TRUE)
 
+#test set of arguments
 #args<-list()
-#args[1]<-"/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed" 
-#args[2]<-"CpG"
-#args[3]<-"bcEnhance"
+#args[1]<-"/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed" 
+#args[2]<-"GpC"
+#args[3]<-"gene"
 #args<-unlist(args)
 
 meth_files<-list.files(pattern=paste0(args[2],".",args[3],".count.txt.gz$")) #use prefix to determine meth files to read in
@@ -551,16 +553,17 @@ createcisTopicObjectFromMeth <- function(
   methfiles,
   regions,
   project.name = "cisTopicProject",
-  min.cells = 1,
-  min.regions = 1,
+  min.cells = 0,
+  min.regions = 0,
   is.acc = 0.5, 
   return.norm.beta=T,
   ...
 ) {
   # Prepare annotation
-  #tester regions<-region
-  #tester methfiles<-meth_files
-  #tester return.norm.beta=T
+  #tester 
+  #regions<-region
+  #methfiles<-meth_files
+  #return.norm.beta=T
   regions_frame <- read.table(regions)[,c(1:4)]
   colnames(regions_frame) <- c('seqnames', 'start', 'end','feat')
 
@@ -587,7 +590,8 @@ createcisTopicObjectFromMeth <- function(
 
   #read in single-cell data and format for scmet
   single_cell_in<-mclapply(methfiles,mc.cores=20, FUN= function(x) {
-	  	#tester file x<-methfiles[1]
+	  	#tester
+                #x<-methfiles[1]
 	    # Read data
 	    print(paste('Reading file ', x, '...', sep=''))
 	    sample <- fread(x,sep=",")
@@ -682,7 +686,7 @@ createcisTopicObjectFromMeth <- function(
 }
 
 
-dat_out<-createcisTopicObjectFromMeth(methfiles=meth_files,regions=region)
+dat_out<-createcisTopicObjectFromMeth(methfiles=meth_files,regions=region) #run the read in function
 dat<-dat_out[[1]]
 dat_cov<-dat_out[[2]]
 print("Generating an automatic methylation cutoff by univariate k means.")
