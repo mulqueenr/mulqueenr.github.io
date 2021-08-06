@@ -880,61 +880,36 @@ saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
 + argv2 is the methylation moeity. This is set up in argv3 of the python script. Example is \*[GpC/CpG].[prefix].count.txt.
 + argv3 is prefix from aggregate_methylation_over_region.py output. This is set up in argv3 of the python script. Example is \*.[prefix].count.txt.
 
-
+Generate sbatch scripts for running:
 ```bash
 
-#CpG features
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed \
-CpG \
-gene 
+reg=("/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed")
+c_type=("CpG" "CpG" "CpG" "CpG" "CpG" "GpC" "GpC" "GpC" "GpC" "GpC")
+name=( "gene" "promoter" "enhancer" "100kb" "bcEnhance" "gene" "promoter" "enhancer" "100kb" "bcEnhance" )
 
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed \
-CpG \
-promoter
+for i in "${!reg[@]}"; do
+printf '#!/bin/bash 
+#SBATCH --nodes=1 #request 1 node 
+#SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time 
+#SBATCH --cpus-per-task=20 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs) 
+#SBATCH --mem-per-cpu=5gb ## request gigabyte per cpu 
+#SBATCH --time=3:00:00 ## ask for 1 hour on the node 
+#SBATCH -- 
+srun Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R %s %s %s ' "${reg[i]}" "${c_type[i]}" "${name[i]}" > "cistopic.${c_type[i]}.${name[i]}.slurm.sh"  ; done
 
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed \
-CpG \
-enhancer
+```
 
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed \
-CpG \
-100kb
-
-        Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-        /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed \
-        CpG \
-        bcEnhance
-
-#GpC features
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed \
-GpC \
-gene
-
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed \
-GpC \
-promoter
-
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed \
-GpC \
-enhancer
-
-Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed \
-GpC \
-100kb
-
-        Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R \
-        /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed \
-        GpC \
-        bcEnhance
-
+```bash 
+sbatch cistopic.CpG.promoter.slurm.sh #running currently
+sbatch cistopic.CpG.100kb.slurm.sh
+sbatch cistopic.CpG.enhancer.slurm.sh 
+sbatch cistopic.GpC.bcEnhance.slurm.sh 
+sbatch cistopic.GpC.gene.slurm.sh
+sbatch cistopic.CpG.bcEnhance.slurm.sh
+sbatch cistopic.CpG.gene.slurm.sh
+sbatch cistopic.GpC.100kb.slurm.sh
+sbatch cistopic.GpC.enhancer.slurm.sh
+sbatch cistopic.GpC.promoter.slurm.sh
 ```
 
 ## Combine multiple binarized matrices prior to running cistopic
@@ -976,6 +951,7 @@ args <- commandArgs(trailingOnly=TRUE)
 #args<-list()
 #args[1]<-"CpG.promoter.cistopic_object.Rds"
 #args[2]<-"CpG.gene.cistopic_object.Rds"
+#args[3]<-"GpC.gene.cistopic_object.Rds"
 #args<-unlist(args)
 
 
@@ -997,7 +973,9 @@ cells_to_keep<-Reduce(intersect,lapply(dat,function(x){row.names(x@cell.data)}))
 dat_merged<-dat[[1]] #use first element as cistopic object for formatting
 
 #set up merged object
-dat_merged@binary.count.matrix<-do.call(rbind,lapply(dat,function(x){x@binary.count.matrix[,cells_to_keep]}))
+dat_merged@binary.count.matrix<-do.call(rbind,
+        lapply(dat,function(x){x@binary.count.matrix[,cells_to_keep]})
+        )
 dat_merged@region.data<-do.call(rbind,lapply(dat,function(x){x@region.data}))
 dat_merged@cell.names<-colnames(dat_merged@binary.count.matrix)
 dat_merged@cell.data<-dat_merged@cell.data[which(cells_to_keep %in% row.names(dat[[1]]@cell.data)),]
@@ -1030,7 +1008,7 @@ dat@cell.data$treatment<-substr(unlist(lapply(strsplit(row.names(dat@cell.data),
 dat@cell.data[startsWith(dat@cell.data$cellLine,"M7"),]$treatment<-substr(dat@cell.data[startsWith(dat@cell.data$cellLine,"M7"),]$cellLine,3,3)
 dat@cell.data[startsWith(dat@cell.data$cellLine,"BSM7"),]$treatment<-substr(dat@cell.data[startsWith(dat@cell.data$cellLine,"BSM7"),]$cellLine,5,5)
 
-dat@cell.data$cellLine_treatment<-paste(dat@cell.data$cellLine,dat@cell.data$treatment,sep="_")
+dat@cell.data$batch<-paste(dat@cell.data$cellLine,dat@cell.data$treatment,sep="_")
 
 dat@cell.data$perc_met<-dat@cell.data$"CG_met_count"/dat@cell.data$"CG_total_count"
 
@@ -1039,23 +1017,48 @@ dat@cell.data[dat@cell.data$cellLine %in% c("BSM7E6","M7C1A","M7C2B","M7E4C"),]$
 dat@cell.data[dat@cell.data$cellLine %in% c("T"),]$cellLine<-"T47D"
 dat@cell.data[dat@cell.data$treatment %in% c("C"),]$treatment<-"control"
 dat@cell.data[dat@cell.data$treatment %in% c("E"),]$treatment<-"estrogen"
-
+dat@cell.data$celltype_treatment<-paste(dat@cell.data$cellLine,dat@cell.data$treatment)
 pdf(paste(out_name,"combined.cistopic.clustering.pdf",sep="."))
-par(mfrow=c(1,3))
-plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('cellLine','treatment','cellLine_treatment'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
-
-par(mfrow=c(1,3))
-plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c("CG_total_count","perc_met"), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
-
-
+par(mfrow=c(1,2))
+plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('celltype_treatment','batch'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
 par(mfrow=c(2,5))
 plotFeatures(dat, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
 dev.off()
-
 system(paste0("slack -F ",paste(out_name,"combined.cistopic.clustering.pdf",sep="."), " ryan_todo") )
 
 
 saveRDS(dat,file=paste(out_name,"cistopic_object.Rds",sep="."))
+
+
+#should probably make this Z-scored for plotting
+topicmat<-as.data.frame(dat@selected.model$document_expects)
+write.table(topicmat,file=paste0(out_name,".cellbytopic.cistopic.tsv"),col.names=T,row.names=T,sep="\t",quote=F)
+
+topicmat<-as.data.frame(t(scale(t(topicmat))))
+cellline_annot<-dat@cell.data$cellLine
+treatment_annot<-dat@cell.data$treatment
+c_count_annot<-dat@cell.data$CG_total_count
+cellline_treatment_annot<-dat@cell.data$batch
+
+#color function
+col_fun=colorRamp2(quantile(unlist(topicmat),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
+c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
+
+row.names(topicmat)<-paste0("Topic_",row.names(topicmat))
+plt1<-Heatmap(topicmat,
+        name="Z-score",
+    show_column_names=F,
+    bottom_annotation=columnAnnotation(cellline=cellline_annot,treatment=treatment_annot,C_covered=c_count_annot,batch=cellline_treatment_annot,
+            col = list(cellline = c("T47D"="red","MCF7"="blue"),
+                                treatment = c("control" = "white", "estrogen" = "black"),
+                                batch = c("BSM7E6_E"="green","M7C1A_C"="brown","M7C2B_C"="purple","M7E4C_E"="blue","T_C"="orange","T_E"="red"))))
+
+pdf(paste0(out_name,".cistopic_heatmap.pdf"))
+plt1
+dev.off()
+
+system(paste0("slack -F ",out_name,".cistopic_heatmap.pdf", " ryan_todo") )
+
 ```
 
 ```bash
@@ -1063,7 +1066,34 @@ saveRDS(dat,file=paste(out_name,"cistopic_object.Rds",sep="."))
 Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
 CpG.gene.cistopic_object.Rds \
 CpG.promoter.cistopic_object.Rds \
+CpG.enhancer.cistopic_object.Rds
+
+Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
+GpC.gene.cistopic_object.Rds \
+GpC.promoter.cistopic_object.Rds \
+GpC.enhancer.cistopic_object.Rds
+
+Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
+CpG.bcEnhance.cistopic_object.Rds \
+GpC.bcEnhance.cistopic_object.Rds
+
+Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
+CpG.bcEnhance.cistopic_object.Rds \
+GpC.promoter.cistopic_object.Rds \
+CpG.promoter.cistopic_object.Rds \
+GpC.bcEnhance.cistopic_object.Rds
+
+Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
+CpG.gene.cistopic_object.Rds \
 GpC.gene.cistopic_object.Rds
 
+Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
+CpG.enhancer.cistopic_object.Rds \
+GpC.enhancer.cistopic_object.Rds
+
+
+Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
+CpG.promoter.cistopic_object.Rds \
+GpC.promoter.cistopic_object.Rds 
 
 ```
