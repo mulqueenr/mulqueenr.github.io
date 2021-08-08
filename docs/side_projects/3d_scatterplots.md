@@ -165,7 +165,7 @@ file_xyz=open("C:/Users/mulqueen/Downloads/3D.OPC.table","r")
 tabraw=file_xyz.readlines()
 file_xyz.close()
 
-for ligne in tabraw[1:]:
+for ligne in tabraw[1:5000]:
     ligne=ligne.replace('\n','')
     l=ligne.split('\t')
     print(ligne)
@@ -183,13 +183,12 @@ for ligne in tabraw[1:]:
     ob = bpy.context.active_object
     ob.name = name
     ob.location=(x,y,z)
-    #modifier = ob.modifiers.new(name='Subdivision', type='SUBSURF')
-    #modifier.render_levels = 6 #add smoothing for render
     me = ob.data
     mat_temp = bpy.data.materials.new(str(l[0])+".mat")
     mat_temp=bpy.data.materials["mymaterial"].copy()
     ob.data.materials.append(mat_temp) #add material we made, called mymaterial
     ob.active_material.node_tree.nodes["RGB"].outputs[0].default_value=(r,g,b,0.8) #change the color of the RGB input
+
 
 ```
 
@@ -201,3 +200,10 @@ Finally lets snap a pic!
 
 <img src="{{site.baseurl}}/assets/images/molrender_full.png">
 
+
+bpy.ops.object.pointcloud_add(align='WORLD', location=(0,0,0), scale=(1,1,1)) 
+obj = context.active_object 
+for i in range (0, 35): 
+  obj.data.points[i].co = (0,0,0) 
+  v = obj.data.points[30].co 
+  print(v)
