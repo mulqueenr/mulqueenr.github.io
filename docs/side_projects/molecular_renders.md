@@ -61,7 +61,7 @@ h1 {
   </div>
 </div>
 
-### Introduction
+## Introduction
 
 The images on the home page of this website and the one above this text were rendered by me using [PDB](https://www.rcsb.org/) molecular structures in Blender. I figure I'd write up a quick tutorial for the sake of having more content. 
 
