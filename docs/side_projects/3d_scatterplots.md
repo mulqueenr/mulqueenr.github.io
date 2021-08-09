@@ -63,13 +63,13 @@ h1 {
 
 ### Introduction
 
-Here's how to generate 3D scatterplots of single cell experiments in Blender. To do this, we are going to use a similar shader to the one I use in the [molecular render]((https://mulqueenr.github.io/3d_scatterplots/) ) project. Additionally, I will be using blender's python console to read in a simple text file to populate a UMAP projection. 
+Here's how to generate 3D scatterplots of single cell experiments in Blender. To do this, we are going to use a similar shader to the one I use in the [molecular render]((https://mulqueenr.github.io/3d_scatterplots/)) project. Additionally, I will be using blender's python console to read in a simple text file to populate a UMAP projection. 
 
 For the text file, generate a header, tab-separated table with the following columns:
 
-Cell_ID | X | Y | Z | cluster | cluster_color_hexvalue | R_color | G_color | B_color     
-:--|:--|:-- | :--|:--|:-- | :--|:--|:--
-String, unique cell identifier| float of x coordinate | float of y coordinate | float of z coordinate | String, of cluster grouping | Hex value of fill color | RGB R value (integer [0,255]) |RGB G value (integer [0,255]) |RGB B value (integer [0,255]) 
+Cell_ID | X | Y | Z | cluster | cluster_color_hexvalue |
+:--:|:--:|:--: | :--:|:--:|:--: | 
+String, unique cell identifier| float of x coordinate | float of y coordinate | float of z coordinate | String, of cluster grouping | Hex value of fill color | 
 
 Here's an example lines used for the render at the top of the page.
 
@@ -82,7 +82,7 @@ AACGCAATAAGAAGTCTATAAGATTATCTCCTCCTG  0.518666887 0.555381766 -0.726500417  0 #E
 AACGCAATAAGAAGTCTATCGTTGCGCGTTCTATCA  -1.022839314  0.342407963 -0.949501479  0 #EA8C55
 ```
 
-Note: the annot column is not necessary for the render, and can be filled with a dummy variable. Later in the render, I'll show a way to highlight select groups if you do want to use the annot column. 
+Note: the annot column is not necessary for the render, and can be filled with a dummy variable. In a later render, I'll show a way to highlight select groups if you do want to use the annot column. 
 
 Required software
 - Blender v 2.93 or higher ([link](https://www.blender.org/))
@@ -146,7 +146,7 @@ Some other things of note:
 - Make a new collection to hold all the cell objects you are about to generate. To do this, go to the outliner panel, right click, and press "New Collection"
 - Then go to the python console window, by changing from the Shader editor at the bottom panel.
 - Copy and paste this code below to populate blender with your 3D scatter plot.
-  - I recommend first testing this with the first 100 or so cells, by limiting the for loop from [1:100]. This will give you a change to adjust the lighting, move the camera, adjust the stage height and generally set up the render, before clearing out the collection and repopulating with all the cells.
+  - I recommend first testing this with the first 100 or so cells, by limiting the "for" loop from [1:100]. This will give you a change to adjust the lighting, move the camera, adjust the stage height and generally set up the render, before clearing out the collection and repopulating with all the cells.
 
 ```python
 import bpy
@@ -154,18 +154,19 @@ import math
 
 #define a function to create a sphere at each cell location
 def newSph(diam):
-    tempSph = bpy.ops.mesh.primitive_uv_sphere_add(radius=diam,segments=32, ring_count=16) #higher segments and ring_counts will make a smoother sphere, but my computer is real bad
+    tempSph = bpy.ops.mesh.primitive_uv_sphere_add(radius=diam,segments=32, ring_count=16) #higher segments and ring_counts will make a smoother sphere, but I dont think its necessary
     return tempSph
 
 # Program begins here.
 scn = bpy.context.scene
 #removeObjects( scn ) 
 
-file_xyz=open("C:/Users/mulqueen/Downloads/3D.OPC.table","r")
+file_xyz=open("C:/Users/mulqueen/Downloads/3D.OPC.tsv","r")
 tabraw=file_xyz.readlines()
 file_xyz.close()
 
-for ligne in tabraw[1:5000]:
+#I read in points 1:1000 at a time, but that is because my computer is bad
+for ligne in tabraw[1:1000]:
     ligne=ligne.replace('\n','')
     l=ligne.split('\t')
     print(ligne)
@@ -201,9 +202,53 @@ Finally lets snap a pic!
 <img src="{{site.baseurl}}/assets/images/molrender_full.png">
 
 
-bpy.ops.object.pointcloud_add(align='WORLD', location=(0,0,0), scale=(1,1,1)) 
-obj = context.active_object 
-for i in range (0, 35): 
-  obj.data.points[i].co = (0,0,0) 
-  v = obj.data.points[30].co 
-  print(v)
+## Bonus: Highlight a selected group of cells
+
+Since our cells are translucent spheres, we can highlight the cells of a specific annotation by generating a small point light in each sphere.
+To do this, we will use pretty much the same python "for" loop, but instance lights at the cells with annotation "1".
+
+```python
+import bpy
+import math
+
+#define a function to create a sphere at each cell location
+def newSph(diam):
+    tempSph = bpy.ops.mesh.primitive_uv_sphere_add(radius=diam,segments=32, ring_count=16) #higher segments and ring_counts will make a smoother sphere, but I dont think its necessary
+    return tempSph
+
+def newLight(name_in):
+    light_data = bpy.data.lights.new(name=name_in, type='POINT')
+    
+    return tempSph
+
+# Program begins here.
+scn = bpy.context.scene
+#removeObjects( scn ) 
+
+file_xyz=open("C:/Users/mulqueen/Downloads/3D.OPC.tsv","r")
+tabraw=file_xyz.readlines()
+file_xyz.close()
+
+#I read in points 1:1000 at a time, but that is because my computer is bad
+for ligne in tabraw[1:]:
+  ligne=ligne.replace('\n','')
+  l=ligne.split('\t')
+  if ligne[4]=="1": #select only cells in annotation 1
+    print(ligne)
+    x=float(l[1]) #location of spheres
+    y=float(l[2])
+    z=float(l[3])
+    name=str(l[0])+".light"
+    newLight(name_in) #make a light
+    ob = bpy.context.active_object
+    ob.name = name
+    ob.location=(x,y,z)
+    me = ob.data
+    mat_temp = bpy.data.materials.new(str(l[0])+".mat")
+    mat_temp=bpy.data.materials["mymaterial"].copy()
+    ob.data.materials.append(mat_temp) #add material we made, called mymaterial
+    ob.active_material.node_tree.nodes["RGB"].outputs[0].default_value=(r,g,b,0.8) #change the color of the RGB input
+
+
+```
+
