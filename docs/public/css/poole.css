@@ -208,8 +208,8 @@ img {
   transition: transform .5s ease;
 }
 
-/* [3] Finally, transforming the image when container gets hovered */
-img:click {
+/* [3] Finally, transforming the image when container gets clicked */
+img button {
   transform: scale(1.5) translateX(10rem);
   border: 1px solid black;
   background-color: white;
