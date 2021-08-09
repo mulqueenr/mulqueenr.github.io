@@ -34,7 +34,7 @@ h1 {
 
 .background_img {
   min-height: 75vh;
-  background-image: url("{{site.baseurl}}/assets/images/molrender.png");
+  background-image: url("{{site.baseurl}}/assets/images/OPC_scatterplot.png");
   color: white;
   display: flex;
   isolation: isolate;
@@ -196,10 +196,12 @@ for ligne in tabraw[1:1000]:
 
 ## Final rendering
 Finally lets snap a pic!
+- I turned the Resolution X and Y under the "Output Properties" tab up to 3840 px X 2160 px for a 4K resolution render.
+- I also turned the render sampling in the "Render Properties" tab up to 256 for Render
 - Finally press "F12" key to render and watch a beautiful plot be born.
 
 
-<img src="{{site.baseurl}}/assets/images/molrender_full.png">
+<img src="{{site.baseurl}}/assets/images/OPC_scatterplot.png">
 
 
 ## Bonus: Highlight a selected group of cells
@@ -217,9 +219,11 @@ def newSph(diam):
     return tempSph
 
 def newLight(name_in):
+    light_data = bpy.data.lights.new(name=name_in, type='POINT') #make a new point light
     light_data = bpy.data.lights.new(name=name_in, type='POINT')
-    
-    return tempSph
+    lamp_object = bpy.data.objects.new(name=name_in, object_data=lamp_data)
+    lamp_object.data.energy = 100 #set power to 100 watts
+    return lamp_object
 
 # Program begins here.
 scn = bpy.context.scene
@@ -241,14 +245,9 @@ for ligne in tabraw[1:]:
     name=str(l[0])+".light"
     newLight(name_in) #make a light
     ob = bpy.context.active_object
-    ob.name = name
-    ob.location=(x,y,z)
-    me = ob.data
-    mat_temp = bpy.data.materials.new(str(l[0])+".mat")
-    mat_temp=bpy.data.materials["mymaterial"].copy()
-    ob.data.materials.append(mat_temp) #add material we made, called mymaterial
-    ob.active_material.node_tree.nodes["RGB"].outputs[0].default_value=(r,g,b,0.8) #change the color of the RGB input
-
+    ob.location=(x,y,z) # Place lamp to a specified location
+    ob.select = True # And finally select it make active
+    scn.objects.active = lamp_object
 
 ```
 
