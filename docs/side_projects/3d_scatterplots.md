@@ -201,7 +201,7 @@ Finally lets snap a pic!
 - Finally press "F12" key to render and watch a beautiful plot be born.
 
 
-<img src="{{site.baseurl}}/assets/images/OPC_scatterplot.png">
+<img src="{{site.baseurl}}/assets/images/OPCside_scatterplot.png">
 
 
 ## Bonus: Highlight a selected group of cells
