@@ -34,7 +34,7 @@ h1 {
 
 .background_img {
   min-height: 75vh;
-  background-image: url("{{site.baseurl}}/assets/images/OPC_scatterplot.png");
+  background-image: url("{{site.baseurl}}/assets/images/OPCfront_scatterplot.png");
   color: white;
   display: flex;
   isolation: isolate;
@@ -135,7 +135,7 @@ This script is copied and edited from [Mattheu Gibert](http://www.gibert.biz/dow
 This line (13) in the script should be modified to point correctly to your own table.
 
 ```python
-file_xyz=open("C:/Users/mulqueen/Downloads/3D.OPC.table","r")
+file_xyz=open("C:/Users/mulqueen/Downloads/3D.OPC.tsv","r")
 ```
 
 Some other things of note:
