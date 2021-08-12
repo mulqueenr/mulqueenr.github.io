@@ -48,6 +48,23 @@ h1 {
 
 }
 
+
+.background_img2 {
+  min-height: 120vh;
+  background-image: url("{{site.baseurl}}/assets/images/s3human_scatterplot.png");
+  color: white;
+  display: flex;
+  isolation: isolate;
+  width: 120%;
+
+  /* Create the parallax scrolling effect */
+  background-attachment: fixed;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+
+}
+
 .hero-intro {
   width: 100%;
   padding: 2em;
@@ -204,50 +221,9 @@ Finally lets snap a pic!
 <img src="{{site.baseurl}}/assets/images/OPCside_scatterplot.png">
 
 
-## Bonus: Highlight a selected group of cells
+## Bonus
+Here I took the human s3-ATAC brain data and colored by cell type. I then cranked up the emission strength and removes all external lights.
 
-Since our cells are translucent spheres, we can highlight the cells of a specific annotation by generating a small point light in each sphere.
-To do this, we will use pretty much the same python "for" loop, but instance lights at the cells with annotation "1".
 
-```python
-import bpy
-import math
-
-#define a function to create a sphere at each cell location
-def newSph(diam):
-    tempSph = bpy.ops.mesh.primitive_uv_sphere_add(radius=diam,segments=32, ring_count=16) #higher segments and ring_counts will make a smoother sphere, but I dont think its necessary
-    return tempSph
-
-def newLight(name_in):
-    light_data = bpy.data.lights.new(name=name_in, type='POINT') #make a new point light
-    light_data = bpy.data.lights.new(name=name_in, type='POINT')
-    lamp_object = bpy.data.objects.new(name=name_in, object_data=lamp_data)
-    lamp_object.data.energy = 100 #set power to 100 watts
-    return lamp_object
-
-# Program begins here.
-scn = bpy.context.scene
-#removeObjects( scn ) 
-
-file_xyz=open("C:/Users/mulqueen/Downloads/3D.OPC.tsv","r")
-tabraw=file_xyz.readlines()
-file_xyz.close()
-
-#I read in points 1:1000 at a time, but that is because my computer is bad
-for ligne in tabraw[1:]:
-  ligne=ligne.replace('\n','')
-  l=ligne.split('\t')
-  if ligne[4]=="1": #select only cells in annotation 1
-    print(ligne)
-    x=float(l[1]) #location of spheres
-    y=float(l[2])
-    z=float(l[3])
-    name=str(l[0])+".light"
-    newLight(name_in) #make a light
-    ob = bpy.context.active_object
-    ob.location=(x,y,z) # Place lamp to a specified location
-    ob.select = True # And finally select it make active
-    scn.objects.active = lamp_object
-
-```
-
+<div class="background_img2">
+</div>
