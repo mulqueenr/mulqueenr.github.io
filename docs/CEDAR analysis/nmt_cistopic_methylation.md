@@ -873,7 +873,9 @@ saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
 ```
 
 
-## Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R [argv1] [argv2] [argv3]
+## Run cistopic on each region and C context
+
+Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R [argv1] [argv2] [argv3]
 
 
 + argv1 is a bed file with features to aggregate methylation over. Same as aggregate_methylation_over_region.py input.
