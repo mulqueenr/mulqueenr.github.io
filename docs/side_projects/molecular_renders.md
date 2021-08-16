@@ -29,6 +29,8 @@ h1 {
     margin-bottom: 0.05em;
     font-family: 'PT Sans';
     font-weight: 1000;
+    top: 80vh;
+    left: 4vw;
   }
 }
 
