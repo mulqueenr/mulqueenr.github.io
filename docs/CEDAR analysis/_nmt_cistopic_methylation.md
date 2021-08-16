@@ -928,14 +928,12 @@ library(cisTopic)
 library(reshape2)
 library(GenomicRanges)
 library(Matrix)
-library(mefa4)
 library(stats)
 library(dplyr)
 library(ComplexHeatmap)
 library(circlize)
 library(RColorBrewer)
 library(patchwork)
-library(rstatix)
 library(GenomeInfoDb)
 library(ggplot2)
 set.seed(1234)
@@ -944,7 +942,6 @@ library(org.Hs.eg.db)
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 library(data.table)
 library(BSgenome.Hsapiens.UCSC.hg38)
-library(Ckmeans.1d.dp)
 
 setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
 
@@ -1061,6 +1058,27 @@ dev.off()
 
 system(paste0("slack -F ",out_name,".cistopic_heatmap.pdf", " ryan_todo") )
 
+#use SWNE for feature embedding
+
+#annotate regions
+dat <- getRegionsScores(dat)
+dat <- annotateRegions(dat, txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,
+                                  annoDb = "org.Hs.eg.db")
+
+## Run SWNE embedding
+swne.emb <- RunSWNE(dat, alpha.exp = 1.25, snn.exp = 1, snn.k = 30)
+
+## Embed genes based on promoter accessibility
+marker.genes <- c("CUX2", "RORB", "FOXP2", "FLT1", "GAD1", "SST", "SLC1A2", "MOBP", "P2RY12")
+swne.emb <- EmbedPromoters(swne.embedding, dat, genes.embed = marker.genes,
+                           peaks.use = NULL, alpha.exp = 1, n_pull = 3)
+
+plt2<-PlotSWNE(swne.emb, sample.groups = clusters, pt.size = 0.5, alpha.plot = 0.5, do.label = T,
+         seed = 123)
+
+pdf(paste0(out_name,".SWNE_embedding.pdf"))
+plt2
+dev.off()
 ```
 
 ```bash
@@ -1093,9 +1111,14 @@ Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
 CpG.enhancer.cistopic_object.Rds \
 GpC.enhancer.cistopic_object.Rds
 
-
 Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
 CpG.promoter.cistopic_object.Rds \
 GpC.promoter.cistopic_object.Rds 
+
+Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
+CpG.enhancer.cistopic_object.Rds \
+GpC.promoter.cistopic_object.Rds \
+CpG.promoter.cistopic_object.Rds \
+GpC.enhancer.cistopic_object.Rds
 
 ```
