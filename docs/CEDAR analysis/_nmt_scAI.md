@@ -7,6 +7,7 @@ category: CEDAR
 ---
 
 Going to try to use the recently published scAI for multiomic integration (https://github.com/sqjin/scAI). 
+Ended up giving up on it because it only takes 2 inputs at a time.
 
 ## Installation
 ```R

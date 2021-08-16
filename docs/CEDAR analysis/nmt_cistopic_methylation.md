@@ -1062,11 +1062,10 @@ system(paste0("slack -F ",out_name,".cistopic_heatmap.pdf", " ryan_todo") )
 
 #annotate regions
 dat <- getRegionsScores(dat)
-dat <- annotateRegions(dat, txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,
-                                  annoDb = "org.Hs.eg.db")
-
+dat <- annotateRegions(dat, txdb = TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb = "org.Hs.eg.db")
 ## Run SWNE embedding
 swne.emb <- RunSWNE(dat, alpha.exp = 1.25, snn.exp = 1, snn.k = 30)
+
 
 ## Embed genes based on promoter accessibility
 marker.genes <- c("CUX2", "RORB", "FOXP2", "FLT1", "GAD1", "SST", "SLC1A2", "MOBP", "P2RY12")
