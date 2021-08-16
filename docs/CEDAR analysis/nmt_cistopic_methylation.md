@@ -901,6 +901,8 @@ srun Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R %s %s %s ' "
 
 ```
 
+### Running all of these as batch jobs
+
 ```bash 
 sbatch cistopic.CpG.promoter.slurm.sh #running currently
 sbatch cistopic.CpG.100kb.slurm.sh
@@ -1079,6 +1081,7 @@ pdf(paste0(out_name,".SWNE_embedding.pdf"))
 plt2
 dev.off()
 ```
+### Running all of these as batch jobs
 
 ```bash
 
