@@ -38,7 +38,7 @@ h1 {
   color: white;
   display: flex;
   isolation: isolate;
-  width: 160%;
+  width: 100vw;
 
   /* Create the parallax scrolling effect */
   background-attachment: fixed;
@@ -49,7 +49,7 @@ h1 {
 }
 
 .hero-intro {
-  width: 100%;
+  width: 100vw;
   padding: 2em;
 }
 
