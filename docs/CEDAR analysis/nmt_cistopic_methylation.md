@@ -944,6 +944,7 @@ library(org.Hs.eg.db)
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 library(data.table)
 library(BSgenome.Hsapiens.UCSC.hg38)
+library(swne)
 
 setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
 
@@ -1045,6 +1046,7 @@ cellline_treatment_annot<-dat@cell.data$batch
 col_fun=colorRamp2(quantile(unlist(topicmat),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
 c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
 
+#Plot heatmap topic
 row.names(topicmat)<-paste0("Topic_",row.names(topicmat))
 plt1<-Heatmap(topicmat,
         name="Z-score",
@@ -1061,25 +1063,33 @@ dev.off()
 system(paste0("slack -F ",out_name,".cistopic_heatmap.pdf", " ryan_todo") )
 
 #use SWNE for feature embedding
-
-#annotate regions
-dat <- getRegionsScores(dat)
-dat <- annotateRegions(dat, txdb = TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb = "org.Hs.eg.db")
-## Run SWNE embedding
-swne.emb <- RunSWNE(dat, alpha.exp = 1.25, snn.exp = 1, snn.k = 30)
-
+dat <-readRDS("CpG_bcEnhance.GpC_promoter.CpG_promoter.GpC_bcEnhance.cistopic_object.Rds")
+dat <- annotateRegions(dat, txdb = TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb = "org.Hs.eg.db") #annotate regions
+swne.emb <- RunSWNE(dat, alpha.exp = 1.25, snn.exp = 1, snn.k = 30) #Run SWNE embedding
+swne.emb$H.coords$name <- ""
 
 ## Embed genes based on promoter accessibility
-marker.genes <- c("CUX2", "RORB", "FOXP2", "FLT1", "GAD1", "SST", "SLC1A2", "MOBP", "P2RY12")
-swne.emb <- EmbedPromoters(swne.embedding, dat, genes.embed = marker.genes,
-                           peaks.use = NULL, alpha.exp = 1, n_pull = 3)
+marker.genes <- c("E2F2","E2F1","TFAP2C","MYB","RARA","SMAD3","BATF","ELF3","RXRA","HES1","FOXA1","GATA3","TLE1","FOXM1")
+swne.emb <- EmbedPromoters(swne.embedding, dat, genes.embed = marker.genes, peaks.use = NULL, alpha.exp = 1, n_pull = 3, promoterOnly= T)
 
-plt2<-PlotSWNE(swne.emb, sample.groups = clusters, pt.size = 0.5, alpha.plot = 0.5, do.label = T,
-         seed = 123)
+# Embed TF binding sites
+peak.gr <- dat@region.ranges
+fragment_counts <- SummarizedExperiment(assays = list(counts = dat@binary.count.matrix),rowRanges = peak.gr)
+fragment_counts <- addGCBias(fragment_counts, genome = BSgenome.Hsapiens.UCSC.hg19)
+
+data("human_pwms_v2") ## Get position weight matrices from chromVARMotifs
+motif_ix <- matchMotifs(human_pwms_v2, fragment_counts, genome = BSgenome.Hsapiens.UCSC.hg38)
+motif_ix_mat <- assay(motif_ix)*1
+colnames(motif_ix_mat) <- sapply(colnames(motif_ix_mat), ExtractField, field = 3, delim = "_") ## Extract the TF symbol from the motif names
+
+swne.emb <- EmbedTFBS(swne.emb, dat, motif_ix_mat = motif_ix_mat, genes.embed = marker.genes, n_pull = 3, overwrite = F)
+
+plt2<-PlotSWNE(swne.emb, sample.groups = clusters, pt.size = 0.5, alpha.plot = 0.5, do.label = T, seed = 123)
 
 pdf(paste0(out_name,".SWNE_embedding.pdf"))
 plt2
 dev.off()
+
 ```
 ### Running all of these as batch jobs
 
