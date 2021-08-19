@@ -944,20 +944,28 @@ library(org.Hs.eg.db)
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 library(data.table)
 library(BSgenome.Hsapiens.UCSC.hg38)
-library(swne)
+library(ChIPseeker)
+library(Rphenograph)
 
 setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
 
 args <- commandArgs(trailingOnly=TRUE)
 
-#args<-list()
-#args[1]<-"CpG.promoter.cistopic_object.Rds"
-#args[2]<-"CpG.gene.cistopic_object.Rds"
-#args[3]<-"GpC.gene.cistopic_object.Rds"
-#args<-unlist(args)
+args<-list()
+args[1]<-"CpG.bcEnhance.cistopic_object.Rds"
+args[2]<-"GpC.promoter.cistopic_object.Rds"
+args[3]<-"CpG.promoter.cistopic_object.Rds"
+args[4]<-"GpC.bcEnhance.cistopic_object.Rds"
+args<-unlist(args)
 
 
 dat<-lapply(args,readRDS) #read in data as list of cistopic objects
+
+#annotate data regions for interpretability
+dat<-lapply(dat,function(x){
+        annotateRegions(x, txdb=TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb='org.Hs.eg.db')}
+        )
+
 
 c_type<-unlist(lapply(args,function(x) strsplit(x,"[.]")[[1]][1])) #extract c type
 regions<-unlist(lapply(args,function(x) strsplit(x,"[.]")[[1]][2])) #extract region info
@@ -965,6 +973,7 @@ regions<-unlist(lapply(args,function(x) strsplit(x,"[.]")[[1]][2])) #extract reg
 #rename cell names for consistency
 dat<-lapply(dat,function(x){
         colnames(x@binary.count.matrix)<-unlist(lapply(strsplit(colnames(x@binary.count.matrix),"[.]"),"[",1))
+        colnames(x@count.matrix)<-unlist(lapply(strsplit(colnames(x@count.matrix),"[.]"),"[",1))
         row.names(x@cell.data)<-unlist(lapply(strsplit(row.names(x@cell.data),"[.]"),"[",1))
         return(x)
         })
@@ -974,11 +983,27 @@ cells_to_keep<-Reduce(intersect,lapply(dat,function(x){row.names(x@cell.data)}))
 
 dat_merged<-dat[[1]] #use first element as cistopic object for formatting
 
+
 #set up merged object
 dat_merged@binary.count.matrix<-do.call(rbind,
-        lapply(dat,function(x){x@binary.count.matrix[,cells_to_keep]})
+        lapply(1:length(dat),function(x){
+                row.names(dat[[x]]@binary.count.matrix)<-paste(c_type[x],regions[x],dat[[x]]@region.data$SYMBOL,row.names(dat[[x]]@binary.count.matrix),sep="_")
+                tmp<-dat[[x]]@binary.count.matrix[,cells_to_keep]
+                return(tmp)})
         )
-dat_merged@region.data<-do.call(rbind,lapply(dat,function(x){x@region.data}))
+
+dat_merged@count.matrix<-do.call(rbind,
+        lapply(1:length(dat),function(x){
+                row.names(dat[[x]]@count.matrix)<-paste(c_type[x],regions[x],dat[[x]]@region.data$SYMBOL,row.names(dat[[x]]@count.matrix),sep="_")
+                tmp<-dat[[x]]@count.matrix[,cells_to_keep]
+                return(tmp)})
+        )
+
+dat_merged@region.data<-do.call(rbind,lapply(1:length(dat),function(x){
+                tmp<-dat[[x]]@region.data
+                row.names(tmp)<-paste(c_type[x],regions[x],dat[[x]]@region.data$SYMBOL,row.names(tmp),sep=".")
+                return(tmp)}))
+
 dat_merged@cell.names<-colnames(dat_merged@binary.count.matrix)
 dat_merged@cell.data<-dat_merged@cell.data[which(cells_to_keep %in% row.names(dat[[1]]@cell.data)),]
 #run warp lda and overwrite dat object
@@ -1001,6 +1026,10 @@ system(paste0("slack -F ",paste(out_name,"cistopic_model_selection.pdf",sep=".")
 
 dat<-cisTopic::selectModel(dat,type="derivative",keepModels=T)
 dat <- runUmap(dat, target='cell') #running umap using cistopics implementation
+
+###################TO ADD################################
+#run phenogram based clustering on topic model
+#add to plot
 
 #add sample cell line names as metadata
 dat@cell.data$cellLine<-unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",1))
@@ -1062,33 +1091,29 @@ dev.off()
 
 system(paste0("slack -F ",out_name,".cistopic_heatmap.pdf", " ryan_todo") )
 
-#use SWNE for feature embedding
-dat <-readRDS("CpG_bcEnhance.GpC_promoter.CpG_promoter.GpC_bcEnhance.cistopic_object.Rds")
-dat <- annotateRegions(dat, txdb = TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb = "org.Hs.eg.db") #annotate regions
-swne.emb <- RunSWNE(dat, alpha.exp = 1.25, snn.exp = 1, snn.k = 30) #Run SWNE embedding
-swne.emb$H.coords$name <- ""
+############TO ADD###############
+# try something like signac findmarkers instead? https://satijalab.org/seurat/reference/findmarkers
 
-## Embed genes based on promoter accessibility
-marker.genes <- c("E2F2","E2F1","TFAP2C","MYB","RARA","SMAD3","BATF","ELF3","RXRA","HES1","FOXA1","GATA3","TLE1","FOXM1")
-swne.emb <- EmbedPromoters(swne.embedding, dat, genes.embed = marker.genes, peaks.use = NULL, alpha.exp = 1, n_pull = 3, promoterOnly= T)
+#set up region scores to get important features per topic
+dat <- getRegionsScores(dat, method='NormTop', scale=TRUE)
+dat <- binarizecisTopics(dat, thrP=0.975, plot=TRUE)
+dat <- runUMAP(cisTopicObject, target='region', perplexity=200, check_duplicates=FALSE)
 
-# Embed TF binding sites
-peak.gr <- dat@region.ranges
-fragment_counts <- SummarizedExperiment(assays = list(counts = dat@binary.count.matrix),rowRanges = peak.gr)
-fragment_counts <- addGCBias(fragment_counts, genome = BSgenome.Hsapiens.UCSC.hg19)
+pdf(paste0(out_name,".cistopic_region_umap.pdf"))
 
-data("human_pwms_v2") ## Get position weight matrices from chromVARMotifs
-motif_ix <- matchMotifs(human_pwms_v2, fragment_counts, genome = BSgenome.Hsapiens.UCSC.hg38)
-motif_ix_mat <- assay(motif_ix)*1
-colnames(motif_ix_mat) <- sapply(colnames(motif_ix_mat), ExtractField, field = 3, delim = "_") ## Extract the TF symbol from the motif names
+############TO ADD###############
+# add what kind of region it is to the region based UMAP for coloring
 
-swne.emb <- EmbedTFBS(swne.emb, dat, motif_ix_mat = motif_ix_mat, genes.embed = marker.genes, n_pull = 3, overwrite = F)
-
-plt2<-PlotSWNE(swne.emb, sample.groups = clusters, pt.size = 0.5, alpha.plot = 0.5, do.label = T, seed = 123)
-
-pdf(paste0(out_name,".SWNE_embedding.pdf"))
-plt2
+par(mfrow=c(1,2))
+plotFeatures(cisTopicObject, method='UMAP', target='region', topic_contr=NULL, colorBy=c('nCounts', 'nCells'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=10)
+par(mfrow=c(2,5))
+plotFeatures(cisTopicObject, method='UMAP', target='region', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
 dev.off()
+system(paste0("slack -F ",out_name,".cistopic_region_umap.pdf", " ryan_todo") )
+
+
+saveRDS(dat,file=paste(out_name,"cistopic_object.Rds",sep="."))
+
 
 ```
 ### Running all of these as batch jobs
@@ -1133,4 +1158,72 @@ GpC.promoter.cistopic_object.Rds \
 CpG.promoter.cistopic_object.Rds \
 GpC.enhancer.cistopic_object.Rds
 
+```
+
+Developing code for SWNE introduction
+
+```R
+modelMat <- scale(dat@selected.model$topics, center=TRUE, scale=TRUE)    
+rownames(modelMat) <- paste0('Topic', 1:nrow(modelMat))
+scores <- apply(modelMat, 1, function(x) (x - min(x))/(max(x) -min(x)))
+colnames(scores) <- paste("Scores_Topic", 1:ncol(scores),sep = "")
+dat@region.data[, colnames(scores)] <- scores
+
+
+#use SWNE for feature embedding
+#from https://yanwu2014.github.io/swne/Examples/scATAC_hemato_swne.html
+library(ChIPseeker)
+library(SummarizedExperiment)
+
+regions <- dat@region.ranges
+elementMetadata(regions)[["regionNames"]] <- names(regions)
+dat.region.data <- dat@region.data
+regionAnno <- as.data.frame(annotatePeak(regions, TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb = "org.Hs.eg.db"))
+regionAnno[grep("Exon", regionAnno$annotation), "annotation"] <- "Exon"
+regionAnno[grep("Intron", regionAnno$annotation), "annotation"] <- "Intron"
+rownames(regionAnno) <- regionAnno$regionNames
+regionAnno <- regionAnno[rownames(dat.region.data), !(colnames(regionAnno) %in% c("regionNames", "strand"))]
+dat.region.data[, colnames(regionAnno)] <- regionAnno
+dat@region.data <- dat.region.data
+
+snn.k = 20
+prune.SNN = 1/15
+paga.qval.cutoff = 1e-3
+sample.groups=NULL
+alpha.exp=1.25 # Increase this > 1.0 to move the cells closer to the factors. Values > 2 start to distort the data.
+snn.exp=1.0 # Lower this < 1.0 to move similar cells closer to each other
+n_pull = 3
+dat <- cisTopic::runPCA(dat, target = "cell", method = "Probability")
+
+pc.emb <- t(dat@dr$cell[["PCA"]]$ind.coord)
+topic.emb <- modelMatSelection(dat, target = "cell", method = "Probability")
+
+snn <- CalcSNN(pc.emb, k = snn.k, prune.SNN = prune.SNN)
+knn <- CalcKNN(pc.emb, k = snn.k)
+snn <- PruneSNN(snn, knn, clusters = sample.groups, qval.cutoff = paga.qval.cutoff)
+swne.emb <- EmbedSWNE(topic.emb, snn, alpha.exp = alpha.exp, snn.exp = snn.exp, n_pull = n_pull)
+swne.emb$H.coords$name <- ""
+
+## Embed genes based on promoter accessibility
+marker.genes <- c("E2F2","E2F1","TFAP2C","MYB","RARA","SMAD3","BATF","ELF3","RXRA","HES1","FOXA1","GATA3","TLE1","FOXM1")
+swne.emb <- EmbedPromoters(swne.emb, dat, genes.embed = marker.genes, peaks.use = NULL, alpha.exp = 1, n_pull = 3, promoterOnly= T)
+
+# Embed TF binding sites
+peak.gr <- dat@region.ranges
+fragment_counts <- SummarizedExperiment(assays = list(counts = dat@binary.count.matrix),rowRanges = peak.gr)
+fragment_counts <- addGCBias(fragment_counts, genome = BSgenome.Hsapiens.UCSC.hg38)
+
+data("human_pwms_v2") ## Get position weight matrices from chromVARMotifs
+motif_ix <- matchMotifs(human_pwms_v2, fragment_counts, genome = BSgenome.Hsapiens.UCSC.hg38)
+motif_ix_mat <- assay(motif_ix)*1
+colnames(motif_ix_mat) <- sapply(colnames(motif_ix_mat), ExtractField, field = 3, delim = "_") ## Extract the TF symbol from the motif names
+
+swne.emb <- EmbedTFBS(swne.emb, dat, motif_ix_mat = motif_ix_mat, genes.embed = marker.genes, n_pull = 3, overwrite = F)
+
+plt2<-PlotSWNE(swne.emb, sample.groups = dat@cell.data$celltype_treatment, pt.size = 0.5, alpha.plot = 0.5, do.label = T, seed = 123)
+
+pdf(paste0(out_name,".SWNE_embedding.pdf"))
+plt2
+dev.off()
+system(paste0("slack -F ",out_name,".SWNE_embedding.pdf", " ryan_todo") )
 ```
