@@ -224,7 +224,7 @@ Finally lets snap a pic!
 
 
 ## Bonus
-Here I took the human s3-ATAC brain data and colored by cell type. I then cranked up the emission strength and removes all external lights.
+Here I took the human s3-ATAC brain data and colored by cell type. I then cranked up the emission strength and removed all external lights.
 
 
 <div class="background_img2">

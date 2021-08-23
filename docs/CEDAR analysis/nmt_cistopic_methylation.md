@@ -64,12 +64,53 @@ List of genomic annotation bed files:
 
 ```
 
+## Preparing bam files from Aaron Doe's preprocessing
+Need to merge resequenced bam files and combine read 1 and read 2 into a single-end bam
+
+```bash
+mkdir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
+cd /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
+ls /home/groups/CEDAR/doe/projects/my_NMT/MCF7_reseq/merge_all_MCF7/scNMT_NOMeWorkFlow/bismarkSE/dedup/*merged.bam > files.txt
+ls /home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scNMT_NOMeWorkFlow/bismarkSE/*bam | grep -v "M7" >> files.txt
+for i in `cat files.txt`; do outname=`basename $i`; ln -s $i $outname; done
+for i in *_R1.*bt2.bam; do 
+r1=$i;
+r2=`echo $i | sed "s/R1/R2/g"`;
+r2=`echo $r2 | sed "s/val_1_/val_2_/g"`;
+outname=`echo $i | awk 'OFS="_" {split($1,a,"_");print a[1],a[2],a[3]}'`;
+samtools cat -o ${outname}_merged.bam $r1 $r2 ;
+done &
+```
+
+## Batch script for deduplication
+Using the bismark deduplication script.
+
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=1-374
+#SBATCH --tasks-per-node=30 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
+#SBATCH --time=3:00:00 ## ask for 1 hour on the node
+#SBATCH --
+
+array_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams/*merged.bam | wc -l`
+
+bam_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams/*merged.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+
+srun deduplicate_bismark \
+--single \
+--output_dir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/dedup_bams \
+${bam_in}
+
+```
+
 ## Set up methylation extraction
 
 Perform methylation extraction with bismark methylation extractor. Output cov.gz files.
 
 Here I'm using 10 nodes, 20 cpus per node (since parallelization is 3x5), with 20gb per node. It's a lot of resources, but hopefully it will finish fast.
-
 
 meth_extract.slurm.sh
 ```bash
@@ -1027,9 +1068,11 @@ system(paste0("slack -F ",paste(out_name,"cistopic_model_selection.pdf",sep=".")
 dat<-cisTopic::selectModel(dat,type="derivative",keepModels=T)
 dat <- runUmap(dat, target='cell') #running umap using cistopics implementation
 
-###################TO ADD################################
-#run phenogram based clustering on topic model
-#add to plot
+#run phenogram based clustering on the dim reduction
+Rphenograph_out <- Rphenograph(t(dat@selected.model$document_expects), k = 100)
+modularity(Rphenograph_out[[2]])
+membership(Rphenograph_out[[2]])
+dat@cell.data$phenograph_cluster <- factor(membership(Rphenograph_out[[2]]))
 
 #add sample cell line names as metadata
 dat@cell.data$cellLine<-unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",1))
@@ -1049,9 +1092,10 @@ dat@cell.data[dat@cell.data$cellLine %in% c("T"),]$cellLine<-"T47D"
 dat@cell.data[dat@cell.data$treatment %in% c("C"),]$treatment<-"control"
 dat@cell.data[dat@cell.data$treatment %in% c("E"),]$treatment<-"estrogen"
 dat@cell.data$celltype_treatment<-paste(dat@cell.data$cellLine,dat@cell.data$treatment)
+
 pdf(paste(out_name,"combined.cistopic.clustering.pdf",sep="."))
-par(mfrow=c(1,2))
-plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('celltype_treatment','batch'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
+par(mfrow=c(2,2))
+plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('celltype_treatment','batch','phenograph_cluster'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, intervals=20)
 par(mfrow=c(2,5))
 plotFeatures(dat, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
 dev.off()
@@ -1070,6 +1114,7 @@ cellline_annot<-dat@cell.data$cellLine
 treatment_annot<-dat@cell.data$treatment
 c_count_annot<-dat@cell.data$CG_total_count
 cellline_treatment_annot<-dat@cell.data$batch
+cluster_annot<-dat@cell.data$phenograph_cluster
 
 #color function
 col_fun=colorRamp2(quantile(unlist(topicmat),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
@@ -1080,7 +1125,7 @@ row.names(topicmat)<-paste0("Topic_",row.names(topicmat))
 plt1<-Heatmap(topicmat,
         name="Z-score",
     show_column_names=F,
-    bottom_annotation=columnAnnotation(cellline=cellline_annot,treatment=treatment_annot,C_covered=c_count_annot,batch=cellline_treatment_annot,
+    bottom_annotation=columnAnnotation(cellline=cellline_annot,treatment=treatment_annot,C_covered=c_count_annot,batch=cellline_treatment_annot, cluster=cluster_annot,
             col = list(cellline = c("T47D"="red","MCF7"="blue"),
                                 treatment = c("control" = "white", "estrogen" = "black"),
                                 batch = c("BSM7E6_E"="green","M7C1A_C"="brown","M7C2B_C"="purple","M7E4C_E"="blue","T_C"="orange","T_E"="red"))))
@@ -1090,9 +1135,6 @@ plt1
 dev.off()
 
 system(paste0("slack -F ",out_name,".cistopic_heatmap.pdf", " ryan_todo") )
-
-############TO ADD###############
-# try something like signac findmarkers instead? https://satijalab.org/seurat/reference/findmarkers
 
 #set up region scores to get important features per topic
 dat <- getRegionsScores(dat, method='NormTop', scale=TRUE)
@@ -1158,72 +1200,4 @@ GpC.promoter.cistopic_object.Rds \
 CpG.promoter.cistopic_object.Rds \
 GpC.enhancer.cistopic_object.Rds
 
-```
-
-Developing code for SWNE introduction
-
-```R
-modelMat <- scale(dat@selected.model$topics, center=TRUE, scale=TRUE)    
-rownames(modelMat) <- paste0('Topic', 1:nrow(modelMat))
-scores <- apply(modelMat, 1, function(x) (x - min(x))/(max(x) -min(x)))
-colnames(scores) <- paste("Scores_Topic", 1:ncol(scores),sep = "")
-dat@region.data[, colnames(scores)] <- scores
-
-
-#use SWNE for feature embedding
-#from https://yanwu2014.github.io/swne/Examples/scATAC_hemato_swne.html
-library(ChIPseeker)
-library(SummarizedExperiment)
-
-regions <- dat@region.ranges
-elementMetadata(regions)[["regionNames"]] <- names(regions)
-dat.region.data <- dat@region.data
-regionAnno <- as.data.frame(annotatePeak(regions, TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb = "org.Hs.eg.db"))
-regionAnno[grep("Exon", regionAnno$annotation), "annotation"] <- "Exon"
-regionAnno[grep("Intron", regionAnno$annotation), "annotation"] <- "Intron"
-rownames(regionAnno) <- regionAnno$regionNames
-regionAnno <- regionAnno[rownames(dat.region.data), !(colnames(regionAnno) %in% c("regionNames", "strand"))]
-dat.region.data[, colnames(regionAnno)] <- regionAnno
-dat@region.data <- dat.region.data
-
-snn.k = 20
-prune.SNN = 1/15
-paga.qval.cutoff = 1e-3
-sample.groups=NULL
-alpha.exp=1.25 # Increase this > 1.0 to move the cells closer to the factors. Values > 2 start to distort the data.
-snn.exp=1.0 # Lower this < 1.0 to move similar cells closer to each other
-n_pull = 3
-dat <- cisTopic::runPCA(dat, target = "cell", method = "Probability")
-
-pc.emb <- t(dat@dr$cell[["PCA"]]$ind.coord)
-topic.emb <- modelMatSelection(dat, target = "cell", method = "Probability")
-
-snn <- CalcSNN(pc.emb, k = snn.k, prune.SNN = prune.SNN)
-knn <- CalcKNN(pc.emb, k = snn.k)
-snn <- PruneSNN(snn, knn, clusters = sample.groups, qval.cutoff = paga.qval.cutoff)
-swne.emb <- EmbedSWNE(topic.emb, snn, alpha.exp = alpha.exp, snn.exp = snn.exp, n_pull = n_pull)
-swne.emb$H.coords$name <- ""
-
-## Embed genes based on promoter accessibility
-marker.genes <- c("E2F2","E2F1","TFAP2C","MYB","RARA","SMAD3","BATF","ELF3","RXRA","HES1","FOXA1","GATA3","TLE1","FOXM1")
-swne.emb <- EmbedPromoters(swne.emb, dat, genes.embed = marker.genes, peaks.use = NULL, alpha.exp = 1, n_pull = 3, promoterOnly= T)
-
-# Embed TF binding sites
-peak.gr <- dat@region.ranges
-fragment_counts <- SummarizedExperiment(assays = list(counts = dat@binary.count.matrix),rowRanges = peak.gr)
-fragment_counts <- addGCBias(fragment_counts, genome = BSgenome.Hsapiens.UCSC.hg38)
-
-data("human_pwms_v2") ## Get position weight matrices from chromVARMotifs
-motif_ix <- matchMotifs(human_pwms_v2, fragment_counts, genome = BSgenome.Hsapiens.UCSC.hg38)
-motif_ix_mat <- assay(motif_ix)*1
-colnames(motif_ix_mat) <- sapply(colnames(motif_ix_mat), ExtractField, field = 3, delim = "_") ## Extract the TF symbol from the motif names
-
-swne.emb <- EmbedTFBS(swne.emb, dat, motif_ix_mat = motif_ix_mat, genes.embed = marker.genes, n_pull = 3, overwrite = F)
-
-plt2<-PlotSWNE(swne.emb, sample.groups = dat@cell.data$celltype_treatment, pt.size = 0.5, alpha.plot = 0.5, do.label = T, seed = 123)
-
-pdf(paste0(out_name,".SWNE_embedding.pdf"))
-plt2
-dev.off()
-system(paste0("slack -F ",out_name,".SWNE_embedding.pdf", " ryan_todo") )
 ```
