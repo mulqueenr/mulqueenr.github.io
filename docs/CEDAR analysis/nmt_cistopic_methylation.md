@@ -52,6 +52,18 @@ grep -v "_" /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory
 
 ````
 
+ENCODE ChIP Peaks
+```bash
+cd /home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata
+#FOXA1 
+#MCF7 https://www.encodeproject.org/files/ENCFF112JVK/
+wget https://www.encodeproject.org/files/ENCFF112JVK/@@download/ENCFF112JVK.bed.gz
+#T47D https://www.encodeproject.org/files/ENCFF758GJL/
+wget https://www.encodeproject.org/files/ENCFF758GJL/@@download/ENCFF758GJL.bed.gz
+
+zcat ENCFF112JVK.bed.gz | awk 'OFS="\t" {print $1,$2,$3,"MCF7_"NR}' > FOXA1.bed
+zcat ENCFF758GJL.bed.gz | awk 'OFS="\t" {print $1,$2,$3,"T47D_"NR}' >> FOXA1.bed
+```
 List of genomic annotation bed files:
 ```bash
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed
@@ -61,7 +73,7 @@ List of genomic annotation bed files:
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/10kb.bed
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed
-
+/home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/FOXA1.bed
 ```
 
 ## Preparing bam files from Aaron Doe's preprocessing
@@ -380,6 +392,31 @@ bcEnhance
 
 {% endcapture %} {% include details.html %} 
 
+
+{% capture summary %} CpG FOXA1 {% endcapture %} {% capture details %}  
+
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
+#SBATCH --array=1-374
+#SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
+#SBATCH --time=1:00:00 ## ask for 1 hour on the node
+#SBATCH --
+
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+
+srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
+$files_in \
+/home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/FOXA1.bed \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+foxa1
+
+```
+
+{% endcapture %} {% include details.html %} 
+
 {% capture summary %} GpC Gene body {% endcapture %} {% capture details %}  
 
 ```bash
@@ -525,6 +562,31 @@ bcEnhance
 
 {% endcapture %} {% include details.html %} 
 
+
+{% capture summary %} GpC FOXA1 {% endcapture %} {% capture details %}  
+
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
+#SBATCH --array=1-374
+#SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
+#SBATCH --time=1:00:00 ## ask for 1 hour on the node
+#SBATCH --
+
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+
+srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
+$files_in \
+/home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/FOXA1.bed \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+foxa1
+
+```
+{% endcapture %} {% include details.html %} 
+
+
 ### Running all of these as batch jobs
 
 ```bash
@@ -534,6 +596,7 @@ sbatch CpG_promoters.slurm.sh
 sbatch CpG_100kb.slurm.sh  
 sbatch CpG_10kb.slurm.sh  
 sbatch CpG_bcEnhancer.slurm.sh
+sbatch CpG_FOXA1.slurm.sh
 
 sbatch GpC_genes.slurm.sh
 sbatch GpC_enhancers.slurm.sh
@@ -541,12 +604,13 @@ sbatch GpC_promoters.slurm.sh
 sbatch GpC_100kb.slurm.sh  
 sbatch GpC_100kb.slurm.sh  
 sbatch GpC_bcEnhancer.slurm.sh
+sbatch GpC_FOXA1.slurm.sh
+
 ```
 
 ## Running cistopic on methylated regions.
 
 Making an R script for cistopic processing of methylation files.
-
 
 ```R
 library(cisTopic)
@@ -798,6 +862,7 @@ dat<-cisTopic::selectModel(dat,type="derivative",keepModels=T)
 
 
 dat <- runUmap(dat, target='cell') #running umap using cistopics implementation
+dat <- runUmap(dat, target='region') #running umap using cistopics implementation
 
 #add sample cell line names as metadata
 dat@cell.data$cellLine<-unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",1))
@@ -829,6 +894,7 @@ plotFeatures(dat, method='Umap', target='cell', topic_contr='Probability', color
 dev.off()
 
 system(paste0("slack -F ",args[2],".",args[3],".cistopic_clustering.pdf"," ryan_todo")) 
+
 
 
 saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
@@ -887,6 +953,14 @@ dat <- getRegionsScores(dat, method='NormTop', scale=TRUE) #get regions from top
 dat <- annotateRegions(dat, txdb=TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb='org.Hs.eg.db') #plot general annotations to topics 
 dat<-binarizecisTopics(dat,thrP=0.975) #binarize cistopics to get genes driving topics
 
+dat <- runUmap(dat, target='region') #running umap using cistopics implementation
+
+pdf(paste0(args[2],".",args[3],".cistopic_clustering.pdf"))
+par(mfrow=c(2,5))
+plotFeatures(dat, method='Umap', target='region',topic_contr='Probability')
+dev.off()
+system(paste0("slack -F ",args[2],".",args[3],".cistopic_clustering.regions.pdf"," ryan_todo")) 
+
 #grab top 10 regions per topic
 topic_enrich<-melt(as.matrix(dat@region.data[which(grepl(colnames(dat@region.data),pattern="Scores_Topic"))]))
 region_plt<-dat@region.data[as.data.frame(topic_enrich %>% group_by(Var2) %>% slice_max(order_by = value, n = 10))[,1],]
@@ -910,7 +984,6 @@ system(paste0("slack -F ",paste0(args[2],".",args[3],".GO.pdf"," ryan_todo"))
 #Save cistopic object
 saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
 
-
 ```
 
 
@@ -926,9 +999,9 @@ Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R [argv1] [argv2] [
 Generate sbatch scripts for running:
 ```bash
 
-reg=("/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed")
-c_type=("CpG" "CpG" "CpG" "CpG" "CpG" "GpC" "GpC" "GpC" "GpC" "GpC")
-name=( "gene" "promoter" "enhancer" "100kb" "bcEnhance" "gene" "promoter" "enhancer" "100kb" "bcEnhance" )
+reg=("/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed" "/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed" "/home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/FOXA1.bed" "/home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/FOXA1.bed")
+c_type=("CpG" "CpG" "CpG" "CpG" "CpG" "GpC" "GpC" "GpC" "GpC" "GpC" "CpG" "GpC")
+name=( "gene" "promoter" "enhancer" "100kb" "bcEnhance" "gene" "promoter" "enhancer" "100kb" "bcEnhance" "foxa1" "foxa1")
 
 for i in "${!reg[@]}"; do
 printf '#!/bin/bash 
@@ -945,7 +1018,7 @@ srun Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R %s %s %s ' "
 ### Running all of these as batch jobs
 
 ```bash 
-sbatch cistopic.CpG.promoter.slurm.sh #running currently
+sbatch cistopic.CpG.promoter.slurm.sh 
 sbatch cistopic.CpG.100kb.slurm.sh
 sbatch cistopic.CpG.enhancer.slurm.sh 
 sbatch cistopic.GpC.bcEnhance.slurm.sh 
@@ -955,6 +1028,275 @@ sbatch cistopic.CpG.gene.slurm.sh
 sbatch cistopic.GpC.100kb.slurm.sh
 sbatch cistopic.GpC.enhancer.slurm.sh
 sbatch cistopic.GpC.promoter.slurm.sh
+
+sbatch cistopic.CpG.foxa1.slurm.sh
+sbatch cistopic.GpC.foxa1.slurm.sh
+
+```
+
+
+# RNA Processing
+
+## Check RNA data from Aaron Doe Processing
+
+```bash
+mkdir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna
+multiqc -o /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna /home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scRNA_SMARTseq2/samples
+```
+
+I think his filtering is way to aggressive given the quality of the data. So I'm going to realign and generate my own counts matrix.
+
+## Raw data is located here: 
+```bash
+/home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scRNA_SMARTseq2/samples/raw
+```
+
+### Make a symbolic link to RNA file directories
+
+```bash
+ln -s /home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scRNA_SMARTseq2/samples/raw /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna_raw
+```
+
+### Align raw files with batch scripting
+Using the genome reference and version of STAR packages with cellranger. Trimming first 15 bp and last 3 bp as per fastqc output.
+Trimming first 15 bases and last 3 bases, only aligning read 1
+Perform counting (I think this accounts for duplicate reads, but I'm not entirely sure)
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=1-672
+#SBATCH --tasks-per-node=30 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
+#SBATCH --time=1:00:00 ## ask for 1 hour on the node
+#SBATCH --
+
+array_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna_raw/*_R1.fq.gz | wc -l`
+
+fq_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna_raw/*_R1.fq.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+name="$(basename -- $fq_in)";
+name=${name%.fq.gz} 
+echo $name;
+/home/groups/CEDAR/mulqueen/src/cellranger/cellranger-6.0.1/lib/bin/STAR --runMode alignReads \
+--genomeDir /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/star \
+--readFilesIn /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna_raw/${name}.fq.gz \
+--outFileNamePrefix /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna/rna_bam/${name}. \
+--readFilesCommand zcat \
+--clip3pNbases 3 \
+--clip5pNbases 15 \
+--outSAMtype BAM SortedByCoordinate \
+--quantMode GeneCounts; 
+```
+
+## Generate a Seurat Object for our RNA
+
+Read in ReadsPerGene.out.tab files and format into a data frame. Then make a seurat object for filtering and processing cells.
+
+Following this: https://satijalab.org/seurat/articles/pbmc3k_tutorial.html
+
+```R
+library(Seurat)
+library(AnnotationDbi)
+library(org.Hs.eg.db) 
+library(EnsDb.Hsapiens.v86)
+library(dplyr)
+library(cisTopic)
+library(biomaRt) #convert ENSG gene name to chromosome location
+
+setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna/rna_bam")
+ff <- list.files(pattern = "*ReadsPerGene.out.tab$", full.names = TRUE )
+counts.files <- lapply( ff, read.table, skip = 4 ) #first 4 lines are mapping QC, might be good to add as a metadata table
+counts_in <- as.data.frame( sapply( counts.files, function(x) x[ , 2 ] ) )
+ff <- gsub( "_R1[.]ReadsPerGene[.]out[.]tab", "", ff )
+ff <- gsub( "[.]/", "", ff )
+colnames(counts_in) <- ff
+row.names(counts_in) <- counts.files[[1]]$V1
+
+#make seurat object
+dat <- CreateSeuratObject(counts = counts_in, project = "cellline", min.cells = 3, min.features = 1000)
+
+#add mito reads to feature data
+mito.features= genes(EnsDb.Hsapiens.v86, filter = ~ seq_name == "MT")
+#dat[["percent.mt"]] <- PercentageFeatureSet(dat, assay="RNA",features=mito.features$gene_id)
+
+#qc plot
+pdf("rna_qc.pdf")
+VlnPlot(dat, features = c("nFeature_RNA", "nCount_RNA"), ncol = 3)
+dev.off()
+system("slack -F rna_qc.pdf ryan_todo")
+
+dat <- NormalizeData(dat, normalization.method = "LogNormalize", scale.factor = 10000)
+dat <- FindVariableFeatures(dat, selection.method = "vst", nfeatures = 2000)
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(dat), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(dat)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+pdf("rna_topvar.pdf")
+plot1 / plot2
+dev.off()
+system("slack -F rna_topvar.pdf ryan_todo")
+
+#dim reduction
+all.genes <- rownames(dat)
+dat <- ScaleData(dat, features = all.genes)
+dat <- RunPCA(dat, features = VariableFeatures(object = dat))
+print(dat[["pca"]], dims = 1:5, nfeatures = 5)
+
+pdf("rna_pcaloadings.pdf")
+VizDimLoadings(dat, dims = 1:2, reduction = "pca")
+dev.off()
+system("slack -F rna_pcaloadings.pdf ryan_todo")
+
+pdf("rna_pca.pdf")
+DimPlot(dat, reduction = "pca")
+dev.off()
+system("slack -F rna_pca.pdf ryan_todo")
+
+pdf("rna_pcaheatmap.pdf")
+DimHeatmap(dat, dims = 1:15, cells = 500, balanced = TRUE)
+dev.off()
+system("slack -F rna_pcaheatmap.pdf ryan_todo")
+
+#determine dimensionality
+dat <- JackStraw(dat, num.replicate = 100)
+dat <- ScoreJackStraw(dat, dims = 1:20)
+
+pdf("rna_elbowplot.pdf")
+JackStrawPlot(dat, dims = 1:15)
+ElbowPlot(dat)
+dev.off()
+system("slack -F rna_elbowplot.pdf ryan_todo")
+
+#Cluster and UMAP
+dat <- FindNeighbors(dat, dims = 1:10)
+dat <- FindClusters(dat, resolution = 0.5)
+dat <- RunUMAP(dat, dims = 1:10)
+
+#add more cell line info to data
+dat$cellLine<-"MCF7"
+dat@meta.data[which(dat$orig.ident %in% c("TDC1","TDE8")),]$cellLine<-"T47D"
+dat$treatment <- "E"
+dat@meta.data[which(dat$orig.ident %in% c("M7C1A","M7C2B","TDC1")),]$treatment<-"C"
+dat$cellLine_treatment<-paste(dat$cellLine,dat$treatment)
+
+pdf("rna_umap.pdf")
+DimPlot(dat, reduction = "umap",group.by=c("seurat_clusters","orig.ident","treatment","cellLine","cellLine_treatment"))
+dev.off()
+system("slack -F rna_umap.pdf ryan_todo")
+
+Idents(object = dat) <- dat$cellLine_treatment
+dat.markers <- FindAllMarkers(dat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+var_features<-as.data.frame(dat.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC))
+
+
+biolist <- as.data.frame(listMarts())
+ensembl=useMart("ensembl")
+esemblist <- as.data.frame(listDatasets(ensembl))
+ensembl = useDataset("hsapiens_gene_ensembl",mart=ensembl)
+filters = listFilters(ensembl)
+attributes = listAttributes(ensembl)
+t2g<-getBM(attributes=c('external_gene_name','ensembl_gene_id',"ensembl_gene_id_version",'chromosome_name','start_position','end_position'), mart = ensembl)
+markers_out <- merge(dat.markers, t2g, by.x="gene", by.y= 'ensembl_gene_id',all.x=T)
+
+pdf("rna_markers.pdf")
+plt<-DoHeatmap(dat, features = var_features$gene, size = 4,angle = 90) + NoLegend()
+dev.off()
+system("slack -F rna_markers.pdf ryan_todo")
+markers_out[which(markers_out$gene %in% var_features$gene),]$external_gene_name
+# [1] "BCAS1"    "TFRC"     "TFRC"     "EXOSC5"   "EDN1"     "EDN1"
+# [7] "LXN"      "CEACAM6"  "RAB18"    "RAB18"    "GLA"      "DKK1"
+#[13] "PRLR"     "PRLR"     "EFEMP1"   "EFEMP1"   "OLFML3"   "CNN3"
+#[19] "CNN3"     "CCN2"     "GNG11"    "GNG11"    "PKIB"     "GABBR2"
+#[25] "SLC40A1"  "SLC40A1"  "CYP1A1"   "ABHD2"    "SLC39A6"  "PRSS23"
+#[31] "GFRA1"    "RCAN1"    "RCAN1"    "TFF1"     "CLDN1"    "CLDN1"
+#[37] "DEGS2"    "DEGS2"    "RAB31"    "SERPINA6" "ZNF217"   "NUPR1"
+#[43] "NUPR1"    "TMEM64"   "ANAPC7"   "KRT81"    "IGHM"     "NEAT1"
+#[49] "MIR23AHG"
+
+write.table(dat.markers,sep="\t",col.names=T,quote=F,file="rna_markers.tsv")
+saveRDS(dat,"/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna/rna_bam/SeuratObject.rds")
+#Clustering looks pretty good to me just based on tutorial defaults. Using this seurat object for MOFA analysis, going to recluster using cistopic for RNA
+
+```
+
+## Run WarpLDA on RNA data
+
+```R
+library(Seurat)
+library(AnnotationDbi)
+library(org.Hs.eg.db) 
+library(EnsDb.Hsapiens.v86)
+library(dplyr)
+library(cisTopic)
+library(biomaRt) #convert ENSG gene name to chromosome location
+
+setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
+dat<-readRDS("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna/rna_bam/SeuratObject.rds")
+
+outname="RNA.gene"
+
+cistopic_counts_frmt<-dat@assays$RNA@counts
+biolist <- as.data.frame(listMarts())
+ensembl=useMart("ensembl")
+esemblist <- as.data.frame(listDatasets(ensembl))
+ensembl = useDataset("hsapiens_gene_ensembl",mart=ensembl)
+filters = listFilters(ensembl)
+attributes = listAttributes(ensembl)
+t2g<-getBM(attributes=c('ensembl_gene_id',"ensembl_gene_id_version",'chromosome_name','start_position','end_position'), mart = ensembl)
+
+gene_loc <- merge(data.frame("ensembl_gene_id"=row.names(cistopic_counts_frmt)), t2g, by= 'ensembl_gene_id',all.x=T)
+
+row.names(cistopic_counts_frmt)<-paste0("chr",gene_loc$chromosome_name,":",gene_loc$start_position,"-",gene_loc$end_position)
+cistopic_counts_frmt<-cistopic_counts_frmt[!endsWith(row.names(cistopic_counts_frmt),"NA"),]
+
+sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
+sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(20:40),nCores=20,addModels=FALSE)
+
+pdf(paste(outname,"model_selection.pdf",sep="_"))
+par(mfrow=c(3,3))
+sub_cistopic_models<- cisTopic::selectModel(sub_cistopic_models, type='derivative')
+dev.off()
+system(paste0("slack -F ",paste(outname,"model_selection.pdf",sep="_")," ryan_todo"))
+
+dat<-cisTopic::selectModel(sub_cistopic_models,type="derivative",keepModels=T)
+
+dat <- runUmap(dat, target='cell') #running umap using cistopics implementation
+dat <- getRegionsScores(dat)
+dat <- binarizecisTopics(dat)
+dat <- runUmap(dat, target='region') #running umap using cistopics implementation
+
+#add sample cell line names as metadata
+dat@cell.data$cellLine<-unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",1))
+
+#set up treatment conditions
+dat@cell.data$treatment<-substr(unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",1)),3,3)
+dat@cell.data$batch<-paste(dat@cell.data$cellLine,dat@cell.data$treatment,sep="_")
+dat@cell.data[startsWith(dat@cell.data$cellLine,"M7"),]$cellLine<-"MCF7"
+dat@cell.data[startsWith(dat@cell.data$cellLine,"TD"),]$cellLine<-"T47D"
+dat@cell.data$cellLine_treatment<-paste(dat@cell.data$cellLine,dat@cell.data$treatment)
+
+saveRDS(dat,file=paste(outname,"CisTopicObject.Rds",sep="."))
+
+write.table(dat@cell.data,file=paste0(outname,".cellData.tsv"),col.names=T,row.names=T,sep="\t",quote=F)
+
+pdf(paste0(outname,".cistopic_clustering.pdf"))
+par(mfrow=c(1,2))
+plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('cellLine','treatment','cellLine_treatment'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, col.low='darkgreen', col.mid='yellow', col.high='brown1', intervals=20)
+par(mfrow=c(2,5))
+plotFeatures(dat, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
+dev.off()
+system(paste0("slack -F ",outname,".cistopic_clustering.pdf"," ryan_todo")) 
+
+pdf(paste0(outname,".cistopic_clustering.regions.pdf"))
+par(mfrow=c(2,5))
+plotFeatures(dat, method='Umap', target='region',topic_contr='Probability')
+dev.off()
+system(paste0("slack -F ",outname,".cistopic_clustering.regions.pdf"," ryan_todo")) 
+
 ```
 
 ## Combine multiple binarized matrices prior to running cistopic
@@ -1030,15 +1372,13 @@ dat_merged@binary.count.matrix<-do.call(rbind,
         lapply(1:length(dat),function(x){
                 row.names(dat[[x]]@binary.count.matrix)<-paste(c_type[x],regions[x],dat[[x]]@region.data$SYMBOL,row.names(dat[[x]]@binary.count.matrix),sep="_")
                 tmp<-dat[[x]]@binary.count.matrix[,cells_to_keep]
-                return(tmp)})
-        )
+                return(tmp)}))
 
 dat_merged@count.matrix<-do.call(rbind,
         lapply(1:length(dat),function(x){
                 row.names(dat[[x]]@count.matrix)<-paste(c_type[x],regions[x],dat[[x]]@region.data$SYMBOL,row.names(dat[[x]]@count.matrix),sep="_")
                 tmp<-dat[[x]]@count.matrix[,cells_to_keep]
-                return(tmp)})
-        )
+                return(tmp)}))
 
 dat_merged@region.data<-do.call(rbind,lapply(1:length(dat),function(x){
                 tmp<-dat[[x]]@region.data

@@ -2348,12 +2348,14 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
     plt2<-DimPlot(orgo_cirm43,group.by="seurat_clusters")
     ggsave(plt1+plt2,file="test_orgo_cirm43_trajectory.pseudotime.pdf")
     system("slack -F test_orgo_cirm43_trajectory.pseudotime.pdf ryan_todo")
+
+
     saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
 
    #Now do pseudotime ordering on excitatory neuron subclustering
      exN.cicero<-monocle_processing(seurat_input=exN_sub,prefix="ExN")
      #Then determine root nodes via plots and assign by order cells function.
-     exN.cds <- order_cells(exN.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_366"))  #Chose youngest cells as root
+     exN.cds <- order_cells(exN.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_114"))  #Chose youngest cells as root
      saveRDS(exN.cds,"excitatory_neuron.pseudotime.monoclecds.Rds")
 
      #Now replotting with pseudotime
@@ -2377,6 +2379,11 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
 
      orgo_cirm43 <- AddMetaData(object = orgo_cirm43, metadata = rg.cds@principal_graph_aux@listData$UMAP$pseudotime,col.name="pseudotime_rg")
    
+#Append pseudotime to meta data of seurat object
+    plt1<-FeaturePlot(orgo_cirm43,feature="pseudotime_exN")
+    plt2<-DimPlot(orgo_cirm43,group.by="pseudotime_rg")
+    ggsave(plt1+plt2,file="test_orgo_cirm43_trajectory.pseudotime.pdf")
+    system("slack -F test_orgo_cirm43_trajectory.pseudotime.pdf ryan_todo")
 
   saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
 
@@ -3248,34 +3255,6 @@ Decided to use a binning strategy to assess pseudotime signal.
 
 ```
 
-## Plot interactive scatter plot
-
-```R
-  #Generating a 3D Plot via Plotly of the umap projection.
-  #Loading in additional libraries.
-    setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-    library(Seurat)
-    library(Signac)
-    library(plotly)
-    library(htmlwidgets)
-    library(RColorBrewer)
-
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-
-  dat<-merge(orgo_cirm43@reductions$umap@cell.embeddings,orgo_cirm43@meta.data,by="row.names") 
-
-  dat$DIV<-as.character(dat$DIV) 
-    
-  #Generate 3D Plot and standalone HTML widget
-    p<-plot_ly(dat, type="scattergl", mode="markers", size=I(2),
-      x= ~UMAP_1, y= ~UMAP_2,
-      color=~celltype)
-    p <- p %>% add_markers(color=~pseudotime)
-
-  htmlwidgets::saveWidget(as_widget(toWebGL(p)), "cirm43_umap.html",selfcontained=TRUE)
-
-  system("slack -F cirm43_umap.html ryan_todo")
-```
 
 ### 3D Plotting for better trajectory visualization
 
@@ -3546,6 +3525,185 @@ I mainly just wanted to play around with network analysis a bit.
 ```
 {% endcapture %} {% include details.html %} 
 
+
+
+
+## Save final seurat files for UCSC cellbrowser and set up.
+
+To view data in an interactive way, I converted the final seurat object for UCSCs cell browser.
+
+I then hosted locally to test.
+Install cellbrowser via this (guide.)[https://cellbrowser.readthedocs.io/en/master/installation.html]
+
+```R
+#Downloaded seurat objects off clusters
+#Prepare seurat data as cellbrowser file
+
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+library(Signac)
+library(Seurat)
+library(Matrix)
+library(R.utils)
+library(dplyr)
+
+
+#modified function from https://github.com/satijalab/seurat-wrappers/blob/master/R/cellbrowser.R just for export
+ExportToCellbrowser <- function(
+object,
+reduction="umap",
+assay.name="GeneActivity",
+dir,
+dataset.name,
+marker.file,
+marker.n=5,
+cluster.field="seurat_clusters",
+gene_list,
+skip.expr.mat=FALSE) {
+
+  reducNames = reduction
+  # see https://satijalab.org/seurat/essential_commands.html
+    idents <- Idents(object = object)
+    cellOrder <- row.names(object@meta.data)
+    counts <-  object@assays[[assay.name]]@data
+    counts<-counts[,cellOrder]
+    genes <- rownames(x = counts)
+    dr<-object@reductions[[reduction]]
+    meta.fields<-object@meta.data
+  if (!dir.exists(paths = dir)) {
+    dir.create(path = dir)}
+
+  # Export expression matrix
+    # we have to write the matrix to an mtx file
+    matrixPath <- file.path(dir, "matrix.mtx")
+    genesPath <- file.path(dir, "features.tsv")
+    barcodesPath <- file.path(dir, "barcodes.tsv")
+if(!skip.expr.mat){
+    message("Writing expression matrix to ", matrixPath)
+    message("This may take a couple of minutes...")
+    writeMM(counts, matrixPath)
+    # easier to load if the genes file has at least two columns. Even though seurat objects
+    write.table(as.data.frame(cbind(rownames(counts), rownames(counts))), file=genesPath, sep="\t", row.names=F, col.names=F, quote=F)
+    write(colnames(counts), file = barcodesPath)
+
+    message("Gzipping expression matrix")
+    gzip(matrixPath,overwrite=T,remove=T)
+    gzip(genesPath,overwrite=T,remove=T)
+    gzip(barcodesPath,overwrite=T,remove=T)
+}
+    matrixOutPath <- "matrix.mtx.gz"
+
+    #Export embeddings
+    df <- dr@cell.embeddings
+    if (ncol(x = df) > 2) {
+      warning('Embedding ', embedding, ' has more than 2 coordinates, taking only the first 2')
+      df <- df[, 1:2]
+    }
+    colnames(x = df) <- c("x", "y")
+    df <- data.frame(cellId = rownames(x = df), df, check.names = FALSE)
+    fname <- file.path(dir,"umap.coords.tsv")
+    message("Writing embeddings to ", fname)
+    write.table(df[cellOrder, ], sep="\t", file=fname, quote = FALSE, row.names = FALSE)
+  embeddings.conf <- sprintf('{"file": "%s.coords.tsv", "shortLabel": "Seurat %1$s"}',reduction)
+  coords.string <- paste0("[",paste(embeddings.conf, collapse = ",\n"),"]")
+
+  # Export metadata
+  enum.fields=colnames(object@meta.data)[colnames(object@meta.data) %in% c("cellid","pcr_idx","tn5_idx",cluster.field,"seurat_clusters","cluster_ID","predicted.id","celltype")]
+  fname <- file.path(dir, "meta.tsv")
+  message("Writing meta data to ", fname)
+  out.meta<-as.matrix(object@meta.data[cellOrder, enum.fields])
+  write.table(out.meta, sep = "\t", file = fname, quote = FALSE, row.names = FALSE)
+  enum.string <- paste0("[",paste(paste0('"', enum.fields, '"'), collapse = ", "), "]")
+
+  # Export markers
+    file <- file.path("markers.tsv")
+    fname <- file.path(dir, file)
+      da_ga<-read.table(file=marker.file)
+        da_ga$label<-""
+        for (x in unique(da_ga$enriched_group)){
+        selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==x) %>% dplyr::arrange(p_val_adj) %>% dplyr::slice(1:marker.n))$da_region
+        da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$label<- da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$da_region
+        }
+    da_ga<-da_ga[da_ga$label!="",]
+      message("Writing top ", marker.n, " cluster markers to ", fname)
+    da_ga$cluster<-da_ga$enriched_group
+      da_ga<-da_ga[c("cluster","label","p_val_adj","enriched_group")]
+      colnames(da_ga)<-c("cluster","symbol","Adjusted p Value","Cluster Enrichment")
+      write.table(x = da_ga, file = fname, quote = FALSE, sep = "\t", col.names = T,row.names=F)
+    markers.string <- sprintf('markers = [{"file": "%s", "shortLabel": "Seurat Cluster Markers"}]',file)
+
+#Export Gene list
+  file <- file.path("quickGenes.csv")
+  fname <- file.path(dir, file)
+  write.table(gene_list,sep=",",file = fname, quote = FALSE, row.names = FALSE)
+
+  config <- '
+# This is a bare-bones cellbrowser config file auto-generated from R.
+# Look at https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf
+# for a full file that shows all possible options
+name="%s"
+shortLabel="%1$s"
+exprMatrix="%s"
+tags = ["sciatac"]
+meta="meta.tsv"
+# possible values: "gencode-human", "gencode-mouse", "symbol" or "auto"
+geneIdType="auto"
+# file with gene,description (one per line) with highlighted genes, called "Dataset Genes" in the user interface
+quickGenesFile="quickGenes.csv"
+clusterField="%s"
+labelField="%s"
+enumFields=%s
+%s
+coords=%s
+geneLabel="Gene Activity"
+unit="GA"'
+
+  config <- sprintf(
+    config,
+    dataset.name,
+    matrixOutPath,
+    cluster.field,
+    cluster.field,
+    enum.string,
+    markers.string,
+    coords.string
+  )
+  confPath = file.path(dir, "cellbrowser.conf")
+  message("Writing cellbrowser config to ", confPath)
+  cat(config, file = confPath)
+  message("Prepared cellbrowser directory ", dir)
+}
+
+
+orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+
+hg38_marker_list<- c("FOXG1", "SOX2","PAX6","HES1","HOPX","VIM","GFAP","TNC","GPX3", "MOXD1", "NEUROG1","EOMES","PPP1R17","PTPRZ1","NEUROD4", "SLC17A7","NEUROD6","RIT1","TBR1","SLA","NHLH1", "DLX2","DLX1","LHX6","GAD1", "NEUROD1", "SATB2","CUX1","RELN","MEF2C", "SLC1A3","GLI3","MKI67","STMN2","GADD45B","MAP2","CALB2","FBXO32", "PGK1","GORASP2" ) 
+
+ExportToCellbrowser(
+object=orgo_cirm43,
+reduction="umap",
+assay.name="GeneActivity",
+dir="orgo_cb",
+dataset.name="orgo",
+marker.file="orgo_cirm43.onevrest.da_ga.txt",
+marker.n=5,
+cluster.field="seurat_clusters",
+gene_list=hg38_marker_list,
+skip.expr.mat=FALSE)
+```
+
+Locally building and hosting the cell browser.
+Using windows wsl2 ubuntu environment
+
+```bash
+#install cellbrowser via conda
+#conda install -c bioconda ucsc-cell-browser
+
+cd /mnt/c/Users/mulqueen/Documents/organoid/orgo_cb
+cbBuild -o orgo_cellbrowser -p 8888
+
+#Go to http://localhost:8888/ to use the interactive viewer
+
+```
 
 
 
