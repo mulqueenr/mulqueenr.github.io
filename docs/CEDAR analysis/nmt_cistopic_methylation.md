@@ -1021,14 +1021,14 @@ srun Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R %s %s %s ' "
 sbatch cistopic.CpG.promoter.slurm.sh 
 sbatch cistopic.CpG.100kb.slurm.sh
 sbatch cistopic.CpG.enhancer.slurm.sh 
-sbatch cistopic.GpC.bcEnhance.slurm.sh 
-sbatch cistopic.GpC.gene.slurm.sh
 sbatch cistopic.CpG.bcEnhance.slurm.sh
 sbatch cistopic.CpG.gene.slurm.sh
+
+sbatch cistopic.GpC.bcEnhance.slurm.sh 
+sbatch cistopic.GpC.gene.slurm.sh
 sbatch cistopic.GpC.100kb.slurm.sh
 sbatch cistopic.GpC.enhancer.slurm.sh
 sbatch cistopic.GpC.promoter.slurm.sh
-
 sbatch cistopic.CpG.foxa1.slurm.sh
 sbatch cistopic.GpC.foxa1.slurm.sh
 
@@ -1279,7 +1279,7 @@ dat@cell.data[startsWith(dat@cell.data$cellLine,"M7"),]$cellLine<-"MCF7"
 dat@cell.data[startsWith(dat@cell.data$cellLine,"TD"),]$cellLine<-"T47D"
 dat@cell.data$cellLine_treatment<-paste(dat@cell.data$cellLine,dat@cell.data$treatment)
 
-saveRDS(dat,file=paste(outname,"CisTopicObject.Rds",sep="."))
+saveRDS(dat,file=paste(outname,"cistopic_object.Rds",sep="."))
 
 write.table(dat@cell.data,file=paste0(outname,".cellData.tsv"),col.names=T,row.names=T,sep="\t",quote=F)
 
@@ -1334,12 +1334,13 @@ setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions")
 
 args <- commandArgs(trailingOnly=TRUE)
 
-args<-list()
-args[1]<-"CpG.bcEnhance.cistopic_object.Rds"
-args[2]<-"GpC.promoter.cistopic_object.Rds"
-args[3]<-"CpG.promoter.cistopic_object.Rds"
-args[4]<-"GpC.bcEnhance.cistopic_object.Rds"
-args<-unlist(args)
+#args<-list()
+#args[1]<-"CpG.bcEnhance.cistopic_object.Rds"
+#args[2]<-"GpC.promoter.cistopic_object.Rds"
+#args[3]<-"CpG.promoter.cistopic_object.Rds"
+#args[4]<-"GpC.bcEnhance.cistopic_object.Rds"
+#args[5]<-"RNA.gene.cistopic_object.Rds"
+#args<-unlist(args)
 
 
 dat<-lapply(args,readRDS) #read in data as list of cistopic objects
@@ -1361,11 +1362,32 @@ dat<-lapply(dat,function(x){
         return(x)
         })
 
+#rename cell names for consistency
+dat<-lapply(dat,function(x){
+        colnames(x@count.matrix)<-unlist(lapply(strsplit(colnames(x@count.matrix),"[.]"),"[",1))
+        colnames(x@count.matrix)<-gsub( "_merged", "", colnames(x@count.matrix) )
+        colnames(x@count.matrix)<-gsub( "^T_", "TD", colnames(x@count.matrix) )
+        colnames(x@count.matrix)<-gsub("BSM7E6","M7E6A",colnames(x@count.matrix))
+        colnames(x@binary.count.matrix)<-unlist(lapply(strsplit(colnames(x@binary.count.matrix),"[.]"),"[",1))
+        colnames(x@binary.count.matrix)<-gsub( "_merged", "", colnames(x@binary.count.matrix) )
+        colnames(x@binary.count.matrix)<-gsub( "^T_", "TD", colnames(x@binary.count.matrix) )
+        colnames(x@binary.count.matrix)<-gsub("BSM7E6","M7E6A",colnames(x@binary.count.matrix))
+        row.names(x@cell.data)<-unlist(lapply(strsplit(row.names(x@cell.data),"[.]"),"[",1))
+        row.names(x@cell.data)<-gsub( "_merged", "", row.names(x@cell.data) )
+        row.names(x@cell.data)<-gsub( "^T_", "TD", row.names(x@cell.data) )
+        row.names(x@cell.data)<-gsub("BSM7E6","M7E6A",row.names(x@cell.data))
+        colnames(x@count.matrix)<-gsub("_S[0-9]*_L[0-9]*","",colnames(x@count.matrix))
+        colnames(x@binary.count.matrix)<-gsub("_S[0-9]*_L[0-9]*","",colnames(x@binary.count.matrix))
+        row.names(x@cell.data)<-gsub("_S[0-9]*_L[0-9]*","",row.names(x@cell.data))
+        return(x)
+        })
+
+#i think BSM7E6 was changed to M7E6A (which is reflected in the function above)
+
 #determine shared cells across cistopic objects
 cells_to_keep<-Reduce(intersect,lapply(dat,function(x){row.names(x@cell.data)}))
 
 dat_merged<-dat[[1]] #use first element as cistopic object for formatting
-
 
 #set up merged object
 dat_merged@binary.count.matrix<-do.call(rbind,
@@ -1383,7 +1405,9 @@ dat_merged@count.matrix<-do.call(rbind,
 dat_merged@region.data<-do.call(rbind,lapply(1:length(dat),function(x){
                 tmp<-dat[[x]]@region.data
                 row.names(tmp)<-paste(c_type[x],regions[x],dat[[x]]@region.data$SYMBOL,row.names(tmp),sep=".")
+                tmp<-tmp[c("seqnames","start","end","width","nCounts","nCells","annotation","geneChr","geneEnd","geneLength","geneStrand","geneId","transcriptId","distanceToTSS","ENSEMBL","SYMBOL","GENENAME")]
                 return(tmp)}))
+
 
 dat_merged@cell.names<-colnames(dat_merged@binary.count.matrix)
 dat_merged@cell.data<-dat_merged@cell.data[which(cells_to_keep %in% row.names(dat[[1]]@cell.data)),]
@@ -1415,29 +1439,22 @@ membership(Rphenograph_out[[2]])
 dat@cell.data$phenograph_cluster <- factor(membership(Rphenograph_out[[2]]))
 
 #add sample cell line names as metadata
-dat@cell.data$cellLine<-unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",1))
+dat@cell.data$cellLine<-"MCF7"
+dat@cell.data[startsWith(dat@cell.names,"T"),]$cellLine<-"T47D"
 
-#set up treatment conditions
-dat@cell.data$treatment<-substr(unlist(lapply(strsplit(row.names(dat@cell.data),"_"),"[",2)),1,1) #set up T47D cell treatment first
-dat@cell.data[startsWith(dat@cell.data$cellLine,"M7"),]$treatment<-substr(dat@cell.data[startsWith(dat@cell.data$cellLine,"M7"),]$cellLine,3,3)
-dat@cell.data[startsWith(dat@cell.data$cellLine,"BSM7"),]$treatment<-substr(dat@cell.data[startsWith(dat@cell.data$cellLine,"BSM7"),]$cellLine,5,5)
+dat@cell.data$batch<-unlist(lapply(strsplit(dat@cell.names,"_"),"[",1))
 
-dat@cell.data$batch<-paste(dat@cell.data$cellLine,dat@cell.data$treatment,sep="_")
+#treatment
+dat@cell.data$treatment<-"control"
+dat@cell.data[which(dat@cell.data$batch %in% c("TDE8","M7E6A","M7E4C")),]$treatment<-"estrogen"
+dat@cell.data$cellLine_treatment<-paste(dat@cell.data$cellLine,dat@cell.data$treatment)
 
-dat@cell.data$perc_met<-dat@cell.data$"CG_met_count"/dat@cell.data$"CG_total_count"
-
-#clean up metadata a bit more
-dat@cell.data[dat@cell.data$cellLine %in% c("BSM7E6","M7C1A","M7C2B","M7E4C"),]$cellLine<-"MCF7"
-dat@cell.data[dat@cell.data$cellLine %in% c("T"),]$cellLine<-"T47D"
-dat@cell.data[dat@cell.data$treatment %in% c("C"),]$treatment<-"control"
-dat@cell.data[dat@cell.data$treatment %in% c("E"),]$treatment<-"estrogen"
-dat@cell.data$celltype_treatment<-paste(dat@cell.data$cellLine,dat@cell.data$treatment)
 
 pdf(paste(out_name,"combined.cistopic.clustering.pdf",sep="."))
-par(mfrow=c(2,2))
-plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('celltype_treatment','batch','phenograph_cluster'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, intervals=20)
-par(mfrow=c(2,5))
-plotFeatures(dat, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
+        par(mfrow=c(2,2))
+        plotFeatures(dat, method='Umap', target='cell', topic_contr=NULL, colorBy=c('cellLine_treatment','treatment','cellLine','phenograph_cluster'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, intervals=20)
+        par(mfrow=c(2,5))
+        plotFeatures(dat, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
 dev.off()
 system(paste0("slack -F ",paste(out_name,"combined.cistopic.clustering.pdf",sep="."), " ryan_todo") )
 
@@ -1445,7 +1462,6 @@ system(paste0("slack -F ",paste(out_name,"combined.cistopic.clustering.pdf",sep=
 saveRDS(dat,file=paste(out_name,"cistopic_object.Rds",sep="."))
 
 
-#should probably make this Z-scored for plotting
 topicmat<-as.data.frame(dat@selected.model$document_expects)
 write.table(topicmat,file=paste0(out_name,".cellbytopic.cistopic.tsv"),col.names=T,row.names=T,sep="\t",quote=F)
 
@@ -1467,8 +1483,7 @@ plt1<-Heatmap(topicmat,
     show_column_names=F,
     bottom_annotation=columnAnnotation(cellline=cellline_annot,treatment=treatment_annot,C_covered=c_count_annot,batch=cellline_treatment_annot, cluster=cluster_annot,
             col = list(cellline = c("T47D"="red","MCF7"="blue"),
-                                treatment = c("control" = "white", "estrogen" = "black"),
-                                batch = c("BSM7E6_E"="green","M7C1A_C"="brown","M7C2B_C"="purple","M7E4C_E"="blue","T_C"="orange","T_E"="red"))))
+                                treatment = c("control" = "white", "estrogen" = "black"))))
 
 pdf(paste0(out_name,".cistopic_heatmap.pdf"))
 plt1
@@ -1498,46 +1513,44 @@ saveRDS(dat,file=paste(out_name,"cistopic_object.Rds",sep="."))
 
 
 ```
+
 ### Running all of these as batch jobs
 
 ```bash
 
-Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
-CpG.gene.cistopic_object.Rds \
-CpG.promoter.cistopic_object.Rds \
-CpG.enhancer.cistopic_object.Rds
+reg=("CpG.gene.cistopic_object.Rds CpG.promoter.cistopic_object.Rds CpG.enhancer.cistopic_object.Rds" "GpC.gene.cistopic_object.Rds GpC.promoter.cistopic_object.Rds GpC.enhancer.cistopic_object.Rds" "CpG.bcEnhance.cistopic_object.Rds GpC.bcEnhance.cistopic_object.Rds" "CpG.bcEnhance.cistopic_object.Rds GpC.promoter.cistopic_object.Rds CpG.promoter.cistopic_object.Rds GpC.bcEnhance.cistopic_object.Rds" "CpG.gene.cistopic_object.Rds GpC.gene.cistopic_object.Rds" "CpG.enhancer.cistopic_object.Rds GpC.enhancer.cistopic_object.Rds" "CpG.promoter.cistopic_object.Rds GpC.promoter.cistopic_object.Rds" "CpG.enhancer.cistopic_object.Rds GpC.promoter.cistopic_object.Rds CpG.promoter.cistopic_object.Rds GpC.enhancer.cistopic_object.Rds""CpG.gene.cistopic_object.Rds CpG.promoter.cistopic_object.Rds CpG.enhancer.cistopic_object.Rds RNA.gene.cistopic_object.Rds" "GpC.gene.cistopic_object.Rds GpC.promoter.cistopic_object.Rds GpC.enhancer.cistopic_object.Rds RNA.gene.cistopic_object.Rds" "CpG.bcEnhance.cistopic_object.Rds GpC.bcEnhance.cistopic_object.Rds RNA.gene.cistopic_object.Rds" "CpG.bcEnhance.cistopic_object.Rds GpC.promoter.cistopic_object.Rds CpG.promoter.cistopic_object.Rds GpC.bcEnhance.cistopic_object.Rds RNA.gene.cistopic_object.Rds" "CpG.gene.cistopic_object.Rds GpC.gene.cistopic_object.Rds RNA.gene.cistopic_object.Rds" "CpG.enhancer.cistopic_object.Rds GpC.enhancer.cistopic_object.Rds RNA.gene.cistopic_object.Rds" "CpG.promoter.cistopic_object.Rds GpC.promoter.cistopic_object.Rds RNA.gene.cistopic_object.Rds" "CpG.enhancer.cistopic_object.Rds GpC.promoter.cistopic_object.Rds CpG.promoter.cistopic_object.Rds GpC.enhancer.cistopic_object.Rds RNA.gene.cistopic_object.Rds") 
+outname=("CpG.gene.CpG.promoter.CpG.enhancer" "GpC.gene.GpC.promoter.GpC.enhancer" "CpG.bcEnhance.GpC.bcEnhance" "CpG.bcEnhance.GpC.promoter.CpG.promoter.GpC.bcEnhance" "CpG.gene.GpC.gene" "CpG.enhancer.GpC.enhancer" "CpG.promoter.GpC.promoter" "CpG.enhancer.GpC.promoter.CpG.promoter.GpC.enhancer" "CpG.gene.CpG.promoter.CpG.enhancer.RNA.gene" "GpC.gene.GpC.promoter.GpC.enhancer.RNA.gene" "CpG.bcEnhance.GpC.bcEnhance.RNA.gene" "CpG.bcEnhance.GpC.promoter.CpG.promoter.GpC.bcEnhance.RNA.gene" "CpG.gene.GpC.gene.RNA.gene" "CpG.enhancer.GpC.enhancer.RNA.gene" "CpG.promoter.GpC.promoter.RNA.gene" "CpG.enhancer.GpC.promoter.CpG.promoter.GpC.enhancer.RNA.gene")
 
-Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
-GpC.gene.cistopic_object.Rds \
-GpC.promoter.cistopic_object.Rds \
-GpC.enhancer.cistopic_object.Rds
+for i in "${!reg[@]}"; do
+printf '#!/bin/bash 
+#SBATCH --nodes=1 #request 1 node 
+#SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time 
+#SBATCH --cpus-per-task=20 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs) 
+#SBATCH --mem-per-cpu=12gb ## request gigabyte per cpu 
+#SBATCH --time=5:00:00 ## ask for 1 hour on the node 
+#SBATCH -- 
+srun Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R %s ' "${reg[i]}" > "cistopic.${outname[i]}.slurm.sh"  ; done
 
-Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
-CpG.bcEnhance.cistopic_object.Rds \
-GpC.bcEnhance.cistopic_object.Rds
+```
+```bash
+sbatch cistopic.CpG.gene.CpG.promoter.CpG.enhancer.slurm.sh
+sbatch cistopic.GpC.gene.GpC.promoter.GpC.enhancer.slurm.sh
+sbatch cistopic.CpG.bcEnhance.GpC.bcEnhance.slurm.sh
+sbatch cistopic.CpG.bcEnhance.GpC.promoter.CpG.promoter.GpC.bcEnhance.slurm.sh
+sbatch cistopic.CpG.gene.GpC.gene.slurm.sh
+sbatch cistopic.CpG.enhancer.GpC.enhancer.slurm.sh
+sbatch cistopic.CpG.promoter.GpC.promoter.slurm.sh
 
-Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
-CpG.bcEnhance.cistopic_object.Rds \
-GpC.promoter.cistopic_object.Rds \
-CpG.promoter.cistopic_object.Rds \
-GpC.bcEnhance.cistopic_object.Rds
+#rna included
+sbatch cistopic.CpG.enhancer.GpC.enhancer.RNA.gene.slurm.sh
+sbatch cistopic.CpG.promoter.GpC.promoter.RNA.gene.slurm.sh
+sbatch cistopic.GpC.gene.GpC.promoter.GpC.enhancer.RNA.gene.slurm.sh
+sbatch cistopic.CpG.bcEnhance.GpC.bcEnhance.RNA.gene.slurm.sh
+sbatch cistopic.CpG.bcEnhance.GpC.promoter.CpG.promoter.GpC.bcEnhance.RNA.gene.slurm.sh
+sbatch cistopic.CpG.gene.GpC.gene.RNA.gene.slurm.sh
+sbatch cistopic.CpG.enhancer.GpC.enhancer.RNA.gene.slurm.sh
+sbatch cistopic.CpG.promoter.GpC.promoter.RNA.gene.slurm.sh
+sbatch cistopic.CpG.enhancer.GpC.promoter.CpG.promoter.GpC.enhancer.RNA.gene.slurm.sh
 
-Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
-CpG.gene.cistopic_object.Rds \
-GpC.gene.cistopic_object.Rds
-
-Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
-CpG.enhancer.cistopic_object.Rds \
-GpC.enhancer.cistopic_object.Rds
-
-Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
-CpG.promoter.cistopic_object.Rds \
-GpC.promoter.cistopic_object.Rds 
-
-Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R \
-CpG.enhancer.cistopic_object.Rds \
-GpC.promoter.cistopic_object.Rds \
-CpG.promoter.cistopic_object.Rds \
-GpC.enhancer.cistopic_object.Rds
 
 ```
