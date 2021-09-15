@@ -72,7 +72,7 @@ annot[annot$treatment %in% c("E"),]$treatment<-"estrogen"
 reg_bed<-read_tsv(reg_in,col_names=c("chr","start","end","name")) #add upstream and downstream expansion (TODO)
 reg_bed<-reg_bed[reg_bed$chr %in% (paste0("chr",c(1:22,"X"))),] #limit to autosomes and X chr
 reg<-makeGRangesFromDataFrame(reg_bed,keep.extra.columns=T,ignore.strand=T) #make granges
-reg<-reduce(reg)
+#reg<-reduce(reg) #this line removes the gene names, causes a bug
 
 #reg<-reg+expand_bp #expand gene ranges
 
