@@ -6,8 +6,14 @@ permalink: /hmmcopy_nmt/
 category: CEDAR
 ---
 
-# Script to test Shah lab CNV calling using HMMcopy on SE bismark aligned reads
+# Script to test Shah lab CNV calling using HMMcopy on SE bismark aligned reads. Starting at split fastq files for alignment to hg38.
 
+## Source data
+```bash
+/home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scNMT_NOMeWorkFlow/samples/raw
+/home/groups/CEDAR/doe/projects/my_NMT/MCF7_reseq/merge_all_MCF7/scNMT_NOMeWorkFlow/samples/raw
+```
+<!--
 ## Preparing bam files from Aaron Doe's preprocessing
 Need to merge resequenced bam files and combine read 1 and read 2 into a single-end bam
 
@@ -614,3 +620,4 @@ system("slack HMMcopy.merged.500kb.png")
 
 ```
 
+-->
