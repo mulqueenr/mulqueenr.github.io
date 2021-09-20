@@ -76,47 +76,9 @@ List of genomic annotation bed files:
 /home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/FOXA1.bed
 ```
 
-## Preparing bam files from Aaron Doe's preprocessing
-Need to merge resequenced bam files and combine read 1 and read 2 into a single-end bam
+# Preparing bam files from Aaron Doe's preprocessing
 
-```bash
-mkdir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
-cd /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
-ls /home/groups/CEDAR/doe/projects/my_NMT/MCF7_reseq/merge_all_MCF7/scNMT_NOMeWorkFlow/bismarkSE/dedup/*merged.bam > files.txt
-ls /home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scNMT_NOMeWorkFlow/bismarkSE/*bam | grep -v "M7" >> files.txt
-for i in `cat files.txt`; do outname=`basename $i`; ln -s $i $outname; done
-for i in *_R1.*bt2.bam; do 
-r1=$i;
-r2=`echo $i | sed "s/R1/R2/g"`;
-r2=`echo $r2 | sed "s/val_1_/val_2_/g"`;
-outname=`echo $i | awk 'OFS="_" {split($1,a,"_");print a[1],a[2],a[3]}'`;
-samtools cat -o ${outname}_merged.bam $r1 $r2 ;
-done &
-```
-
-## Batch script for deduplication
-Using the bismark deduplication script.
-
-```bash
-#!/bin/bash
-#SBATCH --nodes=1 #request 1 node
-#SBATCH --array=1-374
-#SBATCH --tasks-per-node=30 ##we want our node to do N tasks at the same time
-#SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
-#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
-#SBATCH --time=3:00:00 ## ask for 1 hour on the node
-#SBATCH --
-
-array_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams/*merged.bam | wc -l`
-
-bam_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams/*merged.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
-
-srun deduplicate_bismark \
---single \
---output_dir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/dedup_bams \
-${bam_in}
-
-```
+To see processing from fastq files to deduplicated bam files, see ["NMT cnv calling"](https://mulqueenr.github.io/hmmcopy_nmt/)
 
 ## Set up methylation extraction
 
@@ -128,18 +90,18 @@ meth_extract.slurm.sh
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1
-#SBATCH --array=1-374
+#SBATCH --array=1-572
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=18
 #SBATCH --mem-per-cpu=1gb
 #SBATCH --time=12:00:00
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/dedup_bams/*deduplicated.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/dedup_bams/*deduplicated.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun bismark_methylation_extractor \
 -s --gzip --parallel 5 \
--o /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out \
+-o /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out \
 --genome_folder /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta \
 --CX \
 --bedGraph \
@@ -158,19 +120,19 @@ Generate cytosine NOME data for region summarization.
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1 
-#SBATCH --array=1-374
+#SBATCH --array=1-572
 #SBATCH --tasks-per-node=10 
 #SBATCH --cpus-per-task=1 
 #SBATCH --mem-per-cpu=5gb 
 #SBATCH --time=10:00:00 
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 out_name=`echo $files_in | awk '{n=split($1,a,"/");print a[n]}' | sed s/".cov.gz"//`
 
 srun coverage2cytosine \
 --gzip  \
---dir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out \
+--dir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out \
 --genome_folder /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta \
 --output $out_name \
 --nome-seq \

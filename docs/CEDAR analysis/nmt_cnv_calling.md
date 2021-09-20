@@ -67,61 +67,16 @@ bismark \
 
 #ls command generates a comma separated list of files
 ```
-
-```bash
-for i in *R1*bam;
-do R1=$i;
-R2=`sed /R1/R2/g $i`;
-outname=`sed /R1/merged/g $i`;
-samtools cat -@ 10 -o $outname $R1 $R2; done
-```
 ## Merge Read 1 and Read 2 files per cell
 
-## Batch script for deduplication
-Using the bismark deduplication script.
+Merged single end bam files
 
 ```bash
-#!/bin/bash
-#SBATCH --nodes=1 #request 1 node
-#SBATCH --array=1-374
-#SBATCH --tasks-per-node=30 ##we want our node to do N tasks at the same time
-#SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
-#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
-#SBATCH --time=3:00:00 ## ask for 1 hour on the node
-#SBATCH --
-
-array_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams/*merged.bam | wc -l`
-
-bam_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams/*merged.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
-
-srun deduplicate_bismark \
---single \
---output_dir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/dedup_bams \
-${bam_in}
-
-```
-
-
-```bash
-
-```
-<!--
-## Preparing bam files from Aaron Doe's preprocessing
-Need to merge resequenced bam files and combine read 1 and read 2 into a single-end bam
-
-```bash
-mkdir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
-cd /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams
-ls /home/groups/CEDAR/doe/projects/my_NMT/MCF7_reseq/merge_all_MCF7/scNMT_NOMeWorkFlow/bismarkSE/dedup/*merged.bam > files.txt
-ls /home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scNMT_NOMeWorkFlow/bismarkSE/*bam | grep -v "M7" >> files.txt
-for i in `cat files.txt`; do outname=`basename $i`; ln -s $i $outname; done
-for i in *_R1.*bt2.bam; do 
-r1=$i;
-r2=`echo $i | sed "s/R1/R2/g"`;
-r2=`echo $r2 | sed "s/val_1_/val_2_/g"`;
-outname=`echo $i | awk 'OFS="_" {split($1,a,"_");print a[1],a[2],a[3]}'`;
-samtools cat -o ${outname}_merged.bam $r1 $r2 ;
-done &
+for i in `ls *_R1_*bam`;
+do R1=$i;
+R2=`echo $R1 | sed 's/R1/R2/g'`;
+outname=`echo $R1 | sed 's/R1/merged/g'`;
+samtools cat -@ 20 -o $outname $R1 $R2; done &
 ```
 
 ## Batch script for deduplication
@@ -130,20 +85,20 @@ Using the bismark deduplication script.
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
-#SBATCH --array=1-374
+#SBATCH --array=1-573
 #SBATCH --tasks-per-node=30 ##we want our node to do N tasks at the same time
 #SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
 #SBATCH --time=3:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-array_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams/*merged.bam | wc -l`
+array_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/*merged_trimmed_bismark_bt2.bam | wc -l`
 
-bam_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams/*merged.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+bam_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/*merged_trimmed_bismark_bt2.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun deduplicate_bismark \
 --single \
---output_dir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/dedup_bams \
+--output_dir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/dedup_bams \
 ${bam_in}
 
 ```
@@ -239,8 +194,8 @@ for infile in files:
 Files are from a previous publication by Hisham (here.)[https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE68355]
 
 ```bash
-conda install sra-tools #have to set up SRA tools to get fastq files
-conda install bwa-mem
+#conda install sra-tools #have to set up SRA tools to get fastq files
+#conda install bwa-mem
 
 mkdir /home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/
 cd /home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/
@@ -303,13 +258,13 @@ library(patchwork)
 library(reshape2)
 library(philentropy)
 library(dendextend)
-setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test")
+setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/dedup_bams")
 
 
 #set up single cell bam files from given directory
 prepare_bam_bed_obj<-function(resol.){
     #Initalization
-    bamfolder <- "/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/dedup_bams"
+    bamfolder <- "/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/dedup_bams"
     bamFile <- list.files(bamfolder, pattern = 'deduplicated.bam$')
     #add reference bam files
     ref_bamfolder<-"/home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata"
@@ -439,7 +394,7 @@ mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
     Y<-readRDS(file="rawcount.500kbp.rds")
     
     #filter Y to cells with >500000 reads
-    Y<-Y[,colSums(Y)>500000] #with fewer reads i was getting errors
+    Y<-Y[,colSums(Y)>50000] #with fewer reads i was getting errors, was at 500k, but i want to try to go lower
 
 #Prepare windows with gc and mappability data
     ref <- as.data.frame(bambedObj$ref)
@@ -466,7 +421,7 @@ mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
     saveRDS(copy_segmentation,file="copysegmentation.500kb.rds")
     copy_segmentation<-readRDS(file="copysegmentation.500kb.rds")
 
-    copy_segmentation<-copy_segmentation[,!grepl("Y",colnames(copy_segmentation))]
+    copy_segmentation<-copy_segmentation[,!grepl("Y",colnames(copy_segmentation))] #remove Y
 
 #filter to qc cells and set up annotations
     Y_plot<-as.data.frame(t(Y))
@@ -554,7 +509,7 @@ plt1
 plt2
 dev.off()
 
-system("slack HMMcopy_test.pdf")
+system("slack -F HMMcopy_test.pdf ryan_todo")
 
 #custom mapd function
 mapd<-function(cell){
@@ -589,7 +544,12 @@ dist_df %>% group_by(sample) %>% summarize(mean_MAD=mean(mapd),median_MAD=median
 plt1<-ggplot(dist_df,aes(x=paste(sample),y=mapd,color=paste(sample)))+geom_jitter()+geom_boxplot(aes(fill=NULL))+theme_bw()+ylim(c(0,1))
 plt2<-ggplot(dist_df,aes(x=paste(sample),y=log10(read_count),color=paste(sample)))+geom_jitter()+geom_boxplot(aes(fill=NULL))+theme_bw()+ylim(c(0,9))
 ggsave(plt1/plt2,file="mapd_scores.pdf")
-system("slack mapd_scores.pdf")
+system("slack -F mapd_scores.pdf ryan_todo")
+
+
+#didnt run below yet
+
+
 
 ### Merge single-cell data by clades for read depth visualization
 #Restructure bins to finer resolution
