@@ -1309,12 +1309,11 @@ The regulon is defined by the transcription factor (ChromVar Motif Score) and ac
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.Rds")
 
 
-  #This hsould be changes now that they are in a separate assay
   #Generate Heatmap of TF ChromVar score and TF modules
-  modules<-orgo_cirm43@meta.data[grepl("TF_",colnames(orgo_cirm43@meta.data))] #set up module matrix
-  module_tfs<-unlist(lapply(strsplit(colnames(modules),"_"),"[",2)) #set up TF names
+  modules<-as.data.frame(t(orgo_cirm43@assays$TF_modules@data))
+  module_tfs<-unlist(lapply(strsplit(colnames(modules),"-"),"[",2)) #set up TF names
 
-  tf_chrom<-orgo_cirm43[["chromvar"]]@data #set up chromvar matrix
+  tf_chrom<-orgo_cirm43@assays$chromvar@data #set up chromvar matrix
   tfList <- getMatrixByID(JASPAR2020, ID=row.names(tf_chrom)) #correct names
   tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
   row.names(tf_chrom)<-tfList
@@ -1322,13 +1321,14 @@ The regulon is defined by the transcription factor (ChromVar Motif Score) and ac
   tf_chrom<-as.data.frame(t(tf_chrom[tfList,]))
 
   modules<-modules[module_tfs %in% colnames(tf_chrom)] #filter modules to chromvar matrix
-  colnames(modules)<-unlist(lapply(strsplit(colnames(modules),"_"),"[",2))
+  colnames(modules)<-unlist(lapply(strsplit(colnames(modules),"-"),"[",2))
+
   #Combine over subclusters
-  tf_chrom<-split(tf_chrom,paste0(orgo_cirm43$cluster_ID)) #group by rows to seurat clusters
+  tf_chrom<-split(tf_chrom,orgo_cirm43$seurat_clusters) #group by rows to seurat clusters
   tf_chrom<-lapply(tf_chrom,function(x) apply(x,2,median)) #take average across group
   tf_chrom<-do.call("rbind",tf_chrom) #condense to smaller data frame
 
-  modules<-split(modules,paste0(orgo_cirm43$cluster_ID)) #group by rows to seurat clusters
+  modules<-split(modules,paste0(orgo_cirm43$seurat_clusters)) #group by rows to seurat clusters
   modules<-lapply(modules,function(x) apply(x,2,median)) #take average across group
   modules<-do.call("rbind",modules) #condense to smaller data frame
 
@@ -1343,10 +1343,10 @@ The regulon is defined by the transcription factor (ChromVar Motif Score) and ac
 
   plt1<-Heatmap(tf_chrom,column_order=1:ncol(tf_chrom))
   plt2<-Heatmap(modules,column_order=1:ncol(modules))
-  pdf("test.complexheatmap.pdf",height=20)
+  pdf("tf.complexheatmap.pdf",height=20)
   plt1+plt2
   dev.off()
-  system("slack -F test.complexheatmap.pdf ryan_todo")
+  system("slack -F tf.complexheatmap.pdf ryan_todo")
 
   #Generate a tanglegram to look at gene opening before or after chromvar activity
   library(ggdendro)
@@ -1354,10 +1354,10 @@ The regulon is defined by the transcription factor (ChromVar Motif Score) and ac
   tf_chrom_dend <- tf_chrom %>% dist("maximum") %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 5)
   modules_dend <- modules %>% dist("maximum") %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 5)
   tang<-tanglegram(tf_chrom_dend,modules_dend) %>% untangle(method = "ladderize")
-  pdf("test.tangle.pdf",width=20)
+  pdf("tf.tangle.pdf",width=20)
   tang %>% plot(main = paste("entanglement =", round(entanglement(tang), 2)))
   dev.off()
-  system("slack -F test.tangle.pdf ryan_todo")
+  system("slack -F tf.tangle.pdf ryan_todo")
 
 
 
@@ -1371,15 +1371,15 @@ library(Signac)
 library(Seurat)
 library(ggplot2)
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-  orgo_cirm43<-readRDS("orgo_cirm43.filt.SeuratObject.Rds")
+  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
   DefaultAssay(orgo_cirm43)<-"peaks"
   plt<-FeaturePlot(orgo_cirm43,feat=c("PAX6",'SOX2',"EOMES","PPP1R17","TBR1","NEUROD1"),col=c("white","red"),ncol=1,order=T)
+  ggsave(plt,file="markers.featureplot.pdf",height=50,limitsize=F)
+  system("slack -F markers.featureplot.pdf ryan_todo")
 
-  plt<-CoveragePlot(orgo_cirm43,region=c("PAX6",'SOX2',"EOMES","PPP1R17","TBR1","NEUROD1"),extend.upstream=2000,extend.downstream=2000,show.bulk=T,group.by="cluster_ID",ncol=1)
-
-  ggsave(plt,file="test_marker.pdf",height=50,limitsize=F)
-  system("slack -F test_marker.pdf ryan_todo")
-  plt3<-FeaturePlot(orgo_cirm43,features=c('STMN2'),pt.size=0.1,order=T,min.cutoff='q10')
+  plt<-CoveragePlot(orgo_cirm43,region=c("PAX6",'SOX2',"EOMES","PPP1R17","TBR1","NEUROD1"),extend.upstream=2000,extend.downstream=2000,show.bulk=T,group.by="seurat_clusters",ncol=1)
+  ggsave(plt,file="markers.coverageplot.pdf",height=50,limitsize=F)
+  system("slack -F markers.coverageplot.pdf ryan_todo")
 
 ```
 
@@ -1392,7 +1392,7 @@ https://descartes.brotmanbaty.org/bbi/human-chromatin-during-development/dataset
 wget http://hgdownload.cse.ucsc.edu/gbdb/hg19/liftOver/hg19ToHg38.over.chain.gz
 wget https://atlas.fredhutch.org/data/bbi/descartes/human_atac/downloads/cerebrum_filtered.seurat.for_website.RDS
 ```
-### Integrate data (TO BE DONE)
+## Integrate data 
 Have to convert hg19 to hg38 genomic locations
 Following https://satijalab.org/signac/articles/integration.html?q=liftover#preprocessing
 
@@ -1478,7 +1478,10 @@ combined <- merge(
 saveRDS(combined,"orgo_primary.integration.SeuratObject.Rds")
 ```
 
-Adding chromVAR scores to fetal atlas for comparison
+### Integration: Adding chromVAR scores to fetal atlas for comparison
+
+Limiting Chromvar analysis to shared peaks across public data set and our own.
+
 ```R
  library(Signac)
   library(Seurat)
@@ -1494,46 +1497,38 @@ Adding chromVAR scores to fetal atlas for comparison
   library(BiocParallel)
   register(MulticoreParam(10))
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-  combined<-readRDS(file="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/cerebrum_subset.RDS")
+  combined<-readRDS(file="orgo_primary.integration.SeuratObject.Rds")
 
-  DefaultAssay(combined)<-"peaks"
   # Get a list of motif position frequency matrices from the JASPAR database
-  pfm <- getMatrixSet(
-    x = JASPAR2020,
-    opts = list(species =9606, all_versions = FALSE))
+  pfm <- getMatrixSet(x = JASPAR2020, opts = list(species =9606, all_versions = FALSE))
 
   # Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
-  feat<-row.names(combined@assays$peaks)
-  feat_dat<-data.frame(chr=unlist(lapply(strsplit(feat,"-"),"[",1)),
-    start=unlist(lapply(strsplit(feat,"-"),"[",2)),
-    end=unlist(lapply(strsplit(feat,"-"),"[",3)))
-  motif.matrix <- CreateMotifMatrix(
-    features = makeGRangesFromDataFrame(feat_dat),
-    pwm = pfm,
-    genome = 'hg38',
-    use.counts = FALSE)
+  motif.matrix <- CreateMotifMatrix(features = granges(combined), pwm = pfm, genome = 'hg38', use.counts = FALSE)
 
   # Create a new Mofif object to store the results
-  motif <- CreateMotifObject(
-    data = motif.matrix,
-    pwm = pfm)
+  motif <- CreateMotifObject(data = motif.matrix, pwm = pfm)
+
+  DefaultAssay(combined)<-"ATAC"
+  # Get a list of motif position frequency matrices from the JASPAR database
+  pfm <- getMatrixSet(x = JASPAR2020, opts = list(species =9606, all_versions = FALSE))
+  # Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
+  motif.matrix <- CreateMotifMatrix(features = granges(combined), pwm = pfm, genome = 'hg38', use.counts = FALSE)
+
+  # Create a new Mofif object to store the results
+  motif <- CreateMotifObject(data = motif.matrix, pwm = pfm)
 
   # Add the Motif object to the assays and run ChromVar
-  combined[["peaks_chromvar"]]<-CreateChromatinAssay(counts=combined[["peaks"]]@counts)
-  combined <- SetAssayData(
-    object = combined,
-    assay = 'peaks_chromvar',
-    slot = 'motifs',
-    new.data = motif)
-  DefaultAssay(combined)<-"peaks_chromvar"
-  combined <- RegionStats(object = combined, genome = BSgenome.Hsapiens.UCSC.hg19)
-  combined <- RunChromVAR( object = combined,genome = BSgenome.Hsapiens.UCSC.hg19)
-  saveRDS(combined,file="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/cerebrum_subset.RDS")
+  combined <- SetAssayData(object = combined, assay = 'ATAC', slot = 'motifs', new.data = motif)
+  combined <- RegionStats(object = combined, genome = BSgenome.Hsapiens.UCSC.hg38)
+  combined <- RunChromVAR( object = combined,genome = BSgenome.Hsapiens.UCSC.hg38)
+
+  saveRDS(combined,file="orgo_primary.integration.SeuratObject.Rds")
 
 
 ```
 
-Differetial chromvar TF and peaks used 
+### Integration: Differetial chromvar TF and peaks used 
+
 ```R
 
   library(Signac)
@@ -1547,27 +1542,21 @@ Differetial chromvar TF and peaks used
   set.seed(1234)
 
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-  fetal_atac<-readRDS("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/cerebrum_filtered.seurat.for_website.RDS")
+  combined<-readRDS(file="orgo_primary.integration.SeuratObject.Rds")
+  #read in other RDS files for meta data
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+  fetal_atac<-readRDS("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/cerebrum_subset.RDS")
+  orgo_met<-as.data.frame(orgo_cirm43@meta.data)
+  fetal_met<-as.data.frame(fetal_atac@meta.data)
+  row.names(orgo_met)<-paste("orgo",row.names(orgo_met),sep="_")
+  row.names(fetal_met)<-paste("fetal",row.names(fetal_met),sep="_")
+  combined<-AddMetaData(combined,metadata=orgo_met)
+  combined<-AddMetaData(combined,metadata=fetal_met)
 
-  #Read in data and modify to monocle CDS file
-  #read in RDS file.
-  combined<-readRDS("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/cerebrum_subset.RDS")
-  orgo_cirm43_metdat<-as.data.frame(orgo_cirm43@meta.data)
-  row.names(orgo_cirm43_metdat)<-paste0("orgo_",row.names(orgo_cirm43_metdat))
-  orgo_cirm43_metdat<-orgo_cirm43_metdat[c("nCount_peaks","DIV","seurat_clusters")]
-  colnames(orgo_cirm43_metdat)<-c("nCount_peaks","devtime","seurat_clusters")
-  orgo_cirm43_metdat$seurat_clusters<-paste0("orgo_",orgo_cirm43_metdat$seurat_clusters)
-  fetal_atac_metdat<-as.data.frame(fetal_atac@meta.data)
-  row.names(fetal_atac_metdat)<-paste0("fetal_",row.names(fetal_atac_metdat))
-  fetal_atac_metdat<-fetal_atac_metdat[c("nCount_peaks","day_of_pregnancy","seurat_clusters")]
-  colnames(fetal_atac_metdat)<-c("nCount_peaks","devtime","seurat_clusters")
-  fetal_atac_metdat$seurat_clusters<-paste0("fetal_",fetal_atac_metdat$seurat_clusters)
+  combined$assay_cluster<-paste(combined$cell_type,combined$seurat_clusters)  
+  saveRDS(combined,file="orgo_primary.integration.SeuratObject.Rds")
 
-  metdat<-rbind(orgo_cirm43_metdat,fetal_atac_metdat)
-  combined<-AddMetaData(combined,metdat)
-
-  da_one_v_one<-function(i,obj,group,j_list,assay.="peaks",logfc.threshold.=0.25){
+  da_one_v_one<-function(i,obj,group,j_list,assay.="ATAC",logfc.threshold.=0.25){
       i<-as.character(i)
       da_tmp_2<-list()
       for (j in j_list){
@@ -1585,7 +1574,7 @@ Differetial chromvar TF and peaks used
               logfc.threshold=logfc.threshold.
               )
           da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
-          if(assay.=="peaks"){
+          if(assay.=="ATAC"){
           #closest_genes <- ClosestFeature(obj,da_peaks_tmp$da_region)
           #da_peaks_tmp<-cbind(da_peaks_tmp,closest_genes)
           }
@@ -1607,11 +1596,11 @@ Differetial chromvar TF and peaks used
 
   n.cores=8
   da_peaks<-mclapply(
-      unique(combined$seurat_clusters),
+      unique(combined$assay_cluster),
       FUN=da_one_v_one,
       obj=combined,
-      group="seurat_clusters",
-      j_list=unique(combined$seurat_clusters),
+      group="assay_cluster",
+      j_list=unique(combined$assay_cluster),
       mc.cores=n.cores)
   #Merge the final data frame from the list for 1vrest DA
   da_peaks<-do.call("rbind",do.call("rbind",da_peaks))
@@ -1620,11 +1609,11 @@ Differetial chromvar TF and peaks used
  
   n.cores=1
   da_tf<-mclapply(
-      unique(combined$seurat_clusters),
+      unique(combined$assay_cluster),
       FUN=da_one_v_one,
       obj=combined,
-      group="seurat_clusters",
-      j_list=unique(combined$seurat_clusters),
+      group="assay_cluster",
+      j_list=unique(combined$assay_cluster),
       assay.="chromvar",
       mc.cores=n.cores)
   #Merge the final data frame from the list for 1vrest DA
@@ -1632,11 +1621,10 @@ Differetial chromvar TF and peaks used
   i<-"primary_orgo.combined"
   write.table(da_tf,file=paste0(i,".onevone.da_tf.txt"),sep="\t",col.names=T,row.names=T,quote=F)
  
-  nrow(da_tf %>% filter(p_val_adj<0.05) %>% filter(compared_group=="orgo_0") %>% filter(enriched_group=="fetal_0"))
-
 
 ```
-Now Clustering together with cistopic and using harmony to integrate
+
+### Integration: Now Clustering together with cistopic and using harmony to integrate
 
 ```R
 library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
@@ -1669,8 +1657,7 @@ combined_atac_cistopic_models <- selectModel(combined_atac_cistopic_models, type
 dev.off()
 system("slack -F orgo_primary.integration.model_selection.pdf ryan_todo")
 
-selected_topic=28
-cisTopicObject<-cisTopic::selectModel(combined_atac_cistopic_models,select=selected_topic,keepModels=F)
+cisTopicObject<-cisTopic::selectModel(combined_atac_cistopic_models,type='derivative',keepModels=F)
 
 #saving model selected RDS
 saveRDS(cisTopicObject,file="orgo_primary.integration.CisTopicObject.Rds")
@@ -1684,12 +1671,6 @@ row.names(dims)<-colnames(topic_df)
 colnames(dims)<-c("x","y")
 dims$cellID<-row.names(dims)
 dims<-merge(dims,combined@meta.data,by.x="cellID",by.y="row.names")
-
-#plot heatmaps of topics
-pdf("combined_atac_cistopic_heatmap.pdf")
-cellTopicHeatmap(cisTopicObject, method='Probability')
-dev.off()
-system("slack -F combined_atac_cistopic_heatmap.pdf ryan_todo")
 
 #Add cell embeddings into seurat
 cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
@@ -1708,29 +1689,29 @@ cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loading
 umap_dims<-as.data.frame(as.matrix(dims[2:3]))
 colnames(umap_dims)<-c("UMAP_1","UMAP_2")
 row.names(umap_dims)<-dims$cellID
-cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(umap_dims),assay="peaks",key="UMAP_")
+cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(umap_dims),assay="ATAC",key="UMAP_")
 combined@reductions$cistopic<-cistopic_obj
 combined@reductions$umap<-cistopic_umap
 
 n_topics<-ncol(Embeddings(combined,reduction="cistopic"))
 
+combined[["peaks"]] <- combined[["ATAC"]] # just renaming to use default settings
+DefaultAssay(combined)<-"peaks"
+
 combined <- FindNeighbors(
   object = combined ,
   reduction = 'cistopic',
-  dims = 1:n_topics
-)
+  dims = 1:n_topics)
+
 combined <- FindClusters(
   object = combined,
   verbose = TRUE,
-  resolution=0.01 
-)
+  resolution=0.01)
 
-combined[["peaks"]] <- combined[["ATAC"]] # just renaming to use default settings
-DefaultAssay(combined)<-"peaks"
 #Correcting bias with harmony
-pdf("test.convergence.pdf")
+pdf("combined.convergence.pdf")
 harm_mat<-HarmonyMatrix(combined@reductions$cistopic@cell.embeddings, combined@meta.data$dataset,do_pca=FALSE,nclust=4,plot_convergence=T)
-dev.off();system("slack -F test.convergence.pdf ryan_todo")
+dev.off();system("slack -F combined.convergence.pdf ryan_todo")
 combined@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
 combined<-RunUMAP(combined, reduction = "harmony",dims=2:ncol(combined@reductions$harmony))
 #combined <- FindNeighbors(object = combined,reduction = 'harmony')
@@ -1738,8 +1719,8 @@ combined<-RunUMAP(combined, reduction = "harmony",dims=2:ncol(combined@reduction
 
 
 plt<-DimPlot(combined,group.by=c("dataset","seurat_clusters"))
-ggsave(plt,file="test.pdf")
-system("slack -F test.pdf ryan_todo")
+ggsave(plt,file="combined.umap.pdf")
+system("slack -F combined.umap.pdf ryan_todo")
 
 saveRDS(combined,"orgo_primary.integration.SeuratObject.Rds")
 
@@ -1749,20 +1730,17 @@ saveRDS(combined,"orgo_primary.integration.SeuratObject.Rds")
 ```
 
 
-
-
-### Differential Gene Activity through Clusters
+## Differential Gene Activity through Clusters
 
 
 ```R
-  library(JASPAR2020)
-  library(BSgenome.Hsapiens.UCSC.hg38)
-  library(Seurat)
+library(JASPAR2020)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(Seurat)
 library(Signac)
 library(ggplot2)
 library(ComplexHeatmap)
 library(TFBSTools)
-
 library(ggdendro)
 library(dendextend)
 library(parallel)
@@ -1773,13 +1751,10 @@ library(RColorBrewer)
 library(viridis)
 library(circlize)
 
-  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
+orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
 
-
-#Clusters to test
-cluster_to_test<-names(table(orgo_cirm43$seurat_clusters)[table(orgo_cirm43$seurat_clusters)>50 & !endsWith(names(table(orgo_cirm43$seurat_clusters)),"NA")])
 #define DA functions for parallelization
 #Use LR test for atac data
 da_one_v_rest<-function(i,obj,group,assay.="GeneActivity"){
@@ -1799,75 +1774,32 @@ da_one_v_rest<-function(i,obj,group,assay.="GeneActivity"){
     return(da_ga_tmp)
   }
 
-da_ga<-list() #set up an empty list for looping through
-
-list_0<-da_one_v_rest("0",obj=orgo_cirm43,group="seurat_clusters",assay.="GeneActivity")
-list_1<-da_one_v_rest("1",obj=orgo_cirm43,group="seurat_clusters",assay.="GeneActivity")
-list_2<-da_one_v_rest("2",obj=orgo_cirm43,group="seurat_clusters",assay.="GeneActivity")
-list_3<-da_one_v_rest("3",obj=orgo_cirm43,group="seurat_clusters",assay.="GeneActivity")
-list_4<-da_one_v_rest("4",obj=orgo_cirm43,group="seurat_clusters",assay.="GeneActivity")
-list_5<-da_one_v_rest("5",obj=orgo_cirm43,group="seurat_clusters",assay.="GeneActivity")
-list_6<-da_one_v_rest("6",obj=orgo_cirm43,group="seurat_clusters",assay.="GeneActivity")
-list_7<-da_one_v_rest("7",obj=orgo_cirm43,group="seurat_clusters",assay.="GeneActivity")
-list_8<-da_one_v_rest("8",obj=orgo_cirm43,group="seurat_clusters",assay.="GeneActivity")
-
-da_ga_df<-rbind(list_0,list_1,list_2,list_3,list_4,list_5,list_6,list_7,list_8) #Merge the final data frame from the list for 1vrest DA
+#gene activity
+da_ga_df<-lapply(unique(orgo_cirm43$seurat_clusters),function(x) da_one_v_rest(x,obj=orgo_cirm43,group="seurat_clusters",assay.="GeneActivity"))
+da_ga_df<-do.call("rbind",da_ga_df)
 write.table(da_ga_df,file="orgo_cirm43.onevrest.da_ga.txt",sep="\t",col.names=T,row.names=T,quote=F)
 
-da_ga<-list() #set up an empty list for looping through
-list_0<-da_one_v_rest("0",obj=orgo_cirm43,group="seurat_clusters",assay.="chromvar")
-list_1<-da_one_v_rest("1",obj=orgo_cirm43,group="seurat_clusters",assay.="chromvar")
-list_2<-da_one_v_rest("2",obj=orgo_cirm43,group="seurat_clusters",assay.="chromvar")
-list_3<-da_one_v_rest("3",obj=orgo_cirm43,group="seurat_clusters",assay.="chromvar")
-list_4<-da_one_v_rest("4",obj=orgo_cirm43,group="seurat_clusters",assay.="chromvar")
-list_5<-da_one_v_rest("5",obj=orgo_cirm43,group="seurat_clusters",assay.="chromvar")
-list_6<-da_one_v_rest("6",obj=orgo_cirm43,group="seurat_clusters",assay.="chromvar")
-list_7<-da_one_v_rest("7",obj=orgo_cirm43,group="seurat_clusters",assay.="chromvar")
-list_8<-da_one_v_rest("8",obj=orgo_cirm43,group="seurat_clusters",assay.="chromvar")
-
-da_ga_df<-rbind(list_0,list_1,list_2,list_3,list_4,list_5,list_6,list_7,list_8) #Merge the final data frame from the list for 1vrest DA
-#To convert JASPAR ID TO TF NAME
-da_ga_df$tf_name <- unlist(lapply(unlist(lapply(da_ga_df$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
+#now doing chromvar
+da_ga_df<-lapply(unique(orgo_cirm43$seurat_clusters),function(x) da_one_v_rest(x,obj=orgo_cirm43,group="seurat_clusters",assay.="chromvar"))
+da_ga_df<-do.call("rbind",da_ga_df)
 write.table(da_ga_df,file="orgo_cirm43.onevrest.da_chromvar.txt",sep="\t",col.names=T,row.names=T,quote=F)
 
-da_ga<-list() #set up an empty list for looping through
-
-list_0<-da_one_v_rest("0",obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules")
-list_1<-da_one_v_rest("1",obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules")
-list_2<-da_one_v_rest("2",obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules")
-list_3<-da_one_v_rest("3",obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules")
-list_4<-da_one_v_rest("4",obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules")
-list_5<-da_one_v_rest("5",obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules")
-list_6<-da_one_v_rest("6",obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules")
-list_7<-da_one_v_rest("7",obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules")
-list_8<-da_one_v_rest("8",obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules")
-
-da_ga_df<-rbind(list_0,list_1,list_2,list_3,list_4,list_5,list_6,list_7,list_8) #Merge the final data frame from the list for 1vrest DA
+#now doing bhaduri
+da_ga_df<-lapply(unique(orgo_cirm43$seurat_clusters),function(x) da_one_v_rest(x,obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules"))
+da_ga_df<-do.call("rbind",da_ga_df)
 write.table(da_ga_df,file="orgo_cirm43.onevrest.da_eigengenes.txt",sep="\t",col.names=T,row.names=T,quote=F)
 
-
-da_ga<-list() #set up an empty list for looping through
-
-list_0<-da_one_v_rest("0",obj=orgo_cirm43,group="seurat_clusters",assay.="TF_modules")
-list_1<-da_one_v_rest("1",obj=orgo_cirm43,group="seurat_clusters",assay.="TF_modules")
-list_2<-da_one_v_rest("2",obj=orgo_cirm43,group="seurat_clusters",assay.="TF_modules")
-list_3<-da_one_v_rest("3",obj=orgo_cirm43,group="seurat_clusters",assay.="TF_modules")
-list_4<-da_one_v_rest("4",obj=orgo_cirm43,group="seurat_clusters",assay.="TF_modules")
-list_5<-da_one_v_rest("5",obj=orgo_cirm43,group="seurat_clusters",assay.="TF_modules")
-list_6<-da_one_v_rest("6",obj=orgo_cirm43,group="seurat_clusters",assay.="TF_modules")
-list_7<-da_one_v_rest("7",obj=orgo_cirm43,group="seurat_clusters",assay.="TF_modules")
-list_8<-da_one_v_rest("8",obj=orgo_cirm43,group="seurat_clusters",assay.="TF_modules")
-
-da_ga_df<-rbind(list_0,list_1,list_2,list_3,list_4,list_5,list_6,list_7,list_8) #Merge the final data frame from the list for 1vrest DA
+#now doing tf modules
+da_ga_df<-lapply(unique(orgo_cirm43$seurat_clusters),function(x) da_one_v_rest(x,obj=orgo_cirm43,group="seurat_clusters",assay.="TF_modules"))
+da_ga_df<-do.call("rbind",da_ga_df)
 write.table(da_ga_df,file="orgo_cirm43.onevrest.da_tfmodules.txt",sep="\t",col.names=T,row.names=T,quote=F)
-
 
 
 ```
 
 
 
-### Differential Accessibility between Clusters (one v one)
+## Differential Accessibility between Clusters (one v one)
 
 
 
@@ -2167,7 +2099,7 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
 ```
 
 
-### Performing GREAT on DA peaks
+## Performing GREAT on DA peaks
 
 
 ```R

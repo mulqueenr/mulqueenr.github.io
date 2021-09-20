@@ -10,8 +10,100 @@ category: CEDAR
 
 ## Source data
 ```bash
-/home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scNMT_NOMeWorkFlow/samples/raw
-/home/groups/CEDAR/doe/projects/my_NMT/MCF7_reseq/merge_all_MCF7/scNMT_NOMeWorkFlow/samples/raw
+/home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz
+/home/groups/CEDAR/doe/projects/my_NMT/new_MCF7/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz
+```
+
+### Setting up fastq files, and run QC
+
+Some MCF7 cells were run twice, so I'm going to merge them at the fastq level before alignment. 
+
+```bash
+mkdir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams
+cd /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams
+cp /home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz . & #copy files over
+
+
+for i in /home/groups/CEDAR/doe/projects/my_NMT/new_MCF7/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz; do outname=`basename $i`; cat $i $outname > merged.${outname}; done & #merge files that were resequenced
+for i in merged.*fastq.gz; do unmerged_file=${i:7}; rm $unmerged_file; done & #remove duplicate files and keep merged ones
+rename "merged." "" merged*gz #rename to make it consistent
+ls *fastq.gz | parallel -j15 fastqc {} & #run 15 parallel instances of fastqc
+multiqc -f . &
+```
+
+Setting up bismark alignment as single-end since NMT is known to generate chimeric reads. Setting trimming settings for R1 and R2 separately based on MultiQC output.
+
+I decided to trim the first 25 base pairs for both read 1 and read 2.
+
+## Bismark genome preparation
+
+```bash
+bismark_genome_preparation \
+--path_to_aligner /opt/installed/bowtie2/bin/bowtie2 \
+ --verbose \
+/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/
+```
+
+## Trimming fastq reads with trim_galore
+Using trim_galore, which uses cutadapt for trimming reads.
+Running 15 parallel instances.
+
+```bash
+ls *fastq.gz | parallel -j15 trim_galore --clip_R1 25 {} & #run 15 parallel instances of fastqc
+multiqc -f . & #remake multiqc
+```
+## Batch script for alignment of trimmed fastq files
+Using bismark single-end mode.
+
+```bash
+cd /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams
+bismark \
+--genome /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/ \
+--non_directional \
+--gzip \
+--parallel 8 \
+--single_end \
+`ls -m *trimmed.fq.gz | tr -d " " | tr -d "\n" ` &
+
+#ls command generates a comma separated list of files
+```
+
+```bash
+for i in *R1*bam;
+do R1=$i;
+R2=`sed /R1/R2/g $i`;
+outname=`sed /R1/merged/g $i`;
+samtools cat -@ 10 -o $outname $R1 $R2; done
+```
+## Merge Read 1 and Read 2 files per cell
+
+## Batch script for deduplication
+Using the bismark deduplication script.
+
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=1-374
+#SBATCH --tasks-per-node=30 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
+#SBATCH --time=3:00:00 ## ask for 1 hour on the node
+#SBATCH --
+
+array_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams/*merged.bam | wc -l`
+
+bam_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/AD_bams/*merged.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+
+srun deduplicate_bismark \
+--single \
+--output_dir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/dedup_bams \
+${bam_in}
+
+```
+
+
+```bash
+
 ```
 <!--
 ## Preparing bam files from Aaron Doe's preprocessing
