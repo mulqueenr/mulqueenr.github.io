@@ -6,10 +6,10 @@ permalink: /hmmcopy_nmt/
 category: CEDAR
 ---
 
-# Script to test Shah lab CNV calling using HMMcopy on SE bismark aligned reads. Starting at split fastq files for alignment to hg38.
-# CNV Calling on bismark aligned files
+## CNV Calling on bismark aligned files
+Script to test Shah lab CNV calling using HMMcopy on SE bismark aligned reads. Starting at split fastq files for alignment to hg38.
 
-## Source data
+### Source data
 ```bash
 /home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz
 /home/groups/CEDAR/doe/projects/my_NMT/new_MCF7/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz
@@ -36,7 +36,7 @@ Setting up bismark alignment as single-end since NMT is known to generate chimer
 
 I decided to trim the first 25 base pairs for both read 1 and read 2.
 
-## Bismark genome preparation
+### Bismark genome preparation
 
 ```bash
 bismark_genome_preparation \
@@ -45,7 +45,7 @@ bismark_genome_preparation \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/
 ```
 
-## Trimming fastq reads with trim_galore
+### Trimming fastq reads with trim_galore
 Using trim_galore, which uses cutadapt for trimming reads.
 Running 15 parallel instances.
 
@@ -53,7 +53,7 @@ Running 15 parallel instances.
 ls *fastq.gz | parallel -j15 trim_galore --clip_R1 25 {} & #run 15 parallel instances of fastqc
 multiqc -f . & #remake multiqc
 ```
-## Batch script for alignment of trimmed fastq files
+### Batch script for alignment of trimmed fastq files
 Using bismark single-end mode.
 
 ```bash
@@ -68,7 +68,7 @@ bismark \
 
 #ls command generates a comma separated list of files
 ```
-## Merge Read 1 and Read 2 files per cell
+### Merge Read 1 and Read 2 files per cell
 
 Merged single end bam files
 
@@ -80,7 +80,7 @@ outname=`echo $R1 | sed 's/R1/merged/g'`;
 samtools cat -@ 20 -o $outname $R1 $R2; done &
 ```
 
-## Batch script for deduplication
+### Batch script for deduplication
 Using the bismark deduplication script.
 
 ```bash
@@ -104,7 +104,7 @@ ${bam_in}
 
 ```
 
-## Perform modal copy number bin normalization similar to Shah sc-wgs work
+### Perform modal copy number bin normalization similar to Shah sc-wgs work
 This takes the input of files that are generated in the hmm_generator function in the R script (files starting with "counts_")
 
 ```python
@@ -191,7 +191,7 @@ for infile in files:
 
 ```
 
-## Preparing bulk WGS data for cell lines to check CNVs
+### Preparing bulk WGS data for cell lines to check CNVs
 Files are from a previous publication by Hisham (here.)[https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE68355]
 
 ```bash
@@ -240,7 +240,7 @@ bowtie2 --threads 20 -x /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-
 
 ```
 
-## Run HMMcopy using single-end deduplicated bam files as input
+### Run HMMcopy using single-end deduplicated bam files as input
 Some functions taken from SCOPE for convenient bam file read in
 
 
@@ -673,11 +673,11 @@ system("slack HMMcopy.merged.500kb.png")
 
 ```
 
-# CisTopic on Methylation Data
+## CisTopic on Methylation Data
 
 To see processing from fastq files to deduplicated bam files, see ["NMT cnv calling"](https://mulqueenr.github.io/hmmcopy_nmt/)
 
-## Set up methylation extraction
+### Set up methylation extraction
 
 Perform methylation extraction with bismark methylation extractor. Output cov.gz files.
 
@@ -741,7 +741,7 @@ sbatch nome_extract.slurm.sh
 ```
 
 
-## Using python pandas and bedtools wraper to summarize methylation over regions
+### Using python pandas and bedtools wraper to summarize methylation over regions
 
 * argv1 is a cov.gz output from coverage2cytosine report (either CG or GpC)
 * argv2 is a bed file with features to aggregate methylation over
@@ -805,7 +805,7 @@ Example running:
 python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py [argv1] [argv2] [arg3] [argv4]
 ```
 
-## Run as a slurm batch jobs.
+### Run as a slurm batch jobs.
 
 {% capture summary %} CpG Gene body {% endcapture %} {% capture details %}  
 
@@ -1066,7 +1066,7 @@ sbatch summet_GpC_enhancer.slurm.sh
 
 ```
 
-## Running cistopic on methylated regions.
+### Running cistopic on methylated regions.
 
 Making an R script for cistopic processing of methylation files.
 
@@ -1445,7 +1445,7 @@ saveRDS(dat,file=paste0(args[2],".",args[3],".cistopic_object.Rds"))
 ```
 
 
-## Run cistopic on each region and C context
+### Run cistopic on each region and C context
 
 Rscript /home/groups/CEDAR/mulqueen/src/cistopic_methylation.R [argv1] [argv2] [argv3]
 
@@ -1493,9 +1493,9 @@ sbatch cistopic.GpC.foxa1.slurm.sh
 ```
 
 
-# RNA Processing
+## RNA Processing
 
-## Check RNA data from Aaron Doe Processing
+### Check RNA data from Aaron Doe Processing
 
 ```bash
 mkdir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna
@@ -1504,12 +1504,12 @@ multiqc -o /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna /home/groups/CE
 
 I think his filtering is way to aggressive given the quality of the data. So I'm going to realign and generate my own counts matrix.
 
-## Raw data is located here: 
+### Raw data is located here: 
 ```bash
 /home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scRNA_SMARTseq2/samples/raw
 ```
 
-### Make a symbolic link to RNA file directories
+#### Make a symbolic link to RNA file directories
 
 ```bash
 ln -s /home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scRNA_SMARTseq2/samples/raw /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna_raw
@@ -1546,7 +1546,7 @@ echo $name;
 --quantMode GeneCounts; 
 ```
 
-## Generate a Seurat Object for our RNA
+### Generate a Seurat Object for our RNA
 
 Read in ReadsPerGene.out.tab files and format into a data frame. Then make a seurat object for filtering and processing cells.
 
@@ -1681,7 +1681,7 @@ saveRDS(dat,"/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/rna/rna_bam/Seura
 
 ```
 
-## Run WarpLDA on RNA data
+### Run WarpLDA on RNA data
 
 ```R
 library(Seurat)
@@ -1757,7 +1757,7 @@ system(paste0("slack -F ",outname,".cistopic_clustering.regions.pdf"," ryan_todo
 
 ```
 
-## Combine multiple binarized matrices prior to running cistopic
+### Combine multiple binarized matrices prior to running cistopic
 
 Rscript /home/groups/CEDAR/mulqueen/src/merge_cistopic_methylation.R [argv1] [argv2] [argvN]
 
