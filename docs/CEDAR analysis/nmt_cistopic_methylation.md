@@ -124,10 +124,10 @@ Generate cytosine NOME data for region summarization.
 #SBATCH --tasks-per-node=10 
 #SBATCH --cpus-per-task=1 
 #SBATCH --mem-per-cpu=5gb 
-#SBATCH --time=10:00:00 
+#SBATCH --time=24:00:00 
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*_merged_trimmed_bismark_bt2.deduplicated.bismark.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 out_name=`echo $files_in | awk '{n=split($1,a,"/");print a[n]}' | sed s/".cov.gz"//`
 
 srun coverage2cytosine \
@@ -176,7 +176,7 @@ Note: argv2 should be a bed file of format [chr]\t[start]\t[end]\t[feature_name]
 
 in_list=[]
 in_list.append(sys.argv[1])
-#in_list.append("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/T_E8_G02_merged.deduplicated.bismark.NOMe.CpG.cov.gz")
+#in_list.append("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/T_E8_G02_merged.deduplicated.bismark.NOMe.CpG.cov.gz")
 in_list.append(sys.argv[2])
 #in_list.append("/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed")
 in_list.append(sys.argv[3])
@@ -216,18 +216,18 @@ python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py [arg
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
 #SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
+#SBATCH --array=1-572
 #SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
 #SBATCH --time=1:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
 $files_in \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/methylated_regions \
 gene 
 
 ```
@@ -240,18 +240,18 @@ gene
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
 #SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
+#SBATCH --array=1-572
 #SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
 #SBATCH --time=1:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
 $files_in \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/methylated_regions \
 promoter
 
 ```
@@ -264,18 +264,18 @@ promoter
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
 #SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
+#SBATCH --array=1-572
 #SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
 #SBATCH --time=1:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
 $files_in \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/methylated_regions \
 enhancer
 
 ```
@@ -288,47 +288,24 @@ enhancer
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
 #SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
+#SBATCH --array=1-572
 #SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
 #SBATCH --time=1:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
 $files_in \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/methylated_regions \
 100kb
 
 ```
 
 {% endcapture %} {% include details.html %} 
 
-{% capture summary %} CpG 10kb {% endcapture %} {% capture details %}  
-
-```bash
-#!/bin/bash
-#SBATCH --nodes=1 #request 1 node
-#SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
-#SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
-#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
-#SBATCH --time=1:00:00 ## ask for 1 hour on the node
-#SBATCH --
-
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
-
-srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
-$files_in \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/10kb.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
-10kb
-
-```
-
-{% endcapture %} {% include details.html %} 
 
 {% capture summary %} CpG Breast Cancer Enhancers {% endcapture %} {% capture details %}  
 
@@ -336,18 +313,18 @@ $files_in \
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
 #SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
+#SBATCH --array=1-572
 #SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
 #SBATCH --time=1:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
 $files_in \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/methylated_regions \
 bcEnhance
 
 ```
@@ -355,48 +332,24 @@ bcEnhance
 {% endcapture %} {% include details.html %} 
 
 
-{% capture summary %} CpG FOXA1 {% endcapture %} {% capture details %}  
-
-```bash
-#!/bin/bash
-#SBATCH --nodes=1 #request 1 node
-#SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
-#SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
-#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
-#SBATCH --time=1:00:00 ## ask for 1 hour on the node
-#SBATCH --
-
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*CpG.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
-
-srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
-$files_in \
-/home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/FOXA1.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
-foxa1
-
-```
-
-{% endcapture %} {% include details.html %} 
-
 {% capture summary %} GpC Gene body {% endcapture %} {% capture details %}  
 
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
 #SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
+#SBATCH --array=1-572
 #SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
 #SBATCH --time=1:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
 $files_in \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/genes/genes.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/methylated_regions \
 gene 
 
 ```
@@ -409,18 +362,18 @@ gene
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
 #SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
+#SBATCH --array=1-572
 #SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
 #SBATCH --time=1:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
 $files_in \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/promoters.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/methylated_regions \
 promoter
 
 ```
@@ -433,18 +386,18 @@ promoter
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
 #SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
+#SBATCH --array=1-572
 #SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
 #SBATCH --time=1:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
 $files_in \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/enhancers.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/methylated_regions \
 enhancer
 
 ```
@@ -457,44 +410,19 @@ enhancer
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
 #SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
+#SBATCH --array=1-572
 #SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
 #SBATCH --time=1:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
 $files_in \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/100kb.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/methylated_regions \
 100kb
-
-```
-
-{% endcapture %} {% include details.html %} 
-
-
-{% capture summary %} GpC 10kb {% endcapture %} {% capture details %}  
-
-```bash
-#!/bin/bash
-#SBATCH --nodes=1 #request 1 node
-#SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
-#SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
-#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
-#SBATCH --time=1:00:00 ## ask for 1 hour on the node
-#SBATCH --
-
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
-
-srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
-$files_in \
-/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/10kb.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
-10kb
 
 ```
 
@@ -506,18 +434,18 @@ $files_in \
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
 #SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
+#SBATCH --array=1-572
 #SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
 #SBATCH --time=1:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
 $files_in \
 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/regulatory_beds/breastcancer_enhancers_SI_RI.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
+/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/methylated_regions \
 bcEnhance
 
 ```
@@ -525,48 +453,19 @@ bcEnhance
 {% endcapture %} {% include details.html %} 
 
 
-{% capture summary %} GpC FOXA1 {% endcapture %} {% capture details %}  
-
-```bash
-#!/bin/bash
-#SBATCH --nodes=1 #request 1 node
-#SBATCH --tasks-per-node=10 ##we want our node to do N tasks at the same time
-#SBATCH --array=1-374
-#SBATCH --cpus-per-task=3 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
-#SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
-#SBATCH --time=1:00:00 ## ask for 1 hour on the node
-#SBATCH --
-
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/bismark_cov_out/*GpC.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
-
-srun python /home/groups/CEDAR/mulqueen/src/aggregate_methylation_over_region.py \
-$files_in \
-/home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/FOXA1.bed \
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/methylation_regions \
-foxa1
-
-```
-{% endcapture %} {% include details.html %} 
-
-
 ### Running all of these as batch jobs
 
 ```bash
-sbatch CpG_genes.slurm.sh 
-sbatch CpG_enhancers.slurm.sh  
-sbatch CpG_promoters.slurm.sh  
-sbatch CpG_100kb.slurm.sh  
-sbatch CpG_10kb.slurm.sh  
-sbatch CpG_bcEnhancer.slurm.sh
-sbatch CpG_FOXA1.slurm.sh
-
-sbatch GpC_genes.slurm.sh
-sbatch GpC_enhancers.slurm.sh
-sbatch GpC_promoters.slurm.sh
-sbatch GpC_100kb.slurm.sh  
-sbatch GpC_100kb.slurm.sh  
-sbatch GpC_bcEnhancer.slurm.sh
-sbatch GpC_FOXA1.slurm.sh
+sbatch summet_CpG_100kb.slurm.sh
+sbatch summet_CpG_promoter.slurm.sh 
+sbatch summet_GpC_gene.slurm.sh
+sbatch summet_CpG_bcEnhance.slurm.sh 
+sbatch summet_GpC_100kb.slurm.sh 
+sbatch summet_GpC_promoter.slurm.sh
+sbatch summet_CpG_enhancer.slurm.sh 
+sbatch summet_GpC_bcEnhance.slurm.sh
+sbatch summet_CpG_gene.slurm.sh 
+sbatch summet_GpC_enhancer.slurm.sh
 
 ```
 
