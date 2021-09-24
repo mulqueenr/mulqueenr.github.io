@@ -2,7 +2,7 @@
 title: Cell Line NMTseq Analysis
 layout: cedar_analysis
 author: Ryan Mulqueen
-permalink: /hmmcopy_nmt/
+permalink: /cellline_nmt/
 category: CEDAR
 ---
 
