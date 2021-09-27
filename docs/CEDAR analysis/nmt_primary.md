@@ -1,15 +1,15 @@
 ---
-title: Cell Line NMTseq Analysis
+title: Breast Cancer NMTseq Analysis
 layout: cedar_analysis
 author: Ryan Mulqueen
-permalink: /cellline_nmt/
+permalink: /primary_nmt/
 category: CEDAR
 ---
 
 Data for this page will be stored and processed here:
 
 ```bash
-/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test
+/home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples
 ```
 
 ## CNV Calling on bismark aligned files
@@ -17,8 +17,9 @@ Script to test Shah lab CNV calling using HMMcopy on SE bismark aligned reads. S
 
 ### Source data
 ```bash
-/home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz
-/home/groups/CEDAR/doe/projects/my_NMT/new_MCF7/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz
+/home/groups/CEDAR/doe/projects/my_NMT/BCs/BC17/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz
+/home/groups/CEDAR/doe/projects/my_NMT/Fariba/Fariba_1/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz
+/home/groups/CEDAR/doe/projects/my_NMT/Fariba/Fariba_4/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz
 ```
 
 ### Setting up fastq files, and run QC
@@ -26,15 +27,11 @@ Script to test Shah lab CNV calling using HMMcopy on SE bismark aligned reads. S
 Some MCF7 cells were run twice, so I'm going to merge them at the fastq level before alignment. 
 
 ```bash
-mkdir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams
-cd /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams
-cp /home/groups/CEDAR/doe/projects/my_NMT/MCF7_T47D/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz . & #copy files over
+cp /home/groups/CEDAR/doe/projects/my_NMT/BCs/BC17/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/fq &
+cp /home/groups/CEDAR/doe/projects/my_NMT/Fariba/Fariba_1/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/fq &
+cp /home/groups/CEDAR/doe/projects/my_NMT/Fariba/Fariba_4/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/fq &
 
-
-for i in /home/groups/CEDAR/doe/projects/my_NMT/new_MCF7/scNMT_NOMeWorkFlow/samples/raw/*fastq.gz; do outname=`basename $i`; cat $i $outname > merged.${outname}; done & #merge files that were resequenced
-for i in merged.*fastq.gz; do unmerged_file=${i:7}; rm $unmerged_file; done & #remove duplicate files and keep merged ones
-rename "merged." "" merged*gz #rename to make it consistent
-ls *fastq.gz | parallel -j15 fastqc {} & #run 15 parallel instances of fastqc
+ls *fastq.gz | parallel -j20 fastqc {} & #run 15 parallel instances of fastqc
 multiqc -f . &
 ```
 
@@ -61,16 +58,23 @@ multiqc -f . & #remake multiqc
 ```
 ### Batch script for alignment of trimmed fastq files
 Using bismark single-end mode.
-
 ```bash
-cd /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams
-bismark \
+
+ls /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/fq/*_trimmed.fq.gz | parallel -j10 bismark \
 --genome /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/ \
 --non_directional \
 --gzip \
---parallel 8 \
 --single_end \
-`ls -m *trimmed.fq.gz | tr -d " " | tr -d "\n" ` &
+{} &
+
+#takes 150gb and 30 cores for -j10
+
+#to rerun after my session timed out
+for i in *bam; do fq_trimmed=${i::-16}.fq.gz; echo $fq_trimmed; mv $fq_trimmed trimmed_fq; done #move completed trimmed fq files to new directory and run again
+```
+
+```bash
+cd /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams
 
 #ls command generates a comma separated list of files
 ```
