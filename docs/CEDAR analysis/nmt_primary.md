@@ -73,11 +73,6 @@ ls /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/fq/*_trimmed.
 for i in *bam; do fq_trimmed=${i::-16}.fq.gz; echo $fq_trimmed; mv $fq_trimmed trimmed_fq; done #move completed trimmed fq files to new directory and run again
 ```
 
-```bash
-cd /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams
-
-#ls command generates a comma separated list of files
-```
 ### Merge Read 1 and Read 2 files per cell
 
 Merged single end bam files
@@ -88,6 +83,17 @@ do R1=$i;
 R2=`echo $R1 | sed 's/R1/R2/g'`;
 outname=`echo $R1 | sed 's/R1/merged/g'`;
 samtools cat -@ 20 -o $outname $R1 $R2; done &
+
+
+#check for corrupt files afterwards
+
+for i in `ls *_R1_*bam`;
+do merged=`echo $i | sed 's/R1/merged/g'`;
+if [ ! -f $merged ]; then
+    echo "$merged"
+fi; done
+
+
 ```
 
 ### Batch script for deduplication
@@ -96,20 +102,20 @@ Using the bismark deduplication script.
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
-#SBATCH --array=1-573
+#SBATCH --array=1-383
 #SBATCH --tasks-per-node=30 ##we want our node to do N tasks at the same time
 #SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=2gb ## request gigabyte per cpu
 #SBATCH --time=3:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-array_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/*merged_trimmed_bismark_bt2.bam | wc -l`
+array_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/merged_bam/*merged_trimmed_bismark_bt2.bam | wc -l`
 
-bam_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/*merged_trimmed_bismark_bt2.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+bam_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/merged_bam/*merged_trimmed_bismark_bt2.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun deduplicate_bismark \
 --single \
---output_dir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/dedup_bams \
+--output_dir /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/merged_bam/dedup_bams \
 ${bam_in}
 
 ```
@@ -201,55 +207,6 @@ for infile in files:
 
 ```
 
-### Preparing bulk WGS data for cell lines to check CNVs
-Files are from a previous publication by Hisham (here.)[https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE68355]
-
-```bash
-#conda install sra-tools #have to set up SRA tools to get fastq files
-#conda install bwa-mem
-
-mkdir /home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/
-cd /home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata/
-
-#T47D 3 replicates of input DNA
-wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000691/SRR2000691.1
-wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000692/SRR2000692.1
-wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000693/SRR2000693.1
-
-#MCF7 3 replicates of input DNA
-wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000750/SRR2000750.1
-wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000751/SRR2000751.1
-wget https://sra-downloadb.be-md.ncbi.nlm.nih.gov/sos1/sra-pub-run-5/SRR2000752/SRR2000752.1
-
-
-for i in SRR*1; do 
-    fastq-dump --split-3 $i & done & #using sra to fastq-dump data
-
-for i in *fastq; do
-    gzip $i & done & #gzip those fastqs because I'm not a criminal
-
-mv SRR2000691.1.fastq.gz t74d_input.1.fq.gz
-mv SRR2000692.1.fastq.gz t74d_input.2.fq.gz
-mv SRR2000693.1.fastq.gz t74d_input.3.fq.gz
-mv SRR2000750.1.fastq.gz mcf7_input.1.fq.gz
-mv SRR2000751.1.fastq.gz mcf7_input.2.fq.gz
-mv SRR2000752.1.fastq.gz mcf7_input.3.fq.gz
-
-
-#using bowtie2 for alignment
-#preparing human genome
-wget http://igenomes.illumina.com.s3-website-us-east-1.amazonaws.com/Homo_sapiens/NCBI/GRCh38/Homo_sapiens_NCBI_GRCh38.tar.gz
-
-#alignment of reads using either bwa mem or bowtie2
-for i in *fq.gz; do
-bwa mem -P -S -t 10 -T 20 /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/genome.fa $i 2>>align.log | samtools sort -@ 5 -T . -m 5G - | samtools rmdup -s - $outname; done &
-
-for i in *fq.gz; do
-outname=${i::-6}.bam
-bowtie2 --threads 20 -x /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/Bowtie2Index/genome -U $i | samtools sort -@ 5 -T . -m 5G - | samtools rmdup -s - $outname; done &
-
-```
-
 ### Run HMMcopy using single-end deduplicated bam files as input
 Some functions taken from SCOPE for convenient bam file read in
 
@@ -269,24 +226,16 @@ library(patchwork)
 library(reshape2)
 library(philentropy)
 library(dendextend)
-setwd("/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/dedup_bams")
+setwd("/home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/merged_bam/dedup_bams")
 
 
 #set up single cell bam files from given directory
 prepare_bam_bed_obj<-function(resol.){
     #Initalization
-    bamfolder <- "/home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/dedup_bams"
+    bamfolder <- "/home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/merged_bam/dedup_bams"
     bamFile <- list.files(bamfolder, pattern = 'deduplicated.bam$')
-    #add reference bam files
-    ref_bamfolder<-"/home/groups/CEDAR/mulqueen/ref/public_cellline_chipdata"
-    ref_bamFile <- list.files(ref_bamfolder, pattern = '.bam$')
     bamdir <- file.path(bamfolder, bamFile)
-    ref_bamdir<-file.path(ref_bamfolder,ref_bamFile)
     sampname_raw <- sapply(strsplit(bamFile, ".", fixed = TRUE), "[", 1)
-    refname_raw<-substr(ref_bamFile,1, nchar(ref_bamFile)-4)
-    
-    bamdir<-append(bamdir,ref_bamdir)
-    sampname_raw<-append(sampname_raw,refname_raw)
 
     #set genomic window size to 500kb
     bambedObj <- get_bam_bed(bamdir = bamdir, sampname = sampname_raw, hgref = "hg38",resolution=resol,sex=T)#resolution of 100 = 100kbp
@@ -405,7 +354,7 @@ mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
     Y<-readRDS(file="rawcount.500kbp.rds")
     
     #filter Y to cells with >500000 reads
-    Y<-Y[,colSums(Y)>50000] #with fewer reads i was getting errors, was at 500k, but i want to try to go lower
+    Y<-Y[,colSums(Y)>100000] #with fewer reads i was getting errors, was at 500k, but i want to try to go lower
 
 #Prepare windows with gc and mappability data
     ref <- as.data.frame(bambedObj$ref)
@@ -441,33 +390,16 @@ mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
     Y_plot<-as.data.frame(Y_plot %>% mutate_all(., ~ ifelse(.!=0, log10(.+0.00000000001), log10(1))))
 
     #add sample cell line names as metadata
-    cell_annot<-data.frame(basename=unlist(lapply(strsplit(row.names(Y_plot),"_"),"[",1)))
-
-    #set up treatment conditions
-    cell_annot$treatment<-substr(unlist(lapply(strsplit(row.names(Y_plot),"_"),"[",2)),1,1) #set up T47D cell treatment first
-    cell_annot[startsWith(cell_annot$basename,"M7"),]$treatment<-substr(cell_annot[startsWith(cell_annot$basename,"M7"),]$basename,3,3)
-    cell_annot[startsWith(cell_annot$basename,"BSM7"),]$treatment<-substr(cell_annot[startsWith(cell_annot$basename,"BSM7"),]$basename,5,5)
-
-    cell_annot$cellLine_treatment<-paste(cell_annot$basename,cell_annot$treatment,sep="_")
-
-    #clean up metadata a bit more
-    cell_annot$cellLine<-"T47D"
-    cell_annot[cell_annot$basename %in% c("BSM7E6","M7C1A","M7C2B","M7E4C","mcf7bulk"),]$cellLine<-"MCF7"
-    cell_annot[cell_annot$treatment %in% c("C"),]$treatment<-"control"
-    cell_annot[cell_annot$treatment %in% c("E"),]$treatment<-"estrogen"
-    cell_annot$bulk<-"single-cell"
-    cell_annot[cell_annot$basename=="mcf7bulk",]$bulk<-"MCF7"
-    cell_annot[cell_annot$basename=="t47dbulk",]$bulk<-"T47D"
+    cell_annot<-data.frame(basename=unlist(lapply(strsplit(row.names(Y_plot),"_"),"[",1)),
+        well=unlist(lapply(strsplit(row.names(Y_plot),"_"),"[",2)),
+        idx=unlist(lapply(strsplit(row.names(Y_plot),"_"),"[",3)))
 
     col_fun_cn=structure(c("#2166ac", "#67a9cf", "#f7f7f7","#fddbc7","#ef8a62","#b2182b","#630410"), names = c("1", "2", "3", "4", "5", "6","7"))
 
     ha = HeatmapAnnotation(which="row",cellline=cell_annot$cellLine,treatment=cell_annot$treatment,assay=cell_annot$cellLine_treatment,readcount=log10(colSums(Y)),
-        col = list(assay = c("BSM7E6_E"="red","M7C1A_C"="blue","M7C2B_C"="purple","M7E4C_E"="brown","T_C"="green","T_E"="gray","mcf7bulk_i"="yellow","t47dbulk_i"="orange"),
-            cellline=c("T47D"="red","MCF7"="blue"),
-            treatment=c("control"="white","estrogen"="black","i"="green")))
+        col = list(assay = c("BC17-11A"="red","FB1"="blue","FB4"="green")))
 
     cellcount=data.frame(sampname=row.names(Y_plot),cellno=rep(1,nrow(Y_plot)))
-    cellcount[grepl("input",cellcount$sampname),]$cellno<-"bulk"
 
     col_fun_reads=colorRamp2(quantile(unlist(Y_plot),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
     c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
@@ -514,13 +446,13 @@ plt2<-Heatmap(copy_segmentation,
     )
 
 
-pdf("HMMcopy_test.pdf",width=10,height=3)
+pdf("HMMcopy_cnv.pdf",width=10,height=3)
 par(mfrow=c(2,1))
 plt1
 plt2
 dev.off()
 
-system("slack -F HMMcopy_test.pdf ryan_todo")
+system("slack -F HMMcopy_cnv.pdf ryan_todo")
 
 #custom mapd function
 mapd<-function(cell){
@@ -539,17 +471,11 @@ library(dplyr)
 dist_df %>% group_by(sample) %>% summarize(mean_MAD=mean(mapd),median_MAD=median(mapd),sd_MAD=sd(mapd),mean_readcount=mean(read_count),median_readcount=median(read_count))
 
 
-## A tibble: 7 x 6
-#  sample   mean_MAD median_MAD  sd_MAD mead_readcount median_readcount
-#  <chr>       <dbl>      <dbl>   <dbl>          <dbl>            <dbl>
-#1 BSM7E6     0.196      0.190  0.0293        3187439.          2226462
-#2 M7C1A      0.288      0.290  0.0301        1128324.          1069844
-#3 M7C2B      0.333      0.344  0.0411         718630.           592200
-#4 M7E4C      0.301      0.299  0.0284         304512.           327448
-#5 mcf7bulk   0.0905     0.0921 0.0140       22368933.         20262739
-#6 T          0.272      0.262  0.0473         752268.           570749
-#7 t47dbulk   0.0901     0.0917 0.00733      30191789.         32174336
-
+# sample   mean_MAD median_MAD sd_MAD mean_readcount median_readcount
+#  <chr>       <dbl>      <dbl>  <dbl>          <dbl>            <dbl>
+#1 BC17-11A    0.392      0.413 0.0713        472876.          346938
+#2 FB1         0.298      0.296 0.0361        171075.          163942.
+#3 FB4         0.366      0.359 0.0504        215485.          190189
 
 
 plt1<-ggplot(dist_df,aes(x=paste(sample),y=mapd,color=paste(sample)))+geom_jitter()+geom_boxplot(aes(fill=NULL))+theme_bw()+ylim(c(0,1))
@@ -695,18 +621,18 @@ meth_extract.slurm.sh
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1
-#SBATCH --array=1-572
+#SBATCH --array=1-377
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=18
 #SBATCH --mem-per-cpu=1gb
 #SBATCH --time=12:00:00
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/dedup_bams/*deduplicated.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/merged_bam/dedup_bams/*deduplicated.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 
 srun bismark_methylation_extractor \
 -s --gzip --parallel 5 \
--o /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out \
+-o /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/bismark_cov_out \
 --genome_folder /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta \
 --CX \
 --bedGraph \
@@ -725,19 +651,19 @@ Generate cytosine NOME data for region summarization.
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1 
-#SBATCH --array=1-572
+#SBATCH --array=1-377
 #SBATCH --tasks-per-node=10 
 #SBATCH --cpus-per-task=1 
 #SBATCH --mem-per-cpu=5gb 
 #SBATCH --time=24:00:00 
 #SBATCH --
 
-files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out/*_merged_trimmed_bismark_bt2.deduplicated.bismark.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+files_in=`ls /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/bismark_cov_out/*_merged_trimmed_bismark_bt2.deduplicated.bismark.cov.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 out_name=`echo $files_in | awk '{n=split($1,a,"/");print a[n]}' | sed s/".cov.gz"//`
 
 srun coverage2cytosine \
 --gzip  \
---dir /home/groups/CEDAR/mulqueen/projects/nmt/nmt_test/redo_bams/bismark_cov_out \
+--dir /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/bismark_cov_out \
 --genome_folder /home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta \
 --output $out_name \
 --nome-seq \
