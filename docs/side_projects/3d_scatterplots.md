@@ -40,7 +40,7 @@ h1 {
   color: white;
   display: flex;
   isolation: isolate;
-  width: 100vw;
+  width: 75vw;
 
   /* Create the parallax scrolling effect */
   background-attachment: fixed;
