@@ -120,6 +120,9 @@ bpy.ops.wm.save_as_mainfile(filepath="C:/Users/Chad/Desktop/cortex.blend") #chan
 bpy.context.scene.render.filepath = 'cortex.test.png' #change file path to the output png you would like.
 
 ```
+
+Here is the script as used to generate the hero image at the top of the page.
+
 ```python
 #1. import modules
 import bpy
