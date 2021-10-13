@@ -1,4 +1,4 @@
-  ---
+---
 title: 3D Scatter Plots
 layout: side_projects
 author: Ryan Mulqueen
