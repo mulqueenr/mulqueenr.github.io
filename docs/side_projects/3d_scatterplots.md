@@ -36,7 +36,7 @@ h1 {
 
 .background_img {
   min-height: 75vh;
-  background-image: url("{{site.baseurl}}/assets/images/OPCfront_scatterplot.png");
+  background-image: url("{{site.baseurl}}/assets/images/cortex_scatterplot.png");
   color: white;
   display: flex;
   isolation: isolate;
@@ -221,7 +221,7 @@ bmesh.update_edit_mesh(obj_cube.data)  # Update the mesh in edit mode
 bpy.ops.object.mode_set(mode='OBJECT') #switch back to object mode when done
 bpy.ops.object.modifier_add(type='SUBSURF') #make it smooth
 bpy.data.objects["Cube"].modifiers["Subdivision"].render_levels=6
-bpy.data.objects["Cube"].location=(-4,6.54,18.88) #change the location for more dramatic shadows
+bpy.data.objects["Cube"].location=(-4,4.3,17.725) #change the location for more dramatic shadows
 
 #move the camera and rotate
 bpy.data.objects["Camera"].location=(34.61997604370117, -40.53969955444336, 25.66326904296875)
