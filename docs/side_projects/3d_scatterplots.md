@@ -35,7 +35,7 @@ h1 {
 }
 
 .background_img {
-  min-height: 75vh;
+  min-height: 100vh;
   background-image: url("{{site.baseurl}}/assets/images/cortex_scatterplot.png");
   color: white;
   display: flex;
