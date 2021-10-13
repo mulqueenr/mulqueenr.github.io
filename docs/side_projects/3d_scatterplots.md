@@ -111,7 +111,6 @@ This script uses linked objects (basically a way to save memory). To do this, it
 In the future, the geometry or particle nodes might make this even easier, but this is what we have to work with now.
 I've run this script on up to 200k cells. It seems to slow down the more data-blocks there are in the blender file. From my computer, I run the plotting in 1k cell batches. I find that for each 1K cells I plot, the next 1K cells take about 0.2-0.4 more seconds. This adds up with bigger files, but hey, at least it is linear. For my trash computer, 200k cells took about 2-3 hours.
 
--->
 ```python
 #1. import modules
 import bpy
@@ -323,24 +322,7 @@ bpy.ops.wm.save_as_mainfile(filepath="C:/Users/Chad/Desktop/cortex.blend") #save
 bpy.context.scene.render.filepath = 'cortex.test.png'
 bpy.ops.render.render(write_still=True) #render and save file
 
-
-
-
-
-#this will build up our cells and print out how many seconds each 1000 cells took. note the increase in time per batch. still not sure how to optimize that.
-
 ```
-
-
-## Final rendering
-Finally lets snap a pic!
-- I turned the Resolution X and Y under the "Output Properties" tab up to 3840 px X 2160 px for a 4K resolution render.
-- I also turned the render sampling in the "Render Properties" tab up to 256 for Render
-- Finally press "F12" key to render and watch a beautiful plot be born.
-
-
-<img src="{{site.baseurl}}/assets/images/OPCside_scatterplot.png">
-
 
 ## Bonus
 Here I took the human s3-ATAC brain data and colored by cell type. I then cranked up the emission strength and removed all external lights.
