@@ -101,7 +101,7 @@ Astrocytes    TCAACGAGTTCGCGATGGTCAGAGCCCGCCGATATC    5.51775913941571    -1.877
 Required software
 - Blender v 2.93 or higher ([link](https://www.blender.org/))
 
-## Running the script
+## Description of the script and how to run
 
 I set up a script to automate the full process. I'll list what is happening within the script so it is a bit easier to tweak. The blender-python (bpy) API is kind of in a state right now because there is a lot of active development. Sorry it isn't as readable as a good python script should be! To run the script, just open blender, change a window panel to "Python Console" or just press Shift+F4. Then run. The script makes a shader similar to what we use in the molecular render side project. It does this in python but the end result (when made nice to look at) is this:
 
@@ -122,6 +122,8 @@ bpy.context.scene.render.filepath = 'cortex.test.png' #change file path to the o
 ```
 
 Here is the script as used to generate the hero image at the top of the page.
+
+## The script
 
 ```python
 #1. import modules
