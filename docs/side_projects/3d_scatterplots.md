@@ -111,6 +111,15 @@ This script uses linked objects (basically a way to save memory). To do this, it
 In the future, the geometry or particle nodes might make this even easier, but this is what we have to work with now.
 I've run this script on up to 200k cells. It seems to slow down the more data-blocks there are in the blender file. From my computer, I run the plotting in 1k cell batches. I find that for each 1K cells I plot, the next 1K cells take about 0.2-0.4 more seconds. This adds up with bigger files, but hey, at least it is linear. For my trash computer, 200k cells took about 2-3 hours.
 
+Change these lines:
+```python
+#Input
+file_xyz=open("C:/Users/Chad/Desktop/cortex.3D.table","r") #change the filepath to your tsv will the line format described above.
+#Output
+bpy.ops.wm.save_as_mainfile(filepath="C:/Users/Chad/Desktop/cortex.blend") #change filepath to the output blender file you would like
+bpy.context.scene.render.filepath = 'cortex.test.png' #change file path to the output png you would like.
+
+```
 ```python
 #1. import modules
 import bpy
