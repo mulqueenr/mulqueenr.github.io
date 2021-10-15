@@ -43,7 +43,7 @@ combined<-readRDS("210924_cellline.SeuratObject.Rds")
 cistopic_generation<-function(x,name_out,outdir){
   wd<-outdir
   outname<-name_out
-  atac_sub<-readRDS(x)
+  atac_sub<-x
   cistopic_counts_frmt<-atac_sub$peaks@counts
   row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
   sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
@@ -103,65 +103,82 @@ cistopic_generation<-function(x,name_out,outdir){
 
   }
 
-cistopic_generation(x="210924_cellline.SeuratObject.Rds",name_out="210924_cellline",outdir="/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
-
-#Expanding on cistopic object analysis
-obj<-readRDS("210924_cellline.SeuratObject.Rds")
-cisTopicObject<-readRDS("/home/groups/CEDAR/mulqueen/projects/10x_atacrna/210924_cellline.CisTopicObject.Rds")
-cisTopicObject <- addCellMetadata(cisTopicObject, cell.data = obj@meta.data)
-
-#heatmap by topic
-cisTopicObject<- selectModel(cisTopicObject, type='derivative')
-cisTopicObject <- runUmap(cisTopicObject, target='cell')
-pdf("celltopic_heatmap.pdf")
-cellTopicHeatmap(cisTopicObject, method='Probability', colorBy=c("origin","seurat_clusters"))
-dev.off()
-system("slack -F celltopic_heatmap.pdf ryan_todo")
-
-#region score association
-pred.matrix <- predictiveDistribution(cisTopicObject)
-cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.999, plot=TRUE)
-cisTopicObject <- getRegionsScores(cisTopicObject, method='NormTop', scale=TRUE)
-
-txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
-cisTopicObject <- annotateRegions(cisTopicObject, txdb=TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb='org.Hs.eg.db')
-cisTopicObject <- runtSNE(cisTopicObject, target='region', perplexity=200, check_duplicates=FALSE) #cluster by regions
-
-getBedFiles(cisTopicObject, path='cisTopics_asBed')
-
-saveRDS(cisTopicObject,"/home/groups/CEDAR/mulqueen/projects/10x_atacrna/210924_cellline.CisTopicObject.Rds")
-
-#save cistopic region data
-outdat<-lapply(cisTopicObject@binarized.cisTopics, function(x) {
-  temp<-merge(x,cisTopicObject@region.data,by="row.names")
-  temp$topic_assigned<-names(x)
-  return(temp)})
-
-outdat<-data.table::rbindlist(outdat,use.names=FALSE)
-write.table(outdat,file="topic_region_assignment.txt",col.names=T,row.names=T,quote=F,sep="\t")
-system("slack -F topic_region_assignment.txt ryan_todo" )
-pdf("topic_annotations.pdf")
-par(mfrow=c(1,1))
-signaturesHeatmap(cisTopicObject, selected.signatures = 'annotation')
-plotFeatures(cisTopicObject, method='tSNE', target='region', topic_contr=NULL, colorBy=c('annotation'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, intervals=20)
-dev.off()
-system("slack -F topic_annotations.pdf ryan_todo")
+cistopic_generation(x=combined,name_out="210924_cellline",outdir="/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
 
 
-pdf("topic_scores.pdf")
-par(mfrow=c(4,4))
-plotFeatures(cisTopicObject, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
-dev.off()
-system("slack -F topic_scores.pdf ryan_todo")
+#Run just for t47D
+t47d<-subset(combined,origin %in% c("T47D Estrogen","T47D Control"))
+cistopic_generation(x=t47d,name_out="210924_t47d",outdir="/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
 
-#print foxm1 associated topics
-unlist(lapply(cisTopicObject@binarized.cisTopics,function(x) {
-  print(
-    paste(
-      names(x),
-      sum(row.names(cisTopicObject@region.data[cisTopicObject@region.data$SYMBOL %in% c("FOXM1"),]) %in% row.names(x))
-      ))}))
-#8 and 18
+
+#Run just for mcf7
+mcf7<-subset(combined,origin %in% c("MCF7 Estrogen","MCF7 Control"))
+cistopic_generation(x=mcf7,name_out="210924_mcf7",outdir="/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
+
+
+#run through further processing
+cistopic_processing<-function(x,y,outname){
+  obj<-x
+  cisTopicObject<-y
+  #Expanding on cistopic object analysis
+  cisTopicObject <- addCellMetadata(cisTopicObject, cell.data = obj@meta.data)
+
+  #heatmap by topic
+  cisTopicObject<- selectModel(cisTopicObject, type='derivative')
+  cisTopicObject <- runUmap(cisTopicObject, target='cell')
+  pdf(paste(outname,"celltopic_heatmap.pdf",sep="."))
+  cellTopicHeatmap(cisTopicObject, method='Probability', colorBy=c("origin","seurat_clusters"))
+  dev.off()
+  system(paste("slack -F", paste(outname,"celltopic_heatmap.pdf",sep="."), "ryan_todo",sep=" "))
+
+  #region score association
+  pred.matrix <- predictiveDistribution(cisTopicObject)
+  cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.999, plot=TRUE)
+  cisTopicObject <- getRegionsScores(cisTopicObject, method='NormTop', scale=TRUE)
+
+  txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+  cisTopicObject <- annotateRegions(cisTopicObject, txdb=TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb='org.Hs.eg.db')
+  cisTopicObject <- runtSNE(cisTopicObject, target='region', perplexity=200, check_duplicates=FALSE) #cluster by regions
+
+  getBedFiles(cisTopicObject, path='cisTopics_asBed')
+
+  saveRDS(cisTopicObject,paste0(outname,".CisTopicObject.Rds"))
+
+  #save cistopic region data
+  outdat<-lapply(cisTopicObject@binarized.cisTopics, function(x) {
+    temp<-merge(x,cisTopicObject@region.data,by="row.names")
+    temp$topic_assigned<-names(x)
+    return(temp)})
+
+  outdat<-data.table::rbindlist(outdat,use.names=FALSE)
+  write.table(outdat,file=paste0(outname,".topic_region_assignment.txt"),col.names=T,row.names=T,quote=F,sep="\t")
+  system(paste("slack -F ",paste0(outname,".topic_region_assignment.txt")," ryan_todo" ))
+  pdf(paste0(outname,".topic_annotations.pdf"))
+  par(mfrow=c(1,1))
+  signaturesHeatmap(cisTopicObject, selected.signatures = 'annotation')
+  plotFeatures(cisTopicObject, method='tSNE', target='region', topic_contr=NULL, colorBy=c('annotation'), cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE, intervals=20)
+  dev.off()
+  system(paste("slack -F ",paste0(outname,".topic_annotations.pdf")," ryan_todo" ))
+
+  pdf(paste0(outname,".topic_scores.pdf"))
+  par(mfrow=c(4,4))
+  plotFeatures(cisTopicObject, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
+  dev.off()
+  system(paste("slack -F ",paste0(outname,".topic_scores.pdf")," ryan_todo" ))
+}
+
+combined<-readRDS("210924_cellline.SeuratObject.Rds")
+combined_cisTopicObject<-readRDS("/home/groups/CEDAR/mulqueen/projects/10x_atacrna/210924_cellline.CisTopicObject.Rds")
+cistopic_processing(x=combined,y=combined_cisTopicObject,outname="210924_cellline")
+
+t47d<-readRDS("210924_t47d.SeuratObject.Rds")
+t47d_cisTopicObject<-readRDS("/home/groups/CEDAR/mulqueen/projects/10x_atacrna/210924_t47d.CisTopicObject.Rds")
+cistopic_processing(x=t47d,y=t47d_cisTopicObject,outname="210924_t47d")
+
+mcf7<-readRDS("210924_mcf7.SeuratObject.Rds")
+mcf7_cisTopicObject<-readRDS("/home/groups/CEDAR/mulqueen/projects/10x_atacrna/210924_mcf7.CisTopicObject.Rds")
+cistopic_processing(x=mcf7,y=mcf7_cisTopicObject,outname="210924_mcf7")
+
 ```
 
 ### ChromVar for Transcription Factor Motifs
@@ -313,10 +330,110 @@ system("slack -F combined.tf.heatmap.pdf ryan_todo")
 
 ```
 
+## Cicero
+
+```R
+  library(Signac)
+  library(Seurat)
+  library(SeuratWrappers)
+  library(ggplot2)
+  library(patchwork)
+  library(monocle3)
+  library(cicero)
+  library(EnsDb.Hsapiens.v86)
+  setwd("/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
+
+  #Cicero processing function
+  cicero_processing<-function(object_input,prefix){
+
+      #Generate CDS format from Seurat object
+      atac.cds <- as.cell_data_set(object_input,group_by="seurat_clusters")
+
+      # convert to CellDataSet format and make the cicero object
+      print("Making Cicero format CDS file")
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
+      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+      
+      genome <- seqlengths(object_input) # get the chromosome sizes from the Seurat object
+      genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
+      
+      print("Running Cicero to generate connections.")
+      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
+      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+      
+      print("Generating CCANs")
+      ccans <- generate_ccans(conns) # generate ccans
+      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+      
+      print("Adding CCAN links into Seurat Object and Returning.")
+      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
+      Links(object_input) <- links
+      return(object_input)
+  }
+
+
+combined<-readRDS("210924_cellline.SeuratObject.Rds")
+
+
+combined<-cicero_processing(object_input=combined,prefix="210924_cellline")
+
+saveRDS(combined,"210924_cellline.SeuratObject.unnormGA.Rds")
+  
+  # generate unnormalized gene activity matrix
+  # gene annotation sample
+  hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+
+  pos <-as.data.frame(hg38_annotations,row.names=NULL)
+  pos$chromosome<-paste0("chr",pos$seqnames)
+  pos$gene<-pos$gene_id
+  pos <- subset(pos, strand == "+")
+  pos <- pos[order(pos$start),] 
+  pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
+  pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
+
+  neg <-as.data.frame(hg38_annotations,row.names=NULL)
+  neg$chromosome<-paste0("chr",neg$seqnames)
+  neg$gene<-neg$gene_id
+  neg <- subset(neg, strand == "-")
+  neg <- neg[order(neg$start,decreasing=TRUE),] 
+  neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
+  neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
+
+  gene_annotation<- rbind(pos, neg)
+  gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
+  names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
+
+  geneactivity_processing<-function(cds_input,conns_input,prefix){
+      atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
+      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
+      saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
+  }
+
+  conns<-as.data.frame(readRDS("210924_cellline_atac_cicero_conns.Rds"))
+  obj.cicero<-readRDS("210924_cellline_atac_cicero_cds.Rds")
+  geneactivity_processing(cds_input=as.cell_data_set(combined,group_by="origin"),conns_input=conns,prefix="210924_cellline")
+
+  #Read in unnormalized GA
+  cicero_gene_activities<-readRDS("210924_cellline.unnorm_GA.Rds")
+  combined[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
+
+  # normalize
+  combined <- NormalizeData(
+    object = combined,
+    assay = 'GeneActivity',
+    normalization.method = 'LogNormalize',
+    scale.factor = median(combined$nCount_GeneActivity)
+  )
+  saveRDS(combined,"210924_cellline.SeuratObject.Rds")
+
+```
 
 <!---RUN CICERO-->
-<!--RUN cistopic by cell line-->
 <!--Check topics from TITAN against cistopic-->
-<!-- chipseq foxm1 and esr1 overlap of topics-->
+<!-- Check imputed topic score percentiles against chromvar values
+
+#In this directory /home/groups/CEDAR/doe/projects/ATACRNA, the MCF7_ATAC_wBins and T47D_ATAC_wBins rds have topicbins in the metadata with the binned results. It also has the imputed topic scores in the metadata. They are Seurat objects
+
+-->
+
 <!-- regress out nCount_peaks from umap during scaling-->
-<!-- get more stringent peak list from topics-->
