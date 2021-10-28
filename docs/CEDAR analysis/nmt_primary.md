@@ -96,6 +96,87 @@ fi; done
 
 ```
 
+### Get projection of unique reads per cell
+
+```bash
+cd /home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/merged_bam
+for i in *bam; do
+    outname=${i::-4}".proj.txt"
+    for j in 05 10 20 30 40 50 60 70 80 90; do
+        in_reads=`samtools view -@10 -s 0.${j} $i | wc -l`
+        for k in 1; do
+            out_reads=`samtools view -@10 -s ${k}.${j} $i | awk '{print $3,$4}' | sort --parallel=10 | uniq | wc -l`
+            echo $in_reads,$out_reads 
+        done;
+    done > $outname
+done
+
+#change k to {1..10} for 10 iterations with 10 seeds, etc, just need 1 for building the actual model it seems
+```
+
+```R
+library(ggplot2)
+library(drc)
+library(parallel)
+library(patchwork)
+setwd("/home/groups/CEDAR/mulqueen/projects/nmt/210923_primary_samples/merged_bam")
+files_in<-list.files(pattern="*proj.txt")
+
+
+#points to plot function at
+points<-seq(from = 1000, to = 5000000, by = 5000)
+
+#fit curve function
+fit_curve<-function(x){
+    dat<-read.csv(x,header=F)
+    name_out<-strsplit(x,".proj")[[1]][1]
+    plate_out<-strsplit(x,"_")[[1]][1]
+    S <- dat$V1 # substrate
+    v<-dat$V2 # reaction rate
+    kinData <- data.frame(S,v)
+    m1 <- drm(v ~ S, data = kinData, fct = MM.2()) # use the two parameter MM model (MM.2)
+    summary(m1)     # the summary indicates how well the curve fits the data
+    Vmax=as.numeric(coef(m1)[1]) #get coefficients d=Vmax, 
+    Km=as.numeric(coef(m1)[2]) #e=Km
+    dat_out<-data.frame(read_effort=points,predicted_uniq_reads=(Vmax*points/(Km+points)),sample=name_out,plate=plate_out)
+    return(dat_out)
+    #MMcurve<-formula(v~Vmax*S/(Km+S))
+    #plot(m1, log = '', pch = 17, main = "Fitted MM curve")
+}
+
+dat_out_sum<-do.call("rbind",mclapply(files_in,FUN=fit_curve, mc.cores=10))
+
+plt1<-ggplot(dat_out_sum,aes(x=read_effort,y=predicted_uniq_reads,group=sample,color=plate))+geom_line(alpha=0.1)+theme_bw()+ylab("Expected Unique Reads")+xlab("Read count effort")
+ggsave(plt,file="sequencing_saturation.pdf")
+system("slack -F sequencing_saturation.pdf ryan_todo") 
+
+#fit curve function
+return_coeff<-function(x){
+    dat<-read.csv(x,header=F)
+    name_out<-strsplit(x,".proj")[[1]][1]
+    plate_out<-strsplit(x,"_")[[1]][1]
+    S <- dat$V1 # substrate
+    v<-dat$V2 # reaction rate
+    kinData <- data.frame(S,v)
+    m1 <- drm(v ~ S, data = kinData, fct = MM.2()) # use the two parameter MM model (MM.2)
+    summary(m1)     # the summary indicates how well the curve fits the data
+    Vmax=as.numeric(coef(m1)[1]) #get coefficients d=Vmax, 
+    Km=as.numeric(coef(m1)[2]) #e=Km
+    pred_at_Km=(Vmax*Km/(Km+Km))
+    coeff_return<-c(Vmax,Km,pred_at_Km,name_out,plate_out)
+}
+
+ 
+dat_coeff<-as.data.frame(do.call("rbind",mclapply(files_in,FUN=return_coeff, mc.cores=10)))
+colnames(dat_coeff)<-c("Vmax","Km","Predicted_reads_at_Km","sample","plate")
+
+plt2<-ggplot(dat_coeff,aes(x=plate,y=log10(as.numeric(Predicted_reads_at_Km)),color=plate))+geom_jitter()+geom_boxplot(outlier.shape=NA)+theme_bw()+ylim(c(0,7))+ylab("Expected Unique Reads at Km")+xlab("Plate")
+plt3<-ggplot(dat_coeff,aes(x=plate,y=log10(as.numeric(Km)),color=plate))+geom_jitter()+geom_boxplot(outlier.shape=NA)+theme_bw()+ylim(c(0,7))+ylab("Sequencing effort for Km")+xlab("Plate")
+
+ggsave(plt1/plt2/plt3,file="sequencing_saturation.pdf")
+system("slack -F sequencing_saturation.pdf ryan_todo") 
+
+```
 ### Batch script for deduplication
 Using the bismark deduplication script.
 
