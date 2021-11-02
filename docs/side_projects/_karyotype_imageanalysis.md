@@ -16,7 +16,7 @@ https://pytorch.org/get-started/locally/
 conda create -n kary
 conda activate kary
 conda install opencv pytorch torchvision torchaudio cpuonly -c pytorch
-
+conda install scipy
 ```
 
 ## Testing our ability to cut out chromosomes
@@ -27,15 +27,17 @@ Starting with easy-peasy pre-"grammed" karyogram.
 ```python
 import cv2 
 import numpy as np
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import minimum_spanning_tree
 image_in="/mnt/c/Documents and Settings/mulqueen/Documents/karyotype/1280px-NHGRI_human_male_karyotype.png"
 
 #reading the image  
 image = cv2.imread(image_in) 
-paper = cv2.resize(image, (500,500))
+paper = cv2.resize(image, (1000,1000))
 
 cv2.imwrite("/mnt/c/Documents and Settings/mulqueen/Documents/karyotype/" +"resize" + '.png', paper) 
-
-ret, thresh_gray = cv2.threshold(cv2.cvtColor(paper, cv2.COLOR_BGR2GRAY), 245, 255, cv2.THRESH_BINARY)
+ret, thresh_gray = cv2.threshold(cv2.cvtColor(paper, cv2.COLOR_BGR2GRAY), 245, 255, cv2.THRESH_OTSU) #otsu thresholding
+#ret, thresh_gray = cv2.threshold(cv2.cvtColor(paper, cv2.COLOR_BGR2GRAY), 247, 255, cv2.THRESH_BINARY) #binary thresholding
 cv2.imwrite("/mnt/c/Documents and Settings/mulqueen/Documents/karyotype/" +"graythreshold" + '.png', thresh_gray) 
 
 canny = cv2.Canny(thresh_gray, 20, 300) 
@@ -45,31 +47,20 @@ canny = paper
 canny = cv2.drawContours(canny, contours, -1, (0,255,0), 1)
 cv2.imwrite("/mnt/c/Documents and Settings/mulqueen/Documents/karyotype/" +"contoured" + '.png', canny ) 
 
- # Erase small contours, and contours which small aspect ratio (close to a square)
-for c in contours:
-     area = cv2.contourArea(c)
-     if area < 50: # Fill very small contours with zero (erase small contours).
-         cv2.fillPoly(thresh_gray, pts=[c], color=0)
-         continue
-
-canny=paper
-canny=cv2.drawContours(canny, contours, -1, (255,0,0), 1)
-cv2.imwrite("/mnt/c/Documents and Settings/mulqueen/Documents/karyotype/" +"contoured_filter" + '.png', canny) 
-
-
 idx = 0 
 for c in contours: 
     x,y,w,h = cv2.boundingRect(c) 
     area = cv2.contourArea(c)
-    if area > 5: # Fill very small contours with zero (erase small contours).
+    if area > 20: # Fill very small contours with zero (erase small contours).
         idx+=1 
-        new_img=paper[y:y+h,x:x+w] 
+        new_img=paper[y:y+h+int(0.25*h),x:x+w+int(0.25*w)] #adding 25% height and width to each output
         cv2.imwrite("/mnt/c/Documents and Settings/mulqueen/Documents/karyotype/chr/" +str(idx) + '.png', new_img) 
 
+chrom_in = "/mnt/c/Documents and Settings/mulqueen/Documents/karyotype/chr/10.png"
+image = cv2.imread(chrom_in) 
 
-cv2.waitKey(0) 
-
-
+Tcsr = minimum_spanning_tree(image.data)
+Tcsr.toarray().astype(int)
 ```
 
 This works pretty well but it looks like we get more countours than we need (some that are within p or q arms). Going to try to merge nearby ones. This will probably not work on a real case scenario because chromosomes will overlap quite a bit on a regular squash.

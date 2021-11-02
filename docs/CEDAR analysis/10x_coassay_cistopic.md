@@ -209,7 +209,7 @@ cistopic_processing<-function(x,y,outname){
   pred.matrix <- predictiveDistribution(cisTopicObject)
   cisTopicObject <- getSignaturesRegions(cisTopicObject, hg19_chip, labels=labels, minOverlap = 0.01) #output new bed files to be read in and processed
   aucellRankings <- AUCell_buildRankings(pred.matrix, plot=FALSE, verbose=FALSE)   # Compute cell rankings
-  cisTopicObject <- signatureCellEnrichment(cisTopicObject, aucellRankings, selected.signatures='all', aucMaxRank = 0.1*nrow(aucellRankings),nCores=5,plot=FALSE)   # Check signature enrichment in cells
+  cisTopicObject <- signatureCellEnrichment(cisTopicObject, aucellRankings, selected.signatures='all', aucMaxRank = 0.1*nrow(aucellRankings),nCores=1,plot=FALSE)   # Check signature enrichment in cells
 
   cisTopicObject <- getRegionsScores(cisTopicObject, method='NormTop', scale=TRUE)
   cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.999, plot=TRUE)
@@ -267,7 +267,6 @@ cistopic_processing<-function(x,y,outname){
 
 ### ChromVar for Transcription Factor Motifs
 
-
 ```R
   library(Signac)
   library(Seurat)
@@ -295,28 +294,24 @@ t47d<-readRDS("210924_t47d.SeuratObject.Rds")
     opts = list(species =9606, all_versions = FALSE))
 
   # Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
-  motif.matrix.hg19 <- CreateMotifMatrix(
-    features = granges(combined[["peaks"]]), #peaks list will be the same for all
-    pwm = pfm,
-    genome = 'hg19',
-    use.counts = FALSE)
-
   # Create a new Mofif object to store the results
-  motif.hg19 <- CreateMotifObject(
-    data = motif.matrix.hg19,
-    pwm = pfm)
-
   #for combined
+    motif.matrix.hg19 <- CreateMotifMatrix(features = granges(combined[["peaks"]]), pwm = pfm, genome = 'hg19', use.counts = FALSE)
+    motif.hg19 <- CreateMotifObject(data = motif.matrix.hg19, pwm = pfm)
   combined <- SetAssayData(object = combined, assay = 'peaks', slot = 'motifs', new.data = motif.hg19)
   combined <- RegionStats(object = combined, genome = BSgenome.Hsapiens.UCSC.hg19,assay="peaks")
   combined <- RunChromVAR( object = combined,genome = BSgenome.Hsapiens.UCSC.hg19,assay="peaks")
   saveRDS(combined,file="210924_cellline.SeuratObject.Rds")
 
+    motif.matrix.hg19 <- CreateMotifMatrix(features = granges(mcf7[["peaks"]]), pwm = pfm, genome = 'hg19', use.counts = FALSE)
+    motif.hg19 <- CreateMotifObject(data = motif.matrix.hg19, pwm = pfm)
   mcf7 <- SetAssayData(object = mcf7, assay = 'peaks', slot = 'motifs', new.data = motif.hg19)
   mcf7 <- RegionStats(object = mcf7, genome = BSgenome.Hsapiens.UCSC.hg19,assay="peaks")
   mcf7 <- RunChromVAR( object = mcf7,genome = BSgenome.Hsapiens.UCSC.hg19,assay="peaks")
   saveRDS(mcf7,file="210924_mcf7.SeuratObject.Rds")
 
+    motif.matrix.hg19 <- CreateMotifMatrix(features = granges(t47d[["peaks"]]), pwm = pfm, genome = 'hg19', use.counts = FALSE)
+    motif.hg19 <- CreateMotifObject(data = motif.matrix.hg19, pwm = pfm)
   t47d <- SetAssayData(object = t47d, assay = 'peaks', slot = 'motifs', new.data = motif.hg19)
   t47d <- RegionStats(object = t47d, genome = BSgenome.Hsapiens.UCSC.hg19,assay="peaks")
   t47d <- RunChromVAR( object = t47d,genome = BSgenome.Hsapiens.UCSC.hg19,assay="peaks")
@@ -341,7 +336,8 @@ da_one_v_rest<-function(i,obj,group,assay.="chromvar",latent.vars.="nCount_peaks
   }
 
 
-n.cores=10 #Perform parallel application of DA test
+#combined
+n.cores=1 #Perform parallel application of DA test
 da_ga<-mclapply(unique(combined$origin), FUN=da_one_v_rest, obj=combined, group="origin", assay.="chromvar", mc.cores=n.cores)
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
 da_ga_df$tf_name <- unlist(lapply(unlist(lapply(da_ga_df$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
@@ -350,7 +346,7 @@ write.table(da_ga_df,file="210924_cellline.onevrest.da_chromvar.txt",sep="\t",co
 library(dplyr)
 for (i in unique(combined$origin)){print(as.data.frame(da_ga_df %>% filter(enriched_group==i) %>% dplyr::arrange(p_val_adj) %>% dplyr::slice(1:10)))}
 
-n.cores=10 #Perform parallel application of DA test
+n.cores=1 #Perform parallel application of DA test
 da_ga<-mclapply(unique(combined$origin), FUN=da_one_v_rest, obj=combined, group="origin", assay.="peaks", mc.cores=n.cores)
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
 write.table(da_ga_df,file="210924_cellline.onevrest.da_peaks.txt",sep="\t",col.names=T,row.names=T,quote=F)
@@ -417,6 +413,7 @@ Based on https://satijalab.org/signac/articles/footprint.html
   library(patchwork)
   set.seed(1234)
   library(motifmatchr)
+  library(parallel)
   setwd("/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
 
 combined<-readRDS("210924_cellline.SeuratObject.Rds")
@@ -430,8 +427,11 @@ pwm <- getMatrixSet(
 )
 
 # add motif information
+DefaultAssay(combined)<-"peaks"
 combined <- AddMotifs(combined, genome = BSgenome.Hsapiens.UCSC.hg19, pfm = pwm)
+DefaultAssay(mcf7)<-"peaks"
 mcf7 <- AddMotifs(mcf7, genome = BSgenome.Hsapiens.UCSC.hg19, pfm = pwm)
+DefaultAssay(t47d)<-"peaks"
 t47d <- AddMotifs(t47d, genome = BSgenome.Hsapiens.UCSC.hg19, pfm = pwm)
 
 saveRDS(combined,file="210924_cellline.SeuratObject.Rds")
@@ -441,16 +441,19 @@ saveRDS(t47d,file="210924_t47d.SeuratObject.Rds")
 #function for plotting footprints in data sets
 
 plot_footprints<-function(x,footprints,outname){
-  x <- Footprint(object = x, motif.name = footprints, genome = BSgenome.Hsapiens.UCSC.hg19)   # gather the footprinting information for sets of motifs
-  p2 <- PlotFootprint(x, features = footprints)   # plot the footprint data for each group of cells, might want to change idents
-  pdf(paste0(outname,".motif_footprints.pdf"))
-  print(p2 + patchwork::plot_layout(ncol = 1))
-  dev.off()
-  system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
+  x <- Footprint(object = x, motif.name = footprints, genome = BSgenome.Hsapiens.UCSC.hg19, in.peaks=T)   # gather the footprinting information for sets of motifs
+  p2 <- PlotFootprint(x, features = footprints,label=F)   # plot the footprint data for each group of cells, might want to change idents
+  return(p2)
 }
 
 Idents(combined)<-combined$origin
-plot_footprints(x=combined,footprints=c("GREB1","ESR1"),outname="210924_cellline")
+out<-mclapply(c("GATA3","ESR1","FOXA1","CTCF"),FUN=function(z) plot_footprints(x=combined,footprints=z,outname="210924_cellline"),mc.cores=5) #plot and return 5 at a time
+
+outname="210924_cellline"
+pdf(paste0(outname,".motif_footprints.pdf"),height=5*length(out))
+print(wrap_plots(out) + patchwork::plot_layout(ncol = 1))
+dev.off()
+system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
 
 ```
 
@@ -470,6 +473,9 @@ library(grid)
 library(dplyr)
 library(ggplot2)
 library(ggrepel)
+library(parallel)
+  library(BSgenome.Hsapiens.UCSC.hg19)
+  library(patchwork)
 
 setwd("/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
 mcf7_rna<-readRDS("/home/groups/CEDAR/doe/projects/ATACRNA/MCF7_RNA_strictQC.rds")
@@ -487,7 +493,7 @@ t47d_bins$Topic_11bin
 #Correlate cistopic with titan topics
 correlate_cistopic_titan<-function(x,y,outname){
 cistopic_dat<-x@reductions$cistopic@cell.embeddings #get cistopic from x
-row.names(cistopic_dat)<-unlist(lapply(strsplit(row.names(cistopic_dat),"_"),"[",2)) #to match row names
+row.names(cistopic_dat)<-substr(row.names(cistopic_dat),0,18)
 titan_dat<-as.data.frame(y@reductions$imputedLDA@cell.embeddings) #get titan from y
 cells<-row.names(titan_dat)[which(row.names(titan_dat) %in% row.names(cistopic_dat))] # set list of shared cell names
 sum(cells %in% row.names(titan_dat))==sum(cells %in% row.names(titan_dat)) #check to make sure same number of cells
@@ -508,6 +514,23 @@ pdf(paste0(outname,".cistopic_titan_topiccorrelation.pdf"))
 print(out_plt)
 dev.off()
 system(paste0("slack -F ",paste0(outname,".cistopic_titan_topiccorrelation.pdf")," ryan_todo"))
+
+#add cistopic square correlation matrix
+cor_cistopic<-cor(cistopic_dat)
+out_plt<-Heatmap(cor_cistopic)
+pdf(paste0(outname,".cistopic_squarecorrelation.pdf"))
+print(out_plt)
+dev.off()
+system(paste0("slack -F ",paste0(outname,".cistopic_squarecorrelation.pdf")," ryan_todo"))
+
+#titan square correlation
+cor_titan<-cor(titan_dat)
+out_plt<-Heatmap(cor_titan)
+pdf(paste0(outname,".titan_squarecorrelation.pdf"))
+print(out_plt)
+dev.off()
+system(paste0("slack -F ",paste0(outname,".titan_squarecorrelation.pdf")," ryan_todo"))
+
 }
 
 #x is atac library signac object with cistopic in reductions slot
@@ -521,7 +544,7 @@ correlate_cistopic_titan(x=t47d_atac,y=t47d_rna,outname="t47d")
 #Correlate cistopic with titan topics
 correlate_chromvar_titan<-function(x,y,outname){
 chromvar_dat<-as.data.frame(t(x@assays$chromvar@data)) #get chromvar from x
-row.names(chromvar_dat)<-unlist(lapply(strsplit(row.names(chromvar_dat),"_"),"[",2)) #to match row names
+row.names(chromvar_dat)<-substr(row.names(chromvar_dat),0,18)
 tfList <- getMatrixByID(JASPAR2020, ID=colnames(chromvar_dat)) #set up readable chromvar names
 tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
 colnames(chromvar_dat)<-tfList
@@ -559,26 +582,30 @@ correlate_chromvar_titan(x=t47d_atac,y=t47d_rna,outname="t47d")
 
 #find DA motifs from top bins of topics
   #set up a named vector of topic11 and tpoic17 cells to add to seurat object
-  topic_11<-setNames(mcf7_bins@meta.data$Topic_11bin,row.names(mcf7_bins@meta.data))
-  names(topic_11)<-paste0("mcf7_",row.names(mcf7_bins@meta.data),"_2")
+  topic_11<-setNames(mcf7_bins@meta.data$Topic_11bin,paste0(row.names(mcf7_bins@meta.data),mcf7_bins$origin))
   topic_11<-topic_11[topic_11 == "75percentile_Topic11"]
-  topic_17<-setNames(mcf7_bins@meta.data$Topic_17bin,row.names(mcf7_bins@meta.data))
-  names(topic_17)<-paste0("mcf7_",row.names(mcf7_bins@meta.data),"_2")
+  topic_11_score<-setNames(mcf7_bins$ImputedTopic_11,paste0(row.names(mcf7_bins@meta.data),mcf7_bins$origin))
+  topic_17<-setNames(mcf7_bins@meta.data$Topic_17bin,paste0(row.names(mcf7_bins@meta.data),mcf7_bins$origin))
   topic_17<-topic_17[topic_17 == "75percentile_Topic17"]
+  topic_17_score<-setNames(mcf7_bins$ImputedTopic_17,paste0(row.names(mcf7_bins@meta.data),mcf7_bins$origin))
   mcf7_atac<-AddMetaData(object=mcf7_atac,metadata=topic_11,col.name="top_topic")
+  mcf7_atac<-AddMetaData(object=mcf7_atac,metadata=topic_11_score,col.name="ImputedTopic_11")
+  mcf7_atac<-AddMetaData(object=mcf7_atac,metadata=topic_17_score,col.name="ImputedTopic_17")
   levels(mcf7_atac$top_topic) <- c(levels(mcf7_atac$top_topic),"75percentile_Topic17")
   mcf7_atac@meta.data[row.names(mcf7_atac@meta.data) %in% names(topic_17),]$top_topic<-"75percentile_Topic17"
   mcf7_atac_subset<-subset(mcf7_atac,cells=which(is.finite(mcf7_atac$top_topic)))
   Idents(mcf7_atac_subset)<-mcf7_atac_subset$top_topic
 
   #and for t47d
-  topic_11<-setNames(t47d_bins@meta.data$Topic_11bin,row.names(t47d_bins@meta.data))
-  names(topic_11)<-paste0("t47d_",row.names(t47d_bins@meta.data),"_2")
+  topic_11<-setNames(t47d_bins@meta.data$Topic_11bin,paste0(row.names(t47d_bins@meta.data),t47d_bins$origin))
   topic_11<-topic_11[topic_11 == "75percentile_Topic11"]
-  topic_17<-setNames(t47d_bins@meta.data$Topic_17bin,row.names(t47d_bins@meta.data))
-  names(topic_17)<-paste0("t47d_",row.names(t47d_bins@meta.data),"_2")
+  topic_11_score<-setNames(t47d_bins$ImputedTopic_11,paste0(row.names(t47d_bins@meta.data),t47d_bins$origin))
+  topic_17<-setNames(t47d_bins@meta.data$Topic_17bin,paste0(row.names(t47d_bins@meta.data),t47d_bins$origin))
   topic_17<-topic_17[topic_17 == "75percentile_Topic17"]
+  topic_17_score<-setNames(t47d_bins$ImputedTopic_17,paste0(row.names(t47d_bins@meta.data),t47d_bins$origin))
   t47d_atac<-AddMetaData(object=t47d_atac,metadata=topic_11,col.name="top_topic")
+  t47d_atac<-AddMetaData(object=t47d_atac,metadata=topic_11_score,col.name="ImputedTopic_11")
+  t47d_atac<-AddMetaData(object=t47d_atac,metadata=topic_17_score,col.name="ImputedTopic_17")
   levels(t47d_atac$top_topic) <- c(levels(t47d_atac$top_topic),"75percentile_Topic17")
   t47d_atac@meta.data[row.names(t47d_atac@meta.data) %in% names(topic_17),]$top_topic<-"75percentile_Topic17"
   t47d_atac_subset<-subset(t47d_atac,cells=which(is.finite(t47d_atac$top_topic)))
@@ -587,13 +614,14 @@ correlate_chromvar_titan(x=t47d_atac,y=t47d_rna,outname="t47d")
 #find differences in chromvar usage 
   mcf7_da_tf <- FindMarkers(object = mcf7_atac_subset, ident.1 = "75percentile_Topic11", ident.2="75percentile_Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="chromvar") 
   t47d_da_tf <- FindMarkers(object = t47d_atac_subset, ident.1 = "75percentile_Topic11", ident.2="75percentile_Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="chromvar") 
+
 #set up readable motif names
   mcf7_da_tf$tf_name <- unlist(lapply(unlist(lapply(row.names(mcf7_da_tf), function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
   t47d_da_tf$tf_name <- unlist(lapply(unlist(lapply(row.names(t47d_da_tf), function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
 
 #plot
-  mcf7_da_tf$sig<-ifelse(mcf7_da_tf$p_val_adj<=0.05,"sig","non_sig")
-  t47d_da_tf$sig<-ifelse(t47d_da_tf$p_val_adj<=0.05,"sig","non_sig")
+  mcf7_da_tf$sig<-ifelse(mcf7_da_tf$p_val_adj<=0.01,"sig","non_sig")
+  t47d_da_tf$sig<-ifelse(t47d_da_tf$p_val_adj<=0.01,"sig","non_sig")
   mcf7_da_tf$label<-""
   mcf7_da_tf[mcf7_da_tf$sig=="sig",]$label<-mcf7_da_tf[mcf7_da_tf$sig=="sig",]$tf_name
   t47d_da_tf$label<-""
@@ -606,6 +634,40 @@ correlate_chromvar_titan(x=t47d_atac,y=t47d_rna,outname="t47d")
   plt<-ggplot(t47d_da_tf,aes(x=avg_log2FC,y=-log10(p_val_adj),color=sig,label=label))+geom_point()+theme_bw()+scale_fill_manual(values=c("#999999", "#FF0000"))+geom_label_repel(label.size = 0.1,max.overlaps=20)
   ggsave(plt,file="t47d_topic11v17_chromvar.pdf")
   system("slack -F t47d_topic11v17_chromvar.pdf ryan_todo")
+
+#plot topic11 vs topic17 for cells
+plt<-FeaturePlot(object = mcf7_atac, features = c("ImputedTopic_11", "ImputedTopic_17"),blend = T,col=c("lightgrey","red","blue"),reduction="umap",max.cutoff=10)
+ggsave(plt,file="mcf7_topicimputation.umap.pdf",width=13)
+system("slack -F mcf7_topicimputation.umap.pdf ryan_todo")
+
+plt<-FeaturePlot(object = t47d_atac, features = c("ImputedTopic_11", "ImputedTopic_17"),blend = T,col=c("lightgrey","red","blue"),reduction="umap",max.cutoff=10)
+ggsave(plt,file="t47d_topicimputation.umap.pdf",width=13)
+system("slack -F t47d_topicimputation.umap.pdf ryan_todo")
+
+#function for plotting footprints in data sets
+
+plot_footprints<-function(x,footprints){
+  x <- Footprint(object = x, motif.name = footprints, genome = BSgenome.Hsapiens.UCSC.hg19, in.peaks=T)   # gather the footprinting information for sets of motifs
+  p2 <- PlotFootprint(x, features = footprints,label=F)   # plot the footprint data for each group of cells, might want to change idents
+  return(p2)
+}
+
+Idents(t47d_atac_subset)<-t47d_atac_subset$top_topic
+out1<-mclapply(c("ESR1","TP53","FOXA1","TEAD3"),FUN=function(z) plot_footprints(x=t47d_atac_subset,footprints=z),mc.cores=5) #plot and return 5 at a time
+outname="210924_t47d_topimputedtopic"
+pdf(paste0(outname,".motif_footprints.pdf"),height=5*length(out1))
+print(wrap_plots(out1) + patchwork::plot_layout(ncol = 1))
+dev.off()
+system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
+
+Idents(mcf7_atac_subset)<-mcf7_atac_subset$top_topic
+out2<-mclapply(c("ESR1","FOXA1","TGIF1","MEF2A","ESR2"),FUN=function(z) plot_footprints(x=mcf7_atac_subset,footprints=z),mc.cores=5) #plot and return 5 at a time
+outname="210924_mcf7_topimputedtopic"
+pdf(paste0(outname,".motif_footprints.pdf"),height=5*length(out2))
+print(wrap_plots(out2) + patchwork::plot_layout(ncol = 1))
+dev.off()
+system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
+
 
 ```
 
