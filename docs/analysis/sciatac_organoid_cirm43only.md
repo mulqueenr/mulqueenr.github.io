@@ -2524,102 +2524,12 @@ Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
   library(Seurat)
   library(Signac)
-  library(GenomeInfoDb)
   library(ggplot2)
   set.seed(1234)
-  library(EnsDb.Hsapiens.v86)
-  library(Matrix)
   library(cicero)
   library(SeuratWrappers)
-  library(ComplexHeatmap)
-  library(JASPAR2020)
-  library(TFBSTools)
-  library(BSgenome.Hsapiens.UCSC.hg38)
   library(patchwork)
-  library(cisTopic)
   library(monocle3)
-  library(JASPAR2020)
-  library(TFBSTools)
-
-  orgo_cirm43<-readRDS("orgo_cirm43.QC.SeuratObject.Rds")
-  DefaultAssay(orgo_cirm43)<-"peaks"
-
-  orgo_cirm43_sub<-subset(orgo_cirm43,cells=row.names(orgo_cirm43@meta.data)[which(!(orgo_cirm43$seurat_clusters %in% c("7","4","8","5")))]) 
-  orgo_cirm43_sub<-subset(orgo_cirm43_sub,cells=row.names(orgo_cirm43_sub@meta.data)[which(orgo_cirm43_sub$DIV %in% c("30","60","90"))]) 
-  orgo_cirm43_sub@meta.data<-orgo_cirm43_sub@meta.data[sort(row.names(orgo_cirm43_sub@meta.data)),] #as.cell_data_set assumes abc sorted cell ids
-  rg_sub<-subset(orgo_cirm43_sub,cells=row.names(orgo_cirm43_sub@meta.data)[which(orgo_cirm43_sub$seurat_clusters %in% c("6","0"))])
-  exN_sub<-subset(orgo_cirm43_sub,cells=row.names(orgo_cirm43_sub@meta.data)[which(orgo_cirm43_sub$seurat_clusters %in% c("1","2","5"))])
-
-#### FUNCTIONS FOR PROCESSING ####
-cistopic_generation<-function(object_input,outname){
-    #Perform cistopic on subclusters of data 
-    cistopic_counts_frmt<-object_input$peaks@counts
-    row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
-    sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
-    print("made cistopic object")
-    sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(15:30),nCores=16,addModels=FALSE)
-    saveRDS(sub_cistopic_models,
-        file=paste0(outname,".CisTopicObject.Rds"))
-    print("finshed running cistopic")
-
-    pdf(paste0(outname,"_model_selection.pdf"))
-    par(mfrow=c(3,3))
-    sub_cistopic_models<- selectModel(sub_cistopic_models, type='derivative')
-    dev.off()
-    system("slack -F ",paste0(outname,"_model_selection.pdf")," ryan_todo")
-    }
-
-
-cistopic_clustering<-function(outname,object_input,resolution=0.8){   
-    #recluster cells based on cistopic generation
-      #run UMAP on topics
-      cistopicObject<-readRDS(paste0(outname,".CisTopicObject.Rds")) #outname should be consistent between functions
-      topic_df<-as.data.frame(cisTopicObject@selected.model$document_expects)
-      row.names(topic_df)<-paste0("Topic_",row.names(topic_df))
-      dims<-as.data.frame(uwot::umap(t(topic_df),n_components=2))
-      row.names(dims)<-colnames(topic_df)
-      colnames(dims)<-c("x_subclus","y_subclus")
-      dims$cellID<-row.names(dims)
-      dims<-merge(dims,object_input@meta.data,by.x="cellID",by.y="row.names")
-
-
-      #Add cell embeddings into seurat
-      cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
-      colnames(cell_embeddings)<-cisTopicObject@cell.names
-      n_topics<-nrow(cell_embeddings)
-      row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
-      cell_embeddings<-as.data.frame(t(cell_embeddings))
-
-      #Add feature loadings into seurat
-      feature_loadings<-as.data.frame(cisTopicObject@selected.model$topics)
-      row.names(feature_loadings)<-paste0("topic_",1:n_topics)
-      feature_loadings<-as.data.frame(t(feature_loadings))
-
-      #combined cistopic results (cistopic loadings and umap with seurat object)
-      cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
-      umap_dims<-as.data.frame(as.matrix(dims[2:3]))
-      colnames(umap_dims)<-c("UMAP_1","UMAP_2")
-      row.names(umap_dims)<-dims$cellID
-      cistopic_umap<-CreateDimReducObject(embeddings=as.matrix(umap_dims),assay="peaks",key="UMAP_")
-      object_input@reductions$cistopic<-cistopic_obj
-      object_input@reductions$umap<-cistopic_umap
-
-      n_topics<-ncol(Embeddings(object_input,reduction="cistopic"))
-
-      object_input <- FindNeighbors(
-        object = object_input,
-        reduction = 'cistopic',
-        dims = 1:n_topics
-      )
-      object_input <- FindClusters(
-        object = object_input,
-        verbose = TRUE,
-        resolution=resolution
-      )
-    plt<-DimPlot(object_input,group.by=c("seurat_clusters","DIV"))
-    ggsave(plt,file=paste0(outname,"_subclustering.pdf"))
-    system("slack -F ",paste0(outname,"_subclustering.pdf")," ryan_todo")
-  return(object_input)}
 
 
   monocle_processing<-function(outname, object_input,min_branch=10){
@@ -2636,85 +2546,65 @@ cistopic_clustering<-function(outname,object_input,resolution=0.8){
       plt3<-ggplot(root_nodes, aes(x=UMAP_1,y=UMAP_2))+ geom_text(aes(label=label),size=3)+ theme_bw() 
       plt<-(plt1+plt2)/plt3
       ggsave(plt,file=paste(outname,"DIV_trajectory.pdf",sep="_"),width=20,height=10)
-      system(paste0("slack -F ",paste(outname,"DIV_trajectory.pdf",sep="_")," ryan_todo"))
+      #system(paste0("slack -F ",paste(outname,"DIV_trajectory.pdf",sep="_")," ryan_todo"))
       return(atac.cds)
   }
 
+
+###Excitatory Neurons####
 #Rerun cistopic and recluster RG cell subset
-outname.="Radial_glia"
-cistopic_generation(object_input=rg_sub,outname=outname.)
-rg_sub<-cistopic_clustering(object_input=rg_sub,outname=outname.)
-rg_sub.cds<-monocle_processing(object_input=rg_sub,outname=outname.)
-rg_sub.cds <- order_cells(rg_sub.cds, reduction_method = "UMAP", root_pr_nodes = c("Y_25")) #Chose youngest cells as root
-saveRDS(rg_sub.cds,paste0(outname.,".pseudotime.monoclecds.Rds"))
+exn<-readRDS("orgo_cirm43.ExN.SeuratObject.Rds")
+DefaultAssay(exn)<-"peaks"
+outname.="ExN"
+exn_sub.cds<-monocle_processing(object_input=exn,outname=outname.)
+#NOTE THIS SHOULD BE CHANGED AFTER FIRST PLOT
+exn_sub.cds <- order_cells(exn_sub.cds, reduction_method = "UMAP", root_pr_nodes = c("Y_184")) #Chose youngest cells as root 
+saveRDS(exn_sub.cds ,paste0(outname.,".pseudotime.monoclecds.Rds"))
 
-  #plot pseudotime after determining root
-  pdf(paste0(outname.,".trajectory.pseudotime.pdf"))
-  plot_cells(cds = rg_sub.cds,show_trajectory_graph = TRUE,color_cells_by = "pseudotime", alpha=0.5, cell_stroke=0)
-  dev.off()
-  system("slack -F ",paste0(outname.,".trajectory.pseudotime.pdf")," ryan_todo")
+#plot pseudotime after determining root
+pdf(paste0(outname.,".trajectory.pseudotime.pdf"))
+plot_cells(cds = exn_sub.cds ,show_trajectory_graph = TRUE,color_cells_by = "pseudotime", alpha=0.5, cell_stroke=0)
+dev.off()
+#system("slack -F ",paste0(outname.,".trajectory.pseudotime.pdf")," ryan_todo")
 
-  #Append pseudotime to meta data of seurat object
-  orgo_cirm43<-AddMetaData(object=orgo_cirm43,metadata=orgo_cirm43.cds@principal_graph_aux@listData$UMAP$pseudotime, col.name=paste0("pseudotime_",outname.))
-  plt1<-FeaturePlot(orgo_cirm43,feature=paste0("pseudotime_",outname.))
-  plt2<-DimPlot(orgo_cirm43,group.by="seurat_clusters")
-  ggsave(plt1+plt2,file=paste0(outname.,"_trajectory.pseudotime.pdf"))
-  system("slack -F ",paste0(outname.,"_trajectory.pseudotime.pdf"))," ryan_todo")
-
-
-  saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
-
-  #Define pseudotime from peak accessibility for all cells
-    orgo_cirm43_sub<-cistopic_wrapper(object_input=orgo_cirm43_sub,cisTopicObject=cirm43_cisTopicObject,resolution=0.2)
-    orgo_cirm43.cicero<-monocle_processing(seurat_input=orgo_cirm43_sub,outname="orgo_cirm43",min_branch=20)
-    #Then determine root nodes via plots and assign by order cells function.
-    orgo_cirm43.cds <- order_cells(orgo_cirm43.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_25")) #Chose youngest cells as root
-    saveRDS(orgo_cirm43.cds,"cirm43.pseudotime.monoclecds.Rds")
-    
-
-
-
-
-
-
-
-
-
-
-   #Now do pseudotime ordering on excitatory neuron subclustering
-     exN.cicero<-monocle_processing(seurat_input=exN_sub,prefix="ExN")
-     #Then determine root nodes via plots and assign by order cells function.
-     exN.cds <- order_cells(exN.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_114"))  #Chose youngest cells as root
-     saveRDS(exN.cds,"excitatory_neuron.pseudotime.monoclecds.Rds")
-
-     #Now replotting with pseudotime
-     pdf("exN_trajectory.pseudotime.pdf")
-     plot_cells(cds = exN.cds,show_trajectory_graph = TRUE,color_cells_by = "pseudotime")
-     dev.off()
-     system("slack -F exN_trajectory.pseudotime.pdf ryan_todo")
-
-     orgo_cirm43 <- AddMetaData(object = orgo_cirm43, metadata = exN.cds@principal_graph_aux@listData$UMAP$pseudotime,col.name="pseudotime_exN")
-
- #  #Now do pseudotime ordering on radial glia subclustering
-     rg.cicero<-monocle_processing(seurat_input=rg_sub,prefix="RG",min_branch=35)
-     #Then determine root nodes via plots and assign by order cells function.
-     rg.cds <- order_cells(rg.cicero, reduction_method = "UMAP", root_pr_nodes = c("Y_12")) #Chose youngest cells as root
-     saveRDS(rg.cds,"radial_glia.pseudotime.monoclecds.Rds")
-
-     pdf("RG_trajectory.pseudotime.pdf")
-     plot_cells(cds = rg.cds,show_trajectory_graph = TRUE,color_cells_by = "pseudotime")
-     dev.off()
-     system("slack -F RG_trajectory.pseudotime.pdf ryan_todo")
-
-     orgo_cirm43 <- AddMetaData(object = orgo_cirm43, metadata = rg.cds@principal_graph_aux@listData$UMAP$pseudotime,col.name="pseudotime_rg")
-   
 #Append pseudotime to meta data of seurat object
-    plt1<-FeaturePlot(orgo_cirm43,feature="pseudotime_exN")
-    plt2<-DimPlot(orgo_cirm43,group.by="pseudotime_rg")
-    ggsave(plt1+plt2,file="test_orgo_cirm43_trajectory.pseudotime.pdf")
-    system("slack -F test_orgo_cirm43_trajectory.pseudotime.pdf ryan_todo")
+exn<-AddMetaData(object=exn,metadata=exn_sub.cds@principal_graph_aux@listData$UMAP$pseudotime, col.name=paste0("pseudotime_",outname.))
+plt1<-FeaturePlot(exn,feature=paste0("pseudotime_",outname.))
+plt2<-DimPlot(exn,group.by="seurat_clusters")
+ggsave(plt1+plt2,file=paste0(outname.,"_trajectory.pseudotime.pdf"))
+#system("slack -F ",paste0(outname.,"_trajectory.pseudotime.pdf"))," ryan_todo")
+saveRDS(exn,"orgo_cirm43.ExN.pseudotime.SeuratObject.Rds")
 
-  saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
+
+### Radial Glia ########
+RG<-readRDS(file="orgo_cirm43.RG.SeuratObject.Rds")   ###save Seurat file
+DefaultAssay(RG)<-"peaks"
+outname.="RG"
+RG_sub.cds<-monocle_processing(object_input=RG,outname=outname.)
+#NOTE THIS SHOULD BE CHANGED AFTER FIRST PLOT
+RG_sub.cds <- order_cells(RG_sub.cds, reduction_method = "UMAP", root_pr_nodes = c("Y_153")) #Chose youngest cells as root 
+saveRDS(RG_sub.cds ,paste0(outname.,".pseudotime.monoclecds.Rds"))
+
+#plot pseudotime after determining root
+pdf(paste0(outname.,".trajectory.pseudotime.pdf"))
+plot_cells(cds = RG_sub.cds ,show_trajectory_graph = TRUE,color_cells_by = "pseudotime", alpha=0.5, cell_stroke=0)
+dev.off()
+#system("slack -F ",paste0(outname.,".trajectory.pseudotime.pdf")," ryan_todo")
+
+#Append pseudotime to meta data of seurat object
+RG<-AddMetaData(object=RG,metadata=RG_sub.cds@principal_graph_aux@listData$UMAP$pseudotime, col.name=paste0("pseudotime_",outname.))
+plt1<-FeaturePlot(RG,feature=paste0("pseudotime_",outname.))
+plt2<-DimPlot(RG,group.by="seurat_clusters")
+ggsave(plt1+plt2,file=paste0(outname.,"_trajectory.pseudotime.pdf"))
+#system("slack -F ",paste0(outname.,"_trajectory.pseudotime.pdf"))," ryan_todo")
+
+saveRDS(RG,"orgo_cirm43.RG.pseudotime.SeuratObject.Rds")
+
+
+
+
+
+
 
 
 ```
