@@ -2313,7 +2313,8 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
 
 Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately. This is to build a more biologically meaninful trajectory for cells.
 
-### Recluster clusters 5, 4, 0, 3
+### Recluster clusters 5, 4, 0
+
 ```R
   library(Signac)
   library(Seurat)
@@ -2327,7 +2328,7 @@ Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
   orgo_cirm43<-readRDS("orgo_cirm43.QC.SeuratObject.Rds") #reading in QC passing cells
-  dat<-subset(orgo_cirm43,seurat_clusters %in% c("5","4","0","3"))
+  dat<-subset(orgo_cirm43,seurat_clusters %in% c("4","0")) #3 is excluded as suspected IPC #excluded 5 because it was more stemlike
 
   cistopic_processing<-function(seurat_input,prefix){
       cistopic_counts_frmt<-seurat_input$peaks@counts #grabbing counts matrices
@@ -2426,7 +2427,14 @@ Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately
   library(EnsDb.Hsapiens.v86)
   library(Matrix)
   library(cisTopic)
-
+  library(JASPAR2020)
+  library(TFBSTools)
+  library(grid)
+  library(dplyr)
+  library(parallel)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(patchwork)
+  library(motifmatchr)
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
   orgo_cirm43<-readRDS("orgo_cirm43.QC.SeuratObject.Rds") #reading in QC passing cells
@@ -2516,9 +2524,131 @@ Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately
   system("slack -F ExN.qc.umap.pdf ryan_todo")
 
   saveRDS(dat,file="orgo_cirm43.ExN.SeuratObject.Rds")   ###save Seurat file
+
+  dat<-readRDS("orgo_cirm43.ExN.SeuratObject.Rds")
+
+da_one_v_rest<-function(i,obj,group){
+  da_peaks_tmp <- FindMarkers(
+      object = obj,
+      ident.1 = i,
+      group.by = group,
+      test.use = 'LR',
+      latent.vars = 'nCount_peaks',
+      only.pos=T
+      )
+  da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
+  closest_genes <- ClosestFeature(obj,da_peaks_tmp$da_region)
+  da_peaks_tmp<-cbind(da_peaks_tmp,closest_genes)
+  da_peaks_tmp$enriched_group<-c(i)
+  da_peaks_tmp$compared_group<-c("all_other_cells")
+  return(da_peaks_tmp)
+}
+
+#Perform parallel application of DA test
+  n.cores=length(unique(dat$seurat_clusters))
+  dat_da_peaks<-mclapply(
+      unique(dat$seurat_clusters),
+      FUN=da_one_v_rest,
+      obj=dat,
+      group="seurat_clusters",
+      mc.cores=n.cores)
+
+  #Merge the final data frame from the list for 1vrest DA
+  dat_da_peaks<-do.call("rbind",dat_da_peaks)
+
+  write("Outputting One v Rest DA Table.", stderr())
+  write.table(dat_da_peaks,file="orgo_cirm43.ExN.da_peaks.txt",sep="\t",col.names=T,row.names=T,quote=F)
+
+
+  da_one_v_one<-function(i,obj,group,j_list,assay.="peaks"){
+      i<-as.character(i)
+      da_tmp_2<-list()
+      for (j in j_list){
+          if ( i != j){
+          da_peaks_tmp <- FindMarkers(
+              object = obj,
+              ident.1 = i,
+              ident.2 = j,
+              group.by = group,
+              test.use = 'LR',
+              latent.vars = 'nCount_peaks',
+              only.pos=T,
+              assay=assay.,
+              logfc.threshold=0.1
+              )
+          da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
+          closest_genes <- ClosestFeature(obj,da_peaks_tmp$da_region)
+          da_peaks_tmp<-cbind(da_peaks_tmp,closest_genes)
+          da_peaks_tmp$enriched_group<-c(i)
+          da_peaks_tmp$compared_group<-c(j)
+          da_tmp_2[[paste(i,j)]]<-da_peaks_tmp
+          }
+      }
+      return(da_tmp_2)
+    }
+
+  n.cores=length(unique(dat$seurat_clusters))
+  dat_da_peaks<-mclapply(
+      unique(dat$seurat_clusters),
+      FUN=da_one_v_one,
+      obj=dat,
+      group="seurat_clusters",
+      j_list=do.call("as.character",list(unique(dat$seurat_clusters))),
+      mc.cores=n.cores)
+
+  #Merge the final data frame from the list for 1v1 DA
+  dat_da_peaks<-do.call("rbind",do.call("rbind",dat_da_peaks))
+
+  write("Outputting One v One DA Table.", stderr())
+  write.table(dat_da_peaks,file="ExN.onevone.da_peaks.txt",sep="\t",col.names=T,row.names=T,quote=F)
+  system("slack -F ExN.onevone.da_peaks.txt ryan_todo")
+
+  dat_da_tf<-mclapply(
+      unique(dat$seurat_clusters),
+      FUN=da_one_v_one,
+      obj=dat,
+      group="seurat_clusters",
+      j_list=do.call("as.character",list(unique(dat$seurat_clusters))),
+      assay.="chromvar",
+      mc.cores=n.cores)
+
+  #Merge the final data frame from the list for 1v1 DA
+  dat_da_tf<-do.call("rbind",do.call("rbind",dat_da_tf))
+
+  write("Outputting One v One DA Table.", stderr())
+  write.table(dat_da_tf,file="ExN.onevone.da_chromvar.txt",sep="\t",col.names=T,row.names=T,quote=F)
+  system("slack -F ExN.onevone.da_chromvar.txt ryan_todo")
+
+# extract position frequency matrices for the motifs
+pwm <- getMatrixSet(
+  x = JASPAR2020,
+  opts = list(species = 9606, all_versions = FALSE)
+)
+
+# add motif information
+DefaultAssay(dat)<-"peaks"
+dat <- AddMotifs(dat, genome = BSgenome.Hsapiens.UCSC.hg38, pfm = pwm)
+saveRDS(dat,file="orgo_cirm43.ExN.SeuratObject.Rds")
+
+
+#function for plotting footprints in data sets
+plot_footprints<-function(x,footprints){
+  x <- Footprint(object = x, motif.name = footprints, genome = BSgenome.Hsapiens.UCSC.hg38, in.peaks=F)   # gather the footprinting information for sets of motifs
+  p2 <- PlotFootprint(x, features = footprints,label=F,normalization="subtract")   # plot the footprint data for each group of cells, might want to change idents
+  return(p2)
+}
+
+out1<-mclapply(c("SOX2","PAX6","NEUROD2","TBR1","EOMES","NEUROD1","NEUROG1","BCL11B"),FUN=function(z) plot_footprints(x=dat,footprints=z),mc.cores=8) #plot and return 5 at a time
+outname="ExN"
+pdf(paste0(outname,".motif_footprints.pdf"),height=5*length(out1))
+print(wrap_plots(out1) + patchwork::plot_layout(ncol = 1))
+dev.off()
+system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
 ```
 
 ## Using monocle to build trajectories
+
+Switching this analysis to a principal curve for simplification, I think monocle is capturing too much noise. 
 
 ```R
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
@@ -2530,6 +2660,7 @@ Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately
   library(SeuratWrappers)
   library(patchwork)
   library(monocle3)
+  library(princurve)
 
 
   monocle_processing<-function(outname, object_input,min_branch=10){
@@ -2551,52 +2682,71 @@ Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately
   }
 
 
+  # princurve_processing<-function(outname, object_input){
+  # fit<-principal_curve(object_input@reductions$umap@cell.embeddings,trace=T,maxit=1000)
+  # pdf(paste0(outname,".dims.princurve.pdf"))
+  # plot(object_input@reductions$umap@cell.embeddings,col=object_input$DIV,pch=19)
+  # dev.off()
+  # system(paste0("slack -F ",paste0(outname,".dims.princurve.pdf")," ryan_todo"))
+  # pdf(paste0(outname,".princurve.pdf"))
+  # plot(fit)
+  # lines(fit)
+  # #points(fit,pch=19,col=object_input$DIV)
+  # whiskers(object_input@reductions$umap@cell.embeddings, fit$s,col=object_input$DIV)
+  # dev.off()
+  # system(paste0("slack -F ",paste0(outname,".princurve.pdf")," ryan_todo"))
+  # return(fit)
+  # }
+
 ###Excitatory Neurons####
 #Rerun cistopic and recluster RG cell subset
-exn<-readRDS("orgo_cirm43.ExN.SeuratObject.Rds")
-DefaultAssay(exn)<-"peaks"
-outname.="ExN"
-exn_sub.cds<-monocle_processing(object_input=exn,outname=outname.)
-#NOTE THIS SHOULD BE CHANGED AFTER FIRST PLOT
-exn_sub.cds <- order_cells(exn_sub.cds, reduction_method = "UMAP", root_pr_nodes = c("Y_184")) #Chose youngest cells as root 
-saveRDS(exn_sub.cds ,paste0(outname.,".pseudotime.monoclecds.Rds"))
+# exn<-readRDS("orgo_cirm43.ExN.SeuratObject.Rds")
+# DefaultAssay(exn)<-"peaks"
+# outname.="ExN"
 
-#plot pseudotime after determining root
-pdf(paste0(outname.,".trajectory.pseudotime.pdf"))
-plot_cells(cds = exn_sub.cds ,show_trajectory_graph = TRUE,color_cells_by = "pseudotime", alpha=0.5, cell_stroke=0)
-dev.off()
-#system("slack -F ",paste0(outname.,".trajectory.pseudotime.pdf")," ryan_todo")
+# #exn_princurve<-princurve_processing(outname="ExN",object_input=exn)
+# exn_sub.cds<-monocle_processing(object_input=exn,outname=outname.)
+# NOTE THIS SHOULD BE CHANGED AFTER FIRST PLOT
+# exn_sub.cds <- order_cells(exn_sub.cds, reduction_method = "UMAP", root_pr_nodes = c("Y_184")) #Chose youngest cells as root 
+# saveRDS(exn_sub.cds ,paste0(outname.,".pseudotime.monoclecds.Rds"))
 
-#Append pseudotime to meta data of seurat object
-exn<-AddMetaData(object=exn,metadata=exn_sub.cds@principal_graph_aux@listData$UMAP$pseudotime, col.name=paste0("pseudotime_",outname.))
-plt1<-FeaturePlot(exn,feature=paste0("pseudotime_",outname.))
-plt2<-DimPlot(exn,group.by="seurat_clusters")
-ggsave(plt1+plt2,file=paste0(outname.,"_trajectory.pseudotime.pdf"))
-#system("slack -F ",paste0(outname.,"_trajectory.pseudotime.pdf"))," ryan_todo")
-saveRDS(exn,"orgo_cirm43.ExN.pseudotime.SeuratObject.Rds")
+# plot pseudotime after determining root
+# pdf(paste0(outname.,".trajectory.pseudotime.pdf"))
+# plot_cells(cds = exn_sub.cds ,show_trajectory_graph = TRUE,color_cells_by = "pseudotime", alpha=0.5, cell_stroke=0)
+# dev.off()
+# system("slack -F ",paste0(outname.,".trajectory.pseudotime.pdf")," ryan_todo")
+
+# Append pseudotime to meta data of seurat object
+# exn<-AddMetaData(object=exn,metadata=exn_sub.cds@principal_graph_aux@listData$UMAP$pseudotime, col.name=paste0("pseudotime_",outname.))
+# plt1<-FeaturePlot(exn,feature=paste0("pseudotime_",outname.))
+# plt2<-DimPlot(exn,group.by="seurat_clusters")
+# ggsave(plt1+plt2,file=paste0(outname.,"_trajectory.pseudotime.pdf"))
+# system("slack -F ",paste0(outname.,"_trajectory.pseudotime.pdf"))," ryan_todo")
+# saveRDS(exn,"orgo_cirm43.ExN.pseudotime.SeuratObject.Rds")
 
 
 ### Radial Glia ########
 RG<-readRDS(file="orgo_cirm43.RG.SeuratObject.Rds")   ###save Seurat file
 DefaultAssay(RG)<-"peaks"
 outname.="RG"
+#RG_princurve<-princurve_processing(outname="RG",object_input=RG)
 RG_sub.cds<-monocle_processing(object_input=RG,outname=outname.)
-#NOTE THIS SHOULD BE CHANGED AFTER FIRST PLOT
+NOTE THIS SHOULD BE CHANGED AFTER FIRST PLOT
 RG_sub.cds <- order_cells(RG_sub.cds, reduction_method = "UMAP", root_pr_nodes = c("Y_153")) #Chose youngest cells as root 
 saveRDS(RG_sub.cds ,paste0(outname.,".pseudotime.monoclecds.Rds"))
 
-#plot pseudotime after determining root
+plot pseudotime after determining root
 pdf(paste0(outname.,".trajectory.pseudotime.pdf"))
 plot_cells(cds = RG_sub.cds ,show_trajectory_graph = TRUE,color_cells_by = "pseudotime", alpha=0.5, cell_stroke=0)
 dev.off()
-#system("slack -F ",paste0(outname.,".trajectory.pseudotime.pdf")," ryan_todo")
+system("slack -F ",paste0(outname.,".trajectory.pseudotime.pdf")," ryan_todo")
 
-#Append pseudotime to meta data of seurat object
+Append pseudotime to meta data of seurat object
 RG<-AddMetaData(object=RG,metadata=RG_sub.cds@principal_graph_aux@listData$UMAP$pseudotime, col.name=paste0("pseudotime_",outname.))
 plt1<-FeaturePlot(RG,feature=paste0("pseudotime_",outname.))
 plt2<-DimPlot(RG,group.by="seurat_clusters")
 ggsave(plt1+plt2,file=paste0(outname.,"_trajectory.pseudotime.pdf"))
-#system("slack -F ",paste0(outname.,"_trajectory.pseudotime.pdf"))," ryan_todo")
+system("slack -F ",paste0(outname.,"_trajectory.pseudotime.pdf"))," ryan_todo")
 
 saveRDS(RG,"orgo_cirm43.RG.pseudotime.SeuratObject.Rds")
 
@@ -2609,6 +2759,72 @@ saveRDS(RG,"orgo_cirm43.RG.pseudotime.SeuratObject.Rds")
 
 ```
 
+### Monocle Processing Script for ARSN
+
+```R
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  library(Seurat)
+  library(Signac)
+  library(ggplot2)
+  set.seed(1234)
+  library(cicero)
+  library(SeuratWrappers)
+  library(patchwork)
+  library(monocle3)
+  library(princurve)
+
+
+  monocle_processing<-function(outname, object_input,min_branch=10){
+      atac.cds <- as.cell_data_set(object_input)
+      atac.cds <- cluster_cells(cds = atac.cds, reduction_method = "UMAP",k=10) 
+      #Read in cds from cicero processing earlier and continue processing
+      atac.cds<- learn_graph(atac.cds, use_partition=F,close_loop=F,learn_graph_control=list(minimal_branch_len=min_branch))
+      #plot to see nodes for anchoring
+      plt1<-plot_cells(cds = atac.cds, show_trajectory_graph = TRUE, color_cells_by="DIV", label_leaves=T, label_branch_points=F, label_roots=T) 
+      plt2<-plot_cells(cds = atac.cds, show_trajectory_graph = TRUE, color_cells_by="seurat_clusters",label_leaves=T, label_branch_points=F, label_roots=T) 
+      #Also make a plot of just node names for easier identification
+      root_nodes<-as.data.frame(t(atac.cds@principal_graph_aux$UMAP$dp_mst))
+      root_nodes$label<-row.names(root_nodes)
+      plt3<-ggplot(root_nodes, aes(x=UMAP_1,y=UMAP_2))+ geom_text(aes(label=label),size=3)+ theme_bw() 
+      plt<-(plt1+plt2)/plt3
+      ggsave(plt,file=paste(outname,min_branch,"DIV_trajectory.pdf",sep="_"),width=20,height=10)
+      #system(paste0("slack -F ",paste(outname,"DIV_trajectory.pdf",sep="_")," ryan_todo"))
+      return(atac.cds)
+  }
+
+
+
+### Radial Glia ########
+RG<-readRDS(file="orgo_cirm43.RG.SeuratObject.Rds")   ###save Seurat file
+DefaultAssay(RG)<-"peaks"
+outname.="RG"
+#RG_princurve<-princurve_processing(outname="RG",object_input=RG)
+for (i in 5,10,25,50,100){
+RG_sub.cds<-monocle_processing(object_input=RG,outname=outname., min_branch=i)
+}
+
+
+
+#NOTE THIS SHOULD BE CHANGED AFTER FIRST PLOT
+RG_sub.cds <- order_cells(RG_sub.cds, reduction_method = "UMAP", root_pr_nodes = c("Y_153")) #Chose youngest cells as root 
+saveRDS(RG_sub.cds ,paste0(outname.,".pseudotime.monoclecds.Rds"))
+
+#plot pseudotime after determining root
+pdf(paste0(outname.,".trajectory.pseudotime.pdf"))
+plot_cells(cds = RG_sub.cds ,show_trajectory_graph = TRUE,color_cells_by = "pseudotime", alpha=0.5, cell_stroke=0)
+dev.off()
+system("slack -F ",paste0(outname.,".trajectory.pseudotime.pdf")," ryan_todo")
+
+#Append pseudotime to meta data of seurat object
+RG<-AddMetaData(object=RG,metadata=RG_sub.cds@principal_graph_aux@listData$UMAP$pseudotime, col.name=paste0("pseudotime_",outname.))
+plt1<-FeaturePlot(RG,feature=paste0("pseudotime_",outname.))
+plt2<-DimPlot(RG,group.by="seurat_clusters")
+ggsave(plt1+plt2,file=paste0(outname.,"_trajectory.pseudotime.pdf"))
+system("slack -F ",paste0(outname.,"_trajectory.pseudotime.pdf"))," ryan_todo")
+
+saveRDS(RG,"orgo_cirm43.RG.pseudotime.SeuratObject.Rds")
+
+```
 ### Statistical analysis across pseudotime
 
 ```R
