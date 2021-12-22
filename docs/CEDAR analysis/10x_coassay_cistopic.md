@@ -340,90 +340,159 @@ t47d<-readRDS("210924_t47d.SeuratObject.Rds")
   t47d <- RunChromVAR( object = t47d,genome = BSgenome.Hsapiens.UCSC.hg38,assay="peaks")
   saveRDS(t47d,file="210924_t47d.SeuratObject.Rds")
 
-#define DA functions for parallelization
-#Use LR test for atac data
-da_one_v_rest<-function(i,obj,group,assay.="chromvar",latent.vars.="nCount_peaks"){
-    da_ga_tmp <- FindMarkers(
-        object = obj,
-        ident.1 = i,
-        group.by = group,
-        test.use = 'LR',
-        latent.vars = latent.vars.,
-        only.pos=T,
-        assay=assay.
-        )
-    da_ga_tmp$da_region<-row.names(da_ga_tmp)
-    da_ga_tmp$enriched_group<-c(i)
-    da_ga_tmp$compared_group<-c("all_other_cells")
-    return(da_ga_tmp)
-  }
-
-
-#combined
-n.cores=1 #Perform parallel application of DA test
-da_ga<-mclapply(unique(combined$origin), FUN=da_one_v_rest, obj=combined, group="origin", assay.="chromvar", mc.cores=n.cores)
-da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
-da_ga_df$tf_name <- unlist(lapply(unlist(lapply(da_ga_df$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
-write.table(da_ga_df,file="210924_cellline.onevrest.da_chromvar.txt",sep="\t",col.names=T,row.names=T,quote=F)
-
-library(dplyr)
-for (i in unique(combined$origin)){print(as.data.frame(da_ga_df %>% filter(enriched_group==i) %>% dplyr::arrange(p_val_adj) %>% dplyr::slice(1:10)))}
-
-n.cores=1 #Perform parallel application of DA test
-da_ga<-mclapply(unique(combined$origin), FUN=da_one_v_rest, obj=combined, group="origin", assay.="peaks", mc.cores=n.cores)
-da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
-write.table(da_ga_df,file="210924_cellline.onevrest.da_peaks.txt",sep="\t",col.names=T,row.names=T,quote=F)
-
-
-
-########################Plot out top TF for each cluster###################
-library(dplyr)
-library(ComplexHeatmap)
-library(circlize)
-  library(viridis)
-da_tf<-read.csv(file="210924_cellline.onevrest.da_chromvar.txt",head=T,sep="\t",row.names=NULL)
-da_tf<-da_tf[complete.cases(da_tf),]
-
-da_tf$label<-""
-for (x in unique(da_tf$enriched_group)){
-selc_genes<-as.data.frame(da_tf %>% filter(enriched_group==x)  %>% filter(p_val < 0.05) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:10))$tf_name
-da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$label<- da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$tf_name
-}
-
-#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
-dat_tf<-as.data.frame(t(as.data.frame(combined[["chromvar"]]@data)))
-sum_tf<-split(dat_tf,combined$origin) #group by rows to seurat clusters
-sum_tf<-lapply(sum_tf,function(x) apply(x,2,mean)) #take average across group
-sum_tf<-do.call("rbind",sum_tf) #condense to smaller data frame
-
-sum_tf<-t(scale(sum_tf))
-sum_tf<-sum_tf[,!endsWith(colnames(sum_tf),"NA")] #remove NA (doublet cells)
-
-sum_tf<-sum_tf[row.names(sum_tf) %in% unique(da_tf[da_tf$label!="",]$da_region),]
-row.names(sum_tf)<-da_tf[match(row.names(sum_tf),da_tf$da_region,nomatch=0),]$tf_name
-sum_tf_plot<-na.omit(t(sum_tf))
-
-colfun=colorRamp2(quantile(unlist(sum_tf_plot), probs=c(0.5,0.75,0.95)),cividis(3))
-plt1<-Heatmap(sum_tf_plot,
-    #cluster_rows=sum_da_dend,
-    #left_annotation=side_ha,
-    col=colfun,
-    #bottom_annotation=bottom_ha,
-    column_names_gp = gpar(fontsize = 14),
-    row_names_gp=gpar(fontsize=14),
-    column_names_rot=90
-)
-
-plt1<-draw(plt1)
-
-
-pdf("combined.tf.heatmap.pdf",height=20,width=20)
-draw(plt1)
-dev.off()
-system("slack -F combined.tf.heatmap.pdf ryan_todo")
 
 
 ```
+
+## Cicero
+
+```R
+  library(Signac)
+  library(Seurat)
+  library(SeuratWrappers)
+  library(ggplot2)
+  library(patchwork)
+  library(monocle3)
+  library(cicero)
+  library(SeuratObjects)
+  library(EnsDb.Hsapiens.v86)
+  setwd("/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
+  #Cicero processing function
+  cicero_processing<-function(object_input,prefix){
+
+      #Generate CDS format from Seurat object
+      atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap")
+
+      # convert to CellDataSet format and make the cicero object
+      print("Making Cicero format CDS file")
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = atac.cds@reducedDimS)
+      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+      
+      # extract gene annotations from EnsDb
+      annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+      seqlevels(annotations)<-paste0("chr",seqlevels(annotations))
+      #seqnames(annotations)<-paste0("chr",seqnames(annotations))
+
+      # change to UCSC style since the data was mapped to hg38
+      #seqlevelsStyle(annotations) <- 'UCSC'
+      genome(annotations) <- "hg38"
+
+      genome <- annotations@seqinfo # get the chromosome sizes from the Seurat object
+      genome.df <- data.frame("chr" = genome@seqnames, "length" = genome@seqlengths) # convert chromosome sizes to a dataframe
+      
+      print("Running Cicero to generate connections.")
+      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
+      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+      
+      print("Generating CCANs")
+      ccans <- generate_ccans(conns) # generate ccans
+      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+      
+      print("Adding CCAN links into Seurat Object and Returning.")
+      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
+      DefaultAssay(object_input)<-"peaks"
+      Links(object_input) <- links
+      return(object_input)
+  }
+
+t47d<-readRDS("210924_t47d.SeuratObject.Rds")
+t47d<-cicero_processing(object_input=t47d,prefix="210924_t47d")
+saveRDS(t47d,"210924_t47d.SeuratObject.unnormGA.Rds")
+
+mcf7<-readRDS("210924_mcf7.SeuratObject.Rds")
+mcf7<-cicero_processing(object_input=mcf7,prefix="210924_mcf7")
+saveRDS(mcf7,"210924_mcf7.SeuratObject.unnormGA.Rds")
+
+  # generate unnormalized gene activity matrix
+  # gene annotation sample
+  hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+
+  pos <-as.data.frame(hg38_annotations,row.names=NULL)
+  pos$chromosome<-paste0("chr",pos$seqnames)
+  pos$gene<-pos$gene_id
+  pos <- subset(pos, strand == "+")
+  pos <- pos[order(pos$start),] 
+  pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
+  pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
+
+  neg <-as.data.frame(hg38_annotations,row.names=NULL)
+  neg$chromosome<-paste0("chr",neg$seqnames)
+  neg$gene<-neg$gene_id
+  neg <- subset(neg, strand == "-")
+  neg <- neg[order(neg$start,decreasing=TRUE),] 
+  neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
+  neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
+
+  gene_annotation<- rbind(pos, neg)
+  gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
+  names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
+
+
+
+  geneactivity_processing<-function(cds_input,conns_input,prefix){
+      atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
+      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
+      saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
+  }
+
+#combined
+  conns<-as.data.frame(readRDS("210924_cellline_atac_cicero_conns.Rds"))
+  obj.cicero<-readRDS("210924_cellline_atac_cicero_cds.Rds")
+  geneactivity_processing(cds_input=as.CellDataSet(combined,assay="peaks",reduction="umap"),conns_input=conns,prefix="210924_cellline")
+
+  #Read in unnormalized GA
+  cicero_gene_activities<-readRDS("210924_cellline.unnorm_GA.Rds")
+  combined[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
+
+  # normalize
+  combined <- NormalizeData(
+    object = combined,
+    assay = 'GeneActivity',
+    normalization.method = 'LogNormalize',
+    scale.factor = median(combined$nCount_GeneActivity)
+  )
+  saveRDS(combined,"210924_cellline.SeuratObject.Rds")
+
+
+#t47d
+  conns<-as.data.frame(readRDS("210924_t47d_atac_cicero_conns.Rds"))
+  obj.cicero<-readRDS("210924_t47d_atac_cicero_cds.Rds")
+  geneactivity_processing(cds_input=as.CellDataSet(t47d,assay="peaks",reduction="umap"),conns_input=conns,prefix="210924_t47d")
+
+  #Read in unnormalized GA
+  cicero_gene_activities<-readRDS("210924_t47d.unnorm_GA.Rds")
+  t47d[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
+
+  # normalize
+  t47d <- NormalizeData(
+    object = t47d,
+    assay = 'GeneActivity',
+    normalization.method = 'LogNormalize',
+    scale.factor = median(t47d$nCount_GeneActivity)
+  )
+  saveRDS(t47d,"210924_t47d.SeuratObject.Rds")
+
+
+#mcf7
+  conns<-as.data.frame(readRDS("210924_mcf7_atac_cicero_conns.Rds"))
+  obj.cicero<-readRDS("210924_mcf7_atac_cicero_cds.Rds")
+  geneactivity_processing(cds_input=as.CellDataSet(mcf7,assay="peaks",reduction="umap"),conns_input=conns,prefix="210924_mcf7")
+
+  #Read in unnormalized GA
+  cicero_gene_activities<-readRDS("210924_mcf7.unnorm_GA.Rds")
+  mcf7[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
+
+  # normalize
+  mcf7 <- NormalizeData(
+    object = mcf7,
+    assay = 'GeneActivity',
+    normalization.method = 'LogNormalize',
+    scale.factor = median(mcf7$nCount_GeneActivity)
+  )
+  saveRDS(mcf7,"210924_mcf7.SeuratObject.Rds")
+
+```
+
 
 ## Motif Footprinting
 Based on https://satijalab.org/signac/articles/footprint.html
@@ -504,22 +573,26 @@ library(ggrepel)
 library(parallel)
 library(BSgenome.Hsapiens.UCSC.hg38)
 library(patchwork)
+library(circlize)
+library(viridis)
 
 setwd("/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
 mcf7_rna<-readRDS("/home/groups/CEDAR/doe/projects/ATACRNA/hg38/MCF7_RNA_strictQC.rds")
 t47d_rna<-readRDS("/home/groups/CEDAR/doe/projects/ATACRNA/hg38/T47D_RNA_strictQC.rds")
 
-mcf7_bins<-readRDS("/home/groups/CEDAR/doe/projects/ATACRNA/hg38/MCF7_ATAC_wBins.rds")
-t47d_bins<-readRDS("/home/groups/CEDAR/doe/projects/ATACRNA/hg38/T47D_ATAC_wBins.rds")
+plt1<-DimPlot(mcf7_rna,reduction="umap",group.by=c("origin","seurat_clusters"))
+ggsave(plt1,file="mcf7_rna_umap.pdf")
+system("slack -F mcf7_rna_umap.pdf ryan_todo")
+
+plt1<-DimPlot(t47d_rna,reduction="umap",group.by=c("origin","seurat_clusters"))
+ggsave(plt1,file="t47d_rna_umap.pdf")
+system("slack -F t47d_rna_umap.pdf ryan_todo")
+
+#mcf7_bins<-readRDS("/home/groups/CEDAR/doe/projects/ATACRNA/hg38/MCF7_ATAC_wBins.rds")
+#t47d_bins<-readRDS("/home/groups/CEDAR/doe/projects/ATACRNA/hg38/T47D_ATAC_wBins.rds")
 
 mcf7_atac<-readRDS("210924_mcf7.SeuratObject.Rds")
 t47d_atac<-readRDS("210924_t47d.SeuratObject.Rds")
-combined<-readRDS("210924_cellline.SeuratObject.Rds")
-
-#not using individually run titan
-#mcf7_titan<-read.table("/home/groups/CEDAR/mulqueen/projects/10x_atacrna/MCF7_merged_Topics_cellTopic_table.tsv")
-#t47d_titan<-read.table("/home/groups/CEDAR/mulqueen/projects/10x_atacrna/T47D_merged_Topics_cellTopic_table.tsv")
-
 
 #Correlate cistopic with titan topics
 correlate_cistopic_titan<-function(x,y,outname){
@@ -569,52 +642,6 @@ correlate_cistopic_titan<-function(x,y,outname){
 correlate_cistopic_titan(x=mcf7_atac,y=mcf7_rna,outname="mcf7")
 correlate_cistopic_titan(x=t47d_atac,y=t47d_rna,outname="t47d")
 
-# #for combined data
-#   cistopic_dat<-combined@reductions$cistopic@cell.embeddings #get cistopic from x
-#   row.names(cistopic_dat)<-substr(row.names(cistopic_dat),0,18)
-#   titan_dat_mcf7<-as.data.frame(mcf7_rna@reductions$imputedLDA@cell.embeddings) #get titan from y
-#   row.names(titan_dat_mcf7)<-paste0("mcf7_",row.names(titan_dat_mcf7))
-#   titan_dat_t47d<-as.data.frame(t47d_rna@reductions$imputedLDA@cell.embeddings) #get titan from y
-#   row.names(titan_dat_t47d)<-paste0("t47d_",row.names(titan_dat_t47d))
-#   titan_dat<-rbind(titan_dat_mcf7,titan_dat_t47d)
-#   cells<-row.names(titan_dat)[which(substr(row.names(titan_dat),0,18) %in% row.names(cistopic_dat))] # set list of shared cell names
-#   cells_substr<-substr(cells,0,18)
-#   sum(cells %in% row.names(titan_dat))==sum(cells %in% row.names(titan_dat)) #check to make sure same number of cells
-#   titan_dat<-titan_dat[cells,]#reorder data frames
-#   cistopic_dat<-cistopic_dat[cells_substr,]
-#   cor_mat<-data.frame(matrix(ncol = ncol(cistopic_dat), nrow = ncol(titan_dat))) #make an empty data frame to populate
-#   colnames(cor_mat)<-colnames(cistopic_dat)
-#   row.names(cor_mat)<-colnames(titan_dat)
-
-#   for (yi in 1:ncol(cistopic_dat)){
-#     for (xj in 1:ncol(titan_dat)){
-#       cor_mat[xj,yi]<-cor(x=as.numeric(cistopic_dat[,yi]),y=as.numeric(titan_dat[,xj]))
-#     }
-#   }
-
-#   out_plt<-Heatmap(cor_mat)
-#   pdf(paste0(outname,".cistopic_titan_topiccorrelation.pdf"))
-#   print(out_plt)
-#   dev.off()
-#   system(paste0("slack -F ",paste0(outname,".cistopic_titan_topiccorrelation.pdf")," ryan_todo"))
-
-#   #add cistopic square correlation matrix
-#   cor_cistopic<-cor(cistopic_dat)
-#   out_plt<-Heatmap(cor_cistopic)
-#   pdf(paste0(outname,".cistopic_squarecorrelation.pdf"))
-#   print(out_plt)
-#   dev.off()
-#   system(paste0("slack -F ",paste0(outname,".cistopic_squarecorrelation.pdf")," ryan_todo"))
-
-#   #titan square correlation
-#   cor_titan<-cor(titan_dat)
-#   out_plt<-Heatmap(cor_titan)
-#   pdf(paste0(outname,".titan_squarecorrelation.pdf"))
-#   print(out_plt)
-#   dev.off()
-#   system(paste0("slack -F ",paste0(outname,".titan_squarecorrelation.pdf")," ryan_todo"))
-
-
 #now to correlate chromvar motifs with titan topics
 
 #Correlate cistopic with titan topics
@@ -654,113 +681,46 @@ correlate_chromvar_titan<-function(x,y,outname){
 correlate_chromvar_titan(x=mcf7_atac,y=mcf7_rna,outname="mcf7")
 correlate_chromvar_titan(x=t47d_atac,y=t47d_rna,outname="t47d")
 
-# #For Combined:
-# chromvar_dat<-as.data.frame(t(combined@assays$chromvar@data)) #get chromvar from x
-# tfList <- getMatrixByID(JASPAR2020, ID=colnames(chromvar_dat)) #set up readable chromvar names
-# tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
-# colnames(chromvar_dat)<-tfList
-
-# titan_dat_mcf7<-as.data.frame(mcf7_rna@reductions$imputedLDA@cell.embeddings) #get titan from y
-# row.names(titan_dat_mcf7)<-paste0("mcf7_",row.names(titan_dat_mcf7))
-# titan_dat_t47d<-as.data.frame(t47d_rna@reductions$imputedLDA@cell.embeddings) #get titan from y
-# row.names(titan_dat_t47d)<-paste0("t47d_",row.names(titan_dat_t47d))
-# titan_dat<-rbind(titan_dat_mcf7,titan_dat_t47d)
-# row.names(chromvar_dat)<-substr(row.names(chromvar_dat),0,21)
-# row.names(titan_dat)<-substr(row.names(titan_dat),0,21)
-
-# cells<-row.names(titan_dat)[which(row.names(titan_dat) %in% row.names(chromvar_dat))] # set list of shared cell names
-# sum(cells %in% row.names(titan_dat))==sum(cells %in% row.names(titan_dat)) #check to make sure same number of cells
-# titan_dat<-titan_dat[cells,]#reorder data frames
-# chromvar_dat<-chromvar_dat[cells,]
-# cor_mat<-data.frame(matrix(ncol = ncol(chromvar_dat), nrow = ncol(titan_dat))) #make an empty data frame to populate
-# colnames(cor_mat)<-colnames(chromvar_dat)
-# row.names(cor_mat)<-colnames(titan_dat)
-
-
-# for (yi in 1:ncol(chromvar_dat)){
-#   for (xj in 1:ncol(titan_dat)){
-#     cor_mat[xj,yi]<-cor(x=chromvar_dat[,yi],y=titan_dat[,xj],use="complete.obs")
-#   }
-# }
-
-# out_plt<-Heatmap(t(cor_mat),
-#   row_names_gp = grid::gpar(fontsize = 4),
-#   row_km=5
-#   )
-# pdf(paste0(outname,".chromvar_titan_topiccorrelation.pdf"),height=30)
-# print(out_plt)
-# dev.off()
 # system(paste0("slack -F ",paste0(outname,".chromvar_titan_topiccorrelation.pdf")," ryan_todo"))
 
-#find DA motifs from top bins of topics
-  #set up a named vector of topic11 and topic17 cells to add to seurat object
-  topic_11<-setNames(mcf7_bins@meta.data$Topic_11bin,paste0(row.names(mcf7_bins@meta.data),mcf7_bins$origin))
-  topic_11<-topic_11[topic_11 == "75percentile_Topic11"]
-  topic_11_score<-setNames(mcf7_bins$ImputedTopic_11,paste0(row.names(mcf7_bins@meta.data),mcf7_bins$origin))
-  topic_17<-setNames(mcf7_bins@meta.data$Topic_17bin,paste0(row.names(mcf7_bins@meta.data),mcf7_bins$origin))
-  topic_17<-topic_17[topic_17 == "75percentile_Topic17"]
-  topic_17_score<-setNames(mcf7_bins$ImputedTopic_17,paste0(row.names(mcf7_bins@meta.data),mcf7_bins$origin))
-  mcf7_atac<-AddMetaData(object=mcf7_atac,metadata=topic_11,col.name="top_topic")
-  mcf7_atac<-AddMetaData(object=mcf7_atac,metadata=topic_11_score,col.name="ImputedTopic_11")
-  mcf7_atac<-AddMetaData(object=mcf7_atac,metadata=topic_17_score,col.name="ImputedTopic_17")
-  levels(mcf7_atac$top_topic) <- c(levels(mcf7_atac$top_topic),"75percentile_Topic17")
-  mcf7_atac@meta.data[row.names(mcf7_atac@meta.data) %in% names(topic_17),]$top_topic<-"75percentile_Topic17"
-  mcf7_atac_subset<-subset(mcf7_atac,cells=which(is.finite(mcf7_atac$top_topic)))
-  Idents(mcf7_atac_subset)<-mcf7_atac_subset$top_topic
+#find DA motifs from top topic differences
+#set up a named vector of topic11 and topic17 cells to add to seurat object
+topic_11_score<-setNames(mcf7_rna$ImputedTopic_11,paste0(row.names(mcf7_rna@meta.data),mcf7_rna$origin))
+topic_17_score<-setNames(mcf7_rna$ImputedTopic_17,paste0(row.names(mcf7_rna@meta.data),mcf7_rna$origin))
+mcf7_atac<-AddMetaData(object=mcf7_atac,metadata=topic_11_score,col.name="ImputedTopic_11")
+mcf7_atac<-AddMetaData(object=mcf7_atac,metadata=topic_17_score,col.name="ImputedTopic_17")
+mcf7_atac$topic_bin<-"NA"
+mcf7_atac@meta.data[(mcf7_atac@meta.data$ImputedTopic_11>=quantile(mcf7_atac$ImputedTopic_11,0.75)) & (mcf7_atac@meta.data$ImputedTopic_17 <= quantile(mcf7_atac$ImputedTopic_17,0.25)),]$topic_bin<-"Topic11"
+mcf7_atac@meta.data[(mcf7_atac@meta.data$ImputedTopic_17>=quantile(mcf7_atac$ImputedTopic_17,0.75)) & (mcf7_atac@meta.data$ImputedTopic_11 <= quantile(mcf7_atac$ImputedTopic_11,0.25)),]$topic_bin<-"Topic17"
+plt<-ggplot(mcf7_atac@meta.data,aes(x=ImputedTopic_11,y=ImputedTopic_17,color=topic_bin))+geom_point()+theme_minimal()
+ggsave(plt,file="mcf7_topic_scatterplot.pdf")
+system("slack -F mcf7_topic_scatterplot.pdf ryan_todo")
+table(mcf7_atac$topic_bin)
+mcf7_atac_subset<-subset(mcf7_atac, topic_bin %in% c("Topic11","Topic17"))
+Idents(mcf7_atac_subset)<-mcf7_atac_subset$topic_bin
+saveRDS(mcf7_atac_subset,file="mcf7_atac_subset.Rds")
 
-#TO BE ADDRESSED: OVERLAP BETWEEN TOP TOPIC 11 and TOP TOPIC 17
-  sum(names(topic_17) %in% names(topic_11))
-  #97
+#and for t47d
+topic_11_score<-setNames(t47d_rna$ImputedTopic_11,paste0(row.names(t47d_rna@meta.data),t47d_rna$origin))
+topic_17_score<-setNames(t47d_rna$ImputedTopic_17,paste0(row.names(t47d_rna@meta.data),t47d_rna$origin))
+t47d_atac<-AddMetaData(object=t47d_atac,metadata=topic_11_score,col.name="ImputedTopic_11")
+t47d_atac<-AddMetaData(object=t47d_atac,metadata=topic_17_score,col.name="ImputedTopic_17")
+t47d_atac$topic_bin<-"NA"
+t47d_atac@meta.data[(t47d_atac@meta.data$ImputedTopic_11>=quantile(t47d_atac$ImputedTopic_11,0.75)) & (t47d_atac@meta.data$ImputedTopic_17 <= quantile(t47d_atac$ImputedTopic_17,0.25)),]$topic_bin<-"Topic11"
+t47d_atac@meta.data[(t47d_atac@meta.data$ImputedTopic_17>=quantile(t47d_atac$ImputedTopic_17,0.75)) & (t47d_atac@meta.data$ImputedTopic_11 <= quantile(t47d_atac$ImputedTopic_11,0.25)),]$topic_bin<-"Topic17"
+plt<-ggplot(t47d_atac@meta.data,aes(x=ImputedTopic_11,y=ImputedTopic_17,color=topic_bin))+geom_point()+theme_minimal()
+ggsave(plt,file="t47d_topic_scatterplot.pdf")
+system("slack -F t47d_topic_scatterplot.pdf ryan_todo")
+t47d_atac_subset<-subset(t47d_atac, topic_bin %in% c("Topic11","Topic17"))
+Idents(t47d_atac_subset)<-t47d_atac_subset$topic_bin
+saveRDS(t47d_atac_subset,file="t47d_atac_subset.Rds")
 
-  sum(!names(topic_17) %in% names(topic_11))
-  #204
-
-  #and for t47d
-  topic_11<-setNames(t47d_bins@meta.data$Topic_11bin,paste0(row.names(t47d_bins@meta.data),t47d_bins$origin))
-  topic_11<-topic_11[topic_11 == "75percentile_Topic11"]
-  topic_11_score<-setNames(t47d_bins$ImputedTopic_11,paste0(row.names(t47d_bins@meta.data),t47d_bins$origin))
-  topic_17<-setNames(t47d_bins@meta.data$Topic_17bin,paste0(row.names(t47d_bins@meta.data),t47d_bins$origin))
-  topic_17<-topic_17[topic_17 == "75percentile_Topic17"]
-  topic_17_score<-setNames(t47d_bins$ImputedTopic_17,paste0(row.names(t47d_bins@meta.data),t47d_bins$origin))
-
-
-#TO BE ADDRESSED: OVERLAP BETWEEN TOP TOPIC 11 and TOP TOPIC 17
-  sum(names(topic_17) %in% names(topic_11))
-  #61
-
-  sum(!names(topic_17) %in% names(topic_11))
-  #210
-
-  t47d_atac<-AddMetaData(object=t47d_atac,metadata=topic_11,col.name="top_topic")
-  t47d_atac<-AddMetaData(object=t47d_atac,metadata=topic_11_score,col.name="ImputedTopic_11")
-  t47d_atac<-AddMetaData(object=t47d_atac,metadata=topic_17_score,col.name="ImputedTopic_17")
-  levels(t47d_atac$top_topic) <- c(levels(t47d_atac$top_topic),"75percentile_Topic17")
-  t47d_atac@meta.data[row.names(t47d_atac@meta.data) %in% names(topic_17),]$top_topic<-"75percentile_Topic17"
-  t47d_atac_subset<-subset(t47d_atac,cells=which(is.finite(t47d_atac$top_topic)))
-  Idents(t47d_atac_subset)<-t47d_atac_subset$top_topic
-
-#For combined
-  # topic_11_mcf7<-setNames(mcf7_atac$ImputedTopic_11,paste0("mcf7_",names(mcf7_atac$ImputedTopic_11)))
-  # topic_11_t47d<-setNames(t47d_atac$ImputedTopic_11,paste0("t47d_",names(t47d_atac$ImputedTopic_11)))
-  # topic_11<-c(topic_11_mcf7,topic_11_t47d)
-  # combined<-AddMetaData(object=combined,metadata=topic_11,col.name="ImputedTopic_11")
-
-  # topic_17_mcf7<-setNames(mcf7_atac$ImputedTopic_17,paste0("mcf7_",names(mcf7_atac$ImputedTopic_17)))
-  # topic_17_t47d<-setNames(t47d_atac$ImputedTopic_17,paste0("t47d_",names(t47d_atac$ImputedTopic_17)))
-  # topic_17<-c(topic_17_mcf7,topic_17_t47d)
-  # combined<-AddMetaData(object=combined,metadata=topic_17,col.name="ImputedTopic_17")
-
-  # toptopic_mcf7<-setNames(mcf7_atac$top_topic,paste0("mcf7_",names(mcf7_atac$top_topic)))
-  # toptopic_t47d<-setNames(t47d_atac$top_topic,paste0("t47d_",names(t47d_atac$top_topic)))
-  # toptopic<-c(toptopic_mcf7,toptopic_t47d)
-  # combined<-AddMetaData(object=combined,metadata=toptopic,col.name="top_topic")
+  table(t47d_atac$topic_bin)
 
 
-#Ensure no overlap of cells
-  table(t47d_atac_subset@meta.data[c("top_topic")])
 #find differences in chromvar usage 
-  mcf7_da_tf <- FindMarkers(object = mcf7_atac_subset, ident.1 = "75percentile_Topic11", ident.2="75percentile_Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="chromvar") 
-  t47d_da_tf <- FindMarkers(object = t47d_atac_subset, ident.1 = "75percentile_Topic11", ident.2="75percentile_Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="chromvar") 
+  mcf7_da_tf <- FindMarkers(object = mcf7_atac_subset, ident.1 = "Topic11", ident.2="Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="chromvar") 
+  t47d_da_tf <- FindMarkers(object = t47d_atac_subset, ident.1 = "Topic11", ident.2="Topic17",  test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="chromvar") 
 
 #set up readable motif names
   mcf7_da_tf$tf_name <- unlist(lapply(unlist(lapply(row.names(mcf7_da_tf), function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
@@ -774,25 +734,32 @@ correlate_chromvar_titan(x=t47d_atac,y=t47d_rna,outname="t47d")
   t47d_da_tf$label<-""
   t47d_da_tf[t47d_da_tf$sig=="sig",]$label<-t47d_da_tf[t47d_da_tf$sig=="sig",]$tf_name
 
-  plt<-ggplot(mcf7_da_tf,aes(x=avg_log2FC,y=-log10(p_val_adj),color=sig,label=label))+geom_point()+theme_bw()+scale_fill_manual(values=c("#999999", "#FF0000"))+geom_label_repel(label.size = 0.1,max.overlaps=20)
+  plt<-ggplot(mcf7_da_tf,aes(x=avg_log2FC,y=-log10(p_val_adj),color=sig,label=label))+geom_point()+theme_bw()+scale_fill_manual(values=c("#999999", "#FF0000"))+geom_label_repel(label.size = 0.1,max.overlaps=20)+xlim(c(-10,10))
   ggsave(plt,file="mcf7_topic11v17_chromvar.pdf")
   system("slack -F mcf7_topic11v17_chromvar.pdf ryan_todo")
+write.table(mcf7_da_tf,file="mcf7_topicbin_TF.txt",col.names=T,sep="\t")
+system("slack -F mcf7_topicbin_TF.txt ryan_todo")
 
-  plt<-ggplot(t47d_da_tf,aes(x=avg_log2FC,y=-log10(p_val_adj),color=sig,label=label))+geom_point()+theme_bw()+scale_fill_manual(values=c("#999999", "#FF0000"))+geom_label_repel(label.size = 0.1,max.overlaps=20)
+  plt<-ggplot(t47d_da_tf,aes(x=avg_log2FC,y=-log10(p_val_adj),color=sig,label=label))+geom_point()+theme_bw()+scale_fill_manual(values=c("#999999", "#FF0000"))+geom_label_repel(label.size = 0.1,max.overlaps=20)+xlim(c(-10,10))
   ggsave(plt,file="t47d_topic11v17_chromvar.pdf")
   system("slack -F t47d_topic11v17_chromvar.pdf ryan_todo")
-
+write.table(t47d_da_tf,file="t47d_topicbin_TF.txt",col.names=T,sep="\t")
+system("slack -F t47d_topicbin_TF.txt ryan_todo")
 #Find differences in peaks
-  mcf7_da_peaks <- FindMarkers(object = mcf7_atac_subset, ident.1 = "75percentile_Topic11", ident.2="75percentile_Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="peaks") 
+  mcf7_da_peaks <- FindMarkers(object = mcf7_atac_subset, ident.1 = "Topic11", ident.2="Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="peaks") 
   closest_genes <- ClosestFeature(mcf7_atac_subset,row.names(mcf7_da_peaks))
   mcf7_da_peaks <-cbind(mcf7_da_peaks ,closest_genes)
+write.table(mcf7_da_peaks,file="mcf7_topicbin_DApeaks.txt",col.names=T,sep="\t")
+system("slack -F mcf7_topicbin_DApeaks.txt ryan_todo")
 
-  t47d_da_peaks <- FindMarkers(object = t47d_atac_subset, ident.1 = "75percentile_Topic11", ident.2="75percentile_Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="peaks")           
+  t47d_da_peaks <- FindMarkers(object = t47d_atac_subset,  ident.1 = "Topic11", ident.2="Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="peaks")           
   closest_genes <- ClosestFeature(t47d_atac_subset,row.names(t47d_da_peaks))
   t47d_da_peaks <-cbind(t47d_da_peaks ,closest_genes)          
+write.table(t47d_da_peaks,file="t47d_topicbin_DApeaks.txt",col.names=T,sep="\t")
+system("slack -F t47d_topicbin_DApeaks.txt ryan_todo")
 
 #plot topic11 vs topic17 for cells
-plt<-FeaturePlot(object = mcf7_atac_subset, features = c("ImputedTopic_11", "ImputedTopic_17"),blend = T,col=c("white","red","blue"),reduction="umap",max.cutoff=10)
+plt<-FeaturePlot(object = mcf7_atac, features = c("ImputedTopic_11", "ImputedTopic_17"),blend = T,col=c("white","red","blue"),reduction="umap",max.cutoff=10)
 ggsave(plt,file="mcf7_topicimputation.umap.pdf",width=13)
 system("slack -F mcf7_topicimputation.umap.pdf ryan_todo")
 
@@ -800,21 +767,14 @@ plt<-FeaturePlot(object = t47d_atac, features = c("ImputedTopic_11", "ImputedTop
 ggsave(plt,file="t47d_topicimputation.umap.pdf",width=13)
 system("slack -F t47d_topicimputation.umap.pdf ryan_todo")
 
-plt<-FeaturePlot(object = combined, features = c("ImputedTopic_11", "ImputedTopic_17"),blend = T,col=c("white","red","blue"),reduction="umap",max.cutoff=10)
-ggsave(plt,file="combined_topicimputation.umap.pdf",width=13)
-system("slack -F combined_topicimputation.umap.pdf ryan_todo")
-#plot scatter
-plt<-ggplot()+geom_point(aes(x=combined$ImputedTopic_11,y=combined$ImputedTopic_17))+theme_minimal()
-ggsave(plt,file="combined_topicimputationscatter.umap.pdf",width=13)
-system("slack -F combined_topicimputationscatter.umap.pdf ryan_todo")
-
-
 #plot genomic regions # focus on DE genes between topics
-Idents(mcf7_bins)<-mcf7_bins$Topic_17bin
-plt<-CoveragePlot(mcf7_bins, region = c("GREB1","ESR1","FOXA1","FOXM1"))
+plt<-CoveragePlot(mcf7_atac_subset, region = c("GREB1","ESR1","FOXA1","FOXM1"))
 ggsave(plt,file="mcf7_greb1.pdf",width=13)
 system("slack -F mcf7_greb1.pdf ryan_todo")
 
+plt<-CoveragePlot(t47d_atac_subset, region = c("GREB1","ESR1","FOXA1","FOXM1"))
+ggsave(plt,file="t47d_greb1.pdf",width=13)
+system("slack -F t47d_greb1.pdf ryan_todo")
 
 #function for plotting footprints in data sets
 plot_footprints<-function(x,footprints){
@@ -823,192 +783,58 @@ plot_footprints<-function(x,footprints){
   return(p2)
 }
 
-out1<-mclapply(c("ESR1","FOXM1","TP53","FOXA1","TEAD3"),FUN=function(z) plot_footprints(x=mcf7_atac_subset,footprints=z),mc.cores=5) #plot and return 5 at a time
-outname="210924_mcf7subset"
+out1<-mclapply(c("ESR1","FOXM1","TP53","FOXA1","TEAD3"),FUN=function(z) plot_footprints(x=t47d_atac_subset,footprints=z),mc.cores=5) #plot and return 5 at a time
+outname="210924_t47dsubset"
 pdf(paste0(outname,".motif_footprints.pdf"),height=5*length(out1))
 print(wrap_plots(out1) + patchwork::plot_layout(ncol = 1))
 dev.off()
 system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
 
-```
 
-```R
-library(Signac)
-library(Seurat)
-library(ComplexHeatmap)
-library(JASPAR2020)
-library(TFBSTools)
-library(grid)
-library(dplyr)
-library(ggplot2)
-library(ggrepel)
-library(parallel)
-  library(BSgenome.Hsapiens.UCSC.hg38)
-  library(patchwork)
+########################Plot out top TF for each cluster###################
 
-setwd("/home/groups/CEDAR/mulqueen/projects/10x_atacrna") 
-combined<-readRDS("210924_cellline.SeuratObject.Rds")
+plot_tf_heatmap<-function(table_in="t47d_topicbin_TF.txt",obj_in=t47d_atac_subset,outname="t47d"){
+  da_tf<-read.csv(file=table_in,head=T,sep="\t",row.names=NULL)
+  da_tf<-da_tf[complete.cases(da_tf),]
+  da_tf<-da_tf[da_tf$sig=="sig",]
 
+  #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+  dat_tf<-as.data.frame(t(as.data.frame(obj_in[["chromvar"]]@data)))
+  sum_tf<-split(dat_tf,obj_in$topic_bin) #group by rows to seurat clusters
+  sum_tf<-lapply(sum_tf,function(x) apply(x,2,mean)) #take average across group
+  sum_tf<-do.call("rbind",sum_tf) #condense to smaller data frame
 
-#function for plotting footprints in data sets
-plot_footprints<-function(x,footprints){
-  x <- Footprint(object = x, motif.name = footprints, genome = BSgenome.Hsapiens.UCSC.hg38, in.peaks=T)   # gather the footprinting information for sets of motifs
-  p2 <- PlotFootprint(x, features = footprints,label=F,normalization="divide")   # plot the footprint data for each group of cells, might want to change idents
-  return(p2)
-}
+  sum_tf<-scale(t(sum_tf))
+  sum_tf<-sum_tf[,!endsWith(colnames(sum_tf),"NA")] #remove NA (doublet cells)
 
-out1<-mclapply(c("ESR1","FOXM1","TP53","FOXA1","TEAD3"),FUN=function(z) plot_footprints(x=combined,footprints=z),mc.cores=5) #plot and return 5 at a time
-outname="210924_combined"
-pdf(paste0(outname,".motif_footprints.pdf"),height=5*length(out1))
-print(wrap_plots(out1) + patchwork::plot_layout(ncol = 1))
-dev.off()
-system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
+  sum_tf<-sum_tf[row.names(sum_tf) %in% unique(da_tf$row.names),]
+  row.names(sum_tf)<-da_tf[match(row.names(sum_tf),da_tf$row.names,nomatch=0),]$tf_name
+  sum_tf_plot<-na.omit(t(sum_tf))
 
-```
-
-
-
-
-<!---
-### Installing Cicero and Monocle3
-I had a lot of trouble with the system gdal and my own conda gdal, so I restarted with a fresh conda environment.
-
-```bash
-# Create a new conda environment
-conda create -n monocle
-# Activate it
-source activate monocle
-# Install R and geospatial dependencies
-conda install -c conda-forge r-essentials geos r-rgeos r-rgdal udunits2 #proj led to gdal error again
-```
-```R
-#then install R packages
-dyn.load('/home/groups/CEDAR/mulqueen/src/miniconda3/envs/monocle/lib/libgeos_c.so', local=FALSE) #https://github.com/r-spatial/sf/issues/844
-install.pacakges("sf")
-install.packages('raster')
-install.packages('GISTools', dep=T)
-
-if (!requireNamespace("BiocManager", quietly = TRUE))
-install.packages("BiocManager")
-BiocManager::install(version = "3.10")
-
-
-
-BiocManager::install(c('BiocGenerics', 'DelayedArray','DelayedMatrixStats','limma', 'S4Vectors', 'SingleCellExperiment','SummarizedExperiment', 'batchelor','Matrix.utils'))
-
-install.packages("devtools")
-devtools::install_github('cole-trapnell-lab/leidenbase')
-devtools::install_github('cole-trapnell-lab/monocle3')
-BiocManager::install("cicero")
-
-```
--->
-
-## Cicero
-
-```R
-  library(Signac)
-  library(Seurat)
-  library(SeuratWrappers)
-  library(ggplot2)
-  library(patchwork)
-  library(monocle3)
-  library(cicero)
-  library(SeuratObjects)
-  library(EnsDb.Hsapiens.v86)
-  setwd("/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
-  #Cicero processing function
-  cicero_processing<-function(object_input,prefix){
-
-      #Generate CDS format from Seurat object
-      atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap")
-
-      # convert to CellDataSet format and make the cicero object
-      print("Making Cicero format CDS file")
-      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = atac.cds@reducedDimS)
-      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
-      
-      # extract gene annotations from EnsDb
-      annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
-      seqlevels(annotations)<-paste0("chr",seqlevels(annotations))
-      seqnames(annotations)<-paste0("chr",seqnames(annotations))
-
-      # change to UCSC style since the data was mapped to hg38
-      seqlevelsStyle(annotations) <- 'UCSC'
-      genome(annotations) <- "hg38"
-
-      genome <- annotations@seqinfo # get the chromosome sizes from the Seurat object
-      genome.df <- data.frame("chr" = genome@seqnames, "length" = genome@seqlengths) # convert chromosome sizes to a dataframe
-      
-      print("Running Cicero to generate connections.")
-      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
-      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
-      
-      print("Generating CCANs")
-      ccans <- generate_ccans(conns) # generate ccans
-      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
-      
-      print("Adding CCAN links into Seurat Object and Returning.")
-      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
-      DefaultAssay(object_input)<-"peaks"
-      Links(object_input) <- links
-      return(object_input)
-  }
-
-
-combined<-readRDS("210924_cellline.SeuratObject.Rds")
-combined<-cicero_processing(object_input=combined,prefix="210924_cellline")
-saveRDS(combined,"210924_cellline.SeuratObject.unnormGA.Rds")
-
-  # generate unnormalized gene activity matrix
-  # gene annotation sample
-  hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
-
-  pos <-as.data.frame(hg38_annotations,row.names=NULL)
-  pos$chromosome<-paste0("chr",pos$seqnames)
-  pos$gene<-pos$gene_id
-  pos <- subset(pos, strand == "+")
-  pos <- pos[order(pos$start),] 
-  pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
-  pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
-
-  neg <-as.data.frame(hg38_annotations,row.names=NULL)
-  neg$chromosome<-paste0("chr",neg$seqnames)
-  neg$gene<-neg$gene_id
-  neg <- subset(neg, strand == "-")
-  neg <- neg[order(neg$start,decreasing=TRUE),] 
-  neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
-  neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
-
-  gene_annotation<- rbind(pos, neg)
-  gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
-  names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
-
-  geneactivity_processing<-function(cds_input,conns_input,prefix){
-      atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
-      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
-      saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
-  }
-
-  conns<-as.data.frame(readRDS("210924_cellline_atac_cicero_conns.Rds"))
-  obj.cicero<-readRDS("210924_cellline_atac_cicero_cds.Rds")
-  geneactivity_processing(cds_input=as.CellDataSet(combined,assay="peaks",reduction="umap"),conns_input=conns,prefix="210924_cellline")
-
-  #Read in unnormalized GA
-  cicero_gene_activities<-readRDS("210924_cellline.unnorm_GA.Rds")
-  combined[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
-
-  # normalize
-  combined <- NormalizeData(
-    object = combined,
-    assay = 'GeneActivity',
-    normalization.method = 'LogNormalize',
-    scale.factor = median(combined$nCount_GeneActivity)
+  colfun=colorRamp2(quantile(unlist(sum_tf_plot), probs=c(0,0.5,1)),cividis(3))
+  plt1<-Heatmap(sum_tf_plot,
+      #cluster_rows=sum_da_dend,
+      #left_annotation=side_ha,
+      col=colfun,
+      #bottom_annotation=bottom_ha,
+      column_names_gp = gpar(fontsize = 14),
+      row_names_gp=gpar(fontsize=14),
+      column_names_rot=90
   )
-  saveRDS(combined,"210924_cellline.SeuratObject.Rds")
+
+  plt1<-draw(plt1)
+  pdf(paste0(outname,"_tf.heatmap.pdf"),height=20,width=20)
+  draw(plt1)
+  dev.off()
+  system(paste0("slack -F ",outname,"_tf.heatmap.pdf ryan_todo"))
+  }
+
+plot_tf_heatmap(table_in="t47d_topicbin_TF.txt",obj_in=t47d_atac_subset,outname="t47d")
+
+plot_tf_heatmap(table_in="mcf7_topicbin_TF.txt",obj_in=mcf7_atac_subset,outname="mcf7")
+
 
 ```
-
 
 ## Get aggregate window of cistrome peak by atac data
 
@@ -1069,7 +895,7 @@ sort -T . --parallel 5 -k1,1 -k2,2n -k3,3n $ref |
 awk 'OFS="\t"{mid=int(($3+$4)/2); print $1,mid,mid+1}' | 
 bedtools slop -i stdin -l 1000 -r 1000 -g $genome | 
 bedtools intersect -a - -b $i -wb -wa | 
-awk 'OFS="\t" {midpoint=int(($3+$2)/2);ins_1=($5-midpoint);ins_2=($6-midpoint);if (sqrt(ins_1^2) < sqrt(ins_2^2)) print ins_1; else print ins_2}' | sort -T . --parallel=5 -k1,1n | uniq -c > ${outname}.${tf_name}.${dcis}.cistrome.txt ; done ; done &
+awk 'OFS="\t" {midpoint=int(($3+$2)/2);ins_1=($5-midpoint);ins_2=($6-midpoint);if (sqrt(ins_1^2) < sqrt(ins_2^2)) print ins_1,$7; else print ins_2,$7}' | sort -T . --parallel=5 -k1,1n | uniq -c > ${outname}.${tf_name}.${dcis}.cistrome.txt ; done ; done &
 
 ```
 
@@ -1079,32 +905,35 @@ library(patchwork)
 library(Signac)
 library(dplyr)
 setwd("/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
-combined<-readRDS("210924_cellline.SeuratObject.Rds")
-sum_factor<-as.data.frame(combined@meta.data %>% group_by(origin) %>% summarize(sum=sum(nCount_peaks)))
-sum_factor$sample<-c("MCF7_C_hg38","MCF7_E_hg38","T47D_C_hg38","T47D_E_hg38")
+t47d_atac_subset<-readRDS(file="t47d_atac_subset.Rds")
+mcf7_atac_subset<-readRDS(file="mcf7_atac_subset.Rds")
+
+
+plot_cistrome<-function(obj_in=t47d_atac_subset,cellline="T47D"){
+sum_factor<-as.data.frame(obj_in@meta.data %>% group_by(topic_bin) %>% summarize(sum_total=sum(nCount_peaks)))
+sum_factor$sample<-c("Topic11","Topic17")
 f_in<-list.files(path="/home/groups/CEDAR/mulqueen/projects/10x_atacrna",pattern="cistrome.txt$")
+obj_in$cellnames<-substr(names(obj_in$origin),1,nchar(names(obj_in$origin))-nchar(obj_in$origin))
 
-c("MCF7_C_hg38",system("zcat /home/groups/CEDAR/doe/projects/cellRanger/MCF7_ATACRNA/MCF7_C_hg38/outs/atac_fragments.tsv.gz | wc -l")) #79602250
-c("MCF7_E_hg38",system("zcat /home/groups/CEDAR/doe/projects/cellRanger/MCF7_ATACRNA/MCF7_E_hg38/outs/atac_fragments.tsv.gz | wc -l")) #73891457
-c("T47D_C_hg38",system("zcat /home/groups/CEDAR/doe/projects/cellRanger/T47D_ATACRNA/T47D_C_hg38/outs/atac_fragments.tsv.gz | wc -l")) #42486644
-c("T47D_E_hg38",system("zcat /home/groups/CEDAR/doe/projects/cellRanger/T47D_ATACRNA/T47D_E_hg38/outs/atac_fragments.tsv.gz | wc -l")) #83630304
-
-sum_factor$sum<-c(79602250,73891457,42486644,83630304)
 dat<-lapply(f_in,function(x) {
   tmp<-read.table(x)
-  colnames(tmp)<-c("count","dist")
-  tmp$sample<-strsplit(x,"[.]")[[1]][1]
+  colnames(tmp)<-c("count","dist","cellID")
+  tmp<-tmp[tmp$cellID %in% obj_in$cellnames,]
   tmp$dcis<-strsplit(x,"[.]")[[1]][3]
   tmp$tf<-strsplit(x,"[.]")[[1]][2]
   return(tmp)})
 
 dat<-do.call("rbind",dat)
+dat$sample<-obj_in@meta.data[match(dat$cellID,obj_in$cellnames),]$topic_bin
+dat<-dat %>% group_by(dist,dcis,tf,sample) %>% summarize(sum=sum(count))
 dat<-merge(dat,sum_factor,by="sample",all.x=T)
-dat$norm_count<-dat$count/dat$sum
-plt<-ggplot(dat,aes(x=dist,y=norm_count,color=sample))+geom_smooth(span=0.05)+theme_minimal()+xlim(c(-1000,1000))+facet_grid(dcis+tf ~ . ,scales="free")
-ggsave(plt,file="test.enrichment.pdf",height=10)
-system("slack -F test.enrichment.pdf ryan_todo")
+dat$norm_count<-dat$sum/dat$sum_total
+plt<-ggplot(dat,aes(x=dist,y=norm_count,color=sample))+geom_line()+theme_minimal()+xlim(c(-1000,1000))+facet_grid(dcis+tf ~ . ,scales="free")
+ggsave(plt,file=paste0(cellline,".cistrome.enrichment.pdf"),height=50,limitsize=F)
+system(paste0("slack -F ",cellline,".cistrome.enrichment.pdf ryan_todo"))
+}
 
-
+plot_cistrome(obj_in=t47d_atac_subset,cellline="T47D")
+plot_cistrome(obj_in=mcf7_atac_subset,cellline="MCF7")
 
 ```
