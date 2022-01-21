@@ -125,81 +125,6 @@ for i in `ls *csv`; do
    --localmem=90 ; done &
 ```
 
-# Seurat Analysis for Tumors
-Performing seurat analysis following https://satijalab.org/signac/articles/pbmc_multiomic.html
-
-Generate seuratobject for RM primary samples.
-
-```R
-library(Signac)
-library(Seurat)
-library(EnsDb.Hsapiens.v86)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(GenomeInfoDb)
-set.seed(1234)
-library(stringr)
-library(ggplot2)
-
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
-
-# get gene annotations for hg38
-annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
-ucsc.levels <- str_replace(string=paste("chr",seqlevels(annotation),sep=""), pattern="chrMT", replacement="chrM")
-seqlevels(annotation) <- ucsc.levels #standard seq level change threw error, using a string replace instead
-
-# set up sample loop to load the RNA and ATAC data, save to seurat object
-setupseurat<-function(i){
-  setwd(paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",i,"/outs"))
-  counts <- Read10X_h5("filtered_feature_bc_matrix.h5") #count data
-  fragpath <- "atac_fragments.tsv.gz" #atac fragments
-  metadata_cellranger<-read.csv("per_barcode_metrics.csv") #metadata
-  row.names(metadata_cellranger)<-metadata_cellranger$barcode
-
-  # create a Seurat object containing the RNA adata
-  dat <- CreateSeuratObject(
-    counts = counts$`Gene Expression`,
-    assay = "RNA"
-  )
-
-  # create ATAC assay and add it to the object
-  dat[["ATAC"]] <- CreateChromatinAssay(
-    counts = counts$Peaks,
-    sep = c(":", "-"),
-    fragments = fragpath,
-    annotation = annotation
-  )
-
-  #QC cells
-  DefaultAssay(dat) <- "ATAC"
-
-  dat <- NucleosomeSignal(dat)
-  dat <- TSSEnrichment(dat)
-  dat<-AddMetaData(dat,metadata=metadata_cellranger)
-
-  plt<-VlnPlot(
-    object = dat,
-    features = c("nCount_RNA", "nCount_ATAC", "TSS.enrichment", "nucleosome_signal"),
-    ncol = 4,
-    pt.size = 0
-  )
-  ggsave(plt,file=paste0(i,".qc.pdf"))
-  system(paste0("slack -F ",i,".qc.pdf ryan_todo"))
-  saveRDS(dat,file=paste0(i,".SeuratObject.rds"))
-}
-
-#generate all seurat objects
-lapply(c("RM_1","RM_2","RM_3","RM_4"),setupseurat)
-
-#combine seurat objects and add metadata column for sample
-rm1<-readRDS("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/RM_1/outs/RM_1.SeuratObject.rds"); rm1$sample<-"rm1"
-rm2<-readRDS("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/RM_2/outs/RM_2.SeuratObject.rds"); rm2$sample<-"rm2"
-rm3<-readRDS("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/RM_3/outs/RM_3.SeuratObject.rds"); rm3$sample<-"rm3"
-rm4<-readRDS("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/RM_4/outs/RM_4.SeuratObject.rds"); rm4$sample<-"rm4"
-dat <- merge(rm1, y = c(rm2,rm3,rm4), add.cell.ids = c("rm_1","rm_2","rm_3","rm_4"), project = "primary")
-saveRDS(dat,file="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/rm_merged.SeuratObject.rds")
-
-```
-
 ## Yahong Cell Line Multiome Analysis
 
 ```R
@@ -834,45 +759,84 @@ system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
 ```
 
 
+## Ryan Primary Tissue Multiome Analysis
 
+### Seurat Object Generation for Tumors
+Performing seurat analysis following https://satijalab.org/signac/articles/pbmc_multiomic.html
+Generate seuratobject for RM primary samples.
 
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
 
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
 
+# get gene annotations for hg38
+annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+ucsc.levels <- str_replace(string=paste("chr",seqlevels(annotation),sep=""), pattern="chrMT", replacement="chrM")
+seqlevels(annotation) <- ucsc.levels #standard seq level change threw error, using a string replace instead
 
+# set up sample loop to load the RNA and ATAC data, save to seurat object
+setupseurat<-function(i){
+  setwd(paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",i,"/outs"))
+  counts <- Read10X_h5("filtered_feature_bc_matrix.h5") #count data
+  fragpath <- "atac_fragments.tsv.gz" #atac fragments
+  metadata_cellranger<-read.csv("per_barcode_metrics.csv") #metadata
+  row.names(metadata_cellranger)<-metadata_cellranger$barcode
 
+  # create a Seurat object containing the RNA adata
+  dat <- CreateSeuratObject(
+    counts = counts$`Gene Expression`,
+    assay = "RNA"
+  )
 
+  # create ATAC assay and add it to the object
+  dat[["ATAC"]] <- CreateChromatinAssay(
+    counts = counts$Peaks,
+    sep = c(":", "-"),
+    fragments = fragpath,
+    annotation = annotation
+  )
 
+  #QC cells
+  DefaultAssay(dat) <- "ATAC"
 
+  dat <- NucleosomeSignal(dat)
+  dat <- TSSEnrichment(dat)
+  dat<-AddMetaData(dat,metadata=metadata_cellranger)
 
+  plt<-VlnPlot(
+    object = dat,
+    features = c("nCount_RNA", "nCount_ATAC", "TSS.enrichment", "nucleosome_signal"),
+    ncol = 4,
+    pt.size = 0
+  )
+  ggsave(plt,file=paste0(i,".qc.pdf"))
+  system(paste0("slack -F ",i,".qc.pdf ryan_todo"))
+  saveRDS(dat,file=paste0(i,".SeuratObject.rds"))
+}
 
+#generate all seurat objects
+lapply(c("RM_1","RM_2","RM_3","RM_4"),setupseurat)
 
+#combine seurat objects and add metadata column for sample
+rm1<-readRDS("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/RM_1/outs/RM_1.SeuratObject.rds"); rm1$sample<-"rm1"
+rm2<-readRDS("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/RM_2/outs/RM_2.SeuratObject.rds"); rm2$sample<-"rm2"
+rm3<-readRDS("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/RM_3/outs/RM_3.SeuratObject.rds"); rm3$sample<-"rm3"
+rm4<-readRDS("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/RM_4/outs/RM_4.SeuratObject.rds"); rm4$sample<-"rm4"
+dat <- merge(rm1, y = c(rm2,rm3,rm4), add.cell.ids = c("rm_1","rm_2","rm_3","rm_4"), project = "primary")
+saveRDS(dat,file="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/rm_merged.SeuratObject.rds")
 
+```
 
+## Call Peaks and Dimensionality Reduction
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!--
-
-## Initial Seurat Processing of Data
-
-Following https://satijalab.org/signac/articles/pbmc_multiomic.html
-
-RM data
 ```R
 library(Signac)
 library(Seurat)
@@ -990,6 +954,26 @@ ggsave(plt,file="RM_multimodal.umap.pdf")
 system("slack -F RM_multimodal.umap.pdf ryan_todo")
 saveRDS(dat,file="rm_merged.SeuratObject.rds")
 
+```
+
+## Cell type assignment based on 
+https://ars.els-cdn.com/content/image/1-s2.0-S1097276521007954-gr5.jpg
+
+Continuing R Session
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
+
+dat<-readRDS("rm_merged.SeuratObject.rds")
+
 ###LINKING PEAKS TO GENES###
 DefaultAssay(dat) <- "peaks"
 
@@ -1048,6 +1032,35 @@ for (i in unique(names(geneset))){
 
 saveRDS(dat,file="rm_merged.SeuratObject.rds")
 
+```
+
+### Determine Tumor Cells vai InferCNV
+
+```R
+####Run InferCNV
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+library(infercnv)
+library(ComplexHeatmap)
+library(ggdendro)
+library(dendextend)
+library(circlize)
+library(dendsort)
+library(patchwork)
+
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
+
+####RUNNING INFERCNV#####
+#https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
+dat<-readRDS("rm_merged.SeuratObject.rds") #ensure it reads in properly
+
 
 ####RUNNING INFERCNV#####
 #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
@@ -1074,9 +1087,15 @@ infercnv_obj = infercnv::run(infercnv_obj,
                              HMM=TRUE)
 
 saveRDS(infercnv_obj,file="RM_inferCNV.Rds")
-#####################Try CaSpER also##############################
-library(CaSpER)
 
+
+#####################Try CaSpER also?##############################
+#library(CaSpER)
+
+```
+### Run CisTopic on cells
+
+```R
 ###CisTopic###
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
 library(Signac)
@@ -1145,7 +1164,10 @@ cistopic_generation<-function(x,name_out,outdir="/home/groups/CEDAR/mulqueen/pro
   dat<-readRDS("rm_merged.SeuratObject.rds")
   cistopic_generation(x=dat,name_out="rm_merged")
 
+```
+### Run ChromVar on Samples
 
+```R
 ###ChromVar###
   library(Signac)
   library(Seurat)
@@ -1184,6 +1206,8 @@ dat<-readRDS("rm_merged.SeuratObject.rds")
 
 
 ```
+
+<!--
 
 ## Cistopic on ATAC data
 
