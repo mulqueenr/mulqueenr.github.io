@@ -835,7 +835,7 @@ saveRDS(dat,file="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/rm_
 
 ```
 
-## Call Peaks and Dimensionality Reduction
+### Call Peaks and Dimensionality Reduction
 
 ```R
 library(Signac)
@@ -956,7 +956,7 @@ saveRDS(dat,file="rm_merged.SeuratObject.rds")
 
 ```
 
-## Cell type assignment based on 
+### Cell type assignment based on 
 https://ars.els-cdn.com/content/image/1-s2.0-S1097276521007954-gr5.jpg
 
 Continuing R Session
@@ -1034,7 +1034,7 @@ saveRDS(dat,file="rm_merged.SeuratObject.rds")
 
 ```
 
-### Determine Tumor Cells vai InferCNV
+### Determine Tumor Cells via InferCNV
 
 ```R
 ####Run InferCNV
