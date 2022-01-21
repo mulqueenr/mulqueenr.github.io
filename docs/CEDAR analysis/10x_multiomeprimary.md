@@ -200,7 +200,7 @@ saveRDS(dat,file="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/rm_
 
 ```
 
-# Yahong Cell Line Multiome Analysis
+## Yahong Cell Line Multiome Analysis
 
 ```R
 library(Signac)
@@ -299,7 +299,7 @@ dat<-readRDS("yw_merged.SeuratObject.rds") #ensure it reads in properly
   #Not much filtered out, all passing QC
 
 ```
-## Call peaks and Dimensionality Reduction
+### Call peaks and Dimensionality Reduction
 Continuing R session, now performing initial ATAC seq peak calling and RNA processing.
 
 ```R
@@ -399,7 +399,7 @@ plt<-VlnPlot(
 
 ```
 
-## Cell line deconvolution
+### Cell line deconvolution
 The data generated had a mixture of T47-D and MCF-7 Cell lines in each lane.
 
 New R session, using CNV profiles from InferCNV to split out cell lines used in experiment.
@@ -531,7 +531,7 @@ saveRDS(dat_mcf7,file="yw_mcf7.SeuratObject.rds")
 saveRDS(dat_t47d,file="yw_t47d.SeuratObject.rds")
 ```
 
-## Cell line specific Cistopic Processing
+### Cell line specific Cistopic Processing
 
 Now that cell lines are split out, can re-run cistopic for biological interpretation.
 Note: I'm also going to subset the data to just control groups, this is for the TITAN paper processing.
@@ -611,7 +611,7 @@ cistopic_generation(x=dat_t47d,name_out="yw_t47d.control")
 
 ```
 
-## Cistopic Cell Line Cistrome Signal
+### Cistopic Cell Line Cistrome Signal
 
 Take cistopic data per cell line and perform bed file overlap using cistrome cell line specific ChIP-seq.
 
@@ -721,7 +721,7 @@ cistopic_processing(x=dat_t47d,y=dat_t47d_cistopic,outname="yw_t47d.control")
 
 
 ```
-## ChromVar Analysis of Cell Lines
+### ChromVar Analysis of Cell Lines
 Now run Chromvar on data for agnostic transcription factor motifs
 
 ```R
@@ -771,7 +771,7 @@ pfm <- getMatrixSet(
 
 
 ```
-## Motif Footprinting on cells 
+### Motif Footprinting on cells 
 Perform motif footprinting on cells.
 Based on https://satijalab.org/signac/articles/footprint.html
 
