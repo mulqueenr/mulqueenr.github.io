@@ -2313,7 +2313,7 @@ system("slack -F orgo_cirm43.tfmodule.heatmap.pdf ryan_todo")
 
 Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately. This is to build a more biologically meaninful trajectory for cells.
 
-### Recluster clusters 5, 4, 0
+### Recluster clusters 4, 0
 
 ```R
   library(Signac)
@@ -2329,6 +2329,7 @@ Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately
 
   orgo_cirm43<-readRDS("orgo_cirm43.QC.SeuratObject.Rds") #reading in QC passing cells
   dat<-subset(orgo_cirm43,seurat_clusters %in% c("4","0")) #3 is excluded as suspected IPC #excluded 5 because it was more stemlike
+  dat$original_clusters<-dat$seurat_clusters
 
   cistopic_processing<-function(seurat_input,prefix){
       cistopic_counts_frmt<-seurat_input$peaks@counts #grabbing counts matrices
@@ -2409,7 +2410,7 @@ Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately
   DefaultAssay(dat)<-"peaks"
   dat<-cistopic_wrapper(object_input=dat,cisTopicObject=cisTopicObject,resolution=0.2)
 
-  plt<-DimPlot(dat,group.by=c("DIV","seurat_clusters"))
+  plt<-DimPlot(dat,group.by=c("DIV","seurat_clusters","original_clusters"))
   ggsave(plt,file="RG.qc.umap.pdf")
   system("slack -F RG.qc.umap.pdf ryan_todo")
 
@@ -2417,7 +2418,7 @@ Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately
 
 ```
 
-### Recluster clusters 2 1 6
+### Recluster clusters 2 1 6 for Excitatory Neurons
 ```R
  library(Signac)
   library(Seurat)
@@ -2645,6 +2646,185 @@ print(wrap_plots(out1) + patchwork::plot_layout(ncol = 1))
 dev.off()
 system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
 ```
+## Save final seurat files for UCSC cellbrowser and set up.
+
+To view data in an interactive way, I converted the final seurat object for UCSCs cell browser.
+
+I then hosted locally to test.
+Install cellbrowser via this (guide.)[https://cellbrowser.readthedocs.io/en/master/installation.html]
+
+```R
+#Downloaded seurat objects off clusters
+#Prepare seurat data as cellbrowser file
+
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+library(Signac)
+library(Seurat)
+library(Matrix)
+library(R.utils)
+library(dplyr)
+
+
+#modified function from https://github.com/satijalab/seurat-wrappers/blob/master/R/cellbrowser.R just for export
+ExportToCellbrowser <- function(
+object,
+reduction="umap",
+assay.name="GeneActivity",
+dir,
+dataset.name,
+marker.file,
+marker.n=5,
+cluster.field="seurat_clusters",
+gene_list,
+metadata_columns,
+skip.expr.mat=FALSE) {
+
+  reducNames = reduction
+  # see https://satijalab.org/seurat/essential_commands.html
+    idents <- Idents(object = object)
+    cellOrder <- row.names(object@meta.data)
+    counts <-  object@assays[[assay.name]]@data
+    counts<-counts[,cellOrder]
+    genes <- rownames(x = counts)
+    dr<-object@reductions[[reduction]]
+    meta.fields<-object@meta.data
+  if (!dir.exists(paths = dir)) {
+    dir.create(path = dir)}
+
+  # Export expression matrix
+    # we have to write the matrix to an mtx file
+    matrixPath <- file.path(dir, "matrix.mtx")
+    genesPath <- file.path(dir, "features.tsv")
+    barcodesPath <- file.path(dir, "barcodes.tsv")
+if(!skip.expr.mat){
+    message("Writing expression matrix to ", matrixPath)
+    message("This may take a couple of minutes...")
+    writeMM(counts, matrixPath)
+    # easier to load if the genes file has at least two columns. Even though seurat objects
+    write.table(as.data.frame(cbind(rownames(counts), rownames(counts))), file=genesPath, sep="\t", row.names=F, col.names=F, quote=F)
+    write(colnames(counts), file = barcodesPath)
+
+    message("Gzipping expression matrix")
+    gzip(matrixPath,overwrite=T,remove=T)
+    gzip(genesPath,overwrite=T,remove=T)
+    gzip(barcodesPath,overwrite=T,remove=T)
+}
+    matrixOutPath <- "matrix.mtx.gz"
+
+    #Export embeddings
+    df <- dr@cell.embeddings
+    if (ncol(x = df) > 2) {
+      warning('Embedding ', embedding, ' has more than 2 coordinates, taking only the first 2')
+      df <- df[, 1:2]
+    }
+    colnames(x = df) <- c("x", "y")
+    df <- data.frame(cellId = rownames(x = df), df, check.names = FALSE)
+    fname <- file.path(dir,"umap.coords.tsv")
+    message("Writing embeddings to ", fname)
+    write.table(df[cellOrder, ], sep="\t", file=fname, quote = FALSE, row.names = FALSE)
+  embeddings.conf <- sprintf('{"file": "%s.coords.tsv", "shortLabel": "Seurat %1$s"}',reduction)
+  coords.string <- paste0("[",paste(embeddings.conf, collapse = ",\n"),"]")
+
+  # Export metadata
+  enum.fields=colnames(object@meta.data)[colnames(object@meta.data) %in% metadata_columns]
+  fname <- file.path(dir, "meta.tsv")
+  message("Writing meta data to ", fname)
+  out.meta<-as.matrix(object@meta.data[cellOrder, enum.fields])
+  write.table(out.meta, sep = "\t", file = fname, quote = FALSE, row.names = FALSE)
+  enum.string <- paste0("[",paste(paste0('"', enum.fields, '"'), collapse = ", "), "]")
+
+  # Export markers
+    file <- file.path("markers.tsv")
+    fname <- file.path(dir, file)
+      da_ga<-read.table(file=marker.file)
+        da_ga$label<-""
+        for (x in unique(da_ga$enriched_group)){
+        selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==x) %>% dplyr::arrange(p_val_adj) %>% dplyr::slice(1:marker.n))$da_region
+        da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$label<- da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$da_region
+        }
+    da_ga<-da_ga[da_ga$label!="",]
+      message("Writing top ", marker.n, " cluster markers to ", fname)
+    da_ga$cluster<-da_ga$enriched_group
+      da_ga<-da_ga[c("cluster","label","p_val_adj","enriched_group")]
+      colnames(da_ga)<-c("cluster","symbol","Adjusted p Value","Cluster Enrichment")
+      write.table(x = da_ga, file = fname, quote = FALSE, sep = "\t", col.names = T,row.names=F)
+    markers.string <- sprintf('markers = [{"file": "%s", "shortLabel": "Seurat Cluster Markers"}]',file)
+
+#Export Gene list
+  file <- file.path("quickGenes.csv")
+  fname <- file.path(dir, file)
+  write.table(gene_list,sep=",",file = fname, quote = FALSE, row.names = FALSE)
+
+  config <- '
+# This is a bare-bones cellbrowser config file auto-generated from R.
+# Look at https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf
+# for a full file that shows all possible options
+name="%s"
+shortLabel="%1$s"
+exprMatrix="%s"
+tags = ["sciatac"]
+meta="meta.tsv"
+# possible values: "gencode-human", "gencode-mouse", "symbol" or "auto"
+geneIdType="auto"
+# file with gene,description (one per line) with highlighted genes, called "Dataset Genes" in the user interface
+quickGenesFile="quickGenes.csv"
+clusterField="%s"
+labelField="%s"
+enumFields=%s
+%s
+coords=%s
+geneLabel="Gene Activity"
+unit="GA"'
+
+  config <- sprintf(
+    config,
+    dataset.name,
+    matrixOutPath,
+    cluster.field,
+    cluster.field,
+    enum.string,
+    markers.string,
+    coords.string
+  )
+  confPath = file.path(dir, "cellbrowser.conf")
+  message("Writing cellbrowser config to ", confPath)
+  cat(config, file = confPath)
+  message("Prepared cellbrowser directory ", dir)
+}
+
+
+dat<-readRDS(file="orgo_cirm43.ExN.SeuratObject.Rds")
+DefaultAssay(dat)<-"peaks"
+hg38_marker_list<- c("FOXG1", "SOX2","PAX6","HES1","HOPX","VIM","GFAP","TNC","GPX3", "MOXD1", "NEUROG1","EOMES","PPP1R17","PTPRZ1","NEUROD4", "SLC17A7","NEUROD6","RIT1","TBR1","SLA","NHLH1", "DLX2","DLX1","LHX6","GAD1", "NEUROD1", "SATB2","CUX1","RELN","MEF2C", "SLC1A3","GLI3","MKI67","STMN2","GADD45B","MAP2","CALB2","FBXO32", "PGK1","GORASP2" ) 
+
+ExportToCellbrowser(
+object=dat,
+reduction="umap",
+assay.name="GeneActivity",
+dir="ExN_cb",
+dataset.name="ExN",
+marker.file="orgo_cirm43.ExN.da_peaks.txt",
+marker.n=5,
+cluster.field="seurat_clusters",
+gene_list=hg38_marker_list,
+metadata_columns=c("cellID","uniq_orgID","differentiation_exp","DIV","seurat_clusters"),
+skip.expr.mat=FALSE)
+```
+
+Locally building and hosting the cell browser.
+Using windows wsl2 ubuntu environment
+
+```bash
+#install cellbrowser via conda
+#conda install -c bioconda ucsc-cell-browser
+
+cd /mnt/c/Users/mulqueen/Documents/organoid/ExN_cb
+cbBuild -o ExN_cellbrowser -p 8888
+
+#Go to http://localhost:8888/ to use the interactive viewer
+
+```
+
 
 ## Using monocle to build trajectories
 
@@ -2663,7 +2843,7 @@ Switching this analysis to a principal curve for simplification, I think monocle
   library(princurve)
 
 
-  monocle_processing<-function(outname, object_input,min_branch=10){
+  monocle_processing<-function(outname, object_input,min_branch=25){
       atac.cds <- as.cell_data_set(object_input)
       atac.cds <- cluster_cells(cds = atac.cds, reduction_method = "UMAP",k=10) 
       #Read in cds from cicero processing earlier and continue processing
@@ -2681,67 +2861,22 @@ Switching this analysis to a principal curve for simplification, I think monocle
       return(atac.cds)
   }
 
-
-  # princurve_processing<-function(outname, object_input){
-  # fit<-principal_curve(object_input@reductions$umap@cell.embeddings,trace=T,maxit=1000)
-  # pdf(paste0(outname,".dims.princurve.pdf"))
-  # plot(object_input@reductions$umap@cell.embeddings,col=object_input$DIV,pch=19)
-  # dev.off()
-  # system(paste0("slack -F ",paste0(outname,".dims.princurve.pdf")," ryan_todo"))
-  # pdf(paste0(outname,".princurve.pdf"))
-  # plot(fit)
-  # lines(fit)
-  # #points(fit,pch=19,col=object_input$DIV)
-  # whiskers(object_input@reductions$umap@cell.embeddings, fit$s,col=object_input$DIV)
-  # dev.off()
-  # system(paste0("slack -F ",paste0(outname,".princurve.pdf")," ryan_todo"))
-  # return(fit)
-  # }
-
-###Excitatory Neurons####
-#Rerun cistopic and recluster RG cell subset
-# exn<-readRDS("orgo_cirm43.ExN.SeuratObject.Rds")
-# DefaultAssay(exn)<-"peaks"
-# outname.="ExN"
-
-# #exn_princurve<-princurve_processing(outname="ExN",object_input=exn)
-# exn_sub.cds<-monocle_processing(object_input=exn,outname=outname.)
-# NOTE THIS SHOULD BE CHANGED AFTER FIRST PLOT
-# exn_sub.cds <- order_cells(exn_sub.cds, reduction_method = "UMAP", root_pr_nodes = c("Y_184")) #Chose youngest cells as root 
-# saveRDS(exn_sub.cds ,paste0(outname.,".pseudotime.monoclecds.Rds"))
-
-# plot pseudotime after determining root
-# pdf(paste0(outname.,".trajectory.pseudotime.pdf"))
-# plot_cells(cds = exn_sub.cds ,show_trajectory_graph = TRUE,color_cells_by = "pseudotime", alpha=0.5, cell_stroke=0)
-# dev.off()
-# system("slack -F ",paste0(outname.,".trajectory.pseudotime.pdf")," ryan_todo")
-
-# Append pseudotime to meta data of seurat object
-# exn<-AddMetaData(object=exn,metadata=exn_sub.cds@principal_graph_aux@listData$UMAP$pseudotime, col.name=paste0("pseudotime_",outname.))
-# plt1<-FeaturePlot(exn,feature=paste0("pseudotime_",outname.))
-# plt2<-DimPlot(exn,group.by="seurat_clusters")
-# ggsave(plt1+plt2,file=paste0(outname.,"_trajectory.pseudotime.pdf"))
-# system("slack -F ",paste0(outname.,"_trajectory.pseudotime.pdf"))," ryan_todo")
-# saveRDS(exn,"orgo_cirm43.ExN.pseudotime.SeuratObject.Rds")
-
-
 ### Radial Glia ########
 RG<-readRDS(file="orgo_cirm43.RG.SeuratObject.Rds")   ###save Seurat file
 DefaultAssay(RG)<-"peaks"
 outname.="RG"
 #RG_princurve<-princurve_processing(outname="RG",object_input=RG)
 RG_sub.cds<-monocle_processing(object_input=RG,outname=outname.)
-NOTE THIS SHOULD BE CHANGED AFTER FIRST PLOT
 RG_sub.cds <- order_cells(RG_sub.cds, reduction_method = "UMAP", root_pr_nodes = c("Y_153")) #Chose youngest cells as root 
 saveRDS(RG_sub.cds ,paste0(outname.,".pseudotime.monoclecds.Rds"))
 
-plot pseudotime after determining root
+#plot pseudotime after determining root
 pdf(paste0(outname.,".trajectory.pseudotime.pdf"))
 plot_cells(cds = RG_sub.cds ,show_trajectory_graph = TRUE,color_cells_by = "pseudotime", alpha=0.5, cell_stroke=0)
 dev.off()
 system("slack -F ",paste0(outname.,".trajectory.pseudotime.pdf")," ryan_todo")
 
-Append pseudotime to meta data of seurat object
+#Append pseudotime to meta data of seurat object
 RG<-AddMetaData(object=RG,metadata=RG_sub.cds@principal_graph_aux@listData$UMAP$pseudotime, col.name=paste0("pseudotime_",outname.))
 plt1<-FeaturePlot(RG,feature=paste0("pseudotime_",outname.))
 plt2<-DimPlot(RG,group.by="seurat_clusters")
@@ -2798,31 +2933,41 @@ saveRDS(RG,"orgo_cirm43.RG.pseudotime.SeuratObject.Rds")
 RG<-readRDS(file="orgo_cirm43.RG.SeuratObject.Rds")   ###save Seurat file
 DefaultAssay(RG)<-"peaks"
 outname.="RG"
-#RG_princurve<-princurve_processing(outname="RG",object_input=RG)
-for (i in 5,10,25,50,100){
-RG_sub.cds<-monocle_processing(object_input=RG,outname=outname., min_branch=i)
+#for (i in c(5,10,25,50,100)){
+#RG_sub.cds<-monocle_processing(object_input=RG,outname=outname., min_branch=i)
+#}
+RG_subset<-subset(RG,seurat_clusters %in% c(0,1,3))
+outname.="RG_subset"
+#for (i in c(5,10,25,50,100)){
+#RG_sub.cds<-monocle_processing(object_input=RG_subset,outname=outname., min_branch=i)
+#}
+
+#choosing two with appropriate branch length
+RG.cds<-monocle_processing(object_input=RG,outname="RG", min_branch=25)
+RG_sub.cds<-monocle_processing(object_input=RG_subset,outname="RG_subset", min_branch=10)
+
+order_cells_function<-function(root="Y_153",cds_in=RG_sub.cds,outname="RG",obj_in=RG){
+  cds_in <- order_cells(cds_in, reduction_method = "UMAP", root_pr_nodes = root) #Chose youngest cells as root 
+  saveRDS(cds_in ,paste0(outname,".pseudotime.monoclecds.Rds"))
+
+  #plot pseudotime after determining root
+  pdf(paste0(outname,".trajectory.pseudotime.pdf"))
+  plot_cells(cds = cds_in ,show_trajectory_graph = TRUE,color_cells_by = "pseudotime", alpha=0.5, cell_stroke=0)
+  dev.off()
+  #system("slack -F ",paste0(outname,".trajectory.pseudotime.pdf")," ryan_todo")
+
+  #Append pseudotime to meta data of seurat object
+  obj_in<-AddMetaData(object=obj_in,metadata=cds_in@principal_graph_aux@listData$UMAP$pseudotime, col.name=paste0("pseudotime_",outname))
+  plt1<-FeaturePlot(obj_in,feature=paste0("pseudotime_",outname))
+  plt2<-DimPlot(obj_in,group.by="seurat_clusters")
+  ggsave(plt1+plt2,file=paste0(outname,"_trajectory.pseudotime.pdf"))
+  #system("slack -F ",paste0(outname,"_trajectory.pseudotime.pdf"))," ryan_todo")
+  saveRDS(obj_in,paste0("orgo_cirm43.",outname,".pseudotime.SeuratObject.Rds"))
 }
 
+order_cells_function(cds_in=RG.cds,obj_in=RG,outname="RG",root="Y_129")
+order_cells_function(cds_in=RG_sub.cds,obj_in=RG_subset,outname="RG_subset",root="Y_73")
 
-
-#NOTE THIS SHOULD BE CHANGED AFTER FIRST PLOT
-RG_sub.cds <- order_cells(RG_sub.cds, reduction_method = "UMAP", root_pr_nodes = c("Y_153")) #Chose youngest cells as root 
-saveRDS(RG_sub.cds ,paste0(outname.,".pseudotime.monoclecds.Rds"))
-
-#plot pseudotime after determining root
-pdf(paste0(outname.,".trajectory.pseudotime.pdf"))
-plot_cells(cds = RG_sub.cds ,show_trajectory_graph = TRUE,color_cells_by = "pseudotime", alpha=0.5, cell_stroke=0)
-dev.off()
-system("slack -F ",paste0(outname.,".trajectory.pseudotime.pdf")," ryan_todo")
-
-#Append pseudotime to meta data of seurat object
-RG<-AddMetaData(object=RG,metadata=RG_sub.cds@principal_graph_aux@listData$UMAP$pseudotime, col.name=paste0("pseudotime_",outname.))
-plt1<-FeaturePlot(RG,feature=paste0("pseudotime_",outname.))
-plt2<-DimPlot(RG,group.by="seurat_clusters")
-ggsave(plt1+plt2,file=paste0(outname.,"_trajectory.pseudotime.pdf"))
-system("slack -F ",paste0(outname.,"_trajectory.pseudotime.pdf"))," ryan_todo")
-
-saveRDS(RG,"orgo_cirm43.RG.pseudotime.SeuratObject.Rds")
 
 ```
 ### Statistical analysis across pseudotime
@@ -2832,26 +2977,19 @@ saveRDS(RG,"orgo_cirm43.RG.pseudotime.SeuratObject.Rds")
 setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
   library(Seurat)
   library(Signac)
-  library(GenomeInfoDb)
   library(ggplot2)
   set.seed(1234)
-  library(EnsDb.Hsapiens.v86)
-  library(Matrix)
   library(cicero)
   library(SeuratWrappers)
-  library(ComplexHeatmap)
-  library(JASPAR2020)
-  library(TFBSTools)
-  library(BSgenome.Hsapiens.UCSC.hg38)
   library(patchwork)
-  library(cisTopic)
   library(monocle3)
   library(JASPAR2020)
   library(TFBSTools)
   library(dplyr)
 
+#correct error on defunct rBind call here https://github.com/cole-trapnell-lab/monocle3/issues/509
   #Find changes over pseudotime
-  pseudotime_statistics<-function(seurat.object=orgo_cirm43,cds=in_cds,prefix="test",ncores=1){
+  pseudotime_statistics<-function(seurat.object=obj_in,cds=cds_in,prefix="test",ncores=1){
   cds <- cds[,is.finite(pseudotime(cds))] #exclude earliest cells not fitting into trajectory
   chromvar.cds <- as.cell_data_set(seurat.object,assay="chromvar")
   chromvar.cds@assays@data@listData$counts[which(is.na(chromvar.cds@assays@data@listData$counts),arr.ind=T)]<-0
@@ -2902,68 +3040,10 @@ setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_fina
 
 }
 
+obj_in<-readRDS("orgo_cirm43.RG_subset.pseudotime.SeuratObject.Rds")
+cds_in<-readRDS("RG_subset.pseudotime.monoclecds.Rds")
+pseudotime_statistics(seurat.object=obj_in,cds=cds_in,prefix="RG_subset",ncores=10)
 
-
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-  DefaultAssay(orgo_cirm43)<-"peaks"
-  orgo_cirm43@meta.data<-orgo_cirm43@meta.data[sort(row.names(orgo_cirm43@meta.data)),] #as.cell_data_set assumes abc sorted cell ids
-  in_cds<-readRDS("cirm43.pseudotime.monoclecds.Rds")
-  in_cds<-in_cds[,row.names(colData(in_cds)) %in% row.names(orgo_cirm43@meta.data)] #exclude earliest cells not fitting into trajectory
-  pseudotime_statistics(seurat.object=orgo_cirm43,cds=in_cds,prefix="orgo_cirm43",ncores=5)
-
-  # #Need to add TF modules to subset cell objects
-  rg.cds<-readRDS("radial_glia.pseudotime.monoclecds.Rds")
-  rg<-subset(orgo_cirm43,cells=colnames(rg.cds))
-   pseudotime_statistics(seurat.object=rg,cds=rg.cds,prefix="RG",ncores=10)
-
-
-  # exN<-readRDS("./subcluster/_0_SeuratObject.Rds")
-  # exN.cds<-readRDS("./subcluster/excitatory_neuron.pseudotime.monoclecds.Rds")
-  # exN <- subset(exN, cells=row.names(orgo_cirm43@meta.data))
-  # exN[['TF_modules']] <- subset(orgo_cirm43, cells=row.names(exN@meta.data))[['TF_modules']] 
-  # exN.cds<-exN.cds[,row.names(colData(exN.cds)) %in% row.names(exN@meta.data)] #exclude earliest cells not fitting into trajectory
-  # pseudotime_statistics(seurat.object=exN,cds=exN.cds,prefix="./subcluster/exN",ncores=5)
-
-
-
-  # pData(orgo_cirm43.cds)$pseudotime_bin <- cut(pseudotime(orgo_cirm43.cds), 50) #bin data into multiple bins (10 bins)
-  # pData(chromvar.cds)$pseudotime_bin <- cut(pseudotime(orgo_cirm43.cds), 50) 
-  # pData(geneactivity.cds)$pseudotime_bin <- cut(pseudotime(orgo_cirm43.cds), 50) 
-  # pData(tf_module.cds)$pseudotime_bin <- cut(pseudotime(orgo_cirm43.cds), 50) 
-
-  # binned_peaks.cds <- aggregate_by_cell_bin(orgo_cirm43.cds, "pseudotime_bin")
-  # binned_geneactivity.cds <- aggregate_by_cell_bin(geneactivity.cds, "pseudotime_bin")
-
-  # binned_chromvar.cds <- aggregate_mean_by_cell_bin(chromvar.cds, "pseudotime_bin")
-  # binned_tfmodule.cds <- aggregate_mean_by_cell_bin(tf_module.cds, "pseudotime_bin")
-
-  # colData(chromvar.cds)$Size_Factor<-colData(chromvar.cds)$nFeature_peaks
-  # chromvar_fits <- fit_models(chromvar.cds, model_formula_str = "~Pseudotime + differentiation_exp",expression_family="quasipoisson")
-  # fit_coefs <- coefficient_table(chromvar_fits)
-  #   out<-fit_coefs %>% filter(term == "Pseudotime") %>% filter(p_value <0.05) %>% select(gene_id, term, p_value, estimate, std_err, normalized_effect)
-  # saveRDS(chromvar_fits,"cirm43_chromvar.pseudotime.models.Rds")
-  # saveRDS(fit_coefs,"cirm43_chromvar.pseudotime.coefftable.Rds")
-  
-  # tfmod_fits <- fit_models(binned_peaks.cds, model_formula_str = "~Pseudotime",expression_family="quasipoisson")
-  # fit_coefs <- coefficient_table(tfmod_fits)
-  # saveRDS(tfmod_fits,"cirm43_tfmod.pseudotime.models.Rds")
-  # saveRDS(fit_coefs,"cirm43_tfmod.pseudotime.coefftable.Rds")
-  
-  # ga_fits <- fit_models(binned_geneactivity.cds, model_formula_str = "~ Pseudotime + nFeature_GeneActivity + differentiation_exp")
-  # fit_coefs <- coefficient_table(ga_fits)
-  # out<-fit_coefs %>% filter(term == "Pseudotime") %>% filter(p_value <0.05) %>% select(site_name, term, p_value, estimate, std_err, normalized_effect)
-
-  # saveRDS(ga_fits,"cirm43_ga.pseudotime.models.Rds")
-  # saveRDS(fit_coefs,"cirm43_ga.pseudotime.coefftable.Rds")
-
-  # acc_fits <- fit_models(binned_peaks.cds, model_formula_str = "~Pseudotime + nFeature_peaks",expression_family="binomial")
-  # fit_coefs <- coefficient_table(acc_fits)
-  # saveRDS(acc_fits,"cirm43_acc.pseudotime.models.Rds")
-  # saveRDS(fit_coefs,"cirm43_acc.pseudotime.coefftable.Rds")
-
-
-
-#Include differentiation experiment in model as well
 
 ```
 
@@ -2975,291 +3055,345 @@ Decided to use a binning strategy to assess pseudotime signal.
 
 ```R
 
-  library(Seurat)
-  library(Signac)
-  library(GenomeInfoDb)
-  library(ggplot2)
-  set.seed(1234)
-  library(EnsDb.Hsapiens.v86)
-  library(Matrix)
-  library(cicero)
-  library(SeuratWrappers)
-  library(ComplexHeatmap)
-  library(JASPAR2020)
-  library(TFBSTools)
-  library(BSgenome.Hsapiens.UCSC.hg38)
-  library(patchwork)
-  library(parallel) 
-  library(zoo)
-  library(viridis)
-  library(dplyr)
-  library(reshape2)
-  library(ape)
-  library(ggdendro)
-  library(dendextend)
-  library(circlize)
-  library(dendsort)
-  library(RColorBrewer)
+library(Seurat)
+library(Signac)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(Matrix)
+library(cicero)
+library(SeuratWrappers)
+library(ComplexHeatmap)
+library(JASPAR2020)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+library(parallel) 
+library(zoo)
+library(viridis)
+library(dplyr)
+library(reshape2)
+library(ape)
+library(ggdendro)
+library(dendextend)
+library(circlize)
+library(dendsort)
+library(RColorBrewer)
 
-  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
-  orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-    atac_sub<-orgo_cirm43
-    plt1<-FeaturePlot(atac_sub,feature=c("pseudotime_allcells"),order=T)
-    plt2<-FeaturePlot(atac_sub,feature=c("pseudotime_rg"),order=T)
-    plt3<-DimPlot(atac_sub,group.by="seurat_clusters")
+atac_sub<-readRDS("orgo_cirm43.RG_subset.pseudotime.SeuratObject.Rds")
+plt1<-FeaturePlot(atac_sub,feature=c("pseudotime_RG_subset"),order=T)
+plt2<-DimPlot(atac_sub,group.by="seurat_clusters")
 
-    ggsave(plt1/plt2/plt3,file="test_orgo_cirm43_trajectory.pseudotime.pdf")
-    system("slack -F test_orgo_cirm43_trajectory.pseudotime.pdf ryan_todo")
+ggsave(plt1/plt2,file="RG_subset.trajectory.pseudotime.pdf")
+system("slack -F RG_subset.trajectory.pseudotime.pdf ryan_todo")
 
-  cirm43_da_peaks<-read.table("orgo_cirm43.onevone.da_peaks.txt",header=T)
-  gene_list<-unique(cirm43_da_peaks$)
+#summary of assay data over bins, use loess fit for smoothing
+# define function that returns the SSE
+#from http://r-statistics.co/Loess-Regression-With-R.html
+calcSSE <- function(span,in_dat){
+  bin_count<-1:length(in_dat)
+  loessMod <- try(loess_fit<-loess(as.numeric(in_dat) ~ bin_count, span=span), silent=T)
+  res <- try(loessMod$residuals, silent=T)
+  if(class(res)!="try-error"){
+      sse <- sum(res^2)  
+    }else{sse <- 99999}
+  return(sse)
+}
 
-  chromvar_motifs_per_bin<-function(x){
+
+loess_fit_acrossbins<-function(in_dat,span=0.1){
+  bin_count<-1:length(in_dat)
+  loess_fit<-loess(as.numeric(in_dat) ~ bin_count, span=span)
+  out<-predict(loess_fit) 
+  return(out)
+  }
+
+
+mean_per_bin<-function(x,y="chromvar"){
   bin_tmp<-row.names(atac_sub@meta.data[atac_sub@meta.data$pseudotime_bin==x,])
-  chromvar<-atac_sub@assays$chromvar@data
+  chromvar<-atac_sub[[y]]@data
   return(apply(chromvar[,bin_tmp],1,mean))
   }
 
-  geneactivity_per_bin<-function(x){
-  bin_tmp<-row.names(atac_sub@meta.data[atac_sub@meta.data$pseudotime_bin==x,])
-  ga<-atac_sub@assays$GeneActivity@data
-  return(apply(ga[,bin_tmp],1,mean))
-  }
-
-  TF_modules_per_bin<-function(x){
-  bin_tmp<-row.names(atac_sub@meta.data[atac_sub@meta.data$pseudotime_bin==x,])
-  tf_module<-atac_sub@assays$TF_modules@data
-  return(apply(tf_module[,bin_tmp],1,mean))
-  }
-
-  #Set up different annotation stacked barplots
-  annotation_bin_summary<-function(object=atac_sub,x){
+#Set up different annotation stacked barplots
+annotation_bin_summary<-function(object=atac_sub,x){
   tmp_timebin<-as.data.frame(object@meta.data %>% group_by_("pseudotime_bin",x) %>% summarize(count=n()))
   colnames(tmp_timebin)<-c("bin","var","count")
   tmp_timebin<-dcast(tmp_timebin,bin~var,value.var="count",fill=0)
   row.names(tmp_timebin)<-tmp_timebin$bin
   tmp_timebin<-as.data.frame(t(tmp_timebin[2:ncol(tmp_timebin)]))
-  tmp_timebin = as.data.frame(t(scale(tmp_timebin, center = FALSE, 
-               scale = colSums(tmp_timebin))))
-  return(tmp_timebin)}
+  tmp_timebin = as.data.frame(t(scale(tmp_timebin, center = FALSE, scale = colSums(tmp_timebin))))
+  return(tmp_timebin)
+}
 
-  plot_over_pseudotime<-function(object=orgo_cirm43,pseudotime="pseudotime_cluster0",bincount=25,prefix="test",monocle_prefix){
-        atac_sub<-subset(object,cells=row.names(object@meta.data)[which(!is.na(object@meta.data[,which(colnames(object@meta.data)==pseudotime)]))]) #subset to cells with pseudotime info
-        atac_sub<-subset(object,cells=row.names(object@meta.data)[which(is.finite(object@meta.data[,which(colnames(object@meta.data)==pseudotime)]))]) #subset to cells with pseudotime info
-        atac_sub$pseudotime_bin<-cut_number(atac_sub@meta.data[,which(colnames(atac_sub@meta.data)==pseudotime)],bincount) #bin data into equal group numbers
-        atac_sub$working_pseudotime<-atac_sub@meta.data[,which(colnames(atac_sub@meta.data)==pseudotime)] #convenience for later calling
-        #Plot bins by cluster ID
-        clus_bin<-as.data.frame(atac_sub@meta.data %>% group_by(pseudotime_bin,seurat_clusters) %>% summarize(count=n()))
-        clus_bin<-dcast(clus_bin,pseudotime_bin~seurat_clusters,fill=0)
-        row.names(clus_bin)<-clus_bin[,1]
-        clus_bin<-clus_bin[,2:ncol(clus_bin)]
-        clus_bin<-t(clus_bin)
-        clus_bin<-clus_bin/rowSums(clus_bin)
-        clus_bin<-clus_bin[order(unlist(lapply(1:nrow(clus_bin),function(x) which(clus_bin[x,]==max(clus_bin[x,]))))),]
-        #dend <- clus_bin %>% dist("maximum") %>% hclust %>% as.dendrogram %>% ladderize  
-        colfun=colorRamp2(quantile(unlist(clus_bin), probs=c(0.01,0.99)),c("#ffffff","#000000"))
+#Set up variables as if it were a function
+object=atac_sub;pseudotime="pseudotime_RG_subset";bincount=100;prefix="rg";monocle_prefix="rg"
 
-        #Set up annotation barplots for pseudotime bins
-        div_timebin<-annotation_bin_summary(x="DIV")
-        cluster_timebin<-annotation_bin_summary(x="seurat_clusters")
-        organoid_timebin<-annotation_bin_summary(x="orgID")
-        differentiation_timebin<-annotation_bin_summary(x="differentiation_exp")
-
-        ha_barplots = HeatmapAnnotation(
-        DIV = anno_barplot(div_timebin, name="DIV",bar_width=1,gp = gpar(color = 1:nrow(div_timebin),fill = 1:nrow(div_timebin)),border=F),
-        cluster = anno_barplot(cluster_timebin, name="cluster",bar_width=1,gp = gpar(color = 1:nrow(cluster_timebin),fill = 1:nrow(cluster_timebin)),border=F),
-        organoid = anno_barplot(organoid_timebin, name="organoid",bar_width=1,gp = gpar(color = 1:nrow(organoid_timebin),fill = 1:nrow(organoid_timebin)),border=F),
-        differentiation=anno_barplot(differentiation_timebin, name="experiment",bar_width=1,gp = gpar(color = 1:nrow(differentiation_timebin),fill = 1:nrow(differentiation_timebin)),border=F))
-
-        lgd_list = list(
-        Legend(labels = colnames(div_timebin), title = "DIV", type = "points", pch = 16, legend_gp = gpar(col = 1:ncol(div_timebin))),
-        Legend(labels = colnames(cluster_timebin), title = "cluster", type = "points", pch = 16, legend_gp = gpar(col = 1:ncol(cluster_timebin))),
-        Legend(labels = colnames(organoid_timebin), title = "organoid", type = "points", pch = 16, legend_gp = gpar(col = 1:ncol(organoid_timebin))),
-        Legend(labels = colnames(differentiation_timebin), title = "experiment", type = "points", pch = 16, legend_gp = gpar(col = 1:ncol(differentiation_timebin))))
-
-        plt<-Heatmap(clus_bin,
-        column_order=1:ncol(clus_bin),
-        bottom_annotation=ha_barplots,
-        row_order=1:nrow(clus_bin),
-        row_names_gp = gpar(fontsize = 3),
-        column_names_gp = gpar(fontsize = 3),
-        show_column_names=T,
-        col=colfun,
-        show_heatmap_legend=T)
-
-        pdf(paste0(prefix,".seurat_clusters.pseudotime.order.heatmap.pdf"),width=30)
-        plt<-draw(plt,annotation_legend_list=lgd_list)
-        dev.off()
-        system(paste0("slack -F ",prefix,".seurat_clusters.pseudotime.order.heatmap.pdf"," ryan_todo"))
+#Set up pseudotime bins per cell
+#atac_sub<-subset(object,cells=row.names(object@meta.data)[which(!is.na(object@meta.data[,which(colnames(object@meta.data)==pseudotime)]))]) #subset to cells with pseudotime info
+#atac_sub<-subset(object,cells=row.names(object@meta.data)[which(is.finite(object@meta.data[,which(colnames(object@meta.data)==pseudotime)]))]) #subset to cells with finite pseudotime info
+#atac_sub$pseudotime_bin<-as.numeric(cut(atac_sub@meta.data[,which(colnames(atac_sub@meta.data)==pseudotime)],bincount))#bin data into equal group numbers
+atac_sub$working_pseudotime<-atac_sub@meta.data[,which(colnames(atac_sub@meta.data)==pseudotime)] #convenience for later calling
+#Plot bins by cluster ID
 
 
-        plt1<-ggplot(dat=as.data.frame(atac_sub@meta.data),aes(x=working_pseudotime,fill=as.factor(pseudotime_bin)))+geom_histogram(bins=bincount*2)+theme_bw()
-        plt2<-ggplot(dat=as.data.frame(atac_sub@meta.data),aes(x=working_pseudotime,fill=as.factor(seurat_clusters)))+geom_histogram(bins=bincount*2)+theme_bw()
+##########No Binning, fit loess to full data
+#count cluster assignment per bin
+clus_bin<-as.data.frame(atac_sub@meta.data %>% group_by(pseudotime_bin,seurat_clusters) %>% summarize(count=n()))
+clus_bin<-dcast(clus_bin,pseudotime_bin~seurat_clusters,fill=0)
+row.names(clus_bin)<-clus_bin[,1]
+clus_bin<-clus_bin[,2:ncol(clus_bin)]
+clus_bin<-t(clus_bin)
+clus_bin<-clus_bin/rowSums(clus_bin)
 
-        ggsave(plt1/plt2,file=paste0(prefix,".pseudotime_resolution_membership.pdf"),width=20)
-        system(paste0("slack -F ",prefix,".pseudotime_resolution_membership.pdf"," ryan_todo"))
+#dend <- clus_bin %>% dist("maximum") %>% hclust %>% as.dendrogram %>% ladderize  
+colfun=colorRamp2(quantile(unlist(clus_bin), probs=c(0.01,0.99)),c("#ffffff","#000000"))
 
-        #Transcription Factor activity (ChromVAR TF motifs) over pseudotime bins
-        motif_mean<-mclapply(unique(atac_sub$pseudotime_bin),chromvar_motifs_per_bin,mc.cores=5)
-        motif_mean<-as.data.frame(do.call("rbind",motif_mean))
-        row.names(motif_mean)<-unique(atac_sub$pseudotime_bin)
-        motif_mean<-motif_mean[match(levels(atac_sub$pseudotime_bin),row.names(motif_mean)),]
-        #Assign human readable TF motif names
-        tfList <- getMatrixByID(JASPAR2020, ID=colnames(motif_mean))
-        tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
-        colnames(motif_mean)<-tfList
-        motif_mean<-as.data.frame(t(motif_mean))
-        motif_mean<-motif_mean[complete.cases(motif_mean),]
-        dim(motif_mean)
-        saveRDS(motif_mean,file=paste0(prefix,".pseudotime_chromVARmotifs.rds"))
+#Set up annotation barplots for pseudotime bins
+div_timebin<-annotation_bin_summary(x="DIV")
+cluster_timebin<-annotation_bin_summary(x="seurat_clusters")
+organoid_timebin<-annotation_bin_summary(x="orgID")
+differentiation_timebin<-annotation_bin_summary(x="differentiation_exp")
 
-        #Gene Activity over pseudotime bins
-        ga_mean<-mclapply(unique(atac_sub$pseudotime_bin),geneactivity_per_bin,mc.cores=5)
-        ga_mean<-as.data.frame(do.call("rbind",ga_mean))
-        row.names(ga_mean)<-unique(atac_sub$pseudotime_bin)
-        ga_mean<-ga_mean[match(levels(atac_sub$pseudotime_bin),row.names(ga_mean)),]
-        ga_mean<-as.data.frame(t(ga_mean))
-        ga_mean<-ga_mean[complete.cases(ga_mean),]
-        dim(ga_mean)
-        saveRDS(ga_mean,file=paste0(prefix,".pseudotime_geneactivity.rds"))
+#Set up barplot annotations
+ha_barplots = HeatmapAnnotation(
+  DIV = anno_barplot(div_timebin, name="DIV",bar_width=1,gp = gpar(color = 1:nrow(div_timebin),fill = 1:nrow(div_timebin)),border=F),
+  cluster = anno_barplot(cluster_timebin, name="cluster",bar_width=1,gp = gpar(color = 1:nrow(cluster_timebin),fill = 1:nrow(cluster_timebin)),border=F),
+  organoid = anno_barplot(organoid_timebin, name="organoid",bar_width=1,gp = gpar(color = 1:nrow(organoid_timebin),fill = 1:nrow(organoid_timebin)),border=F),
+  differentiation=anno_barplot(differentiation_timebin, name="experiment",bar_width=1,gp = gpar(color = 1:nrow(differentiation_timebin),fill = 1:nrow(differentiation_timebin)),border=F))
+#Set up legend
+lgd_list = list(
+  Legend(labels = colnames(div_timebin), title = "DIV", type = "points", pch = 16, legend_gp = gpar(col = 1:ncol(div_timebin))),
+  Legend(labels = colnames(cluster_timebin), title = "cluster", type = "points", pch = 16, legend_gp = gpar(col = 1:ncol(cluster_timebin))),
+  Legend(labels = colnames(organoid_timebin), title = "organoid", type = "points", pch = 16, legend_gp = gpar(col = 1:ncol(organoid_timebin))),
+  Legend(labels = colnames(differentiation_timebin), title = "experiment", type = "points", pch = 16, legend_gp = gpar(col = 1:ncol(differentiation_timebin))))
 
-        #TF Modules over pseudotime bins
-        tfmod_mean<-mclapply(unique(atac_sub$pseudotime_bin),TF_modules_per_bin,mc.cores=5)
-        tfmod_mean<-as.data.frame(do.call("rbind",tfmod_mean))
-        row.names(tfmod_mean)<-unique(atac_sub$pseudotime_bin)
-        tfmod_mean<-tfmod_mean[match(levels(atac_sub$pseudotime_bin),row.names(tfmod_mean)),]
-        tfmod_mean<-as.data.frame(t(tfmod_mean))
-        tfmod_mean<-tfmod_mean[complete.cases(tfmod_mean),]
-        dim(tfmod_mean)
-        saveRDS(tfmod_mean,file=paste0(prefix,".pseudotime_tfmodules.rds"))
+#Plot heatmap test with cluster info, stacked barplot and heatmap rows should coincide
+plt<-Heatmap(clus_bin,
+  column_order=1:ncol(clus_bin),
+  bottom_annotation=ha_barplots,
+  row_order=1:nrow(clus_bin),
+  row_names_gp = gpar(fontsize = 3),
+  column_names_gp = gpar(fontsize = 3),
+  show_column_names=T,
+  col=colfun,
+  show_heatmap_legend=T)
 
-        #filter data by significant changes over pseudotime
-        #chromvar_cds_pr_test_res<-readRDS(paste0(monocle_prefix,"_pseudotime.chromvar.rds"))
-        #OR
-        ###Filter by top 10% variances
-        # calculate variance per column
-        da_tf<-read.table("orgo_cirm43.onevone.da_tf.txt")
-        da_tf<-da_tf[da_tf$enriched_group  %in% c("6","0","3","1","2"),]
-        motif_mean<-readRDS(paste0(prefix,".pseudotime_chromVARmotifs.rds"))
-        motif_mean<-motif_mean[row.names(motif_mean) %in% unique(da_tf$da_tf),]
-        #motif_mean<-motif_mean[which(apply(motif_mean,1,var) < quantile(apply(motif_mean,1,var),0.25)),]
-        #motif_mean<-motif_mean[row.names(motif_mean) %in% (chromvar_cds_pr_test_res %>% filter(q_value < 0.1))$tf_name,] # use that to subset the original data
-        motif_mean<-na.omit(t(scale(t(motif_mean))))
+pdf(paste0(prefix,".seurat_clusters.pseudotime.order.heatmap.pdf"),width=30)
+plt<-draw(plt,annotation_legend_list=lgd_list)
+dev.off()
+system(paste0("slack -F ",prefix,".seurat_clusters.pseudotime.order.heatmap.pdf"," ryan_todo"))
 
-        ####build up tangleogram by matching row names
-        motif_mean<-motif_mean[!duplicated(unlist(lapply(strsplit(row.names(motif_mean),'[(:]'),"[",1))),] #remove similar motifs
-        row.names(motif_mean)<-unlist(lapply(strsplit(row.names(motif_mean),'[(:]'),"[",1)) #simplify row names
-        #subset ga and tf modules to those in motif mean
-        #row.names(tfmod_mean)<-unlist(lapply(strsplit(row.names(tfmod_mean),'[-]'),"[",2))
-        #tfmod_mean<-tfmod_mean[row.names(tfmod_mean) %in% row.names(motif_mean),] #ignoring tfmod mean for now
-        
-        #shared rows only for ga and motif mean
-        #ga_mean<-ga_mean[row.names(ga_mean) %in% row.names(motif_mean),]
-        #motif_mean<-motif_mean[row.names(motif_mean) %in% row.names(ga_mean),]
+#Plot cell count for different annotations across bins
+plt1<-ggplot(dat=as.data.frame(atac_sub@meta.data),aes(x=working_pseudotime,fill=as.factor(pseudotime_bin)))+geom_histogram(bins=bincount*2)+theme_bw()
+plt2<-ggplot(dat=as.data.frame(atac_sub@meta.data),aes(x=working_pseudotime,fill=as.factor(seurat_clusters)))+geom_histogram(bins=bincount*2)+theme_bw()
 
-        #hc_motif <- motif_mean %>% dist() %>% hclust("centroid") 
-        #k_waves_motif<-hc_motif %>% find_k(2:10)
-        #hc_motif <- color_branches(as.dendrogram(hc_motif),k=k_waves_motif$k)
-        #hc_motif<- ladderize(hc_motif,right=T)
-        #dend_motif <- gc_motif %>% as.dendrogram %>% set("labels_to_char")
-        #dend_ga <- ga_sub %>% match_order_by_labels(dend_ga)
-        #dends_motif_ga <- dendlist(dend_motif,dend_ga)
+ggsave(plt1/plt2,file=paste0(prefix,".pseudotime_resolution_membership.pdf"),width=20)
+system(paste0("slack -F ",prefix,".pseudotime_resolution_membership.pdf"," ryan_todo"))
 
-        colfun=colorRamp2(quantile(unlist(motif_mean),c(0.5,0.75,0.99)),cividis(3))
-        motif_sub<-motif_mean[order(unlist(lapply(1:nrow(motif_mean),function(x) which(motif_mean[x,]==max(motif_mean[x,]))))),]
-        plt<-Heatmap(motif_sub,
-        column_order=1:ncol(motif_sub),
-        row_order=1:nrow(motif_sub),
-        bottom_annotation=ha_barplots,
-        #cluster_rows=hc_motif,
-        row_names_gp = gpar(fontsize = 3),
-        column_names_gp = gpar(fontsize = 3),
-        show_column_names=T,
-        col=colfun,
-        show_heatmap_legend=T)
+#Transcription Factor activity (ChromVAR TF motifs) over pseudotime bins
+  motif_mean<-mclapply(unique(atac_sub$pseudotime_bin),function(x) mean_per_bin(x=x,y="chromvar"),mc.cores=5)
+  motif_mean<-as.data.frame(do.call("rbind",motif_mean))
+  row.names(motif_mean)<-unique(atac_sub$pseudotime_bin)
+  motif_mean<-motif_mean[match(levels(atac_sub$pseudotime_bin),row.names(motif_mean)),]
+  tfList <- getMatrixByID(JASPAR2020, ID=colnames(motif_mean)) #Assign human readable TF motif names
+  tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
+  colnames(motif_mean)<-tfList
+  motif_mean<-as.data.frame(t(motif_mean))
+  motif_mean<-motif_mean[complete.cases(motif_mean),]
+  dim(motif_mean)
+  saveRDS(motif_mean,file=paste0(prefix,".pseudotime_chromVARmotifs.rds"))
 
-        pdf(paste0(prefix,".pseudotime.chromvar.heatmap.pdf"),width=30)
-        plt<-draw(plt,annotation_legend_list=lgd_list)
-        dev.off()
-        system(paste0("slack -F ",prefix,".pseudotime.chromvar.heatmap.pdf"," ryan_todo"))
+  #Order chromvar motif data by pseudotime
+  pseudotime_dat<-atac_sub[order(atac_sub$pseudotime_RG_subset),]$pseudotime_RG_subset
+  motif_dat<-as.data.frame(t(atac_sub@assays$chromvar@data))[order(atac_sub$pseudotime_RG_subset),]
+  tfList <- getMatrixByID(JASPAR2020, ID=colnames(motif_dat)) #Assign human readable TF motif names
+  tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
+  colnames(motif_dat)<-tfList
 
-        ga_mean<-readRDS(paste0(prefix,".pseudotime_geneactivity.rds"))
-        ga_mean<-na.omit(t(scale(t(ga_mean))))
-        da_ga<-read.table("orgo_cirm43.onevone.ga_tf.txt")
-        da_ga<-da_ga[da_ga$enriched_group  %in% c("6","0","3","1","2"),]
-        #ga_cds_pr_test_res<-readRDS(paste0(monocle_prefix,"_pseudotime.geneactivity.rds"))
-        #ga_mean<-ga_mean[row.names(ga_mean) %in% row.names(ga_cds_pr_test_res %>% filter(q_value < 0.001)),] # use that to subset the original data
-        #ga_mean<-ga_mean[which(apply(ga_mean,1,var) < quantile(apply(ga_mean,1,var),0.01)),]
 
-        #ga_mean<-na.omit(scale(ga_mean))
+calcSSE <- function(span,in_dat,in_pseudotime,i){
+  loessMod <- try(loess_fit<-loess(as.numeric(in_dat[,i]) ~ in_pseudotime, span=span), silent=T)
+  res <- try(loessMod$residuals, silent=T)
+  if(class(res)!="try-error"){
+      sse <- sum(res^2)  
+    }else{sse <- 99999}
+  return(sse)
+}
 
-        #hc_ga <- ga_mean %>% dist() %>% hclust("centroid") 
-        #k_waves_ga<-hc_ga %>% find_k(2:10)
-        #hc_ga<- color_branches(as.dendrogram(hc_ga),k=k_waves_ga$k)
-        #hc_ga<- ladderize(hc_ga,right=T)
-
-        ga_mean<-ga_mean[order(unlist(lapply(1:nrow(ga_mean),function(x) which(ga_mean[x,]==max(ga_mean[x,]))))),]
-        colfun=colorRamp2(quantile(unlist(ga_mean),c(0,0.5,0.9)),magma(3))
-
-        plt<-Heatmap(ga_mean,
-        column_order=1:ncol(ga_mean),
-        bottom_annotation=ha_barplots,
-        #row_order=1:nrow(ga_mean),
-        #cluster_rows=hc_ga,
-        row_names_gp = gpar(fontsize = 3),
-        column_names_gp = gpar(fontsize = 3),
-        show_column_names=T,
-        col=colfun,
-        show_heatmap_legend=T)
-
-        pdf(paste0(prefix,".pseudotime.geneactivity.heatmap.pdf"),width=30)
-        plt<-draw(plt,annotation_legend_list=lgd_list)
-        dev.off()
-        system(paste0("slack -F ",prefix,".pseudotime.geneactivity.heatmap.pdf"," ryan_todo"))
-
-        dends_tf_ga <- dendlist(hc_motif, hc_ga)
-        pdf("entanglement.test.pdf")
-        tanglegram(dends_tf_ga) %>% untangle(method="step2side") %>% plot()
-        dev.off()
-        system("slack -F entanglement.test.pdf ryan_todo")
-
-        tfmod_sub<-readRDS(file=paste0(prefix,".pseudotime_tfmodules.rds"))
-        tfmod_sub<-tfmod_sub[which(apply(tfmod_sub,1,var) < quantile(apply(tfmod_sub,1,var),0.1)),]
-
-        tfmod_sub<-na.omit(t(scale(t(tfmod_sub))))
-
-        tfmod_sub<-tfmod_sub[order(unlist(lapply(1:nrow(tfmod_sub),function(x) which(tfmod_sub[x,]==max(tfmod_sub[x,]))))),]
-
-        colfun=colorRamp2(quantile(unlist(tfmod_sub),c(0,0.5,0.9)),viridis(3))
-        plt<-Heatmap(tfmod_sub,
-        column_order=1:ncol(tfmod_sub),
-        bottom_annotation=ha_barplots,
-        row_order=1:nrow(tfmod_sub),
-        row_names_gp = gpar(fontsize = 3),
-        column_names_gp = gpar(fontsize = 3),
-        show_column_names=T,
-        col=colfun,
-        show_heatmap_legend=T)
-
-        pdf(paste0(prefix,".pseudotime.tfmodule.heatmap.pdf"),width=30)
-        plt<-draw(plt,annotation_legend_list=lgd_list)
-        dev.off()
-        system(paste0("slack -F ",prefix,".pseudotime.tfmodule.heatmap.pdf"," ryan_todo"))
-
+  sse_fit<-mclapply(sample(1:ncol(motif_dat),100), function(x) optim(par=c(1), calcSSE, method="SANN", in_dat=motif_dat,in_pseudotime=pseudotime_dat,i=x),mc.cores=20) #perform sse_fit optimization per row to get best span fit overall, sampling 100 to increase speed
+ 
+loess_fit_acrossbins<-function(in_dat,span=0.1,in_pseudotime,i){
+  loess_fit<-loess(as.numeric(in_dat[,i]) ~ in_pseudotime, span=span)
+  out<-predict(loess_fit) 
+  return(out)
   }
-  
-    #plot_over_pseudotime(object=orgo_cirm43,pseudotime="pseudotime_cluster0",bincount=50,
-    #  prefix="./subcluster/exN",monocle_prefix="./subcluster/exN")
-    #plot_over_pseudotime(object=orgo_cirm43,pseudotime="pseudotime_cluster1",bincount=25,
-    #  prefix="./subcluster/rg",monocle_prefix="./subcluster/rg")
-    orgo_cirm43<-subset(orgo_cirm43,cells=row.names(orgo_cirm43@meta.data)[which(!is.na(orgo_cirm43$pseudotime_allcells))])
-    plot_over_pseudotime(object=orgo_cirm43,pseudotime="pseudotime_allcells",bincount=25,
-      prefix="orgo_cirm43",monocle_prefix="orgo_cirm43")
 
-    atac_sub<-subset(orgo_cirm43,cells=row.names(orgo_cirm43@meta.data)[which(!is.na(orgo_cirm43$pseudotime_rg))])
-    plot_over_pseudotime(object=atac_sub,pseudotime="pseudotime_rg",bincount=25,
-      prefix="rg",monocle_prefix="rg")
+  summary(unlist(lapply(sse_fit,"[[",1)))[3] #get fit per row with minimal SSE, then summarize across rows for optimal span for all rows using median
+  motif_loess<-mclapply(1:nrow(motif_dat), function(x) loess_fit_acrossbins(in_dat=motif_dat,in_pseudotime=pseudotime_dat,i=x,span=as.numeric(summary(unlist(lapply(sse_fit,"[[",1)))[3])),mc.cores=20) #get loess fit using optimal span
+  #motif_loess<-as.data.frame(do.call("rbind",motif_loess)) #format table and save
+  #colnames(motif_loess)<-colnames(motif_mean)
+  #row.names(motif_loess)<-row.names(motif_mean)
+  #saveRDS(motif_loess,file=paste0(prefix,".pseudotime_chromVARmotifs.loess.rds"))
+
+
+  #fit loess curve
+  #sse_fit<-mclapply(sample(1:nrow(motif_mean),100), function(x) optim(par=c(0.5), calcSSE, method="SANN", in_dat=motif_mean[x,]),mc.cores=20) #perform sse_fit optimization per row to get best span fit overall, sampling 100 to increase speed
+  #summary(unlist(lapply(sse_fit,"[[",1)))[3] #get fit per row with minimal SSE, then summarize across rows for optimal span for all rows using median
+  #motif_loess<-mclapply(1:nrow(motif_mean),function(x) loess_fit_acrossbins(in_dat=motif_mean[x,],span=as.numeric(summary(unlist(lapply(sse_fit,"[[",1)))[3])),mc.cores=20) #get loess fit using optimal span
+  #motif_loess<-as.data.frame(do.call("rbind",motif_loess)) #format table and save
+  #colnames(motif_loess)<-colnames(motif_mean)
+  #row.names(motif_loess)<-row.names(motif_mean)
+  #saveRDS(motif_loess,file=paste0(prefix,".pseudotime_chromVARmotifs.loess.rds"))
+
+#Gene Activity over pseudotime bins
+  ga_mean<-mclapply(unique(atac_sub$pseudotime_bin),function(x) mean_per_bin(x=x,y="GeneActivity"),mc.cores=5)
+  ga_mean<-as.data.frame(do.call("rbind",ga_mean))
+  row.names(ga_mean)<-unique(atac_sub$pseudotime_bin)
+  ga_mean<-ga_mean[match(levels(atac_sub$pseudotime_bin),row.names(ga_mean)),]
+  ga_mean<-as.data.frame(t(ga_mean))
+  ga_mean<-ga_mean[complete.cases(ga_mean),]
+  dim(ga_mean)
+  saveRDS(ga_mean,file=paste0(prefix,".pseudotime_geneactivity.rds"))
+
+  #fit loess curve
+  sse_fit<-mclapply(sample(1:nrow(ga_mean),100), function(x) optim(par=c(0.5), calcSSE, method="SANN", in_dat=ga_mean[x,]),mc.cores=20) #perform sse_fit optimization per row to get best span fit overall , sampling 100 to increase speed 
+  summary(unlist(lapply(sse_fit,"[[",1)))[3] #get fit per row with minimal SSE, then summarize across rows for optimal span for all rows using median
+  ga_loess<-mclapply(1:nrow(ga_mean),function(x) loess_fit_acrossbins(in_dat=ga_mean[x,],span=as.numeric(summary(unlist(lapply(sse_fit,"[[",1)))[3])),mc.cores=20) #get loess fit using optimal span
+  ga_loess<-as.data.frame(do.call("rbind",ga_loess)) #format table and save
+  colnames(ga_loess)<-colnames(ga_mean)
+  row.names(ga_loess)<-row.names(ga_mean)
+  saveRDS(ga_loess,file=paste0(prefix,".pseudotime_geneactivity.loess.rds"))
+
+#TF Modules over pseudotime bins
+  tfmod_mean<-mclapply(unique(atac_sub$pseudotime_bin),function(x) mean_per_bin(x=x,y="TF_modules"),mc.cores=5)
+  tfmod_mean<-as.data.frame(do.call("rbind",tfmod_mean))
+  row.names(tfmod_mean)<-unique(atac_sub$pseudotime_bin)
+  tfmod_mean<-tfmod_mean[match(levels(atac_sub$pseudotime_bin),row.names(tfmod_mean)),]
+  tfmod_mean<-as.data.frame(t(tfmod_mean))
+  tfmod_mean<-tfmod_mean[complete.cases(tfmod_mean),]
+  dim(tfmod_mean)
+  saveRDS(tfmod_mean,file=paste0(prefix,".pseudotime_tfmodules.rds"))
+
+  sse_fit<-mclapply(sample(1:nrow(tfmod_mean),100), function(x) optim(par=c(0.5), calcSSE, method="SANN", in_dat=tfmod_mean[x,]),mc.cores=20) #perform sse_fit optimization per row to get best span fit overall, sampling 100 to increase speed
+  summary(unlist(lapply(sse_fit,"[[",1)))[3] #get fit per row with minimal SSE, then summarize across rows for optimal span for all rows using median
+  tfmod_loess<-mclapply(1:nrow(tfmod_mean),function(x) loess_fit_acrossbins(in_dat=tfmod_mean[x,],span=as.numeric(summary(unlist(lapply(sse_fit,"[[",1)))[3])),mc.cores=20) #get loess fit using optimal span
+  tfmod_loess<-as.data.frame(do.call("rbind",tfmod_loess)) #format table and save
+  colnames(tfmod_loess)<-colnames(tfmod_mean)
+  row.names(tfmod_loess)<-row.names(tfmod_mean)
+  saveRDS(tfmod_loess,file=paste0(prefix,".pseudotime_tfmodules.loess.rds"))
+
+#Filter chromvar motifs by statistical significance
+motif_loess<-readRDS(paste0(prefix,".pseudotime_chromVARmotifs.loess.rds"))
+
+#chromvar_cds_pr_test_res<-readRDS("RG_subset_pseudotime.chromvar.rds") #filter data by significant changes over pseudotime
+#motif_loess<-motif_loess[row.names(motif_loess) %in% (chromvar_cds_pr_test_res %>% filter(q_value < 0.05))$tf_name,] # use that to subset the original data
+#motif_loess<-motif_loess[which(apply(motif_loess,1,var) > quantile(apply(motif_loess,1,var),0.90)),] ### alternative method Filter by top 10% variances
+#motif_loess<-na.omit(t(scale(t(motif_loess))))
+
+####build up tangleogram by matching row names
+motif_loess<-motif_loess[!duplicated(unlist(lapply(strsplit(row.names(motif_loess),'[(:]'),"[",1))),] #remove similar motifs
+row.names(motif_loess)<-unlist(lapply(strsplit(row.names(motif_loess),'[(:]'),"[",1)) #simplify row names
+#subset ga and tf modules to those in motif mean
+#row.names(tfmod_mean)<-unlist(lapply(strsplit(row.names(tfmod_mean),'[-]'),"[",2))
+#tfmod_mean<-tfmod_mean[row.names(tfmod_mean) %in% row.names(motif_loess),] #ignoring tfmod mean for now
+
+#shared rows only for ga and motif mean
+#ga_mean<-ga_mean[row.names(ga_mean) %in% row.names(motif_loess),]
+#motif_loess<-motif_loess[row.names(motif_loess) %in% row.names(ga_mean),]
+
+hc_motif <- motif_loess %>% dist() %>% hclust() 
+k_waves_motif<-hc_motif %>% find_k(4:10) #determine cluster count
+hc_motif <- color_branches(as.dendrogram(hc_motif),k=k_waves_motif$k)
+hc_motif<- ladderize(hc_motif,right=T)
+dend_motif <- hc_motif %>% as.dendrogram %>% set("labels_to_char")
+
+colfun=colorRamp2(quantile(unlist(motif_loess),c(0.5,0.75,0.99)),cividis(3))
+motif_sub<-motif_loess[order(unlist(lapply(1:nrow(motif_loess),function(x) which(motif_loess[x,]==max(motif_loess[x,]))))),]
+
+plt<-Heatmap(motif_sub,
+column_order=1:ncol(motif_sub),
+row_order=1:nrow(motif_sub),
+bottom_annotation=ha_barplots,
+#cluster_rows=hc_motif,
+row_names_gp = gpar(fontsize = 3),
+column_names_gp = gpar(fontsize = 3),
+show_column_names=T,
+col=colfun,
+show_heatmap_legend=T)
+
+pdf(paste0(prefix,".pseudotime.chromvar.heatmap.pdf"),width=30)
+plt<-draw(plt,annotation_legend_list=lgd_list)
+dev.off()
+system(paste0("slack -F ",prefix,".pseudotime.chromvar.heatmap.pdf"," ryan_todo"))
+
+ga_mean<-readRDS(paste0(prefix,".pseudotime_geneactivity.rds"))
+ga_mean<-na.omit(t(scale(t(ga_mean))))
+#da_ga<-read.table("orgo_cirm43.onevone.ga_tf.txt")
+#da_ga<-da_ga[da_ga$enriched_group  %in% c("6","0","3","1","2"),]
+#ga_cds_pr_test_res<-readRDS(paste0(monocle_prefix,"_pseudotime.geneactivity.rds"))
+#ga_mean<-ga_mean[row.names(ga_mean) %in% row.names(ga_cds_pr_test_res %>% filter(q_value < 0.001)),] # use that to subset the original data
+ga_mean<-ga_mean[which(apply(ga_mean,1,var) < quantile(apply(ga_mean,1,var),0.01)),]
+
+#ga_mean<-na.omit(scale(ga_mean))
+
+#hc_ga <- ga_mean %>% dist() %>% hclust("centroid") 
+#k_waves_ga<-hc_ga %>% find_k(2:10)
+#hc_ga<- color_branches(as.dendrogram(hc_ga),k=k_waves_ga$k)
+#hc_ga<- ladderize(hc_ga,right=T)
+
+ga_mean<-ga_mean[order(unlist(lapply(1:nrow(ga_mean),function(x) which(ga_mean[x,]==max(ga_mean[x,]))))),]
+colfun=colorRamp2(quantile(unlist(ga_mean),c(0,0.5,0.9)),magma(3))
+
+plt<-Heatmap(ga_mean,
+column_order=1:ncol(ga_mean),
+bottom_annotation=ha_barplots,
+#row_order=1:nrow(ga_mean),
+#cluster_rows=hc_ga,
+row_names_gp = gpar(fontsize = 3),
+column_names_gp = gpar(fontsize = 3),
+show_column_names=T,
+col=colfun,
+show_heatmap_legend=T)
+
+pdf(paste0(prefix,".pseudotime.geneactivity.heatmap.pdf"),width=30)
+plt<-draw(plt,annotation_legend_list=lgd_list)
+dev.off()
+system(paste0("slack -F ",prefix,".pseudotime.geneactivity.heatmap.pdf"," ryan_todo"))
+
+#dends_tf_ga <- dendlist(hc_motif, hc_ga)
+#pdf("entanglement.test.pdf")
+#tanglegram(dends_tf_ga) %>% untangle(method="step2side") %>% plot()
+#dev.off()
+#system("slack -F entanglement.test.pdf ryan_todo")
+
+tfmod_sub<-readRDS(file=paste0(prefix,".pseudotime_tfmodules.rds"))
+tfmod_sub<-tfmod_sub[which(apply(tfmod_sub,1,var) < quantile(apply(tfmod_sub,1,var),0.1)),]
+
+tfmod_sub<-na.omit(t(scale(t(tfmod_sub))))
+
+tfmod_sub<-tfmod_sub[order(unlist(lapply(1:nrow(tfmod_sub),function(x) which(tfmod_sub[x,]==max(tfmod_sub[x,]))))),]
+
+colfun=colorRamp2(quantile(unlist(tfmod_sub),c(0,0.5,0.9)),viridis(3))
+plt<-Heatmap(tfmod_sub,
+column_order=1:ncol(tfmod_sub),
+bottom_annotation=ha_barplots,
+row_order=1:nrow(tfmod_sub),
+row_names_gp = gpar(fontsize = 3),
+column_names_gp = gpar(fontsize = 3),
+show_column_names=T,
+col=colfun,
+show_heatmap_legend=T)
+
+pdf(paste0(prefix,".pseudotime.tfmodule.heatmap.pdf"),width=30)
+plt<-draw(plt,annotation_legend_list=lgd_list)
+dev.off()
+system(paste0("slack -F ",prefix,".pseudotime.tfmodule.heatmap.pdf"," ryan_todo"))
+
+
 
 
 ```
@@ -3962,183 +4096,6 @@ I mainly just wanted to play around with network analysis a bit.
 
 
 
-
-## Save final seurat files for UCSC cellbrowser and set up.
-
-To view data in an interactive way, I converted the final seurat object for UCSCs cell browser.
-
-I then hosted locally to test.
-Install cellbrowser via this (guide.)[https://cellbrowser.readthedocs.io/en/master/installation.html]
-
-```R
-#Downloaded seurat objects off clusters
-#Prepare seurat data as cellbrowser file
-
-setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-library(Signac)
-library(Seurat)
-library(Matrix)
-library(R.utils)
-library(dplyr)
-
-
-#modified function from https://github.com/satijalab/seurat-wrappers/blob/master/R/cellbrowser.R just for export
-ExportToCellbrowser <- function(
-object,
-reduction="umap",
-assay.name="GeneActivity",
-dir,
-dataset.name,
-marker.file,
-marker.n=5,
-cluster.field="seurat_clusters",
-gene_list,
-skip.expr.mat=FALSE) {
-
-  reducNames = reduction
-  # see https://satijalab.org/seurat/essential_commands.html
-    idents <- Idents(object = object)
-    cellOrder <- row.names(object@meta.data)
-    counts <-  object@assays[[assay.name]]@data
-    counts<-counts[,cellOrder]
-    genes <- rownames(x = counts)
-    dr<-object@reductions[[reduction]]
-    meta.fields<-object@meta.data
-  if (!dir.exists(paths = dir)) {
-    dir.create(path = dir)}
-
-  # Export expression matrix
-    # we have to write the matrix to an mtx file
-    matrixPath <- file.path(dir, "matrix.mtx")
-    genesPath <- file.path(dir, "features.tsv")
-    barcodesPath <- file.path(dir, "barcodes.tsv")
-if(!skip.expr.mat){
-    message("Writing expression matrix to ", matrixPath)
-    message("This may take a couple of minutes...")
-    writeMM(counts, matrixPath)
-    # easier to load if the genes file has at least two columns. Even though seurat objects
-    write.table(as.data.frame(cbind(rownames(counts), rownames(counts))), file=genesPath, sep="\t", row.names=F, col.names=F, quote=F)
-    write(colnames(counts), file = barcodesPath)
-
-    message("Gzipping expression matrix")
-    gzip(matrixPath,overwrite=T,remove=T)
-    gzip(genesPath,overwrite=T,remove=T)
-    gzip(barcodesPath,overwrite=T,remove=T)
-}
-    matrixOutPath <- "matrix.mtx.gz"
-
-    #Export embeddings
-    df <- dr@cell.embeddings
-    if (ncol(x = df) > 2) {
-      warning('Embedding ', embedding, ' has more than 2 coordinates, taking only the first 2')
-      df <- df[, 1:2]
-    }
-    colnames(x = df) <- c("x", "y")
-    df <- data.frame(cellId = rownames(x = df), df, check.names = FALSE)
-    fname <- file.path(dir,"umap.coords.tsv")
-    message("Writing embeddings to ", fname)
-    write.table(df[cellOrder, ], sep="\t", file=fname, quote = FALSE, row.names = FALSE)
-  embeddings.conf <- sprintf('{"file": "%s.coords.tsv", "shortLabel": "Seurat %1$s"}',reduction)
-  coords.string <- paste0("[",paste(embeddings.conf, collapse = ",\n"),"]")
-
-  # Export metadata
-  enum.fields=colnames(object@meta.data)[colnames(object@meta.data) %in% c("cellid","pcr_idx","tn5_idx",cluster.field,"seurat_clusters","cluster_ID","predicted.id","celltype")]
-  fname <- file.path(dir, "meta.tsv")
-  message("Writing meta data to ", fname)
-  out.meta<-as.matrix(object@meta.data[cellOrder, enum.fields])
-  write.table(out.meta, sep = "\t", file = fname, quote = FALSE, row.names = FALSE)
-  enum.string <- paste0("[",paste(paste0('"', enum.fields, '"'), collapse = ", "), "]")
-
-  # Export markers
-    file <- file.path("markers.tsv")
-    fname <- file.path(dir, file)
-      da_ga<-read.table(file=marker.file)
-        da_ga$label<-""
-        for (x in unique(da_ga$enriched_group)){
-        selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==x) %>% dplyr::arrange(p_val_adj) %>% dplyr::slice(1:marker.n))$da_region
-        da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$label<- da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$da_region
-        }
-    da_ga<-da_ga[da_ga$label!="",]
-      message("Writing top ", marker.n, " cluster markers to ", fname)
-    da_ga$cluster<-da_ga$enriched_group
-      da_ga<-da_ga[c("cluster","label","p_val_adj","enriched_group")]
-      colnames(da_ga)<-c("cluster","symbol","Adjusted p Value","Cluster Enrichment")
-      write.table(x = da_ga, file = fname, quote = FALSE, sep = "\t", col.names = T,row.names=F)
-    markers.string <- sprintf('markers = [{"file": "%s", "shortLabel": "Seurat Cluster Markers"}]',file)
-
-#Export Gene list
-  file <- file.path("quickGenes.csv")
-  fname <- file.path(dir, file)
-  write.table(gene_list,sep=",",file = fname, quote = FALSE, row.names = FALSE)
-
-  config <- '
-# This is a bare-bones cellbrowser config file auto-generated from R.
-# Look at https://github.com/maximilianh/cellBrowser/blob/master/src/cbPyLib/cellbrowser/sampleConfig/cellbrowser.conf
-# for a full file that shows all possible options
-name="%s"
-shortLabel="%1$s"
-exprMatrix="%s"
-tags = ["sciatac"]
-meta="meta.tsv"
-# possible values: "gencode-human", "gencode-mouse", "symbol" or "auto"
-geneIdType="auto"
-# file with gene,description (one per line) with highlighted genes, called "Dataset Genes" in the user interface
-quickGenesFile="quickGenes.csv"
-clusterField="%s"
-labelField="%s"
-enumFields=%s
-%s
-coords=%s
-geneLabel="Gene Activity"
-unit="GA"'
-
-  config <- sprintf(
-    config,
-    dataset.name,
-    matrixOutPath,
-    cluster.field,
-    cluster.field,
-    enum.string,
-    markers.string,
-    coords.string
-  )
-  confPath = file.path(dir, "cellbrowser.conf")
-  message("Writing cellbrowser config to ", confPath)
-  cat(config, file = confPath)
-  message("Prepared cellbrowser directory ", dir)
-}
-
-
-orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.Rds")
-
-hg38_marker_list<- c("FOXG1", "SOX2","PAX6","HES1","HOPX","VIM","GFAP","TNC","GPX3", "MOXD1", "NEUROG1","EOMES","PPP1R17","PTPRZ1","NEUROD4", "SLC17A7","NEUROD6","RIT1","TBR1","SLA","NHLH1", "DLX2","DLX1","LHX6","GAD1", "NEUROD1", "SATB2","CUX1","RELN","MEF2C", "SLC1A3","GLI3","MKI67","STMN2","GADD45B","MAP2","CALB2","FBXO32", "PGK1","GORASP2" ) 
-
-ExportToCellbrowser(
-object=orgo_cirm43,
-reduction="umap",
-assay.name="GeneActivity",
-dir="orgo_cb",
-dataset.name="orgo",
-marker.file="orgo_cirm43.onevrest.da_ga.txt",
-marker.n=5,
-cluster.field="seurat_clusters",
-gene_list=hg38_marker_list,
-skip.expr.mat=FALSE)
-```
-
-Locally building and hosting the cell browser.
-Using windows wsl2 ubuntu environment
-
-```bash
-#install cellbrowser via conda
-#conda install -c bioconda ucsc-cell-browser
-
-cd /mnt/c/Users/mulqueen/Documents/organoid/orgo_cb
-cbBuild -o orgo_cellbrowser -p 8888
-
-#Go to http://localhost:8888/ to use the interactive viewer
-
-```
 
 
 
