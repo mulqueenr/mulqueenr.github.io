@@ -516,9 +516,9 @@ cistopic_generation<-function(x,name_out,outdir="/home/groups/CEDAR/mulqueen/pro
   atac_sub<-RunUMAP(atac_sub,reduction="cistopic",dims=1:n_topics)
   atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics ) 
   atac_sub <- FindClusters(object = atac_sub, verbose = TRUE, graph.name="peaks_snn", resolution=0.2 ) 
-  plt1<-DimPlot(atac_sub,reduction="umap",group.by=c("origin","seurat_clusters"))
+  plt1<-DimPlot(atac_sub,reduction="umap",group.by=c("sample","seurat_clusters"))
   plt2<-FeaturePlot(atac_sub,reduction="umap",features=c("nucleosome_signal","TSS.enrichment","nCount_peaks","nFeature_peaks"))
-  pdf(paste0(wd,"/",outname,".umap.pdf"))
+  pdf(paste0(wd,"/",outname,".umap.pdf"),width=10)
   print(plt1)
   print(plt2)
   dev.off()
@@ -587,7 +587,7 @@ cistopic_processing<-function(x,y,outname){
   #heatmap by topic
   cisTopicObject <- runUmap(cisTopicObject, target='cell')
   pdf(paste(outname,"celltopic_heatmap.pdf",sep="."))
-  print(cellTopicHeatmap(cisTopicObject, method='Probability', colorBy=c("origin","seurat_clusters")))
+  print(cellTopicHeatmap(cisTopicObject, method='Probability', colorBy=c("sample","seurat_clusters")))
   dev.off()
   system(paste("slack -F", paste(outname,"celltopic_heatmap.pdf",sep="."), "ryan_todo",sep=" "))
 
@@ -637,11 +637,11 @@ cistopic_processing<-function(x,y,outname){
 
 
 #add cistopic function to all cells
-dat_mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.rds")
+dat_mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.Rds")
 dat_mcf7_cistopic<-readRDS(file="yw_mcf7.control.CisTopicObject.Rds")
 cistopic_processing(x=dat_mcf7,y=dat_mcf7_cistopic,outname="yw_mcf7.control")
 
-dat_t47d<-readRDS(file="yw_t47d.control.SeuratObject.rds")
+dat_t47d<-readRDS(file="yw_t47d.control.SeuratObject.Rds")
 dat_t47d_cistopic<-readRDS(file="yw_t47d.control.CisTopicObject.Rds")
 cistopic_processing(x=dat_t47d,y=dat_t47d_cistopic,outname="yw_t47d.control")
 
@@ -664,8 +664,8 @@ Now run Chromvar on data for agnostic transcription factor motifs
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
 
 #read in RDS file.
-mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.rds")
-t47d<-readRDS(file="yw_t47d.control.SeuratObject.rds")
+mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.Rds")
+t47d<-readRDS(file="yw_t47d.control.SeuratObject.Rds")
 
 
 
@@ -847,6 +847,7 @@ library(GenomeInfoDb)
 set.seed(1234)
 library(stringr)
 library(ggplot2)
+library(RColorBrewer)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
 
 dat<-readRDS("rm_merged.SeuratObject.rds")
@@ -896,6 +897,9 @@ dat[["peaks"]] <- CreateChromatinAssay(
   annotation = annotation
 )
 
+#set up colors for samples
+my_cols = brewer.pal(4,"Spectral")
+alpha_val=0.33
 #RNA Processing
 DefaultAssay(dat) <- "RNA"
 dat <- SCTransform(dat)
@@ -908,7 +912,7 @@ dat<- RunUMAP(
   verbose = TRUE,
   dims=1:50
 )
-p1<-DimPlot(dat,reduction="rna_umap",group.by="sample")+ggtitle("RNA UMAP")
+p1<-DimPlot(dat,reduction="rna_umap",group.by="sample",cols=alpha(my_cols,alpha_val))+ggtitle("RNA UMAP")
 
 #DNA Accessibility processing
 DefaultAssay(dat) <- "peaks"
@@ -923,14 +927,14 @@ dat<- RunUMAP(
   verbose = TRUE,
   dims=2:40
 )
-p2<-DimPlot(dat,reduction="atac_umap",group.by="sample")+ggtitle("ATAC UMAP")
+p2<-DimPlot(dat,reduction="atac_umap",group.by="sample",cols=alpha(my_cols,alpha_val))+ggtitle("ATAC UMAP")
 
 
 # build a joint neighbor graph using both assays
 dat <- FindMultiModalNeighbors(
   object = dat,
   reduction.list = list("pca", "lsi"), 
-  dims.list = list(1:50, 2:40),
+  dims.list = list(1:50, 2:40), #I think the ATAC UMAP does a better job integrating samples, maybe skip dim 1 for RNA also?
   modality.weight.name = "RNA.weight",
   verbose = TRUE
 )
@@ -943,7 +947,7 @@ dat <- RunUMAP(
   assay = "RNA",
   verbose = TRUE
 )
-p3<-DimPlot(dat,reduction="multimodal_umap",group.by="sample")+ggtitle("Multimodal UMAP")
+p3<-DimPlot(dat,reduction="multimodal_umap",group.by="sample",cols=alpha(my_cols,alpha_val))+ggtitle("Multimodal UMAP")
 
 #Cluster on multimodal graph
 dat <- FindClusters(dat, resolution = 0.8, verbose = FALSE,graph="wknn")
@@ -957,7 +961,87 @@ saveRDS(dat,file="rm_merged.SeuratObject.rds")
 
 ```
 
-### Cell type assignment based on 
+### Using Transfer Anchors for Cell identification.
+
+Using Swarbrick paper labels for transfer. https://pubmed.ncbi.nlm.nih.gov/34493872/
+
+Download data
+```bash
+cd /home/groups/CEDAR/mulqueen/ref/swarbrick
+wget https://ftp.ncbi.nlm.nih.gov/geo/series/GSE176nnn/GSE176078/suppl/GSE176078_Wu_etal_2021_BRCA_scRNASeq.tar.gz
+tar -xvf GSE176078_Wu_etal_2021_BRCA_scRNASeq.tar.gz
+```
+Make Seurat Object with Metadata
+
+```R
+library(Seurat)
+
+setwd("/home/groups/CEDAR/mulqueen/ref/swarbrick")
+counts<-ReadMtx(mtx="count_matrix_sparse.mtx",cells="count_matrix_barcodes.tsv",features="count_matrix_genes.tsv",feature.column=1) #sparse matrix of counts
+metadata<-read.csv("metadata.csv") #metadata
+row.names(metadata)<-metadata$X
+# create a Seurat object containing the RNA adata
+swarbrick <- CreateSeuratObject(
+  counts = counts,
+  assay = "RNA"
+)
+swarbrick<-AddMetaData(swarbrick,metadata=metadata)
+saveRDS(swarbrick,"/home/groups/CEDAR/mulqueen/ref/swarbrick/swarbrick.SeuratObject.Rds")
+```
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
+
+dat<-readRDS("rm_merged.SeuratObject.rds")
+DefaultAssay(dat)<-"RNA"
+dat<-NormalizeData(dat)
+dat<-FindVariableFeatures(dat)
+dat<-ScaleData(dat)
+#Using Label transfer to label cell types by Swarbrick paper
+#seurat object made by AD
+swarbrick<-readRDS("/home/groups/CEDAR/mulqueen/ref/swarbrick/swarbrick.SeuratObject.Rds")
+swarbrick<-NormalizeData(swarbrick)
+swarbrick<-FindVariableFeatures(swarbrick)
+swarbrick<-ScaleData(swarbrick)
+
+
+transfer.anchors <- FindTransferAnchors(
+  reference = swarbrick,
+  reference.assay="RNA",
+  query = dat,
+  query.assay="RNA",
+  verbose=T
+)
+
+predictions<- TransferData(
+  anchorset = transfer.anchors,
+  refdata = swarbrick$celltype_major,
+)
+
+dat<-AddMetaData(dat,metadata=predictions)
+saveRDS(dat,file="rm_merged.SeuratObject.rds")
+
+
+plt1<-FeaturePlot(dat,features=c('prediction.score.Endothelial','prediction.score.CAFs','prediction.score.PVL','prediction.score.B.cells','prediction.score.T.cells','prediction.score.Myeloid','prediction.score.Normal.Epithelial','prediction.score.Plasmablasts','prediction.score.Cancer.Epithelial'),pt.size=0.1,order=T,col=c("white","red"))
+plt2<-DimPlot(dat,group.by='predicted.id',pt.size=0.5)
+plt3<-DimPlot(dat,group.by='sample',pt.size=0.5)
+
+plt<-(plt2|plt3)/plt1
+ggsave(plt,file="rm.predictedid.umap.pdf",width=20,height=30,limitsize=F)
+system("slack -F rm.predictedid.umap.pdf ryan_todo")
+
+
+```
+
+### Check Cell Type Assignment By Prediction Grouping
 https://ars.els-cdn.com/content/image/1-s2.0-S1097276521007954-gr5.jpg
 
 Continuing R Session
@@ -984,17 +1068,20 @@ dat <- RegionStats(dat, genome = BSgenome.Hsapiens.UCSC.hg38)
 # link peaks to genes
 #Identify cell types in data
 #Basing identification off of https://ars.els-cdn.com/content/image/1-s2.0-S1097276521007954-gr5.jpg
+#and https://www.embopress.org/doi/full/10.15252/embj.2020107333
 geneset<-list()
 geneset[["luminal_Hr"]]<-c("ANKRD30A","ERBB4","SYTL2","INPP4B","AFF3")
 geneset[["luminal_secretory"]]<-c("IGF2BP2","ALDH1A3","COBL","PIGR","CCL28")
-geneset[["basal"]]<-c("NRG1","KRT14","ACTA2","PTPRT","MYLK")
+geneset[["basal"]]<-c("NRG1","KRT14","ACTA2","PTPRT","MYLK","KRT5","SNAI2","NOTCH4","DKK3")
 geneset[["t_cells"]]<-c("PTPRC","PARP8","FYN","STAT4","AOAH")
 geneset[["b_cells"]]<-c("MZB1","SSR4","HERPUD1","DERL3") #"ENAM" excluded
 geneset[["myeloid"]]<-c("HLA-DRA","HLA-DPA1","CD74","HLA-DRB1","HLA-DPB1")
 geneset[["endothelial"]]<-c("MCTP1","ADAMTS9","ZNF385D","ADGRL4","SELE") #ELTD1 is ADGRL4
 geneset[["pericyte"]]<-c("C11orf95","RGS6","PRKG1","IGFBP5") #MT1A excluded
 geneset[["fibroblast"]]<-c("DCN","APOD","HPSE2","CFD","LAMA2")
-
+geneset[["epithelial"]]<-c("EPCAM","ITGA6","KRT5")
+geneset[["mature_luminal"]]<-c("ESR1","PGR","FOXA1")
+geneset[["luminal_progenitor"]]<-c("TNFRSF11A","KIT","SOX10")
 #filter geneset to those in data set
 unlist(geneset)[which(!(unlist(geneset) %in% row.names(dat@assays$SCT@data)))]
 
@@ -1004,6 +1091,8 @@ dat <- LinkPeaks(
   expression.assay = "SCT",
   genes.use = unlist(geneset)
 )
+
+Idents(dat)<-dat$predicted.id
 
 cov_plots<-function(dat=dat,gene_name){
   gene_name<-unname(gene_name)
@@ -1019,7 +1108,8 @@ cov_plots<-function(dat=dat,gene_name){
     object = dat,
     features = gene_name,
     raster=T,
-    reduction="multimodal_umap")
+    reduction="multimodal_umap",
+    order=T)
   return((plt_feat|plt_cov)+ggtitle(gene_name))
 }
 
@@ -1032,10 +1122,14 @@ for (i in unique(names(geneset))){
 }
 
 saveRDS(dat,file="rm_merged.SeuratObject.rds")
-
 ```
 
+
 ### Determine Tumor Cells via InferCNV
+
+. Immune and endothelial cells were used to 
+define the reference cell-inferred copy number profiles.
+(From https://www.nature.com/articles/s41588-021-00911-1)
 
 ```R
 ####Run InferCNV
@@ -1049,8 +1143,6 @@ library(stringr)
 library(ggplot2)
 library(infercnv)
 library(ComplexHeatmap)
-library(ggdendro)
-library(dendextend)
 library(circlize)
 library(dendsort)
 library(patchwork)
@@ -1061,7 +1153,7 @@ setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
 ####RUNNING INFERCNV#####
 #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
 dat<-readRDS("rm_merged.SeuratObject.rds") #ensure it reads in properly
-
+DefaultAssay(dat)<-"RNA"
 
 ####RUNNING INFERCNV#####
 #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
@@ -1069,25 +1161,72 @@ counts=as.matrix(dat@assays$RNA@counts[,colnames(dat)])
 write.table(counts,file="RM_inferCNV.counts.txt",sep="\t",col.names=T,row.names=T,quote=F)
 cell_annotation=as.data.frame(cbind(row.names(dat@meta.data),dat@meta.data["sample"]))
 write.table(cell_annotation,file="RM_inferCNV.annotation.txt",sep="\t",col.names=F,row.names=F,quote=F)
-gene_order<-annotation[!duplicated(annotation$gene_name),]
-gene_order<-as.data.frame(gene_order[gene_order$gene_name %in% row.names(dat),])
-gene_order<-gene_order[c("gene_name","seqnames","start","end")]
-write.table(gene_order,file="RM_inferCNV.gene_order.txt",sep="\t",col.names=F,row.names=F,quote=F)
 
+# get gene annotations for hg38
+  annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+  ucsc.levels <- str_replace(string=paste("chr",seqlevels(annotation),sep=""), pattern="chrMT", replacement="chrM")
+  seqlevels(annotation) <- ucsc.levels #standard seq level change threw error, using a string replace instead
+
+#write out gene order list
+  gene_order<-annotation[!duplicated(annotation$gene_name),]
+  gene_order<-as.data.frame(gene_order[gene_order$gene_name %in% row.names(dat),])
+  gene_order<-gene_order[c("gene_name","seqnames","start","end")]
+  chrorder<-paste0("chr",c(1:22,"X","Y","M"))
+  gene_order$seqnames<-factor(gene_order$seqnames,levels=chrorder) # set chr order
+  gene_order<-with(gene_order, gene_order[order(seqnames, start),]) #order by chr and start position
+  write.table(gene_order,file="RM_inferCNV.gene_order.txt",sep="\t",col.names=F,row.names=F,quote=F)
+
+#Sample 4 is Normal Tissue (Adjacent to Tumor) going to use it as reference
 infercnv_obj = CreateInfercnvObject(raw_counts_matrix="RM_inferCNV.counts.txt",
                                     annotations_file="RM_inferCNV.annotation.txt",
                                     delim="\t",
                                     gene_order_file="RM_inferCNV.gene_order.txt",
-                                    ref_group_names=NULL)
+                                    ref_group_names="rm4")
 
 infercnv_obj = infercnv::run(infercnv_obj,
                              cutoff=0.1, # cutoff=1 works well for Smart-seq2, and cutoff=0.1 works well for 10x Genomics
-                             out_dir=".", 
-                             cluster_by_groups=TRUE, 
+                             out_dir="./RM_inferCNV", 
+                             cluster_by_groups=FALSE, 
                              denoise=TRUE,
-                             HMM=TRUE)
+                             HMM=TRUE,
+                             resume_mode=F)
 
 saveRDS(infercnv_obj,file="RM_inferCNV.Rds")
+
+infercnv_obj<-readRDS("RM_inferCNV.Rds")
+mat<-as.data.frame(t(infercnv_obj@expr.data))
+
+plt<-Heatmap(mat,
+  column_order=1:ncol(mat),
+  show_row_names=FALSE,
+  show_column_names=FALSE)
+
+pdf("RM.infercnv.heatmap.pdf")
+plt<-draw(plt)
+dev.off()
+system("slack -F RM.infercnv.heatmap.pdf ryan_todo")
+
+# celltypes<-row_order(plt) #get row order from heatmap, this includes the slice
+# metadata_cluster<-as.data.frame(cbind(cellID=rownames(mat),celltype=0))
+# metadata_cluster[unlist(celltypes[[1]]),]$celltype<-"1"
+# metadata_cluster[unlist(celltypes[[2]]),]$celltype<-"2"
+# table(metadata_cluster$celltype)
+# row.names(metadata_cluster)<-metadata_cluster$cellID
+# metadata_cluster$cnv_profile<-ifelse(metadata_cluster$celltype==1,"MCF7","T47D") #this is due to the mcf7 amplification we have seen in other data
+
+# cell_line<-setNames(metadata_cluster$cnv_profile,row.names(metadata_cluster))
+# dat<-AddMetaData(dat,metadata=cell_line,col.name="cnv_profile")#assign slices to cell names
+
+# #cluster with low resolution on peaks dataset
+# dat$peaks_cluster<-ifelse(as.numeric(dat@reductions$atac_umap@cell.embeddings[,1])<0,"T47D","MCF7") #it is clear from the atac data that one cluster is T47D and one is MCF7 based on chr17 profiles
+# table(dat$peaks_cluster)
+
+# plt1<-DimPlot(dat,split.by="cnv_profile",group.by="cnv_profile",na.value=NA)+ggtitle("CNV Profile Split")
+# plt2<-DimPlot(dat,group.by="sample")+ggtitle("ATAC Samples")
+# plt3<-DimPlot(dat,group.by="peaks_cluster")+ggtitle("Final Cell Type Assignment")
+
+# ggsave(plt1/(plt2|plt3),file="YW_celltype.pdf",width=10)
+# system("slack -F YW_celltype.pdf ryan_todo")
 
 
 #####################Try CaSpER also?##############################
