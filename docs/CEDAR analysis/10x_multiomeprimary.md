@@ -461,6 +461,7 @@ saveRDS(dat_t47d,file="yw_t47d.SeuratObject.rds")
 
 Now that cell lines are split out, can re-run cistopic for biological interpretation.
 Note: I'm also going to subset the data to just control groups, this is for the TITAN paper processing.
+After cistopic models are made, the best is selected. We then associate signature scores (from chip-seq bed files) to each cistopic topic.
 
 ```R
 #######CISTOPIC PROCESSING PER CELL LINE#################
@@ -476,6 +477,7 @@ library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 library(AUCell)
 library(rtracklayer)
 library(parallel)
+library(ComplexHeatmap)
 
 cistopic_generation<-function(x,name_out,outdir="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi"){
   wd<-outdir
@@ -523,39 +525,18 @@ cistopic_generation<-function(x,name_out,outdir="/home/groups/CEDAR/mulqueen/pro
   print(plt2)
   dev.off()
   system(paste0("slack -F ",paste0(wd,"/",outname,".umap.pdf")," ryan_todo"))
-  saveRDS(atac_sub,paste0(wd,"/",outname,".SeuratObject.Rds"))
+  saveRDS(atac_sub,paste0(wd,"/",outname,".SeuratObject.rds"))
   }
 
 
 #Running cistopic on just control experiment (FOR TITAN PAPER)
-dat_mcf7<-readRDS(file="yw_mcf7.SeuratObject.rds")
-dat_mcf7<-subset(dat_mcf7, sample %in% c("YW_si_Control_plus_E2","YW_si_Control_plus_Veh"))
+dat_mcf7_full<-readRDS(file="yw_mcf7.SeuratObject.rds")
+dat_mcf7<-subset(dat_mcf7_full, sample %in% c("YW_si_Control_plus_E2","YW_si_Control_plus_Veh"))
 cistopic_generation(x=dat_mcf7,name_out="yw_mcf7.control")
-dat_t47d<-readRDS(file="yw_t47d.SeuratObject.rds")
-dat_t47d<-subset(dat_mcf7, sample %in% c("YW_si_Control_plus_E2","YW_si_Control_plus_Veh"))
+
+dat_t47d_full<-readRDS(file="yw_t47d.SeuratObject.rds")
+dat_t47d<-subset(dat_t47d_full, sample %in% c("YW_si_Control_plus_E2","YW_si_Control_plus_Veh"))
 cistopic_generation(x=dat_t47d,name_out="yw_t47d.control")
-
-```
-
-### Cistopic Cell Line Cistrome Signal
-
-Take cistopic data per cell line and perform bed file overlap using cistrome cell line specific ChIP-seq.
-
-```R
-#####Cistopic chip-seq peak overlaps##########
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
-library(Signac)
-library(Seurat)
-library(SeuratWrappers)
-library(cisTopic)
-library(patchwork)
-set.seed(1234)
-library(org.Hs.eg.db)
-library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-library(AUCell)
-library(rtracklayer)
-library(parallel)
-library(ComplexHeatmap)
 
 #read in cistrome data for topic analysis
 cistrome_db<-read.csv("/home/groups/CEDAR/mulqueen/ref/cistrome/human_factor_full_QC.txt",sep="\t") #has information on each download peaks files
@@ -573,6 +554,9 @@ hg38_chip<-paste(cistrome_dir, list.files(cistrome_dir,pattern=".bed"), sep='/')
 hg38_chip<-hg38_chip[which(hg38_chip %in% cistrome_db$file)] #filter to our files of interest
 labels<-cistrome_db[cistrome_db$file %in% hg38_chip,]$label #grab meaningful file labels
 
+
+
+#Take cistopic data per cell line and perform bed file overlap using cistrome cell line specific ChIP-seq.
 
 #run through further processing
 #this function will perform more analysis on topics in the selected model, looking at 
@@ -595,16 +579,10 @@ cistopic_processing<-function(x,y,outname){
   pred.matrix <- predictiveDistribution(cisTopicObject)
   cisTopicObject <- getSignaturesRegions(cisTopicObject, hg38_chip, labels=labels, minOverlap = 0.01) #output new bed files to be read in and processed
   aucellRankings <- AUCell_buildRankings(pred.matrix, plot=FALSE, verbose=FALSE)   # Compute cell rankings
-  cisTopicObject <- signatureCellEnrichment(cisTopicObject, aucellRankings, selected.signatures='all', aucMaxRank = 0.1*nrow(aucellRankings),nCores=1,plot=FALSE)   # Check signature enrichment in cells
+  cisTopicObject <- signatureCellEnrichment(cisTopicObject, aucellRankings, selected.signatures='all', aucMaxRank = 0.1*nrow(aucellRankings),plot=FALSE)   # Check signature enrichment in cells
 
   cisTopicObject <- getRegionsScores(cisTopicObject, method='NormTop', scale=TRUE)
   cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.999, plot=TRUE)
-
-
-  pdf(paste(outname,"signature_heatmap.pdf",sep="."),height=40)
-  signaturesHeatmap(cisTopicObject,row_names_gp = gpar(fontsize = 3))
-  dev.off()
-  system(paste("slack -F", paste(outname,"signature_heatmap.pdf",sep="."), "ryan_todo",sep=" "))
 
   txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
   cisTopicObject <- annotateRegions(cisTopicObject, txdb=TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb='org.Hs.eg.db')
@@ -632,21 +610,32 @@ cistopic_processing<-function(x,y,outname){
   plotFeatures(cisTopicObject, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=TRUE)
   dev.off()
   system(paste("slack -F ",paste0(outname,".topic_scores.pdf")," ryan_todo" ))
+
+  obj[['cistrome_score']] <- CreateAssayObject(
+    data = t(cisTopicObject@cell.data[(row.names(cisTopicObject@cell.data) %in% row.names(obj@meta.data)),
+      (startsWith(colnames(cisTopicObject@cell.data),"MCF") | startsWith(colnames(cisTopicObject@cell.data),"T47D"))]
+    ))
+  saveRDS(obj,file=paste0(outname,".SeuratObject.rds"))
+
 }
 
 
 
 #add cistopic function to all cells
-dat_mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.Rds")
+dat_mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.rds")
 dat_mcf7_cistopic<-readRDS(file="yw_mcf7.control.CisTopicObject.Rds")
 cistopic_processing(x=dat_mcf7,y=dat_mcf7_cistopic,outname="yw_mcf7.control")
+#x=dat_mcf7;y=dat_mcf7_cistopic;outname="yw_mcf7.control"
 
-dat_t47d<-readRDS(file="yw_t47d.control.SeuratObject.Rds")
-dat_t47d_cistopic<-readRDS(file="yw_t47d.control.CisTopicObject.Rds")
+dat_t47d<-readRDS(file="yw_t47d.control.SeuratObject.rds") 
+dat_t47d_cistopic<-readRDS(file="yw_t47d.control.CisTopicObject.Rds") 
 cistopic_processing(x=dat_t47d,y=dat_t47d_cistopic,outname="yw_t47d.control")
+#x=dat_t47d;y=dat_t47d_cistopic;outname="yw_t47d.control"
 
 
 ```
+
+
 ### ChromVar Analysis of Cell Lines
 Now run Chromvar on data for agnostic transcription factor motifs
 
@@ -658,16 +647,10 @@ Now run Chromvar on data for agnostic transcription factor motifs
   library(BSgenome.Hsapiens.UCSC.hg38)
   library(patchwork)
   set.seed(1234)
-  library(BiocParallel)
-  register(MulticoreParam(5))
+library(BiocParallel)
+register(SerialParam()) #using single core mode
 
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
-
-#read in RDS file.
-mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.Rds")
-t47d<-readRDS(file="yw_t47d.control.SeuratObject.Rds")
-
-
 
 # Get a list of motif position frequency matrices from the JASPAR database
 pfm <- getMatrixSet(
@@ -675,6 +658,7 @@ pfm <- getMatrixSet(
   opts = list(species =9606, all_versions = FALSE))
 
 # Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
+mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.rds")
  peaks<-granges(mcf7[["peaks"]])
   peaks<-peaks[seqnames(peaks) %in% c(paste0("chr",c(1:22,"X","Y"))),]
     motif.matrix.hg38 <- CreateMotifMatrix(features = peaks, pwm = pfm, genome = BSgenome.Hsapiens.UCSC.hg38, use.counts = FALSE)
@@ -684,7 +668,9 @@ pfm <- getMatrixSet(
   mcf7 <- RunChromVAR( object = mcf7,genome = BSgenome.Hsapiens.UCSC.hg38,assay="peaks")
   saveRDS(mcf7,file="yw_mcf7.control.SeuratObject.rds")
 
+
 #now run t47d
+t47d<-readRDS(file="yw_t47d.control.SeuratObject.rds")
  peaks<-granges(t47d[["peaks"]])
   peaks<-peaks[seqnames(peaks) %in% c(paste0("chr",c(1:22,"X","Y"))),]
     motif.matrix.hg38 <- CreateMotifMatrix(features = peaks, pwm = pfm, genome = BSgenome.Hsapiens.UCSC.hg38, use.counts = FALSE)
@@ -692,11 +678,364 @@ pfm <- getMatrixSet(
   t47d <- SetAssayData(object = t47d, assay = 'peaks', slot = 'motifs', new.data = motif.hg38)
   t47d <- RegionStats(object = t47d, genome = BSgenome.Hsapiens.UCSC.hg38,assay="peaks")
   t47d <- RunChromVAR( object = t47d,genome = BSgenome.Hsapiens.UCSC.hg38,assay="peaks")
-  saveRDS(t47d,file="yw_mcf7.control.SeuratObject.rds")
+  saveRDS(t47d,file="yw_t47d.control.SeuratObject.rds")
 
 
 
 ```
+
+## Perform topic comparisons
+Using TITAN topics generated by Aaron Doe to compare to epigenetic topics (cistopic)
+
+```R
+library(Signac)
+library(Seurat)
+library(ComplexHeatmap)
+library(JASPAR2020)
+library(TFBSTools)
+library(grid)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(parallel)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+library(circlize)
+library(viridis)
+library(reshape2)
+
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
+mcf7_titan<-readRDS("/home/groups/CEDAR/doe/projects/Lydia_ATACRNA/justMCF7_wTopics.rds")
+t47d_titan<-readRDS("/home/groups/CEDAR/doe/projects/Lydia_ATACRNA/justT47D_wTopics.rds")
+
+mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.rds")
+t47d<-readRDS(file="yw_t47d.control.SeuratObject.rds")
+
+#Add titan reduction to full seurat object
+mcf7[["titan_lda"]]<-mcf7_titan[["lda"]]
+t47d[["titan_lda"]]<-t47d_titan[["lda"]]
+
+#ESR1 and FOXM1 Topics identified by aysegul
+#MCF7: FOXM1=topic4 , ESR1 = topic37
+#T47D: FOXM1=topic11 , ESR1 = topic23
+
+
+#Correlate cistopic with titan topics
+correlate_cistopic_titan<-function(x,y,outname){
+  cistopic_dat<-x@reductions$cistopic@cell.embeddings #get cistopic from x
+  row.names(cistopic_dat)<-substr(row.names(cistopic_dat),0,18)
+  titan_dat<-as.data.frame(y@reductions$imputedLDA@cell.embeddings) #get titan from y
+  cells<-row.names(titan_dat)[which(row.names(titan_dat) %in% row.names(cistopic_dat))] # set list of shared cell names
+  sum(cells %in% row.names(titan_dat))==sum(cells %in% row.names(titan_dat)) #check to make sure same number of cells
+  titan_dat<-titan_dat[cells,]#reorder data frames
+  cistopic_dat<-cistopic_dat[cells,]
+  cor_mat<-data.frame(matrix(ncol = ncol(cistopic_dat), nrow = ncol(titan_dat))) #make an empty data frame to populate
+  colnames(cor_mat)<-colnames(cistopic_dat)
+  row.names(cor_mat)<-colnames(titan_dat)
+  for (yi in 1:ncol(cistopic_dat)){
+    for (xj in 1:ncol(titan_dat)){
+      cor_mat[xj,yi]<-cor(x=as.numeric(cistopic_dat[,yi]),y=as.numeric(titan_dat[,xj]))
+    }
+  }
+
+  out_plt<-Heatmap(cor_mat)
+  pdf(paste0(outname,".cistopic_titan_topiccorrelation.pdf"))
+  print(out_plt)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".cistopic_titan_topiccorrelation.pdf")," ryan_todo"))
+
+  #add cistopic square correlation matrix
+  cor_cistopic<-cor(cistopic_dat)
+  out_plt<-Heatmap(cor_cistopic)
+  pdf(paste0(outname,".cistopic_squarecorrelation.pdf"))
+  print(out_plt)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".cistopic_squarecorrelation.pdf")," ryan_todo"))
+
+  #titan square correlation
+  cor_titan<-cor(titan_dat)
+  out_plt<-Heatmap(cor_titan)
+  pdf(paste0(outname,".titan_squarecorrelation.pdf"))
+  print(out_plt)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".titan_squarecorrelation.pdf")," ryan_todo"))
+
+}
+
+#x is atac library signac object with cistopic in reductions slot
+#y is rna library seurat object with imputedLDA in reductions slot
+correlate_cistopic_titan(x=mcf7_atac,y=mcf7_titan,outname="yw_mcf7.control")
+correlate_cistopic_titan(x=t47d_atac,y=t47d_titan,outname="yw_t47d.control")
+
+#now to correlate chromvar motifs with titan topics
+
+#Correlate chromvar with titan topics
+correlate_chromvar_titan<-function(x,y,outname,cellline="MCF",quantile_cutoff=0.95){
+  chromvar_dat<-as.data.frame(t(x@assays$chromvar@data)) #get chromvar from x
+  row.names(chromvar_dat)<-substr(row.names(chromvar_dat),0,18)
+  tfList <- getMatrixByID(JASPAR2020, ID=colnames(chromvar_dat)) #set up readable chromvar names
+  tfList <-unlist(lapply(names(tfList), function(x) name(tfList[[x]])))
+  colnames(chromvar_dat)<-tfList
+  titan_dat<-as.data.frame(y@reductions$imputedLDA@cell.embeddings) #get titan from y  
+  cells<-row.names(titan_dat)[which(row.names(titan_dat) %in% row.names(chromvar_dat))] # set list of shared cell names
+  sum(cells %in% row.names(titan_dat))==sum(cells %in% row.names(titan_dat)) #check to make sure same number of cells
+  titan_dat<-titan_dat[cells,]#reorder data frames
+  chromvar_dat<-chromvar_dat[cells,]
+  cor_mat<-data.frame(matrix(ncol = ncol(chromvar_dat), nrow = ncol(titan_dat))) #make an empty data frame to populate
+  colnames(cor_mat)<-colnames(chromvar_dat)
+  row.names(cor_mat)<-colnames(titan_dat)
+
+  for (yi in 1:ncol(chromvar_dat)){
+    for (xj in 1:ncol(titan_dat)){
+      cor_mat[xj,yi]<-cor(x=chromvar_dat[,yi],y=titan_dat[,xj],use="complete.obs")
+    }
+  }
+
+
+  out_plt<-Heatmap(t(cor_mat),
+    row_names_gp = grid::gpar(fontsize = 4),
+    row_km=5
+    )
+  pdf(paste0(outname,".chromvar_titan_topiccorrelation.pdf"),height=30)
+  print(out_plt)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".chromvar_titan_topiccorrelation.pdf")," ryan_todo"))
+
+
+
+  cor_mat<-as.data.frame(t(cor_mat[c("imputedLDA_11","imputedLDA_17"),]))
+  boundary<-quantile(abs(cor_mat$imputedLDA_11-cor_mat$imputedLDA_17),quantile_cutoff)
+  cor_mat$color_fill<-ifelse(abs(cor_mat$imputedLDA_11-cor_mat$imputedLDA_17)>boundary,"red","not_red")
+  cor_mat$label<-""
+  cor_mat[cor_mat$color_fill=="red",]$label<-row.names(cor_mat[cor_mat$color_fill=="red",])
+
+  plt<-ggplot(dat=cor_mat,aes(x=imputedLDA_11,y=imputedLDA_17,label=label,color=color_fill))+
+  geom_point(size=0.1)+
+  scale_color_manual(values=c("red"="red","not_red"="grey50"))+
+  theme_minimal()+
+  geom_text_repel(force=5,max.overlaps=Inf,size=2,min.segment.length = 0,box.padding=0.3,segment.size=0.1)+
+  geom_abline(intercept = 0, slope = 1, col = "black")+
+  geom_abline(intercept = boundary, slope = 1, col = "black",linetype="dashed")+
+  geom_abline(intercept = -boundary, slope = 1, col = "black",linetype="dashed")+
+  ggtitle(paste(outname,"chromvar v. titan correlations"))+
+  xlab("Topic 11")+
+  ylab("Topic 17")+
+  theme(axis.text = element_text(size = 6),axis.title=element_text(size=8),axis.ticks=element_blank(),legend.position="none")+
+  scale_x_continuous(expand = expansion(mult = 0.5))+  scale_y_continuous(expand = expansion(mult = 0.5))
+
+  ggsave(plt,file=paste0(outname,".chromvar_titan_topiccorrelation.comparison.pdf"),height=4,width=4,units="in")
+  print(plt)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".chromvar_titan_topiccorrelation.comparison.pdf")," ryan_todo"))
+}
+
+#x is atac library signac object with chromvar in assay slot
+#y is rna library seurat object with imputedLDA in reductions slot
+correlate_chromvar_titan(x=mcf7_atac,y=mcf7_rna,outname="mcf7")
+correlate_chromvar_titan(x=t47d_atac,y=t47d_rna,outname="t47d")
+
+#Correlate cistrome data with titan topics
+correlate_cistrome_titan<-function(x,y,outname,cellline="MCF",quantile_cutoff=0.95){
+  cistrome_dat<-as.data.frame(t(x@assays$cistrome_score@data)) #get cistrome from x
+  row.names(cistrome_dat)<-substr(row.names(cistrome_dat),0,18)
+  titan_dat<-as.data.frame(y@reductions$imputedLDA@cell.embeddings) #get titan from y  
+  cells<-row.names(titan_dat)[which(row.names(titan_dat) %in% row.names(cistrome_dat))] # set list of shared cell names
+  sum(cells %in% row.names(titan_dat))==sum(cells %in% row.names(titan_dat)) #check to make sure same number of cells
+  titan_dat<-titan_dat[cells,]#reorder data frames
+  cistrome_dat<-cistrome_dat[cells,]
+  cor_mat<-data.frame(matrix(ncol = ncol(cistrome_dat), nrow = ncol(titan_dat))) #make an empty data frame to populate
+  colnames(cor_mat)<-colnames(cistrome_dat)
+  row.names(cor_mat)<-colnames(titan_dat)
+  for (yi in 1:ncol(cistrome_dat)){
+    for (xj in 1:ncol(titan_dat)){
+      cor_mat[xj,yi]<-cor(x=cistrome_dat[,yi],y=titan_dat[,xj],use="complete.obs")
+    }
+  }
+
+  cor_mat<-cor_mat[startsWith(prefix=cellline,x=colnames(cor_mat))]
+
+  out_plt<-Heatmap(t(cor_mat),
+    row_names_gp = grid::gpar(fontsize = 4),
+    row_km=5
+    )
+  pdf(paste0(outname,".cistrome_titan_topiccorrelation.pdf"),height=30)
+  print(out_plt)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".cistrome_titan_topiccorrelation.pdf")," ryan_todo"))
+
+
+
+  cor_mat<-as.data.frame(t(cor_mat[c("imputedLDA_11","imputedLDA_17"),]))
+  boundary<-quantile(abs(cor_mat$imputedLDA_11-cor_mat$imputedLDA_17),quantile_cutoff)
+  cor_mat$color_fill<-ifelse(abs(cor_mat$imputedLDA_11-cor_mat$imputedLDA_17)>boundary,"red","not_red")
+  cor_mat$label<-""
+  hyphen_length<-lapply(strsplit(row.names(cor_mat[cor_mat$color_fill=="red",]),"-"),length)[[1]][1] #adduming no hypens in names
+  cor_mat[cor_mat$color_fill=="red",]$label<-paste(
+    unlist(lapply(strsplit(row.names(cor_mat[cor_mat$color_fill=="red",]),"-"),"[",hyphen_length-1)),
+    unlist(lapply(strsplit(row.names(cor_mat[cor_mat$color_fill=="red",]),"-"),"[",hyphen_length)))
+
+  plt<-ggplot(dat=cor_mat,aes(x=imputedLDA_11,y=imputedLDA_17,label=label,color=color_fill))+
+  geom_point(size=0.1)+
+  scale_color_manual(values=c("red"="red","not_red"="grey50"))+
+  theme_minimal()+
+  geom_text_repel(force=5,max.overlaps=Inf,size=2,min.segment.length = 0,box.padding=0.3,segment.size=0.1)+
+  geom_abline(intercept = 0, slope = 1, col = "black")+
+  geom_abline(intercept = boundary, slope = 1, col = "black",linetype="dashed")+
+  geom_abline(intercept = -boundary, slope = 1, col = "black",linetype="dashed")+
+  ggtitle(paste(outname,"cistrome v. titan correlations"))+
+  xlab("Topic 11")+
+  ylab("Topic 17")+
+  theme(axis.text = element_text(size = 6),axis.title=element_text(size=8),axis.ticks=element_blank(),legend.position="none")+
+  scale_x_continuous(expand = expansion(mult = 0.5))+  scale_y_continuous(expand = expansion(mult = 0.5))
+
+  ggsave(plt,file=paste0(outname,".cistrome_titan_topiccorrelation.comparison.pdf"),height=4,width=4,units="in")
+  print(plt)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".cistrome_titan_topiccorrelation.comparison.pdf")," ryan_todo"))
+}
+
+#x is atac library signac object with cistrome in assay slot
+#y is rna library seurat object with imputedLDA in reductions slot
+correlate_cistrome_titan(x=mcf7_atac,y=mcf7_rna,outname="mcf7",cellline="MCF")
+correlate_cistrome_titan(x=t47d_atac,y=t47d_rna,outname="t47d",cellline="T47D")
+
+
+#find differences in chromvar usage 
+  mcf7_da_tf <- FindMarkers(object = mcf7_atac_subset, ident.1 = "Topic11", ident.2="Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="chromvar") 
+  t47d_da_tf <- FindMarkers(object = t47d_atac_subset, ident.1 = "Topic11", ident.2="Topic17",  test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="chromvar") 
+
+#set up readable motif names
+  mcf7_da_tf$tf_name <- unlist(lapply(unlist(lapply(row.names(mcf7_da_tf), function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
+  t47d_da_tf$tf_name <- unlist(lapply(unlist(lapply(row.names(t47d_da_tf), function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
+
+#plot
+  mcf7_da_tf$sig<-ifelse(mcf7_da_tf$p_val_adj<=0.05,"sig","non_sig")
+  t47d_da_tf$sig<-ifelse(t47d_da_tf$p_val_adj<=0.05,"sig","non_sig")
+  mcf7_da_tf$label<-""
+  mcf7_da_tf[mcf7_da_tf$sig=="sig",]$label<-mcf7_da_tf[mcf7_da_tf$sig=="sig",]$tf_name
+  t47d_da_tf$label<-""
+  t47d_da_tf[t47d_da_tf$sig=="sig",]$label<-t47d_da_tf[t47d_da_tf$sig=="sig",]$tf_name
+
+  plt<-ggplot(mcf7_da_tf,aes(x=avg_log2FC,y=-log10(p_val_adj),color=sig,label=label))+geom_point()+theme_bw()+scale_fill_manual(values=c("#999999", "#FF0000"))+geom_label_repel(label.size = 0.1,max.overlaps=20)+xlim(c(-10,10))
+  ggsave(plt,file="mcf7_topic11v17_chromvar.pdf")
+  system("slack -F mcf7_topic11v17_chromvar.pdf ryan_todo")
+write.table(mcf7_da_tf,file="mcf7_topicbin_TF.txt",col.names=T,sep="\t")
+system("slack -F mcf7_topicbin_TF.txt ryan_todo")
+
+  plt<-ggplot(t47d_da_tf,aes(x=avg_log2FC,y=-log10(p_val_adj),color=sig,label=label))+geom_point()+theme_bw()+scale_fill_manual(values=c("#999999", "#FF0000"))+geom_label_repel(label.size = 0.1,max.overlaps=20)+xlim(c(-10,10))
+  ggsave(plt,file="t47d_topic11v17_chromvar.pdf")
+  system("slack -F t47d_topic11v17_chromvar.pdf ryan_todo")
+write.table(t47d_da_tf,file="t47d_topicbin_TF.txt",col.names=T,sep="\t")
+system("slack -F t47d_topicbin_TF.txt ryan_todo")
+
+#Find differences in peaks
+  mcf7_da_peaks <- FindMarkers(object = mcf7_atac_subset, ident.1 = "Topic11", ident.2="Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="peaks") 
+  closest_genes <- ClosestFeature(mcf7_atac_subset,row.names(mcf7_da_peaks))
+  mcf7_da_peaks <-cbind(mcf7_da_peaks ,closest_genes)
+write.table(mcf7_da_peaks,file="mcf7_topicbin_DApeaks.txt",col.names=T,sep="\t")
+system("slack -F mcf7_topicbin_DApeaks.txt ryan_todo")
+
+  t47d_da_peaks <- FindMarkers(object = t47d_atac_subset,  ident.1 = "Topic11", ident.2="Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="peaks")           
+  closest_genes <- ClosestFeature(t47d_atac_subset,row.names(t47d_da_peaks))
+  t47d_da_peaks <-cbind(t47d_da_peaks ,closest_genes)          
+write.table(t47d_da_peaks,file="t47d_topicbin_DApeaks.txt",col.names=T,sep="\t")
+system("slack -F t47d_topicbin_DApeaks.txt ryan_todo")
+
+#Find differences in cistrome
+#########NOT WORKING, PCT 1 and PCT 2 are both 1 for some reason
+  mcf7_da_cistrome <- FindMarkers(object = mcf7_atac_subset, ident.1 = "Topic11", ident.2="Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="cistrome_score",logfc.threshold=0) 
+  mcf7_da_cistrome$sig<-ifelse(mcf7_da_cistrome$p_val_adj<=0.01,"sig","non_sig")
+  mcf7_da_cistrome$label<-""
+  mcf7_da_cistrome[mcf7_da_cistrome$sig=="sig",]$label<-row.names(mcf7_da_cistrome[mcf7_da_cistrome$sig=="sig",])
+write.table(mcf7_da_cistrome,file="mcf7_topicbin_cistrome.txt",col.names=T,sep="\t")
+system("slack -F mcf7_topicbin_cistrome.txt ryan_todo")
+  plt<-ggplot(mcf7_da_cistrome,aes(x=avg_log2FC,y=-log10(p_val_adj),color=sig,label=label))+geom_point()+theme_bw()+scale_fill_manual(values=c("#999999", "#FF0000"))+geom_label_repel(label.size = 0.1,max.overlaps=20))
+  ggsave(plt,file="mcf7_topic11v17_cistrome.pdf")
+  system("slack -F mcf7_topic11v17_cistrome.pdf ryan_todo")
+
+  t47d_da_cistrome <- FindMarkers(object = t47d_atac_subset, ident.1 = "Topic11", ident.2="Topic17", test.use = 'LR', latent.vars = "nCount_peaks", only.pos=F, assay="cistrome_score",logfc.threshold=0) 
+  t47d_da_cistrome$sig<-ifelse(t47d_da_cistrome$p_val_adj<=0.01,"sig","non_sig")
+  t47d_da_cistrome$label<-""
+  t47d_da_cistrome[t47d_da_cistrome$sig=="sig",]$label<-row.names(t47d_da_cistrome[t47d_da_cistrome$sig=="sig",])
+write.table(t47d_da_cistrome,file="t47d_topicbin_cistrome.txt",col.names=T,sep="\t")
+system("slack -F t47d_topicbin_cistrome.txt ryan_todo")
+  plt<-ggplot(t47d_da_cistrome,aes(x=avg_log2FC,y=-log10(p_val_adj),color=sig,label=label))+geom_point()+theme_bw()+scale_fill_manual(values=c("#999999", "#FF0000"))+geom_label_repel(label.size = 0.1,max.overlaps=20))
+  ggsave(plt,file="t47d_topic11v17_cistrome.pdf")
+  system("slack -F t47d_topic11v17_cistrome.pdf ryan_todo")
+
+
+
+#plot topic11 vs topic17 for cells
+plt<-FeaturePlot(object = mcf7_atac, features = c("ImputedTopic_11", "ImputedTopic_17"),blend = T,col=c("white","red","blue"),reduction="umap",max.cutoff=10)
+ggsave(plt,file="mcf7_topicimputation.umap.pdf",width=13)
+system("slack -F mcf7_topicimputation.umap.pdf ryan_todo")
+
+plt<-FeaturePlot(object = t47d_atac, features = c("ImputedTopic_11", "ImputedTopic_17"),blend = T,col=c("white","red","blue"),reduction="umap",max.cutoff=10)
+ggsave(plt,file="t47d_topicimputation.umap.pdf",width=13)
+system("slack -F t47d_topicimputation.umap.pdf ryan_todo")
+
+
+#function for plotting footprints in data sets
+plot_footprints<-function(x,footprints){
+  x <- Footprint(object = x, motif.name = footprints, genome = BSgenome.Hsapiens.UCSC.hg38, in.peaks=T)   # gather the footprinting information for sets of motifs
+  p2 <- PlotFootprint(x, features = footprints,label=F,normalization="divide")   # plot the footprint data for each group of cells, might want to change idents
+  return(p2)
+}
+
+out1<-mclapply(c("ESR1","FOXM1","TP53","FOXA1","TEAD3"),FUN=function(z) plot_footprints(x=t47d_atac_subset,footprints=z),mc.cores=5) #plot and return 5 at a time
+outname="210924_t47dsubset"
+pdf(paste0(outname,".motif_footprints.pdf"),height=5*length(out1))
+print(wrap_plots(out1) + patchwork::plot_layout(ncol = 1))
+dev.off()
+system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
+
+
+########################Plot out top TF for each cluster###################
+
+plot_tf_heatmap<-function(table_in="t47d_topicbin_TF.txt",obj_in=t47d_atac_subset,outname="t47d"){
+  da_tf<-read.csv(file=table_in,head=T,sep="\t",row.names=NULL)
+  da_tf<-da_tf[complete.cases(da_tf),]
+  da_tf<-da_tf[da_tf$sig=="sig",]
+
+  #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+  dat_tf<-as.data.frame(t(as.data.frame(obj_in[["chromvar"]]@data)))
+  sum_tf<-split(dat_tf,obj_in$topic_bin) #group by rows to seurat clusters
+  sum_tf<-lapply(sum_tf,function(x) apply(x,2,mean)) #take average across group
+  sum_tf<-do.call("rbind",sum_tf) #condense to smaller data frame
+
+  sum_tf<-scale(t(sum_tf))
+  sum_tf<-sum_tf[,!endsWith(colnames(sum_tf),"NA")] #remove NA (doublet cells)
+
+  sum_tf<-sum_tf[row.names(sum_tf) %in% unique(da_tf$row.names),]
+  row.names(sum_tf)<-da_tf[match(row.names(sum_tf),da_tf$row.names,nomatch=0),]$tf_name
+  sum_tf_plot<-na.omit(t(sum_tf))
+
+  colfun=colorRamp2(quantile(unlist(sum_tf_plot), probs=c(0,0.5,1)),cividis(3))
+  plt1<-Heatmap(sum_tf_plot,
+      #cluster_rows=sum_da_dend,
+      #left_annotation=side_ha,
+      col=colfun,
+      #bottom_annotation=bottom_ha,
+      column_names_gp = gpar(fontsize = 14),
+      row_names_gp=gpar(fontsize=14),
+      column_names_rot=90
+  )
+
+  plt1<-draw(plt1)
+  pdf(paste0(outname,"_tf.heatmap.pdf"),height=20,width=20)
+  draw(plt1)
+  dev.off()
+  system(paste0("slack -F ",outname,"_tf.heatmap.pdf ryan_todo"))
+  }
+
+plot_tf_heatmap(table_in="t47d_topicbin_TF.txt",obj_in=t47d_atac_subset,outname="t47d")
+
+plot_tf_heatmap(table_in="mcf7_topicbin_TF.txt",obj_in=mcf7_atac_subset,outname="mcf7")
+
+
+```
+
 ### Motif Footprinting on cells 
 Perform motif footprinting on cells.
 Based on https://satijalab.org/signac/articles/footprint.html
@@ -757,6 +1096,64 @@ print(wrap_plots(out) + patchwork::plot_layout(ncol = 1))
 dev.off()
 system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
 
+```
+## Subset DA Peaks by DE Genes
+Using genes associated with topics (11 is FOXM1 and 17 is ESR1)
+
+```R
+library(Signac)
+library(Seurat)
+library(ComplexHeatmap)
+library(JASPAR2020)
+library(TFBSTools)
+library(grid)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(parallel)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+library(circlize)
+library(viridis)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
+
+mcf7_topic_geneset<-read.table("Model_MCF7_E2_20T_CLR_5000Variable_M10_top50_genes_topics.txt",sep="\t",skip=1,header=T) #MCF7 gene topics, 2 is FOXM1 8 is ESR1
+mcf7_foxm1_genes<-mcf7_topic_geneset$Topic_2
+mcf7_esr1_genes<-mcf7_topic_geneset$Topic_8
+t47d_topic_geneset<-read.table("Model_PEPE_T47D_20T_CLR_5000Variable_M10_top50_genes_topics.txt",sep="\t",header=T) #t47d gene topics, 11 is FOXM1 17 is ESR1
+t47d_foxm1_genes<-t47d_topic_geneset$Topic_11
+t47d_esr1_genes<-t47d_topic_geneset$Topic_17
+
+mcf7_da_tf<-read.table(file="mcf7_topicbin_TF.txt",header=T,sep="\t")
+t47d_da_tf<-read.table(file="t47d_topicbin_TF.txt",header=T,sep="\t")
+
+mcf7_da<-read.table("mcf7_topicbin_DApeaks.txt",sep="\t",header=T)
+t47d_da<-read.table("t47d_topicbin_DApeaks.txt",sep="\t",header=T)
+
+mcf7_da_tf$topic_enrichment<-NA
+mcf7_da_tf[which(mcf7_da_tf$tf_name %in% mcf7_foxm1_genes),]$topic_enrichment<-"FOXM1"
+mcf7_da_tf[which(mcf7_da_tf$tf_name %in% mcf7_esr1_genes),]$topic_enrichment<-"ESR1"
+t47d_da_tf$topic_enrichment<-NA
+t47d_da_tf[which(t47d_da_tf$tf_name %in% t47d_foxm1_genes),]$topic_enrichment<-"FOXM1"
+t47d_da_tf[which(t47d_da_tf$tf_name %in% t47d_esr1_genes),]$topic_enrichment<-"ESR1"
+
+mcf7_da$topic_enrichment<-NA
+mcf7_da[which(mcf7_da$gene_name %in% mcf7_foxm1_genes),]$topic_enrichment<-"FOXM1"
+mcf7_da[which(mcf7_da$gene_name %in% mcf7_esr1_genes),]$topic_enrichment<-"ESR1"
+t47d_da$topic_enrichment<-NA
+t47d_da[which(t47d_da$gene_name %in% t47d_foxm1_genes),]$topic_enrichment<-"FOXM1"
+t47d_da[which(t47d_da$gene_name %in% t47d_esr1_genes),]$topic_enrichment<-"ESR1"
+
+write.table(t47d_da,file="t47d_topicbin_DApeaks.txt",col.names=T,sep="\t")
+system("slack -F t47d_topicbin_DApeaks.txt ryan_todo")
+write.table(mcf7_da,file="mcf7_topicbin_DApeaks.txt",col.names=T,sep="\t")
+system("slack -F mcf7_topicbin_DApeaks.txt ryan_todo")
+
+write.table(t47d_da_tf,file="t47d_topicbin_TF.txt",col.names=T,sep="\t")
+system("slack -F t47d_topicbin_TF.txt ryan_todo")
+write.table(mcf7_da_tf,file="mcf7_topicbin_TF.txt",col.names=T,sep="\t")
+system("slack -F mcf7_topicbin_TF.txt ryan_todo")
 ```
 
 
@@ -961,6 +1358,131 @@ saveRDS(dat,file="rm_merged.SeuratObject.rds")
 
 ```
 
+## Run cisTopic for ATAC Dimensionality Reduction
+
+```R
+#######CISTOPIC PROCESSING PER CELL LINE#################
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(cisTopic)
+library(patchwork)
+set.seed(1234)
+library(org.Hs.eg.db)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(AUCell)
+library(rtracklayer)
+library(parallel)
+library(RColorBrewer)
+library(ggplot2)
+
+cistopic_generation<-function(x,name_out,outdir="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi"){
+  wd<-outdir
+  outname<-name_out
+  atac_sub<-x
+  cistopic_counts_frmt<-atac_sub$peaks@counts
+  row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
+  sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
+  print("made cistopic object")
+  sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(10:30),nCores=5,addModels=FALSE)
+  sub_cistopic_models<-addCellMetadata(sub_cistopic_models, cell.data =x@meta.data)
+  pdf(paste0(wd,"/",outname,"_model_selection.pdf"))
+  par(mfrow=c(3,3))
+  sub_cistopic_models<- selectModel(sub_cistopic_models, type='derivative')
+  dev.off()
+  system(paste0("slack -F ",paste0(wd,"/",outname,"_model_selection.pdf")," ryan_todo"))
+  
+  saveRDS(sub_cistopic_models,file=paste0(wd,"/",outname,".CisTopicObject.Rds"))
+  sub_cistopic_models<-readRDS(file=paste0(wd,"/",outname,".CisTopicObject.Rds"))
+  print("finshed running cistopic")
+
+  #Add cell embeddings into seurat
+  cell_embeddings<-as.data.frame(sub_cistopic_models@selected.model$document_expects)
+  colnames(cell_embeddings)<-sub_cistopic_models@cell.names
+  n_topics<-nrow(cell_embeddings)
+  row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
+  cell_embeddings<-as.data.frame(t(cell_embeddings))
+
+  #Add feature loadings into seurat
+  feature_loadings<-as.data.frame(sub_cistopic_models@selected.model$topics)
+  row.names(feature_loadings)<-paste0("topic_",1:n_topics)
+  feature_loadings<-as.data.frame(t(feature_loadings))
+
+  #combined cistopic results (cistopic loadings and umap with seurat object)
+  cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
+  atac_sub@reductions$cistopic<-cistopic_obj
+  n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic")) #add scaling for ncount peaks somewhere in here
+  atac_sub<-RunUMAP(atac_sub,reduction="cistopic",dims=1:n_topics)
+  atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics ) 
+  atac_sub <- FindClusters(object = atac_sub, verbose = TRUE, graph.name="peaks_snn", resolution=0.2 ) 
+  plt1<-DimPlot(atac_sub,reduction="umap",group.by=c("sample","seurat_clusters"))
+  plt2<-FeaturePlot(atac_sub,reduction="umap",features=c("nucleosome_signal","TSS.enrichment","nCount_peaks","nFeature_peaks"))
+  pdf(paste0(wd,"/",outname,".umap.pdf"),width=10)
+  print(plt1)
+  print(plt2)
+  dev.off()
+  system(paste0("slack -F ",paste0(wd,"/",outname,".umap.pdf")," ryan_todo"))
+  saveRDS(atac_sub,paste0(wd,"/",outname,".SeuratObject.rds"))
+  }
+
+
+#Running cistopic on just control experiment (FOR TITAN PAPER)
+dat<-readRDS("rm_merged.SeuratObject.rds")
+cistopic_generation(x=dat,name_out="rm_merged")
+dat<-readRDS("rm_merged.SeuratObject.rds")
+
+
+#set up colors for samples
+my_cols = brewer.pal(4,"Spectral")
+alpha_val=0.33
+
+#add cistopic reduction to umap projections
+p1<-DimPlot(dat,reduction="rna_umap",group.by="sample",cols=alpha(my_cols,alpha_val))+ggtitle("RNA UMAP")
+p2<-DimPlot(dat,reduction="atac_umap",group.by="sample",cols=alpha(my_cols,alpha_val))+ggtitle("ATAC UMAP")
+p3<-DimPlot(dat,reduction="multimodal_umap",group.by="sample",cols=alpha(my_cols,alpha_val))+ggtitle("Multimodal UMAP (LSI)")
+
+#Try multimodal with cistopic
+dat <- RunUMAP(
+  object = dat,
+  reduction="cistopic",
+  reduction.name="cistopic_umap",
+  dims=1:ncol(dat@reductions$cistopic),
+  assay = "peaks",
+  verbose = TRUE
+)
+
+
+# build a joint neighbor graph using both assays
+dat2 <- FindMultiModalNeighbors(
+  object = dat,
+  reduction.list = list("pca", "cistopic"), 
+  dims.list = list(1:50, 1:ncol(dat@reductions$cistopic)), #I think the ATAC UMAP does a better job integrating samples, maybe skip dim 1 for RNA also?
+  modality.weight.name = "RNA.weight",
+  verbose = TRUE
+)
+
+# build a joint UMAP visualization
+dat2 <- RunUMAP(
+  object = dat2,
+  nn.name = "weighted.nn",
+  reduction.name="multimodal_umap",
+  assay = "RNA",
+  verbose = TRUE
+)
+
+###########plot cistopic umap too
+p5<-DimPlot(dat2,reduction="multimodal_umap",group.by="sample",cols=alpha(my_cols,alpha_val))+ggtitle("Multimodal UMAP (Cistopic)")
+p6<-DimPlot(dat,reduction="cistopic_umap",group.by="sample",cols=alpha(my_cols,alpha_val))+ggtitle("Cistopic UMAP")
+
+#Finally Plot results
+plt<-(p1 | p2)/(p3)/(p6 | p5)
+ggsave(plt,file="RM_multimodal.umap.pdf")
+system("slack -F RM_multimodal.umap.pdf ryan_todo")
+saveRDS(dat,"rm_merged.SeuratObject.rds")
+
+```
+
 ### Using Transfer Anchors for Cell identification.
 
 Using Swarbrick paper labels for transfer. https://pubmed.ncbi.nlm.nih.gov/34493872/
@@ -1037,6 +1559,7 @@ plt3<-DimPlot(dat,group.by='sample',pt.size=0.5)
 plt<-(plt2|plt3)/plt1
 ggsave(plt,file="rm.predictedid.umap.pdf",width=20,height=30,limitsize=F)
 system("slack -F rm.predictedid.umap.pdf ryan_todo")
+
 
 
 ```
@@ -1154,18 +1677,14 @@ setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
 #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
 dat<-readRDS("rm_merged.SeuratObject.rds") #ensure it reads in properly
 DefaultAssay(dat)<-"RNA"
-
-####RUNNING INFERCNV#####
-#https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
-counts=as.matrix(dat@assays$RNA@counts[,colnames(dat)])
-write.table(counts,file="RM_inferCNV.counts.txt",sep="\t",col.names=T,row.names=T,quote=F)
-cell_annotation=as.data.frame(cbind(row.names(dat@meta.data),dat@meta.data["sample"]))
-write.table(cell_annotation,file="RM_inferCNV.annotation.txt",sep="\t",col.names=F,row.names=F,quote=F)
+dat$cnv_ref<-"FALSE"
+dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
 
 # get gene annotations for hg38
   annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
   ucsc.levels <- str_replace(string=paste("chr",seqlevels(annotation),sep=""), pattern="chrMT", replacement="chrM")
   seqlevels(annotation) <- ucsc.levels #standard seq level change threw error, using a string replace instead
+
 
 #write out gene order list
   gene_order<-annotation[!duplicated(annotation$gene_name),]
@@ -1176,35 +1695,138 @@ write.table(cell_annotation,file="RM_inferCNV.annotation.txt",sep="\t",col.names
   gene_order<-with(gene_order, gene_order[order(seqnames, start),]) #order by chr and start position
   write.table(gene_order,file="RM_inferCNV.gene_order.txt",sep="\t",col.names=F,row.names=F,quote=F)
 
-#Sample 4 is Normal Tissue (Adjacent to Tumor) going to use it as reference
-infercnv_obj = CreateInfercnvObject(raw_counts_matrix="RM_inferCNV.counts.txt",
-                                    annotations_file="RM_inferCNV.annotation.txt",
-                                    delim="\t",
-                                    gene_order_file="RM_inferCNV.gene_order.txt",
-                                    ref_group_names="rm4")
 
-infercnv_obj = infercnv::run(infercnv_obj,
-                             cutoff=0.1, # cutoff=1 works well for Smart-seq2, and cutoff=0.1 works well for 10x Genomics
-                             out_dir="./RM_inferCNV", 
-                             cluster_by_groups=FALSE, 
-                             denoise=TRUE,
-                             HMM=TRUE,
-                             resume_mode=F)
+####RUNNING INFERCNV PER SAMPLE#####
+for(i in unique(dat$sample)){
+  dat_tmp<-subset(dat,sample==i)
+  #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
+  counts=as.matrix(dat_tmp@assays$RNA@counts[,colnames(dat_tmp)])
+  write.table(counts,file=paste0(i,"_inferCNV.counts.txt"),sep="\t",col.names=T,row.names=T,quote=F)
+  cell_annotation=as.data.frame(cbind(row.names(dat_tmp@meta.data),dat_tmp@meta.data["cnv_ref"]))
+  write.table(cell_annotation,file=paste0(i,"_inferCNV.annotation.txt"),sep="\t",col.names=F,row.names=F,quote=F)
 
-saveRDS(infercnv_obj,file="RM_inferCNV.Rds")
+  infercnv_obj = CreateInfercnvObject(raw_counts_matrix=paste0(i,"_inferCNV.counts.txt"),
+                                      annotations_file=paste0(i,"_inferCNV.annotation.txt"),
+                                      delim="\t",
+                                      gene_order_file="RM_inferCNV.gene_order.txt",
+                                      ref_group_names="TRUE")
 
-infercnv_obj<-readRDS("RM_inferCNV.Rds")
-mat<-as.data.frame(t(infercnv_obj@expr.data))
+  infercnv_obj = infercnv::run(infercnv_obj,
+                               cutoff=0.1, # cutoff=1 works well for Smart-seq2, and cutoff=0.1 works well for 10x Genomics
+                               out_dir=paste0("./",i,"_inferCNV"), 
+                               cluster_by_groups=TRUE, 
+                               denoise=TRUE,
+                               HMM=TRUE,
+                               resume_mode=T)
+  saveRDS(infercnv_obj,paste0("./",i,"_inferCNV","/",i,"_inferCNV.Rds"))
 
-plt<-Heatmap(mat,
-  column_order=1:ncol(mat),
-  show_row_names=FALSE,
-  show_column_names=FALSE)
+  infercnv_obj<-readRDS(paste0("./",i,"_inferCNV","/",i,"_inferCNV.Rds"))
+  mat<-as.data.frame(t(infercnv_obj@expr.data))
 
-pdf("RM.infercnv.heatmap.pdf")
-plt<-draw(plt)
-dev.off()
-system("slack -F RM.infercnv.heatmap.pdf ryan_todo")
+  plt<-Heatmap(mat,
+    column_order=1:ncol(mat),
+    show_row_names=FALSE,
+    show_column_names=FALSE)
+
+  pdf(paste0(i,".infercnv.heatmap.pdf"))
+  plt<-draw(plt)
+  dev.off()
+  system(paste0("slack -F ",i,".infercnv.heatmap.pdf ryan_todo"))
+}
+
+
+###Trying CASPER for CNV Profiling
+
+library(CaSpER) 
+
+
+casper_per_sample<-function(sample_name="rm1",bam_folder_name="RM_1"){
+  system(paste0("mkdir ",sample_name,"_casper_test"))
+  bam_location<-paste0("./",bam_folder_name,"/outs/gex_possorted_bam.bam")
+  BAFExtract_location<-"/home/groups/CEDAR/mulqueen/src/BAFExtract/bin/BAFExtract"
+  hg38_list_location<-"/home/groups/CEDAR/mulqueen/src/BAFExtract/hg38.list"
+  hg38_folder_location<-"/home/groups/CEDAR/mulqueen/src/BAFExtract/hg38/"
+  baf_sample_directory<-paste0("./",sample_name,"_casper_test")
+  dat_tmp<-subset(dat,sample==sample_name)
+  control<-names(dat_tmp$cnv_ref == "TRUE")
+  log.ge <- as.matrix(dat@assays$RNA@data)
+  genes <- rownames(log.ge)
+  annotation <- generateAnnotation(id_type="hgnc_symbol", genes=genes, centromere=centromere, ishg19 = F)
+  log.ge <- log.ge[match( annotation$Gene,rownames(log.ge)) , ]
+  rownames(log.ge) <- annotation$Gene
+  log.ge <- log2(log.ge +1)
+
+  system(paste0("samtools view ",bam_location," | ",BAFExtract_location," -generate_compressed_pileup_per_SAM stdin ",hg38_list_location," ",baf_sample_directory," 30 0; ",BAFExtract_location," -get_SNVs_per_pileup ",hg38_list_location," ",baf_sample_directory," ",hg38_folder_location," 1 1 0.1 ",baf_sample_directory,"/test.snp")) #this needs to be fixed, not ooutputting anything
+
+  loh <- readBAFExtractOutput ( path=baf_sample_directory, sequencing.type="bulk") 
+  names(loh) <- gsub(".snp", "", names(loh))
+  load("maf.rda") ## from https://github.com/akdess/CaSpER/blob/master/data/maf.rda
+  loh<- list()
+  loh[[1]] <- maf
+  names(loh) <- i
+  loh.name.mapping <- data.frame (loh.name= i , sample.name=colnames(log.ge))
+
+  object <- CreateCasperObject(raw.data=log.ge,
+    loh.name.mapping=loh.name.mapping, 
+    sequencing.type="single-cell", 
+    cnv.scale=3, 
+    loh.scale=3, 
+    expr.cutoff=0.1, 
+    filter="median", 
+    matrix.type="normalized",
+    annotation=annotation, 
+    method="iterative", 
+    loh=loh, 
+    control.sample.ids=control, 
+    cytoband=cytoband)
+
+
+  pdf("MM135.Distrubution.pdf")
+  plot(density(as.vector(object@control.normalized[[3]])))
+  plot(density(log2(object@control.normalized.noiseRemoved[[3]]+1)))
+  dev.off()
+
+  ## runCaSpER
+  final.objects <- runCaSpER(object, removeCentromere=T, cytoband=cytoband, method="iterative")
+
+  ## summarize large scale events 
+  finalChrMat <- extractLargeScaleEvents (final.objects, thr=0.75) 
+
+  obj <- final.objects[[9]]
+  plotHeatmap10x(object=obj, fileName="heatmap.png",cnv.scale= 3, cluster_cols = F, cluster_rows = T, show_rownames = T, only_soi = T)
+
+  #### VISUALIZATION 
+  chrMat <- finalChrMat
+  plot.data <- melt(chrMat)
+  plot.data$value2 <- "neutral"
+  plot.data$value2[plot.data$value > 0] <- "amplification"
+  plot.data$value2[plot.data$value < 0] <- "deletion"
+  plot.data$value2 <- factor(plot.data$value2, levels = c("amplification", 
+      "deletion", "neutral"))
+  plot.data$X2 <- factor(plot.data$X2, levels = colnames(chrMat))
+  p <- ggplot(aes(x = X2, y = X1, fill = value2), data = plot.data) + 
+      geom_tile(colour = "white", size = 0.01) + 
+      labs(x = "", 
+      y = "") + scale_fill_manual(values = c(amplification = muted("red"), 
+      deletion = muted("blue"), neutral = "white")) + theme_grey(base_size = 6) + 
+      theme(legend.position = "right", legend.direction = "vertical", 
+          legend.title = element_blank(), strip.text.x = element_blank(), 
+          legend.text = element_text(colour = "black", size = 7, 
+              face = "bold"), legend.key.height = grid::unit(0.8, 
+              "cm"), legend.key.width = grid::unit(0.5, "cm"), 
+          axis.text.x = element_text(size = 5, colour = "black", 
+              angle = -45, hjust = 0), axis.text.y = element_text(size = 6, 
+              vjust = 0.2, colour = "black"), axis.ticks = element_line(size = 0.4), 
+          plot.title = element_text(colour = "black", hjust = 0, 
+              size = 6, face = "bold"))
+
+}
+
+
+
+
+
+
 
 # celltypes<-row_order(plt) #get row order from heatmap, this includes the slice
 # metadata_cluster<-as.data.frame(cbind(cellID=rownames(mat),celltype=0))
@@ -1229,11 +1851,8 @@ system("slack -F RM.infercnv.heatmap.pdf ryan_todo")
 # system("slack -F YW_celltype.pdf ryan_todo")
 
 
-#####################Try CaSpER also?##############################
-#library(CaSpER)
-
 ```
-### Run CisTopic on cells
+### Run Dimensionality Reduction on just Epithelial cells
 
 ```R
 ###CisTopic###
@@ -1302,50 +1921,11 @@ cistopic_generation<-function(x,name_out,outdir="/home/groups/CEDAR/mulqueen/pro
 
 #Running cistopic
   dat<-readRDS("rm_merged.SeuratObject.rds")
-  cistopic_generation(x=dat,name_out="rm_merged")
+  dat<-subset(dat,predicted.id %in% c("Normal Epithelial","Cancer Epithelial"))
+  cistopic_generation(x=dat,name_out="rm_epithelial")
 
 ```
-### Run ChromVar on Samples
 
-```R
-###ChromVar###
-  library(Signac)
-  library(Seurat)
-  library(JASPAR2020)
-  library(TFBSTools)
-  library(BSgenome.Hsapiens.UCSC.hg38)
-  library(patchwork)
-  set.seed(1234)
-  library(BiocParallel)
-  register(MulticoreParam(5))
-
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
-
-dat<-readRDS("rm_merged.SeuratObject.rds")
-
-  #Read in data and modify to monocle CDS file
-  #read in RDS file.
-
-  # Get a list of motif position frequency matrices from the JASPAR database
-  pfm <- getMatrixSet(
-    x = JASPAR2020,
-    opts = list(species =9606, all_versions = FALSE))
-
-  # Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
-  # Create a new Mofif object to store the results
-  #for combined
-  peaks<-granges(dat[["peaks"]])
-  peaks<-peaks[seqnames(peaks) %in% c(paste0("chr",c(1:22,"X","Y"))),]
-  motif.matrix.hg38 <- CreateMotifMatrix(features = peaks, pwm = pfm, genome = BSgenome.Hsapiens.UCSC.hg38, use.counts = FALSE)
-  motif.hg38 <- CreateMotifObject(data = motif.matrix.hg38, pwm = pfm)
-  dat <- SetAssayData(object = dat, assay = 'peaks', slot = 'motifs', new.data = motif.hg38)
-  dat <- RegionStats(object = dat, genome = BSgenome.Hsapiens.UCSC.hg38,assay="peaks")
-  dat <- RunChromVAR( object = dat,genome = BSgenome.Hsapiens.UCSC.hg38,assay="peaks")
-  saveRDS(dat,file="rm_merged.SeuratObject.rds")
-
-
-
-```
 
 <!--
 
