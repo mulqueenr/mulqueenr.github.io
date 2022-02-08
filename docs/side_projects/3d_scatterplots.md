@@ -133,7 +133,7 @@ import time
 import bmesh
 
 #Read in file and store it in memory (this doesn't take up much memory)
-file_xyz=open("C:/Users/Chad/Desktop/cortex.3D.table","r") #change path to whatever filepath you want. I got my computer refurbished and it was named Chad. I swear it wasn't me.
+file_xyz=open("C:/Users/mulqueen/Desktop/hg38_3d.umap.tsv","r") #change path to whatever filepath you want. I got my computer refurbished and it was named Chad. I swear it wasn't me.
 tabraw=file_xyz.readlines()[1:]
 data_count=len(tabraw)
 file_xyz.close()
@@ -322,7 +322,7 @@ for in_dat_list in in_list:
 #to adjust size of points
 for clust in annot.keys():
   for i in bpy.data.collections[clust].objects:
-    i.scale=(0.2,0.2,0.2)
+    i.scale=(0.5,0.5,0.5)
 
 
 #to adjust alpha value and translucence of material properties
@@ -331,7 +331,7 @@ for clust in annot.keys():
   bpy.data.materials[clust].node_tree.nodes["Volume Absorption"].inputs[1].default_value = 0.1
 
 
-bpy.ops.wm.save_as_mainfile(filepath="C:/Users/Chad/Desktop/cortex.blend") #save blender file
+bpy.ops.wm.save_as_mainfile(filepath="C:/Users/mulqueen/Desktop/cortex.blend") #save blender file
 
 bpy.context.scene.render.filepath = 'cortex.test.png'
 bpy.ops.render.render(write_still=True) #render and save file

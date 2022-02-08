@@ -1300,8 +1300,8 @@ Continued processing using Ziffra Primary single-cell ATAC data set for integrat
   ziffra<-readRDS("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/ziffra/ziffra.SeuratObject.Rds")
   DefaultAssay(ziffra)<-"GeneActivity"
   Idents(ziffra)<-ziffra$CellType
-  ziffra_GA<-NormalizeData(ziffra)
-  var_feats<- FindVariableFeatures(ziffra_GA)
+  ziffra<-NormalizeData(ziffra)
+  ziffra<- FindVariableFeatures(ziffra)
 
   transfer.anchors <- FindTransferAnchors(
       reference = ziffra,
@@ -1309,7 +1309,7 @@ Continued processing using Ziffra Primary single-cell ATAC data set for integrat
       query = orgo_cirm43,
       query.assay="GeneActivity",
       reduction   = 'cca',
-      features=var_feats,
+      features=VariableFeatures(ziffra),
       verbose=T)
   saveRDS(transfer.anchors,"orgo_cirm43.ziffra.transferanchors.rds")
 

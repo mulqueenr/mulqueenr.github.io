@@ -1326,7 +1326,8 @@ system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
 
 #Generate Coverage Plots Across Genes
 #Pick DE genes from the topic_binned data
-
+geneset<-c()
+geneset[["celllines"]]<-c("ESR1","GATA3","FOXA1","GREB1")
 cov_plots<-function(dat=mcf7,gene_name){
   plt_cov <- CoveragePlot(
     object = dat,
@@ -1348,10 +1349,10 @@ cov_plots<-function(dat=mcf7,gene_name){
 DefaultAssay(mcf7) <- "SCT"
 
 for (i in unique(names(geneset))){
-  plt_list<-lapply(unlist(geneset[i]), function(x) cov_plots(dat=dat,gene_name=x))
+  plt_list<-lapply(unlist(geneset[i]), function(x) cov_plots(dat=mcf7,gene_name=x))
   plt<-patchwork::wrap_plots(plt_list, ncol = 1)
-  ggsave(plt,file=paste0("RM_",i,".featureplots.pdf"),height=4*length(plt_list),width=10,limitsize=F)
-  system(paste0("slack -F ","RM_",i,".featureplots.pdf ryan_todo"))
+  ggsave(plt,file=paste0("yw.mcf7.control_",i,".featureplots.pdf"),height=4*length(plt_list),width=10,limitsize=F)
+  system(paste0("slack -F ","yw.mcf7.control_",i,".featureplots.pdf ryan_todo"))
 }
 
 
