@@ -2558,6 +2558,35 @@ for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` mar
 
 ```
 
+## Output Tab separated 3D clustering for Blender Plot
+```R
+library(Signac)
+library(Seurat)
+library(patchwork)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
+mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
+
+hg38_atac <- RunUMAP(object = hg38_atac, reduction = 'cistopic', reduction.name="umap3d",dims = 1:ncol(hg38_atac@reductions$cistopic),n.components=3)
+mm10_atac <- RunUMAP(object = mm10_atac, reduction = 'cistopic', reduction.name="umap3d",dims = 1:ncol(mm10_atac@reductions$cistopic),n.components=3)
+
+hg38_out<-cbind(hg38_atac$celltype,
+    colnames(hg38_atac),
+    as.data.frame(hg38_atac@reductions$umap3d@cell.embeddings),
+    hg38_atac$celltype_col)
+write.table(hg38_out,"hg38_3d.umap.tsv",sep="\t",col.names=F,row.names=F,quote=F)
+system("slack -F hg38_3d.umap.tsv ryan_todo")
+
+
+mm10_out<-cbind(mm10_atac$celltype,
+    colnames(mm10_atac),
+    as.data.frame(mm10_atac@reductions$umap3d@cell.embeddings),
+    mm10_atac$celltype_col)
+write.table(mm10_out,"mm10_3d.umap.tsv",sep="\t",col.names=F,row.names=F,quote=F)
+system("slack -F mm10_3d.umap.tsv ryan_todo")
+```
+
 
 ## Save final seurat files for UCSC cellbrowser and set up.
 
