@@ -322,7 +322,7 @@ for in_dat_list in in_list:
 #to adjust size of points
 for clust in annot.keys():
   for i in bpy.data.collections[clust].objects:
-    i.scale=(0.5,0.5,0.5)
+    i.scale=(0.8,0.8,0.8)
 
 
 #to adjust alpha value and translucence of material properties

@@ -414,7 +414,6 @@ infercnv_obj<-readRDS("/home/groups/CEDAR/mulqueen/projects/multiome/220111_mult
 mat<-as.data.frame(t(infercnv_obj@expr.data))
 mat<-mat[,row.names(infercnv_obj@gene_order[infercnv_obj@gene_order$chr=="chr17",])] #limit to chr 17 
 mat<-mat[sample(1:nrow(mat),5000),] #limit to 5000 cells, which will be enough to see cluster bias
-
 plt<-Heatmap(mat,
   column_order=1:ncol(mat),
   show_row_names=FALSE,
@@ -454,6 +453,111 @@ dat_mcf7<-subset(dat,peaks_cluster=="MCF7")
 dat_t47d<-subset(dat,peaks_cluster=="T47D")
 saveRDS(dat_mcf7,file="yw_mcf7.SeuratObject.rds")
 saveRDS(dat_t47d,file="yw_t47d.SeuratObject.rds")
+```
+Make full genome plot for TM
+
+```R
+####Run InferCNV
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+library(infercnv)
+library(ComplexHeatmap)
+library(ggdendro)
+library(dendextend)
+library(circlize)
+library(dendsort)
+library(patchwork)
+
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
+
+
+####RUNNING INFERCNV#####
+#https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
+dat<-readRDS("yw_merged.SeuratObject.rds") #ensure it reads in properly
+
+DefaultAssay(dat)<-"RNA"
+#write out raw counts matrix
+  counts=as.matrix(dat@assays$RNA@counts[,colnames(dat)])
+  #limit to just control samples
+  counts<-counts[,startsWith(colnames(counts),"YW_si_Control")] 
+  write.table(counts,file="YW_inferCNV.control.counts.txt",sep="\t",col.names=T,row.names=T,quote=F)
+#write out cell annotation
+  cell_annotation=as.data.frame(cbind(row.names(dat@meta.data),dat@meta.data["sample"]))
+  cell_annotation<-cell_annotation[startsWith(row.names(cell_annotation),"YW_si_Control"),] 
+  write.table(cell_annotation,file="YW_inferCNV.annotation.control.txt",sep="\t",col.names=F,row.names=F,quote=F)
+
+# get gene annotations for hg38
+  annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+  ucsc.levels <- str_replace(string=paste("chr",seqlevels(annotation),sep=""), pattern="chrMT", replacement="chrM")
+  seqlevels(annotation) <- ucsc.levels #standard seq level change threw error, using a string replace instead
+
+#write out gene order list
+  gene_order<-annotation[!duplicated(annotation$gene_name),]
+  gene_order<-as.data.frame(gene_order[gene_order$gene_name %in% row.names(dat),])
+  gene_order<-gene_order[c("gene_name","seqnames","start","end")]
+  chrorder<-paste0("chr",c(1:22,"X","Y","M"))
+  gene_order$seqnames<-factor(gene_order$seqnames,levels=chrorder) # set chr order
+  gene_order<-with(gene_order, gene_order[order(seqnames, start),]) #order by chr and start position
+  write.table(gene_order,file="YW_inferCNV.gene_order.txt",sep="\t",col.names=F,row.names=F,quote=F)
+
+#run infercnv
+  infercnv_obj = CreateInfercnvObject(raw_counts_matrix="YW_inferCNV.control.counts.txt",
+                                      annotations_file="YW_inferCNV.annotation.control.txt",
+                                      delim="\t",
+                                      gene_order_file="YW_inferCNV.gene_order.txt",
+                                      ref_group_names=NULL)
+
+saveRDS(infercnv_obj,file="YW_inferCNV.control.Rds")
+
+#read in where inferCNV keeps hanging (step 14)
+infercnv_obj<-readRDS("YW_inferCNV.control.Rds")
+
+  infercnv_obj = infercnv::run(infercnv_obj,
+                               cutoff=0.1, # cutoff=1 works well for Smart-seq2, and cutoff=0.1 works well for 10x Genomics
+                               out_dir="./YW_inferCNV.control", 
+                               denoise=TRUE,
+                               HMM=TRUE,
+                               num_threads=10,
+                               cluster_references=FALSE,
+                               resume_mode=FALSE,
+                               k_obs_groups=2,
+                               output_format="pdf"
+                               )
+
+
+
+saveRDS(infercnv_obj,file="YW_inferCNV.control.Rds")
+infercnv_obj<-readRDS("YW_inferCNV.control.Rds")
+
+dat_control<-subset(dat,sample %in% c("YW_si_Control_plus_E2","YW_si_Control_plus_Veh"))
+cluster_assignment<-read.table("./YW_inferCNV.control/infercnv.observation_groupings.txt")
+
+cluster_assignment$cnv_profile<-ifelse(cluster_assignment$Dendrogram.Group==1,"MCF7","T47D") #this is due to the mcf7 amplification on chr17 and 20 we have seen in other data
+
+cell_line<-setNames(cluster_assignment$cnv_profile,row.names(cluster_assignment))
+dat_control<-AddMetaData(dat_control,metadata=cell_line,col.name="cnv_profile")#assign slices to cell names
+
+#cluster with low resolution on peaks dataset
+dat_control$peaks_cluster<-ifelse(as.numeric(dat_control@reductions$atac_umap@cell.embeddings[,1])<0,"T47D","MCF7") #it is clear from the atac data that one cluster is T47D and one is MCF7 based on chr17 profiles
+table(dat_control$peaks_cluster)
+table(paste(dat_control$peaks_cluster, dat_control$cnv_profile))
+
+#MCF7 MCF7 MCF7 T47D T47D MCF7 T47D T47D
+#     6262       176        26      6589
+plt1<-DimPlot(dat_control,split.by="cnv_profile",group.by="cnv_profile",na.value=NA)+ggtitle("CNV Profile Split")
+plt2<-DimPlot(dat_control,group.by="sample")+ggtitle("ATAC Samples")
+plt3<-DimPlot(dat_control,group.by="peaks_cluster")+ggtitle("Final Cell Type Assignment")
+
+ggsave(plt1/(plt2|plt3),file="YW_control.celltype.pdf",width=10)
+system("slack -F YW_control.celltype.pdf ryan_todo")
+
 ```
 ## Yahong Data TITAN Analysis
 ### Cell line specific Cistopic Processing
@@ -741,7 +845,7 @@ t47d<-cicero_processing(object_input=t47d,prefix="yw_t47d.control")
 saveRDS(t47d,"yw_t47d.control.SeuratObject.unnormGA.Rds")
 
 mcf7<-cicero_processing(object_input=mcf7,prefix="yw_mcf7.control")
-saveRDS(mcf7,"yw_t47d.control.SeuratObject.unnormGA.Rds")
+saveRDS(mcf7,"yw_mcf7.control.SeuratObject.unnormGA.Rds")
 
 # generate unnormalized gene activity matrix
   # gene annotation sample
@@ -975,10 +1079,10 @@ scatterplot_linearfit<-function(x,esr1_topic,foxm1_topic,outname){
     dev.off()
     system(paste0("slack -F ",paste0(outname,".ESR1_FOXM1.scatter.sample.pdf")," ryan_todo"))
 
-  #bins defined as top 10% of topic distribution only in treated sample
+  #bins defined as top of topic distribution only in treated sample, to be used in later analysis
   cor_mat$topic_bin<-""
-  cor_mat[cor_mat$sample=="YW_si_Control_plus_E2" & cor_mat[,foxm1_topic]>quantile(cor_mat[,foxm1_topic],0.5) & cor_mat[,esr1_topic]<quantile(cor_mat[,esr1_topic],0.50),]$topic_bin<-"FOXM1" #this line is newly modified
-  cor_mat[cor_mat$sample=="YW_si_Control_plus_E2" &cor_mat[,esr1_topic]>quantile(cor_mat[,esr1_topic],0.5) & cor_mat[,foxm1_topic]<quantile(cor_mat[,foxm1_topic],0.50),]$topic_bin<-"ESR1" 
+  cor_mat[cor_mat$sample=="YW_si_Control_plus_E2" & cor_mat[,foxm1_topic]>quantile(cor_mat[,foxm1_topic],0.95) & cor_mat[,esr1_topic]<quantile(cor_mat[,esr1_topic],0.75),]$topic_bin<-"FOXM1" #this line is newly modified
+  cor_mat[cor_mat$sample=="YW_si_Control_plus_E2" &cor_mat[,esr1_topic]>quantile(cor_mat[,esr1_topic],0.95) & cor_mat[,foxm1_topic]<quantile(cor_mat[,foxm1_topic],0.75),]$topic_bin<-"ESR1" 
 
   table(cor_mat$topic_bin)
 
@@ -1004,8 +1108,8 @@ scatterplot_linearfit<-function(x,esr1_topic,foxm1_topic,outname){
   return(object)
 }
 
-mcf7<-scatterplot_linearfit(x=mcf7,outname="yw_mcf7.control",foxm1_topic=mcf7_foxm1_topic,esr1_topic=mcf7_esr1_topic) #p val 0.2161
-t47d<-scatterplot_linearfit(x=t47d,outname="yw_t47d.control",foxm1_topic=t47d_foxm1_topic,esr1_topic=t47d_esr1_topic) # pval p-value: < 2.2e-16
+mcf7<-scatterplot_linearfit(x=mcf7,outname="yw_mcf7.control",foxm1_topic=mcf7_foxm1_topic,esr1_topic=mcf7_esr1_topic) #p val 0.2161 #Adjusted R-squared:  8.235e-05
+t47d<-scatterplot_linearfit(x=t47d,outname="yw_t47d.control",foxm1_topic=t47d_foxm1_topic,esr1_topic=t47d_esr1_topic) # pval p-value: < 2.2e-16 #Adjusted R-squared:  0.02529
 
 #save now that there is titan data and its binned
 saveRDS(mcf7,file="yw_mcf7.control.SeuratObject.rds")
@@ -1014,11 +1118,23 @@ saveRDS(t47d,file="yw_t47d.control.SeuratObject.rds")
 table(mcf7$topic_bin)
 table(t47d$topic_bin)
 Idents(mcf7)<-mcf7$topic_bin
+#       ESR1 FOXM1
+# 5904   304   230
 Idents(t47d)<-t47d$topic_bin
-
-find_markers_topic_bin<-function(x,assay_name,outname,logfc.threshold_set=0,min.pct_set=0){
+#       ESR1 FOXM1
+# 6206   257   152
+find_markers_topic_bin<-function(x,assay_name,outname,logfc.threshold_set=0,min.pct_set=0,cistrome_cellline="MCF"){
   x_da<-FindMarkers(object=x,ident.1 = "ESR1", ident.2="FOXM1", test.use = 'LR', logfc.threshold=logfc.threshold_set,latent.vars = "nCount_peaks", only.pos=F, assay=assay_name,min.pct=min.pct_set)
+  
+  #if statements to handle formating the different modalities
+  if(assay_name=="cistrome_score"){ #if assay is cistrome limit to correct cell line
+    x_da<-x_da[startsWith(row.names(x_da),cistrome_cellline),] #subset to same cell line cistrome data
+    label_length<-length(strsplit(row.names(x_da),"-")[[1]])
+    row.names(x_da)<-paste(unlist(lapply(strsplit(row.names(x_da),"-"),"[",label_length-1)),
+                          unlist(lapply(strsplit(row.names(x_da),"-"),"[",label_length)),sep="-")
+    }
   if(assay_name=="chromvar"){ #make chromvar names readable
+      print("Translating Chromvar Motif Names for Plot")
       x_da$out_name <- unlist(lapply(unlist(lapply(row.names(x_da), function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
   } else{
     x_da$out_name<-row.names(x_da)
@@ -1027,23 +1143,28 @@ find_markers_topic_bin<-function(x,assay_name,outname,logfc.threshold_set=0,min.
     closest_genes <- ClosestFeature(x,row.names(x_da))
     x_da <-cbind(x_da ,closest_genes)
   }
+
   x_da$sig<-ifelse(x_da$p_val_adj<=0.05,"sig","non_sig")
   x_da$label<-""
 
-  if(assay_name!="peaks"){ #ignore adding gene names to peaks output (too many)
-    x_da[x_da$sig=="sig",]$label<-x_da[x_da$sig=="sig",]$out_name
+  if(assay_name!="peaks"){ #ignore adding peaks names (too many), and add top 10 significant names to either side of comparison
+    ident_1_labels<- row.names(head(x_da[which((x_da$sig=="sig") & (x_da$avg_log2FC>0)),] ,n=10))#significant, is ident1 specific, is top 10
+    ident_2_labels<- row.names(head(x_da[which((x_da$sig=="sig") & (x_da$avg_log2FC<0)),] ,n=10))#significant, is ident1 specific, is top 10
+    x_da[c(ident_1_labels,ident_2_labels),]$label<-x_da[c(ident_1_labels,ident_2_labels),]$out_name
+        #trim cistrome cell line from name (for readability)
   }
-
   x_scale<-max(abs(x_da$avg_log2FC))*1.1 #find proper scaling for x axis
 
   plt<-ggplot(x_da,aes(x=avg_log2FC,y=-log10(p_val_adj),color=sig,label=label,alpha=0.1))+
-    geom_point()+
+    geom_point(size=0.5)+
     theme_bw()+
-    ggtitle(paste(outname,assay_name,"FOXM1(left) to ESR1(right)"))+
-    scale_fill_manual(values=c("#999999", "#FF0000"))+
+    scale_fill_manual(values=c("non_sig"="#999999", "sig"="#FF0000"))+
     xlim(c(-x_scale,x_scale))+
-    geom_label_repel(label.size = 0.1,max.overlaps=20)
-  ggsave(plt,file=paste0(outname,"_",assay_name,"_ESR1vFOXM1bins.pdf"))
+    geom_vline(xintercept=0)+
+    geom_hline(yintercept=-log10(0.05))+
+    geom_text_repel(size=2,segment.size=0.1,max.overlaps=Inf,min.segment.length = 0, nudge_y = 1, segment.angle = 20,color="black") +
+    theme(legend.position = "none",axis.title.x = element_blank(),axis.title.y = element_blank())
+    ggsave(plt,file=paste0(outname,"_",assay_name,"_ESR1vFOXM1bins.pdf"),width=2,units="in",height=3)
   system(paste0("slack -F ",outname,"_",assay_name,"_ESR1vFOXM1bins.pdf"," ryan_todo"))
   write.table(x_da,file=paste0(outname,"_",assay_name,"_ESR1vFOXM1bins.markers.txt"),col.names=T,sep="\t")
   system(paste0("slack -F ",paste0(outname,"_",assay_name,"_ESR1vFOXM1bins.markers.txt")," ryan_todo"))
@@ -1051,13 +1172,13 @@ find_markers_topic_bin<-function(x,assay_name,outname,logfc.threshold_set=0,min.
 
 #Run DA/DE based on titan topic bins
 find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="chromvar")
-#find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="peaks")
-find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="cistrome_score")
+find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="peaks")
+find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="cistrome_score",cistrome_cellline="MCF")
 find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="SCT")
 
 find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="chromvar")
-#find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="peaks")
-find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="cistrome_score")
+find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="peaks")
+find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="cistrome_score",cistrome_cellline="T47")
 find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="SCT")
 
 
@@ -1071,7 +1192,7 @@ ggsave(plt,file="t47d_titantopic.umap.pdf",width=13)
 system("slack -F t47d_titantopic.umap.pdf ryan_todo")
 
 #Correlate cistopic with titan topics
-correlate_cistopic_titan<-function(x,outname){
+correlate_cistopic_titan<-function(x,outname,esr1_topic,foxm1_topic){
   cistopic_dat<-x@reductions$cistopic@cell.embeddings #get cistopic from x
   titan_dat<-as.data.frame(x@reductions$titan_lda@cell.embeddings) #get titan from y
   cells<-row.names(titan_dat)[which(row.names(titan_dat) %in% row.names(cistopic_dat))] # set list of shared cell names
@@ -1088,7 +1209,41 @@ correlate_cistopic_titan<-function(x,outname){
     }
   }
 
+  #perform a weighted linear regression, TITAN topic is weight and cistopic topics are comparisons
+  list_plots<-c()
+  for (xi in colnames(cistopic_dat)){ 
+    for (yi in colnames(cistopic_dat)){ 
+      for (zj in c(foxm1_topic)){
+
+      #generate a linear model
+      x=as.numeric(cistopic_dat[,xi])
+      y=as.numeric(cistopic_dat[,yi])
+      x2_titan=as.numeric(titan_dat[,zj])
+      model_fit<-summary(lm(y~x+x2_titan))
+      intercept<-model_fit$coefficients[1,1]
+      slope<-model_fit$coefficients[2,1]
+      std_err<-model_fit$coefficients[2,2]
+      residuals<-model_fit$residuals
+
+    plt_dat<-data.frame(x=x,y=y,x2_titan=x2_titan)
+    plt<-ggplot(plt_dat,aes(x=x,y=y,color=x2_titan))+
+    geom_abline(intercept = intercept, slope = slope, col = "red")+
+    geom_point(size=0.5,alpha=0.5)+
+    scale_color_gradient2()+
+    theme_void()+
+    xlab(xi)+
+    ylab(yi)
+    list_plots[[paste(xi,yi)]]<-plt
+    }
+  }
+}
+
+  plt_list<-wrap_plots(list_plots,nrow=length(colnames(cistopic_dat)),guides="collect")+theme(legend.position = "none")
+  ggsave(plt_list,file=paste0(outname,"_cistopic_scatterplot.png"),height=50,width=50,limitsize=FALSE)
+  system(paste0("slack -F ",outname,"_cistopic_scatterplot.png ryan_todo"))
+
   out_plt<-Heatmap(cor_mat)
+  columnorder<-column_order(out_plt)
   pdf(paste0(outname,".cistopic_titan_topiccorrelation.pdf"))
   print(out_plt)
   dev.off()
@@ -1110,11 +1265,26 @@ correlate_cistopic_titan<-function(x,outname){
   dev.off()
   system(paste0("slack -F ",paste0(outname,".titan_squarecorrelation.pdf")," ryan_todo"))
 
+  cor_mat_topics<-cor_mat[c(esr1_topic,foxm1_topic),]
+  #cor_mat_topics<-rbind(cor_mat_topics,abs(cor_mat_topics[esr1_topic,]-cor_mat_topics[foxm1_topic,]))
+  #row.names(cor_mat_topics)<-c(esr1_topic,foxm1_topic,"difference")
+  cor_mat_topics<-rbind(abs(cor_mat_topics[esr1_topic,]-cor_mat_topics[foxm1_topic,]))
+  row.names(cor_mat_topics)<-c("difference")
+  col_fun = colorRamp2(c(0, 0.5), c("white", "red"))
+
+  out_plt<-Heatmap(cor_mat_topics,
+    col=col_fun,
+    column_order=columnorder)
+  pdf(paste0(outname,".cistopic_titan_topiccorrelation_specific.pdf"))
+  print(out_plt)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".cistopic_titan_topiccorrelation_specific.pdf")," ryan_todo"))
+
 }
 
 #x is seurat object with redcutions for cistopic and titan_lda
-correlate_cistopic_titan(x=mcf7,outname="yw_mcf7.control")
-correlate_cistopic_titan(x=t47d,outname="yw_t47d.control")
+correlate_cistopic_titan(x=mcf7,outname="yw_mcf7.control",foxm1_topic=mcf7_foxm1_topic,esr1_topic=mcf7_esr1_topic)
+correlate_cistopic_titan(x=t47d,outname="yw_t47d.control",foxm1_topic=t47d_foxm1_topic,esr1_topic=t47d_esr1_topic)
 
 #now to correlate chromvar motifs with titan topics
 
@@ -1164,17 +1334,18 @@ correlate_chromvar_titan<-function(x,outname,cellline="test",quantile_cutoff=0.9
   assay_name="chromvar"
   x_da<-read.table(paste0(outname,"_",assay_name,"_ESR1vFOXM1bins.markers.txt"))
   cor_mat$color_fill<-ifelse(abs(residuals)>std_err,"red","not_red")
-  cor_mat$label<-unlist(lapply(1:nrow(cor_mat),function(y) {ifelse(row.names(cor_mat)[y] %in% x_da[x_da$sig=="sig",]$out_name,row.names(cor_mat)[y],"")})) #add label to significant features
-  hyphen_length<-lapply(strsplit(row.names(cor_mat[cor_mat$color_fill=="red",]),"-"),length)[[1]][1] #adduming no hypens in names
-  cor_mat[cor_mat$color_fill=="red",]$label<-paste(
-    unlist(lapply(strsplit(row.names(cor_mat[cor_mat$color_fill=="red",]),"-"),"[",hyphen_length-1)),
-    unlist(lapply(strsplit(row.names(cor_mat[cor_mat$color_fill=="red",]),"-"),"[",hyphen_length)))
+
+  ident_1_labels<- row.names(head(x_da[which((x_da$sig=="sig") & (x_da$avg_log2FC>0)),] ,n=20))#significant, is ident1 specific, is top 20
+  ident_2_labels<- row.names(head(x_da[which((x_da$sig=="sig") & (x_da$avg_log2FC<0)),] ,n=20))#significant, is ident1 specific, is top 20
+  x_da[c(ident_1_labels,ident_2_labels),]$label<-x_da[c(ident_1_labels,ident_2_labels),]$out_name
+
+  cor_mat$label<-unlist(lapply(1:nrow(cor_mat),function(y) {ifelse(row.names(cor_mat)[y] %in% x_da$label,row.names(cor_mat)[y],"")})) #add label to significant features
 
   plt<-ggplot()+
   geom_point(aes(x=cor_mat[,esr1_topic],y=cor_mat[,foxm1_topic],color=cor_mat$color_fill),size=0.1)+
   scale_color_manual(values=c("red"="red","not_red"="grey50"))+
   theme_minimal()+
-  #geom_text_repel(aes(x=cor_mat[,esr1_topic],y=cor_mat[,foxm1_topic],color=cor_mat$color_fill,label=cor_mat$label),force=5,max.overlaps=Inf,size=2,min.segment.length = 0,box.padding=0.3,segment.size=0.1)+
+  geom_text_repel(aes(x=cor_mat[,esr1_topic],y=cor_mat[,foxm1_topic],color=cor_mat$color_fill,label=cor_mat$label),force=5,max.overlaps=Inf,size=2,min.segment.length = 0,box.padding=0.3,segment.size=0.1)+
   geom_abline(intercept = intercept, slope = slope, col = "black")+
   ggtitle(paste(outname,"chromvar v. titan correlations"))+
   xlab(paste("ESR1",esr1_topic))+
@@ -1233,18 +1404,18 @@ correlate_cistrome_titan<-function(x,outname,cellline="MCF",quantile_cutoff=0.95
   #highlight points which were determined significant
   assay_name="cistrome_score"
   x_da<-read.table(paste0(outname,"_",assay_name,"_ESR1vFOXM1bins.markers.txt"))
-  cor_mat$color_fill<-ifelse(abs(residuals)>std_err,"red","not_red")
-  cor_mat$label<-unlist(lapply(1:nrow(cor_mat),function(y) {ifelse(row.names(cor_mat)[y] %in% x_da[x_da$sig=="sig",]$out_name,row.names(cor_mat)[y],"")})) #add label to significant features
-  hyphen_length<-lapply(strsplit(row.names(cor_mat[cor_mat$color_fill=="red",]),"-"),length)[[1]][1] #adduming no hypens in names
-  cor_mat[cor_mat$color_fill=="red",]$label<-paste(
-    unlist(lapply(strsplit(row.names(cor_mat[cor_mat$color_fill=="red",]),"-"),"[",hyphen_length-1)),
-    unlist(lapply(strsplit(row.names(cor_mat[cor_mat$color_fill=="red",]),"-"),"[",hyphen_length)))
+  ident_1_labels<- row.names(head(x_da[which((x_da$sig=="sig") & (x_da$avg_log2FC>0)),] ,n=10))#significant, is ident1 specific, is top 20
+  ident_2_labels<- row.names(head(x_da[which((x_da$sig=="sig") & (x_da$avg_log2FC<0)),] ,n=10))#significant, is ident1 specific, is top 20
+  sig_labels<-row.names(x_da[which(x_da$sig=="sig"),])#significant, is ident1 specific, is top 20
+  x_da[c(ident_1_labels,ident_2_labels),]$label<-x_da[c(ident_1_labels,ident_2_labels),]$out_name
+  cor_mat$label<-unlist(lapply(1:nrow(cor_mat),function(y) {ifelse(row.names(cor_mat)[y] %in% x_da$label,row.names(cor_mat)[y],"")})) #add label to significant features
+  cor_mat$color_fill<-unlist(lapply(1:nrow(cor_mat),function(y) {ifelse(row.names(cor_mat)[y] %in% sig_labels,"red","not_red")})) #add label to significant features
 
   plt<-ggplot()+
   geom_point(aes(x=cor_mat[,esr1_topic],y=cor_mat[,foxm1_topic],color=cor_mat$color_fill),size=0.1)+
   scale_color_manual(values=c("red"="red","not_red"="grey50"))+
   theme_minimal()+
-  #geom_text_repel(aes(x=cor_mat[,esr1_topic],y=cor_mat[,foxm1_topic],color=cor_mat$color_fill,label=cor_mat$label),force=5,max.overlaps=Inf,size=2,min.segment.length = 0,box.padding=0.3,segment.size=0.1)+
+  geom_text_repel(aes(x=cor_mat[,esr1_topic],y=cor_mat[,foxm1_topic],color=cor_mat$color_fill,label=cor_mat$label),force=5,max.overlaps=Inf,size=2,min.segment.length = 0,box.padding=0.3,segment.size=0.1)+
   geom_abline(intercept = intercept, slope = slope, col = "black")+
   ggtitle(paste(outname,"cistrome v. titan correlations"))+
   xlab(paste("ESR1",esr1_topic))+
@@ -1263,6 +1434,17 @@ correlate_cistrome_titan(x=t47d,outname="yw_t47d.control",foxm1_topic=t47d_foxm1
 
 
 
+plt1<-FeaturePlot(mcf7,features=c("topic_20"),reduction="multimodal_topic_umap",cols=c("white","blue"))
+plt2<-FeaturePlot(mcf7,features=c("topic_13"),reduction="multimodal_topic_umap",cols=c("white","red"))
+ggsave(plt1|plt2,file="yw_mcf7.control.cistopic_differences.pdf",width=10)
+system("slack -F yw_mcf7.control.cistopic_differences.pdf ryan_todo")
+
+
+plt1<-FeaturePlot(t47d,features=c("topic_3"),reduction="multimodal_topic_umap",cols=c("white","blue"))
+plt2<-FeaturePlot(t47d,features=c("topic_2"),reduction="multimodal_topic_umap",cols=c("white","red"))
+ggsave(plt1|plt2,file="yw_t47d.control.cistopic_differences.pdf",width=10)
+system("slack -F yw_t47d.control.cistopic_differences.pdf ryan_todo")
+
 ```
 
 ### Motif Footprinting on cells 
@@ -1279,6 +1461,10 @@ Based on https://satijalab.org/signac/articles/footprint.html
   set.seed(1234)
   library(motifmatchr)
   library(parallel)
+  library(ggplot2)
+  library(motifmatchr)
+  library(chromVAR)
+
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
 
 mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.rds")
@@ -1323,40 +1509,226 @@ print(wrap_plots(out) + patchwork::plot_layout(ncol = 1))
 dev.off()
 system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
 
+```
+### Marker Plots
+Set up FOXM1 PWM based on Homer data
+```bash
+wget http://homer.ucsd.edu/homer/motif/HomerMotifDB/homerResults/motif120.motif
+```
+
+```R
+
+  library(Signac)
+  library(Seurat)
+  library(JASPAR2020)
+  library(TFBSTools)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(patchwork)
+  set.seed(1234)
+  library(motifmatchr)
+  library(parallel)
+  library(ggplot2)
+  library(motifmatchr)
+  library(chromVAR)
+library(universalmotif)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
+
+mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.rds")
+t47d<-readRDS(file="yw_t47d.control.SeuratObject.rds")
 
 #Generate Coverage Plots Across Genes
 #Pick DE genes from the topic_binned data
+#Pull gene list from DE genes, and RIME paper https://ars.els-cdn.com/content/image/1-s2.0-S221112471300017X-figs3.jpg
 geneset<-c()
-geneset[["celllines"]]<-c("ESR1","GATA3","FOXA1","GREB1")
-cov_plots<-function(dat=mcf7,gene_name){
+#MA0112.3 is ESR1 can add more
+#
+#geneset<-c("GREB1","CUX2","CENPE","PGR","NEAT1","ERBB4","TOP2A","KIF14","FMN1","ABCC12","ABCC11","TMEM164","CENPF","AURKA","FMN1","PIK3R3","GREB1","STMN1")
+geneset<-c("PGR","CENPF")
+#download foxm1 motif from homer data base
+system("wget http://homer.ucsd.edu/homer/motif/HomerMotifDB/homerResults/motif120.motif")
+foxm1<-read_matrix(file="motif120.motif",header=">",positions="rows")
+foxm1<-convert_motifs(foxm1,class="TFBSTools-PWMatrix")
+foxm1@ID<-"foxm1"
+
+cov_plots<-function(dat=mcf7,gene_name,motif.name=c("MA0112.3"),add.foxm1=TRUE,outname){
+  
+  peak_annot<-granges(dat@assays$peaks) #set up peak motif overlap as annotation track
+  peak_annot$motif_overlap<-""
+  for (i in length(motif.name)){ #jarspar formatted names
+    overlap_motif_idx<-findOverlaps(granges(peak_annot),dat@assays$peaks@motifs@positions[motif.name[i]])@from
+    peak_annot[overlap_motif_idx,]$motif_overlap<-paste(peak_annot[overlap_motif_idx,]$motif_overlap,motif.name[i])
+  }
+  if(add.foxm1){ #add foxm1 (not included in Jaspar but used in homer)
+    motif.positions <- motifmatchr::matchMotifs(pwms = foxm1, subject = granges(dat@assays$peaks), out = 'positions', genome = BSgenome.Hsapiens.UCSC.hg38 )
+    overlap_motif_idx<-findOverlaps(granges(peak_annot),motif.positions[[1]])@from
+    peak_annot[overlap_motif_idx,]$motif_overlap<-paste(peak_annot[overlap_motif_idx,]$motif_overlap,"foxm1")
+  }
+
+  dat@assays$peaks@meta.features$motif_overlap<-peak_annot$motif_overlap
   plt_cov <- CoveragePlot(
     object = dat,
     region = gene_name,
     features = gene_name,
     assay="peaks",
+    ident=c("ESR1","FOXM1"),
     expression.assay = "SCT",
+    peaks.group.by="motif_overlap",
     extend.upstream = 5000,
-    extend.downstream = 5000)
+    extend.downstream = 5000,
+    ymax=10)
   plt_feat <- FeaturePlot(
     object = dat,
     features = gene_name,
     raster=T,
-    reduction="multimodal_umap",
-    order=T)
-  return((plt_feat|plt_cov)+ggtitle(gene_name))
+    reduction="multimodal_topic_umap",
+    order=T,
+    cols=c("white","red"))
+  plt<-(plt_cov)+ggtitle(gene_name)
+  ggsave(plt,file=paste0(outname,gene_name,".featureplots.pdf"),height=5,width=10,limitsize=F)
+  system(paste0("slack -F ",outname,gene_name,".featureplots.pdf ryan_todo"))
 }
+
+#mcf7@assays$peaks@motifs@positions$MA0112.3 #ESR1 motif
+
+#Add FOXM1 binding motif
 
 DefaultAssay(mcf7) <- "SCT"
+outname="yw.mcf7.control_"
+for (i in geneset){
+  cov_plots(dat=mcf7,gene_name=i,outname="yw.mcf7.control_")
+}
 
-for (i in unique(names(geneset))){
-  plt_list<-lapply(unlist(geneset[i]), function(x) cov_plots(dat=mcf7,gene_name=x))
-  plt<-patchwork::wrap_plots(plt_list, ncol = 1)
-  ggsave(plt,file=paste0("yw.mcf7.control_",i,".featureplots.pdf"),height=4*length(plt_list),width=10,limitsize=F)
-  system(paste0("slack -F ","yw.mcf7.control_",i,".featureplots.pdf ryan_todo"))
+DefaultAssay(t47d) <- "SCT"
+outname="yw.t47d.control_"
+for (i in geneset){
+  cov_plots(dat=t47d,gene_name=i,outname="yw.t47d.control_")
 }
 
 
+
+mcf7_peaks<-read.table("yw_mcf7.control_peaks_ESR1vFOXM1bins.markers.txt")
+mcf7_rna<-read.table("yw_mcf7.control_SCT_ESR1vFOXM1bins.markers.txt")
+t47d_peaks<-read.table("yw_t47d.control_peaks_ESR1vFOXM1bins.markers.txt")
+t47d_rna<-read.table("yw_t47d.control_SCT_ESR1vFOXM1bins.markers.txt")
+
+
+
+
+mcf7_peaks[mcf7_peaks$gene_name=="CENPE",]
+
+t47d_peaks[t47d_peaks$gene_name=="CENPE",]
+
 ```
+
+## Fragment overlap with chip-seq peaks
+
+Get aggregate window of cistrome peak by atac data
+```bash
+
+cd /home/groups/CEDAR/mulqueen/projects/multiome/220111_multi
+
+ref="/home/groups/CEDAR/mulqueen/ref/cistrome/human_factor/46096_sort_peaks.narrowPeak.bed"
+in_1="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/YW_si_Control_plus_E2/outs/atac_fragments.tsv.gz"
+in_2="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/YW_si_Control_plus_Veh/outs/atac_fragments.tsv.gz"
+
+#chr start end cellID count
+
+#set up genome
+#awk 'OFS="\t" {if ($1 ~ /^chr/) print $1,$2; else print "chr"$1,$2}' genome.fa.fai > hg38.genome
+#also added chrMT to hg3.genome as a dummy line
+
+genome="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/hg38.genome"
+
+#get central point of each reference bed record and set to uniform size (the assumption here is that it is a TF that binds in the middle of the reported narrowPeaks)
+
+#1. sort cistrome data
+#2. get midpoint of bed file (supposedly the TF binding site)
+#3. slop it to 100bp bin width (50bp on either side)
+#4. intersect the new windows with cellranger tabix fragment files
+#5. take the minimal distance (start or end of read, assuming it was aligned as PE) to midpoint of new 100bp windows
+#6. Use sort to count instances of this. 
+
+
+#FOXM1 39443, 39495, 46311, 57117
+
+#ESR1   2294  2295  2297  2298  2301  2303  2304  2305  2725  6549  6550  6551 6552  6553  6555  6556  6557  6558  6560  6561  6562  6563  6564  6565 6577  6578  6579  6580  6581 33100 33101 33127 33135 33139 33145 33146 33156 33216 33221 33223 33224 33491 33504 33508 33513 33520 33525 33526 35044 35046 35051 36819 36825 36834 38474 44437 46369 46374 46375 48168 48169 48170 48171 48455 49611 49612 49654 52608 52609 52612 52613 52632 52633 52636 52637 53955 53956 53957 53958 53959 53960 53961 53962 53963 53986 53987 53988 53989 53990 53991 53992 53993 53994 54023 54025 54027 54029 54031 54033 54078 54082 54084 54086 54087 54088 54089 54621 54645 54646 54648 56904 56905 59373 59374 59375 59376 59377 59378 68056 68057 68844 68845 68846 68847 68872 68873 68875 68974 71065 71855 71856 71857 71858 71859 71863 71952 72992 72993 72998 72999 74120 74121 74140 74141 74144 74145 74157 74158 74159 74381 74383 74384 74394 74395 74396 74397 74398 74399 74400 74401 76100 76101 76102 76103 76104 76105 76106 76107 76108 81409 82124 82326 82327 82328 82330 82425 82427 83180 83182 83183 83186 83427 83428 83429 83430 83431 83432 83433 83434 83816 83817 83818 85954 86212 86213 86282 86283 87114 87115 87116 87200 87688 87948 88335 88336 88345 88349 88372
+
+#GREB1 36802 36810 36811
+tf_dcis[39443]=FOXM1
+tf_dcis[39495]=FOXM1
+tf_dcis[46311]=FOXM1
+tf_dcis[57117]=FOXM1
+tf_dcis[34995]=FOXM1
+tf_dcis[2294]=ESR1
+tf_dcis[2295]=ESR1
+tf_dcis[2297]=ESR1
+tf_dcis[2298]=ESR1
+tf_dcis[2301]=ESR1
+tf_dcis[36802]=GREB1
+tf_dcis[36810]=GREB1
+tf_dcis[36811]=GREB1
+
+for key in "${!tf_dcis[@]}"; do
+    echo "$key ${tf_dcis[$key]}"
+done
+
+for key in "${!tf_dcis[@]}"; do
+for i in $in_1 $in_2; do
+dcis=$key;
+tf_name=${tf_dcis[$key]};
+ref="/home/groups/CEDAR/mulqueen/ref/cistrome/human_factor/${dcis}_sort_peaks.narrowPeak.bed";
+outname=${i:59:-27}; #cut to cellranger output directory name
+sort -T . --parallel 5 -k1,1 -k2,2n -k3,3n $ref | 
+awk 'OFS="\t"{mid=int(($3+$4)/2); print $1,mid,mid+1}' | 
+bedtools slop -i stdin -l 1000 -r 1000 -g $genome | 
+bedtools intersect -a - -b $i -wb -wa | 
+awk 'OFS="\t" {midpoint=int(($3+$2)/2);ins_1=($5-midpoint);ins_2=($6-midpoint);if (sqrt(ins_1^2) < sqrt(ins_2^2)) print ins_1,$7; else print ins_2,$7}' | sort -T . --parallel=5 -k1,1n | uniq -c > ${outname}.${tf_name}.${dcis}.cistrome.txt ; done ; done &
+
+```
+
+```R
+library(ggplot2)
+library(patchwork)
+library(Signac)
+library(dplyr)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
+
+mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.rds")
+t47d<-readRDS(file="yw_t47d.control.SeuratObject.rds")
+
+
+plot_cistrome<-function(obj_in=t47d_atac_subset,cellline="T47D"){
+sum_factor<-as.data.frame(obj_in@meta.data %>% group_by(topic_bin) %>% summarize(sum_total=sum(nCount_peaks)))
+sum_factor$sample<-c("","FOXM1","ESR1")
+f_in<-list.files(path="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi",pattern="cistrome.txt$")
+
+dat<-lapply(f_in,function(x) {
+  tmp<-read.table(x)
+  colnames(tmp)<-c("count","dist","cellID")
+  tmp<-tmp[tmp$cellID %in% obj_in$barcode,]
+  tmp$dcis<-strsplit(x,"[.]")[[1]][3]
+  tmp$tf<-strsplit(x,"[.]")[[1]][2]
+  return(tmp)})
+
+dat<-do.call("rbind",dat)
+dat$sample<-obj_in@meta.data[match(dat$cellID,obj_in$barcode),]$topic_bin
+dat<-dat %>% group_by(dist,dcis,tf,sample) %>% summarize(sum=sum(count))
+dat<-merge(dat,sum_factor,by="sample",all.x=T)
+dat$norm_count<-dat$sum/dat$sum_total
+plt<-ggplot(dat,aes(x=dist,y=norm_count,color=sample))+geom_line(alpha=0.3)+geom_smooth()+theme_minimal()+xlim(c(-1000,1000))+facet_grid(dcis+tf ~ . ,scales="free")
+ggsave(plt,file=paste0(cellline,".cistrome.enrichment.pdf"),height=50,limitsize=F)
+system(paste0("slack -F ",cellline,".cistrome.enrichment.pdf ryan_todo"))
+}
+
+plot_cistrome(obj_in=t47d,cellline="T47D")
+plot_cistrome(obj_in=mcf7,cellline="MCF7")
+
+```
+
+
+<!--
+
 ## Subset DA Peaks by DE Genes
 Using genes associated with topics (11 is FOXM1 and 17 is ESR1)
 
@@ -1416,6 +1788,7 @@ write.table(mcf7_da_tf,file="mcf7_topicbin_TF.txt",col.names=T,sep="\t")
 system("slack -F mcf7_topicbin_TF.txt ryan_todo")
 ```
 
+-->
 
 ## Ryan Primary Tissue Multiome Analysis
 
@@ -3202,121 +3575,3 @@ system("slack -F t47d_topicbin_TF.txt ryan_todo")
 write.table(mcf7_da_tf,file="mcf7_topicbin_TF.txt",col.names=T,sep="\t")
 system("slack -F mcf7_topicbin_TF.txt ryan_todo")
 ```
-
-```R
-
-## Get aggregate window of cistrome peak by atac data
-
-Change this to get cellID as well to assign topic values
-```bash
-ref="/home/groups/CEDAR/mulqueen/ref/cistrome/human_factor/46096_sort_peaks.narrowPeak.bed"
-in_1="/home/groups/CEDAR/doe/projects/cellRanger/MCF7_ATACRNA/MCF7_C_hg38/outs/atac_fragments.tsv.gz"
-in_2="/home/groups/CEDAR/doe/projects/cellRanger/MCF7_ATACRNA/MCF7_E_hg38/outs/atac_fragments.tsv.gz"
-in_3="/home/groups/CEDAR/doe/projects/cellRanger/T47D_ATACRNA/T47D_C_hg38/outs/atac_fragments.tsv.gz"
-in_4="/home/groups/CEDAR/doe/projects/cellRanger/T47D_ATACRNA/T47D_E_hg38/outs/atac_fragments.tsv.gz"
-#chr start end cellID count
-
-#awk 'OFS="\t" {if ($1 ~ /^chr/) print $1,$2; else print "chr"$1,$2}' genome.fa.fai > hg38.genome
-#also added chrMT to hg3.genome as a dummy line
-
-genome="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/hg38.genome"
-
-#get central point of each reference bed record and set to uniform size (the assumption here is that it is a TF that binds in the middle of the reported narrowPeaks)
-
-#1. sort cistrome data
-#2. get midpoint of bed file (supposedly the TF binding site)
-#3. slop it to 100bp bin width (50bp on either side)
-#4. intersect the new windows with cellranger tabix fragment files
-#5. take the minimal distance (start or end of read, assuming it was aligned as PE) to midpoint of new 100bp windows
-#6. Use sort to count instances of this. 
-
-
-#FOXM1 39443, 39495, 46311, 57117
-
-#ESR1   2294  2295  2297  2298  2301  2303  2304  2305  2725  6549  6550  6551 6552  6553  6555  6556  6557  6558  6560  6561  6562  6563  6564  6565 6577  6578  6579  6580  6581 33100 33101 33127 33135 33139 33145 33146 33156 33216 33221 33223 33224 33491 33504 33508 33513 33520 33525 33526 35044 35046 35051 36819 36825 36834 38474 44437 46369 46374 46375 48168 48169 48170 48171 48455 49611 49612 49654 52608 52609 52612 52613 52632 52633 52636 52637 53955 53956 53957 53958 53959 53960 53961 53962 53963 53986 53987 53988 53989 53990 53991 53992 53993 53994 54023 54025 54027 54029 54031 54033 54078 54082 54084 54086 54087 54088 54089 54621 54645 54646 54648 56904 56905 59373 59374 59375 59376 59377 59378 68056 68057 68844 68845 68846 68847 68872 68873 68875 68974 71065 71855 71856 71857 71858 71859 71863 71952 72992 72993 72998 72999 74120 74121 74140 74141 74144 74145 74157 74158 74159 74381 74383 74384 74394 74395 74396 74397 74398 74399 74400 74401 76100 76101 76102 76103 76104 76105 76106 76107 76108 81409 82124 82326 82327 82328 82330 82425 82427 83180 83182 83183 83186 83427 83428 83429 83430 83431 83432 83433 83434 83816 83817 83818 85954 86212 86213 86282 86283 87114 87115 87116 87200 87688 87948 88335 88336 88345 88349 88372
-
-#GREB1 36802 36810 36811
-tf_dcis[39443]=FOXM1
-tf_dcis[39495]=FOXM1
-tf_dcis[46311]=FOXM1
-tf_dcis[57117]=FOXM1
-tf_dcis[34995]=FOXM1
-tf_dcis[2294]=ESR1
-tf_dcis[2295]=ESR1
-tf_dcis[2297]=ESR1
-tf_dcis[2298]=ESR1
-tf_dcis[2301]=ESR1
-tf_dcis[36802]=GREB1
-tf_dcis[36810]=GREB1
-tf_dcis[36811]=GREB1
-
-for key in "${!tf_dcis[@]}"; do
-    echo "$key ${tf_dcis[$key]}"
-done
-
-for key in "${!tf_dcis[@]}"; do
-for i in $in_1 $in_2 $in_3 $in_4; do
-dcis=$key;
-tf_name=${tf_dcis[$key]};
-ref="/home/groups/CEDAR/mulqueen/ref/cistrome/human_factor/${dcis}_sort_peaks.narrowPeak.bed";
-outname=${i:56:-27};
-sort -T . --parallel 5 -k1,1 -k2,2n -k3,3n $ref | 
-awk 'OFS="\t"{mid=int(($3+$4)/2); print $1,mid,mid+1}' | 
-bedtools slop -i stdin -l 1000 -r 1000 -g $genome | 
-bedtools intersect -a - -b $i -wb -wa | 
-awk 'OFS="\t" {midpoint=int(($3+$2)/2);ins_1=($5-midpoint);ins_2=($6-midpoint);if (sqrt(ins_1^2) < sqrt(ins_2^2)) print ins_1,$7; else print ins_2,$7}' | sort -T . --parallel=5 -k1,1n | uniq -c > ${outname}.${tf_name}.${dcis}.cistrome.txt ; done ; done &
-
-```
-
-```R
-library(ggplot2)
-library(patchwork)
-library(Signac)
-library(dplyr)
-setwd("/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
-
-mcf7_atac<-readRDS("210924_mcf7.SeuratObject.Rds")
-t47d_atac<-readRDS("210924_t47d.SeuratObject.Rds")
-
-#plot genomic regions # focus on DE genes between topics
-Idents(mcf7_atac)<-mcf7_atac$topic_bin
-plt<-CoveragePlot(mcf7_atac, region = c("GREB1","ESR1","FOXA1","FOXM1","CENPF","HMGB1"),links=T,idents=c("Topic11","Topic17"),show.bulk=T)
-ggsave(plt,file="mcf7_covplots.pdf",width=10,height=10,limitsize=F)
-system("slack -F mcf7_covplots.pdf ryan_todo")
-
-Idents(t47d_atac)<-t47d_atac$topic_bin
-plt<-CoveragePlot(t47d_atac, region = c("GREB1","ESR1","FOXA1","FOXM1","CENPF","HMGB1"),links=T,idents=c("Topic11","Topic17"),show.bulk=T)
-ggsave(plt,file="t47d_covplots.pdf",width=10,height=10,limitsize=F)
-system("slack -F t47d_covplots.pdf ryan_todo")
-
-plot_cistrome<-function(obj_in=t47d_atac_subset,cellline="T47D"){
-sum_factor<-as.data.frame(obj_in@meta.data %>% group_by(topic_bin) %>% summarize(sum_total=sum(nCount_peaks)))
-sum_factor$sample<-c("Topic11","Topic17")
-f_in<-list.files(path="/home/groups/CEDAR/mulqueen/projects/10x_atacrna",pattern="cistrome.txt$")
-obj_in$cellnames<-substr(names(obj_in$origin),1,nchar(names(obj_in$origin))-nchar(obj_in$origin))
-
-dat<-lapply(f_in,function(x) {
-  tmp<-read.table(x)
-  colnames(tmp)<-c("count","dist","cellID")
-  tmp<-tmp[tmp$cellID %in% obj_in$cellnames,]
-  tmp$dcis<-strsplit(x,"[.]")[[1]][3]
-  tmp$tf<-strsplit(x,"[.]")[[1]][2]
-  return(tmp)})
-
-dat<-do.call("rbind",dat)
-dat$sample<-obj_in@meta.data[match(dat$cellID,obj_in$cellnames),]$topic_bin
-dat<-dat %>% group_by(dist,dcis,tf,sample) %>% summarize(sum=sum(count))
-dat<-merge(dat,sum_factor,by="sample",all.x=T)
-dat$norm_count<-dat$sum/dat$sum_total
-plt<-ggplot(dat,aes(x=dist,y=norm_count,color=sample))+geom_line()+theme_minimal()+xlim(c(-1000,1000))+facet_grid(dcis+tf ~ . ,scales="free")
-ggsave(plt,file=paste0(cellline,".cistrome.enrichment.pdf"),height=50,limitsize=F)
-system(paste0("slack -F ",cellline,".cistrome.enrichment.pdf ryan_todo"))
-}
-
-plot_cistrome(obj_in=t47d_atac_subset,cellline="T47D")
-plot_cistrome(obj_in=mcf7_atac_subset,cellline="MCF7")
-
-```
-
-
--->
