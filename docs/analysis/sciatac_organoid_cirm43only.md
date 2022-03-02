@@ -925,15 +925,15 @@ Now to rerun cistopic clustering with cells that pass QC metrics.
   library(SeuratWrappers)
   library(ggplot2)
   library(patchwork)
-  library(cicero)
+  library(monocle3,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #using old install of monocle, just need for as.cell_data_set conversion
+  library(cicero,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #and using old version of cicero
   library(EnsDb.Hsapiens.v86)
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
   #Cicero processing function
   cicero_processing<-function(object_input=orgo_atac,prefix="orgo_atac"){
       #Generate CDS format from Seurat object
-      atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap")
-
+      atac.cds <- as.cell_data_set(object_input,assay="peaks",reduction="umap")
       # convert to CellDataSet format and make the cicero object
       print("Making Cicero format CDS file")
       atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
@@ -958,9 +958,7 @@ Now to rerun cistopic clustering with cells that pass QC metrics.
 
 
   orgo_cirm43<-readRDS("orgo_cirm43.QC2.SeuratObject.Rds")
-
-  orgo_cirm43<-cicero_processing(object_input=orgo_cirm43,prefix="orgo_cirm43")
-
+  orgo_cirm43<-cicero_processing(object_input=orgo_cirm43,prefix="orgo_cirm43.QC2")
   saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.unnormGA.Rds")
   
   orgo_cirm43<-readRDS("orgo_cirm43.SeuratObject.unnormGA.Rds")
@@ -1010,7 +1008,7 @@ Now to rerun cistopic clustering with cells that pass QC metrics.
     normalization.method = 'LogNormalize',
     scale.factor = median(orgo_cirm43$nCount_GeneActivity)
   )
-  saveRDS(orgo_cirm43,"orgo_cirm43.SeuratObject.Rds")
+  saveRDS(orgo_cirm43,"orgo_cirm43.QC2.SeuratObject.Rds")
 ```
 ## Organoid Cell type analysis
 
@@ -1064,37 +1062,6 @@ ziffra<-AddMetaData(ziffra,metadata=metadata)
 saveRDS(ziffra,"ziffra.SeuratObject.Rds")
 
 
-#For full Seurat Object of data
-# counts<-ReadMtx(mtx="matrix.mtx.gz",cells="barcodes.tsv.gz",features="features.tsv.gz",feature.column=1) #sparse matrix of counts
-# metadata<-read.csv("meta.tsv",sep="\t") #metadata
-# row.names(metadata)<-metadata$uniqueID
-# # create a Seurat object containing the RNA adata
-# ziffra <- CreateSeuratObject(
-#   counts = counts,
-#   assay = "peaks"
-# )
-# ziffra<-AddMetaData(ziffra,metadata=metadata)
-
-# #Add tf motif data
-# mat<-fread("https://cells.ucsc.edu/cortex-atac/tfs/exprMatrix.tsv.gz") #download chromvar data
-# genes = mat[,1][[1]]
-# genes = gsub(".+[|]", "", genes)
-# mat = data.frame(mat[,-1], row.names=genes)
-# colnames(mat) = gsub("[.]", "-", colnames(mat))
-# ziffra[["chromvar"]] <- CreateAssayObject(data=as.matrix(mat)[,colnames(ziffra)])
-
-# #Add Gene Activity data 
-# mat<-fread("https://cells.ucsc.edu/cortex-atac/genes/exprMatrix.tsv.gz") #download gene activity
-# genes = mat[,1][[1]]
-# genes = gsub(".+[|]", "", genes)
-# genes_list<-which(!duplicated(genes)) #remove duplicate gene names
-# mat = data.frame(mat[genes_list,-1], row.names=genes[genes_list])
-# colnames(mat) = gsub("[.]", "-", colnames(mat))
-# ziffra[["GeneActivity"]] <-CreateAssayObject(data=as.matrix(mat)[,colnames(ziffra)])
-
-# saveRDS(ziffra,"ziffra.SeuratObject.Rds")
-
-
 ```
 
 ```R
@@ -1131,7 +1098,7 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
 
   #Our ATAC
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-  orgo_cirm43<-readRDS(file="orgo_cirm43.QC.SeuratObject.Rds")
+  orgo_cirm43<-readRDS(file="orgo_cirm43.QC2.SeuratObject.Rds")
 
   #1. Using bulk sorted RG, IPC, eN and iN RNA markers compared to our ATAC cluster gene activity scores
   #Corticogenic data on basic cell types.
@@ -1187,9 +1154,8 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
     dat_tf<-dat_tf[colnames(dat_tf) %in% markers]
     dat_tf[which(is.na(dat_tf),arr.ind=T)]<-0 #set na values to 0 for clustering
     dat_tf<-as.data.frame(t(dat_tf))
-    clus_order<-c("5","4","0","3","2","1","6")
-    column_split<-factor(unlist(lapply(strsplit(colnames(dat_tf),"_"),"[",1)),levels=c("3","1","2","0"))
-    dat_tf<-dat_tf[colnames(dat_tf) %in% clus_order]
+    clus_order<-c("6","5","0","4","1","3","2")
+    dat_tf<-dat_tf[clus_order]
     colfun=colorRamp2(quantile(unlist(dat_tf), probs=seq(0.1,0.9,0.1)),cividis(length(seq(0.1,0.9,0.1))))
 
 
@@ -1228,7 +1194,7 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
     dat_ga<-scale(dat_ga)
     #set na values to 0 for clustering
     dat_ga<-data.frame(t(dat_ga))
-    clus_order<-c("5","4","0","3","2","1","6")
+    clus_order<-c("6","5","0","4","1","3","2")
     clus_order<-paste0("X",clus_order)
     #column_split<-factor(unlist(lapply(strsplit(colnames(dat_ga),"_"),"[",1)),levels=c("X3","X1","X2","X0"))
     dat_ga<-dat_ga[colnames(dat_ga) %in% clus_order]
@@ -1267,7 +1233,7 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
       prediction.assay=T
     )
 
-    saveRDS(orgo_cirm43,file="orgo_cirm43.QC.SeuratObject.Rds")
+    saveRDS(orgo_cirm43,file="orgo_cirm43.QC2.SeuratObject.Rds")
 
     plt1<-FeaturePlot(orgo_cirm43,features=c('Radial Glia'),pt.size=0.1,min.cutoff="q75",order=T,col=c("white","#EFA421"))
     plt2<-FeaturePlot(orgo_cirm43,features=c('Excitatory Neuron'),pt.size=0.1,min.cutoff="q75",order=T,col=c("white","#6B78BA"))
@@ -1288,7 +1254,7 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
     row.names(predictdat)<-predictdat$seurat_clusters
     predictdat<-predictdat[!(colnames(predictdat) %in% c("seurat_clusters"))]
     predictdat<-as.data.frame(t(scale(predictdat,scale=T)))
-    clus_order<-c("5","4","0","3","2","1","6")
+    clus_order<-c("6","5","0","4","1","3","2")
     colfun=colorRamp2(c(-2,0,2),c("#000000","#FFFFFF","#FF0000"))
 
     predictdat<-predictdat[colnames(predictdat) %in% clus_order]
@@ -1301,9 +1267,10 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
     dev.off()
     system("slack -F predictedid.heatmap.pdf ryan_todo")
 
-  saveRDS(orgo_cirm43,file="orgo_cirm43.QC.SeuratObject.Rds")
+  saveRDS(orgo_cirm43,file="orgo_cirm43.QC2.SeuratObject.Rds")
 ```
 
+<!--
 Continued processing using Ziffra Primary single-cell ATAC data set for integration
 
 Maybe try adding LSI to weight reduction?
@@ -1373,7 +1340,7 @@ https://satijalab.org/signac/articles/pbmc_vignette.html
     ggsave(plt,file="cirm43.predictedid.ziffra.umap.pdf",width=20,height=30,limitsize=F)
     system("slack -F cirm43.predictedid.ziffra.umap.png ryan_todo")
 ```
-
+-->
 ### Cell cycle testing
 
 Seurat has a stored set of cell cycle genes that we can use to assess cell cycle signatures.
@@ -1388,7 +1355,7 @@ Supplementary Table 7.
   library(Signac)
   library(RColorBrewer)
 
-  orgo_cirm43<-readRDS("orgo_cirm43.QC.SeuratObject.Rds")
+  orgo_cirm43<-readRDS("orgo_cirm43.QC2.SeuratObject.Rds")
   
   s.genes <- c('AK2', 'SLC25A5', 'TMEM98', 'GGCT', 'DBF4', 'PAX6', 'SPAG9', 'RPS20', 'BAZ1B', 'UQCRC1', 'ANLN', 'BRCA1', 'DDX11', 'TACC3', 'VIM', 'HMGB3', 'CENPQ', 'RFC1', 'MAT2B', 'SPDL1', 'CNTLN', 'TPR', 'RCN1', 'RFC2', 'RAD51', 'POLQ', 'MPHOSPH9', 'NNAT', 'SYNE2', 'COL11A1', 'QSER1', 'SNCAIP', 'MCM10', 'YBX1', 'ASPM', 'MPPED2', 'PKM', 'RHOA', 'PRR11', 'NUCKS1', 'RAD18', 'SMC1A', 'HMMR', 'MCM2', 'CA12', 'PTPLAD1', 'ENO1', 'GTSE1', 'ACTB', 'MCM6', 'SPAG5', 'UBE2T', 'POLD3', 'JADE1', 'FBLN1', 'SLC1A3', 'XRCC5', 'KIF22', 'RBL1', 'NDC80', 'HSPB11', 'XPO1', 'GSTP1', 'SRRT', 'SF3B2', 'TFAP2C', 'TPX2', 'RPLP0', 'FUS', 'KIF4A', 'ORC6', 'ZFHX4', 'HNRNPC', 'SUPT16H', 'WDR76', 'PHGDH', 'EZR', 'MYL6', 'CLSPN', 'CDC45', 'CDC6', 'CBX5', 'MSH2', 'CDC5L', 'HNRNPH3', 'H2AFY2', 'HNRNPM', 'RANBP1', 'SNRPD3', 'CENPM', 'HMGXB4', 'MCM5', 'RPL3', 'FKBP3', 'CEP128', 'ERH', 'VRK1', 'PNN', 'GINS1', 'PLCB4', 'NOP56', 'SMCHD1', 'RBBP8', 'POLA1', 'STAG2', 'RBBP7', 'CMC2', 'UBE2I', 'CCP110', 'CEP152', 'SFRP1', 'EEF1D', 'MCM4', 'RNASEH2A', 'HNRNPUL1', 'LIG1', 'CDK6', 'PTN', 'H2AFV', 'CHCHD2', 'HSPB1', 'NUDT1', 'PPP1R17', 'LSM5', 'RPA3', 'EZH2', 'RHEB', 'LHX2', 'ELAVL2', 'NSMCE4A', 'SMC3', 'KPNB1', 'CBX1', 'PFN1', 'TMEM97', 'WHSC1', 'NCAPG', 'CCDC34', 'MDK', 'C11orf58', 'CORO1C', 'PTGES3', 'FOXM1', 'RAD51AP1', 'TIMELESS', 'GAPDH', 'CHD4', 'TPI1', 'C12orf57', 'LDHB', 'SRSF9', 'FBXO5', 'SRSF3', 'MCM3', 'E2F3', 'GMNN', 'TTK', 'ERBB2IP', 'LMNB1', 'H2AFY', 'SMAD5', 'SMC4', 'TFDP2', 'HES1', 'ECT2', 'BBX', 'NCL', 'PPM1G', 'RPS15', 'FANCL', 'SRSF7', 'MSH6', 'SRSF4', 'IVNS1ABP', 'ACADM', 'PRDX1', 'CNN3', 'CENPF', 'RPA2', 'MESDC2', 'STAG1', 'CASP8AP2', 'HMGN3', 'RPN2', 'CCND2', 'CTNNAL1', 'WDR34', 'SET', 'CNTRL', 'FAM178A', 'HELLS', 'ENY2', 'MASTL', 'EXOSC8', 'EGR1', 'TMPO', 'NFYB', 'NCAPH', 'MND1', 'CCDC18', 'CBX3', 'HNRNPA2B1', 'WIPF3', 'NPY', 'ZWINT', 'CDKN2C', 'DDX39A', 'CENPK', 'NEUROD4', 'CDK2', 'TUBA1B', 'STIL', 'HJURP', 'BAZ2B', 'EXOSC9', 'CKS2', 'SNRPC', 'HIST1H1D', 'HIST1H1A', 'GLO1', 'DEK', 'SOX9', 'PPDPF', 'SNRPD2', 'SNRPB', 'MGME1', 'MCM8', 'HNRNPR', 'RALY', 'UBA2', 'DLGAP5', 'YEATS4', 'PIN1', 'HP1BP3', 'PKMYT1', 'PAICS', 'SPECC1', 'CALU', 'HAT1', 'DUT', 'FAM64A', 'ILF3', 'PARP2', 'MIS18BP1', 'SGOL1', 'GADD45G', 'LSM4', 'DNMT1', 'AKAP12', 'GINS2', 'PSMC3IP', 'TOP2A', 'RAN', 'PCNA', 'NES', 'NASP', 'MYH10', 'TPT1', 
     'RFC3', 'ANKRD32', 'LRRCC1', 'MEIS2', 'TMEM106C', 'RBM17', 'SYNCRIP', 'ATP5G2', 'CDK4', 'HNRNPA1', 'AHI1', 'DHX9', 'RNASEH2B', 'CKAP2', 'SCRN1', 'SRSF1', 'BRIP1', 'ACTL6A', 'TRA2B', 'SMC2', 'CDK5RAP2', 'ANP32B', 'RPL35', 'RPS6', 'GGH', 'RDX', 'CTDSPL2', 'NUSAP1', 'KIF23', 'CASC5', 'RPLP1', 'KIF11', 'KIF20B', 'DNA2', 'BARD1', 'PPIG', 'MNS1', 'ZGRF1', 'HNRNPD', '44450', 'CENPE', 'HADH', 'SCAF11', 'PHLDA1', 'SNRPF', 'NEDD1', 'ASCL1', 'BRCA2', 'DIAPH3', 'TMX1', 'SERF2', 'COMMD4', 'FANCI', 'MFGE8', 'ANAPC11', 'NFIC', 'SAE1', 'PLK4', 'ITGB3BP', 'KIF2C', 'NUF2', 'ANP32E', 'DTL', 'ILF2', 'SRP9', 'PARP1', 'LBR', 'SNRPG', 'SLC20A1', 'CDCA7', 'GULP1', 'HSPD1', 'HES6', 'FANCD2', 'CENPC', 'CCNA2', 'MYO10', 'G3BP1', 'PHIP', 'MMS22L', 'CDCA5', 'NCAPG2', 'NONO', 'RBMX', 'GINS4', 'PLIN2', 'HAUS6', 'RPL7A', 'ZEB1', 'MKI67', 'SSRP1', 'RPS3', 'INCENP', 'CHEK1', 'DSN1', 'HIRIP3', 'ITGB1', 'CCT5', 'MAGI1', 'NCAPD3', 'CENPU', 'CENPJ', 'SCHIP1', 'MZT2B', 'HAUS1', 'SPC25', 'TMEM123', 'HNRNPDL', 'CENPH', 'CARHSP1', 'SMARCA5', 'HNRNPU', 'SREK1', 'CHD1', 'BUB3', 'BTG3', 'DBI', 'TMEM237', 'VBP1', 'ATAD2', 'BUB1B', 'CCNB2', 'TMSB15A', 'EIF5B', 'MIS18A', 'C21orf58', 'PCNT', 'FDPS', 'IER2', 'RPL8', 'SRSF2', 'RACGAP1', 'SPC24', 'ASRGL1', 'MAGOH', 'RBBP4', 'NFIA', 'USP1', 'PEA15', 'KIAA1524', 'EOMES', 'SGOL2', 'GMPS', 'TOPBP1', 'KIF15', 'RFC4', 'SLBP', 'RNF168', 'H2AFZ', 'PGRMC2', 'HMGB2', 'MAD2L1', 'ANXA5', 'RHOBTB3', 'STK17A', 'PTTG1', 'CDCA7L', 'FABP5', 'RAD21', 'PSIP1', 'HNRNPK', 'MELK', 'SPTSSA', 'SKA3', 'LRR1', 'E2F7', 'PSMC3', 'CEP295', 'CKB', 'CENPN', 'MCM7', 'CENPV', 'B2M', 'FAM111A', 'KIAA0101', 'SNRPD1', 'ACAA2', 'RRM1', 'TPM4', 'CHAF1A', 'C19orf48', 'PRDX2', 'TK1', 'SRRM2', 'RPSA', 'PBK', 'RBPJ', 'GNG4', 'HIST1H1E', '44441', 'DTYMK', 'FEN1', 'STXBP6', 'HNRNPH1', 'SDC2', 'CKAP2L', 'BUB1', 'CNBP', 'HNRNPF', 'UBE2E3', 'KCNAB3', 'HNRNPA3', 'CDK1', 'UBB', 'FOS', 'EMX2', 'PA2G4', 'LSM3', 'SHCBP1', 'CHD7', 'ESCO2', 'CXXC5', 'RRM2', 'RPS7', 'ID4', 'CKS1B', 'INSM1', 'SMARCC1', 'GOLIM4', 'GNG5', 'EXO1', 'ZWILCH', 'LARP7', 'CEP135', 'RSRC1', 'UBE2C', 'CSRP2', 'CCNE2', 'BANF1', 'CCDC14', 'NR2F1', 'COX8A', 'TYMS', 'PXMP2', 'RPLP2', 'JUN', 'HNRNPA0', 'ARL6IP6', 'KDELC2', 'GEN1', 'SUZ12', 'RMI1', 'AURKB', 'RAD23A', 'SSTR2', 'NPM1', 'PENK', 'SOX2', 'ZBTB20', 'NEUROG1', 'SNRPE', 'RTKN2', 'IDH2', 'SKA2', 'HIST2H2AC', 'HIST1H1B', 'POU3F2', 'H1FX', 'NDUFA6', 'SIVA1', 'ZFP36L1', 'MYBL1', 'NKAIN3', '44449', 'NAP1L1', 'PTMA', 'HIST1H1C', 'TUBB4B', 'H2AFX', 'SUMO2', 'FAM111B', 'H1F0', 'HMGB1', 'PPIA', 'XRCC6', 'XRCC2', 'HIST1H4C', 'PCBP2', 'BLM', 'HNRNPAB', 'HES5', 'ELOVL2', 'PRIM1', 'HMGN5', 'RPL23A', 'ASPH', 'WDHD1', 'BAZ1A', 'SMOC1', 'ARHGAP11A', 'HMGN2', 'CCDC152', 'SMC5', 'PRC1', 'CCDC167', 'CENPW', 'GPANK1', 'NAP1L4', 'TMSB4X', 'HMGN1', 'HN1L', 'DNAJC9', 'MIR99AHG', 'CKLF', 'UBA52', 'FGD5-AS1', 'DHFR', 'RPL41', 'DLEU2', 'LINC01158', 'MAGI2-AS3', 'PEG10', 'SNHG6', 'TMEM158', 'PRKDC')
@@ -1402,7 +1369,7 @@ Supplementary Table 7.
 
   orgo_cirm43 <- CellCycleScoring(orgo_cirm43, s.features = s.genes, g2m.features = g2m.genes, set.ident = F,search=T)
 
-  saveRDS(orgo_cirm43,file="orgo_cirm43.QC.SeuratObject.Rds")
+  saveRDS(orgo_cirm43,file="orgo_cirm43.QC2.SeuratObject.Rds")
 
 
   plt<-FeaturePlot(orgo_cirm43,features=c("G2M.Score","S.Score"),cols=c("lightgrey","red"),order=T,min.cutoff="q75")
@@ -1419,50 +1386,7 @@ Supplementary Table 7.
 
 ```
 
-
-### Count of celltype and clusters per organoid
-Generated bar plots of cell count per organoid. 
-Also looking at FOXG1+ Expression per organoid to make sure they are forebrain specified.
-
-```R
-  library(Seurat)
-  library(Signac)
-  library(ggplot2)
-  library(ComplexHeatmap)
-  library(patchwork)
-  library(dplyr)
-  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-  orgo_cirm43<-readRDS("orgo_cirm43.QC.SeuratObject.Rds")
-
-  dat<- as.data.frame(as.data.frame(orgo_cirm43@meta.data) %>% group_by(differentiation_exp,orgID,DIV,seurat_clusters) %>% summarize(count=n()))
-  plt<-ggplot(dat,aes(x=as.factor(paste(differentiation_exp,orgID)),y=count,fill=paste(seurat_clusters)))+geom_bar(position="stack",stat="identity")+facet_wrap(dat$differentiation_exp ~ dat$DIV,nrow=2,scale="free_x")+theme_bw()
-  ggsave(plt,file="cellcount_stacked_bar.pdf")
-  system("slack -F cellcount_stacked_bar.pdf ryan_todo")
-
-  plt<-ggplot(dat,aes(x=as.factor(paste(differentiation_exp,orgID)),y=count,fill=paste(seurat_clusters)))+geom_bar(position="fill",stat="identity")+facet_wrap(dat$differentiation_exp ~ dat$DIV,nrow=2,scale="free_x")+theme_bw()
-  ggsave(plt,file="cellcount_perc_bar.pdf")
-  system("slack -F cellcount_perc_bar.pdf ryan_todo")
-
-  plt<-VlnPlot(orgo_cirm43,feat="FOXG1",group.by=paste(differentiation_exp,orgID))+facet_wrap(orgo_cirm43$differentiation_exp ~ orgo_cirm43$DIV,nrow=2,scale="free_x")+theme_bw() #feature from gene activity
-  ggsave(plt,file="uniq_orgID_FOXG1.pdf")
-  system("slack -F uniq_orgID_FOXG1.pdf ryan_todo")
-
-  plt<-VlnPlot(orgo_cirm43,feat="SATB2",group.by=paste(differentiation_exp,orgID))+facet_wrap(orgo_cirm43$differentiation_exp ~ orgo_cirm43$DIV,nrow=2,scale="free_x")+theme_bw() #feature from gene activity
-  ggsave(plt,file="uniq_orgID_SATB2.pdf")
-  system("slack -F uniq_orgID_SATB2.pdf ryan_todo")
-
-  plt<-VlnPlot(orgo_cirm43,feat="CUX1",group.by="cluster_ID")+facet_wrap(orgo_cirm43$differentiation_exp ~ orgo_cirm43$DIV,nrow=2,scale="free_x")+theme_bw() #feature from gene activity
-  ggsave(plt,file="uniq_orgID_CUX1.pdf")
-  system("slack -F uniq_orgID_CUX1.pdf ryan_todo")
-
-  #Based on this organoid 3 looks suspect, seeing where it falls in the plot
-  orgo_cirm43$suspect_organoid<-"FALSE"
-  orgo_cirm43@meta.data[orgo_cirm43@meta.data$uniq_orgID==3,]$suspect_organoid<-"TRUE"
-  plt<-DimPlot(orgo_cirm43,group.by="suspect_organoid",order=T)
-  ggsave(plt,file="uniq_orgID3.pdf")
-  system("slack -F uniq_orgID3.pdf ryan_todo")
-```
-
+<!--
 ### Feature values from https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6544371/#SD2
 
 ```R
@@ -1533,6 +1457,7 @@ saveRDS(orgo_cirm43,file="orgo_cirm43.QC.SeuratObject.Rds")
 
 
 ```
+-->
 
 ### Transcription Factor Modules
 
@@ -1560,7 +1485,7 @@ The regulon is defined by the transcription factor (ChromVar Motif Score) and ac
   library(parallel) 
   library(zoo)
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-  orgo_cirm43<-readRDS("orgo_cirm43.QC.SeuratObject.Rds")
+  orgo_cirm43<-readRDS("orgo_cirm43.QC2.SeuratObject.Rds")
 
   #TF Modules
   tf_modules<-read.csv("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/PUBMED31303374.SuppTable8.tsv",sep="\t",head=T)
@@ -1574,7 +1499,7 @@ The regulon is defined by the transcription factor (ChromVar Motif Score) and ac
   #Save them as a separate object rather than meta data
   orgo_cirm43[['TF_modules']] <- CreateAssayObject(data = t(orgo_cirm43@meta.data[grepl("TF_",colnames(orgo_cirm43@meta.data))]))
   orgo_cirm43@meta.data<-orgo_cirm43@meta.data[!grepl("TF_",colnames(orgo_cirm43@meta.data))]
-  saveRDS(orgo_cirm43,file="orgo_cirm43.QC.SeuratObject.Rds")
+  saveRDS(orgo_cirm43,file="orgo_cirm43.QC2.SeuratObject.Rds")
 
 
   #Generate Heatmap of TF ChromVar score and TF modules
@@ -1604,7 +1529,7 @@ The regulon is defined by the transcription factor (ChromVar Motif Score) and ac
   tf_chrom<-t(scale(tf_chrom))
 
   #This col order to be checked
-    clus_order<-c("5","4","0","3","2","1","6")
+    clus_order<-c("6","5","0","4","1","3","2")
 
   tf_chrom<-tf_chrom[,match(clus_order,colnames(tf_chrom),nomatch=0)]
   modules<-modules[,match(clus_order,colnames(modules),nomatch=0)]
@@ -1631,7 +1556,7 @@ The regulon is defined by the transcription factor (ChromVar Motif Score) and ac
 
 ```
 
-
+<!--
 ### Marker Plotting Function
 
 ```R
@@ -1645,14 +1570,18 @@ library(ggplot2)
   ggsave(plt,file="markers.featureplot.pdf",height=50,limitsize=F)
   system("slack -F markers.featureplot.pdf ryan_todo")
 
-#5403216
   plt<-CoveragePlot(orgo_cirm43,region=c("PAX6",'SOX2',"EOMES","PPP1R17","TBR1","NEUROD1"),extend.upstream=2000,extend.downstream=2000,show.bulk=T,group.by="seurat_clusters",ncol=1,idents=c("5","4","0","3","2","1","6"))
   ggsave(plt,file="markers.coverageplot.pdf",height=50,limitsize=F)
   system("slack -F markers.coverageplot.pdf ryan_todo")
 
 ```
+-->
 
 
+
+
+
+<!--
 ## Public ATAC Comparison
 Using the descartes data set of human chromatin accessibility (sciATAC in GW14-15)
 https://descartes.brotmanbaty.org/bbi/human-chromatin-during-development/dataset/cerebrum
@@ -1999,6 +1928,8 @@ saveRDS(combined,"orgo_primary.integration.SeuratObject.Rds")
 
 ```
 
+-->
+
 
 ## Differential Gene Activity through Clusters
 
@@ -2023,7 +1954,7 @@ library(circlize)
 
 setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
-orgo_cirm43<-readRDS("orgo_cirm43.QC.SeuratObject.Rds")
+orgo_cirm43<-readRDS("orgo_cirm43.QC2.SeuratObject.Rds")
 
 #define DA functions for parallelization
 #Use LR test for atac data
@@ -2060,10 +1991,10 @@ da_ga_df<-lapply(unique(orgo_cirm43$seurat_clusters),function(x) da_one_v_rest(x
 da_ga_df<-do.call("rbind",da_ga_df)
 write.table(da_ga_df,file="orgo_cirm43.onevrest.da_chromvar.txt",sep="\t",col.names=T,row.names=T,quote=F)
 
-#now doing bhaduri
-da_ga_df<-lapply(unique(orgo_cirm43$seurat_clusters),function(x) da_one_v_rest(x,obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules"))
-da_ga_df<-do.call("rbind",da_ga_df)
-write.table(da_ga_df,file="orgo_cirm43.onevrest.da_eigengenes.txt",sep="\t",col.names=T,row.names=T,quote=F)
+##now doing bhaduri
+#da_ga_df<-lapply(unique(orgo_cirm43$seurat_clusters),function(x) da_one_v_rest(x,obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules"))
+#da_ga_df<-do.call("rbind",da_ga_df)
+#write.table(da_ga_df,file="orgo_cirm43.onevrest.da_eigengenes.txt",sep="\t",col.names=T,row.names=T,quote=F)
 
 #now doing tf modules
 da_ga_df<-lapply(unique(orgo_cirm43$seurat_clusters),function(x) da_one_v_rest(x,obj=orgo_cirm43,group="seurat_clusters",assay.="TF_modules"))

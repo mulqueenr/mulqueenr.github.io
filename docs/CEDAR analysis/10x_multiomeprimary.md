@@ -796,7 +796,7 @@ This is to generate enhancer promoter linkages at genes.
   library(SeuratWrappers)
   library(ggplot2)
   library(patchwork)
-  library(monocle3)
+  #library(monocle3)
   library(cicero)
   library(SeuratObjects)
   library(EnsDb.Hsapiens.v86)
@@ -1447,6 +1447,124 @@ system("slack -F yw_t47d.control.cistopic_differences.pdf ryan_todo")
 
 ```
 
+### De Novo Motif Analysis on Topics
+```R
+library(Signac)
+library(Seurat)
+library(ComplexHeatmap)
+library(JASPAR2020)
+library(TFBSTools)
+library(grid)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(parallel)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+library(circlize)
+library(viridis)
+library(reshape2)
+library(chromVAR)
+library(motifmatchr)
+library(SummarizedExperiment)
+library(Matrix)
+library(BiocParallel)
+library(cisTopic)
+library(org.Hs.eg.db)
+library(plyr)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
+
+mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.rds")
+mcf7_cistopic<-readRDS(file="yw_mcf7.control.CisTopicObject.Rds")
+
+t47d<-readRDS(file="yw_t47d.control.SeuratObject.rds")
+t47d_cistopic<-readRDS(file="yw_t47d.control.CisTopicObject.Rds") 
+
+# Helper functions
+
+.doGREAT <- function(coord, genome="hg38", fold_enrichment=1, geneHits=1, sign=0.1, request_interval=10 ) {
+  coord <- coord[!duplicated(names(coord)),]
+  coord <- sortSeqlevels(coord)
+  coord <- sort(coord)
+  job <- submitGreatJob(coord, species=genome, request_interval = request_interval)
+  tb <- getEnrichmentTables(job, ontology=availableOntologies(job), request_interval = request_interval)
+  for (i in 1:length(tb)){
+    tb[[i]] <- tb[[i]][-which(tb[[i]][,'Binom_Fold_Enrichment'] < fold_enrichment),]
+    if (length(which(tb[[i]][,'Hyper_Observed_Gene_Hits'] < geneHits)) > 1){
+      tb[[i]] <- tb[[i]][-which(tb[[i]][,'Hyper_Observed_Gene_Hits'] < geneHits),]
+    }
+    tb[[i]] <- tb[[i]][-which(tb[[i]][,'Binom_Adjp_BH'] > sign),]
+    tb[[i]] <- tb[[i]][-which(tb[[i]][,'Hyper_Adjp_BH'] > sign),]
+  }
+  tb <- tb[sapply(tb, function(x) dim(x)[1]) > 0]
+  return(tb)
+}
+
+
+motif_generation<-function(x,cistopic_x,topic_name){
+  topic<-rownames(cistopic_x@binarized.cisTopics[[topic_name]])
+  topic_feats<-paste(
+    unlist(lapply(strsplit(topic,"[:-]"),"[",1)),
+    unlist(lapply(strsplit(topic,"[:-]"),"[",2)),
+    unlist(lapply(strsplit(topic,"[:-]"),"[",3)),
+    sep="-")
+
+  enriched.motifs <- FindMotifs(object = x,features = topic_feats)
+  plt<-MotifPlot(object = x,motifs = head(rownames(enriched.motifs)))
+  return(plt)
+}
+
+
+cistopic_continued_processing<-function(x,outname,esr1_topic,foxm1_topic,seurat_object){
+  #write bed files of binarized cisTopic regions
+  getBigwigFiles(x, path=paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",outname,"_cistopic"), seqlengths=seqlengths(txdb))
+  getBedFiles(x, path=paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",outname,"_cistopic"))
+  #add annotations and plot
+  x <- annotateRegions(x, txdb=TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb='org.Hs.eg.db')
+  plt<-signaturesHeatmap(x, selected.signatures = 'annotation')
+  pdf(paste0(outname,"_cistopic.annotation.heatmap.pdf"))
+  print(plt)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,"_cistopic.annotation.heatmap.pdf")," ryan_todo"))
+  #use GREAT for gene ontology
+  #x <- GREAT(x, genome='hg38', fold_enrichment=1, geneHits=1, sign=0.1, request_interval=5,species="hg38")
+  #have to use modified cistopic function to use hg38
+  object.binarized.rGREAT <- llply(1:length(x@binarized.cisTopics),
+            function(i) .doGREAT(x@region.ranges[rownames(x@binarized.cisTopics[[i]])]))
+
+  names(object.binarized.rGREAT) <- names(x@binarized.cisTopics)
+  x@binarized.rGREAT <- object.binarized.rGREAT
+
+  plt<-ontologyDotPlot(x, top=5, topics=1:length(x@binarized.cisTopics), var.y='name', order.by='Binom_Adjp_BH')
+  pdf(paste0(outname,"_cistopic.Gontology.plot.pdf"))
+  print(plt)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,"_cistopic.Gontology.plot.pdf")," ryan_todo"))
+
+  esr1_plt<-motif_generation(x=seurat_object,cistopic_x=x,topic_name=esr1_topic)
+  pdf(paste0(outname,"_cistopic.motifs.",esr1_topic,".esr1.pdf"))
+  print(esr1_plt)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,"_cistopic.motifs.",esr1_topic,".esr1.pdf")," ryan_todo"))
+
+
+  foxm1_plt<-motif_generation(x=seurat_object,cistopic_x=x,topic_name=foxm1_topic)
+  pdf(paste0(outname,"_cistopic.motifs.",foxm1_topic,".foxm1.pdf"))
+  print(foxm1_plt)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,"_cistopic.motifs.",foxm1_topic,".foxm1.pdf")," ryan_todo"))
+
+  return(x)
+}
+
+mcf7_cistopic<-cistopic_continued_processing(seurat_object=mcf7,x=mcf7_cistopic,outname="yw_mcf7.control",esr1_topic="Topic20",foxm1_topic="Topic13")
+t47d_cistopic<-cistopic_continued_processing(seurat_object=t47d,x=t47d_cistopic,outname="yw_t47d.control",esr1_topic="Topic3",foxm1_topic="Topic2")
+
+
+```
 ### Motif Footprinting on cells 
 Perform motif footprinting on cells.
 Based on https://satijalab.org/signac/articles/footprint.html
