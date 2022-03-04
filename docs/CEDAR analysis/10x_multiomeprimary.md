@@ -1081,10 +1081,11 @@ scatterplot_linearfit<-function(x,esr1_topic,foxm1_topic,outname){
 
   #bins defined as top of topic distribution only in treated sample, to be used in later analysis
   cor_mat$topic_bin<-""
-  cor_mat[cor_mat$sample=="YW_si_Control_plus_E2" & cor_mat[,foxm1_topic]>quantile(cor_mat[,foxm1_topic],0.95) & cor_mat[,esr1_topic]<quantile(cor_mat[,esr1_topic],0.75),]$topic_bin<-"FOXM1" #this line is newly modified
-  cor_mat[cor_mat$sample=="YW_si_Control_plus_E2" &cor_mat[,esr1_topic]>quantile(cor_mat[,esr1_topic],0.95) & cor_mat[,foxm1_topic]<quantile(cor_mat[,foxm1_topic],0.75),]$topic_bin<-"ESR1" 
-
-  table(cor_mat$topic_bin)
+  #cor_mat[cor_mat$sample=="YW_si_Control_plus_E2" & cor_mat[,foxm1_topic]>quantile(cor_mat[,foxm1_topic],0.95) & cor_mat[,esr1_topic]<quantile(cor_mat[,esr1_topic],0.75),]$topic_bin<-"FOXM1" #was >0.95 and <0.75 for other, new is 0.75 and 0.5
+  #cor_mat[cor_mat$sample=="YW_si_Control_plus_E2" &cor_mat[,esr1_topic]>quantile(cor_mat[,esr1_topic],0.95) & cor_mat[,foxm1_topic]<quantile(cor_mat[,foxm1_topic],0.75),]$topic_bin<-"ESR1" 
+  cor_mat[cor_mat[,foxm1_topic]>quantile(cor_mat[,foxm1_topic],0.8) & cor_mat[,esr1_topic]<quantile(cor_mat[,esr1_topic],0.75),]$topic_bin<-"FOXM1" #was >0.95 and <0.75 for other, new is 0.75 and 0.5
+  cor_mat[cor_mat[,esr1_topic]>quantile(cor_mat[,esr1_topic],0.8) & cor_mat[,foxm1_topic]<quantile(cor_mat[,foxm1_topic],0.75),]$topic_bin<-"ESR1" 
+  print(table(cor_mat$topic_bin))
 
 
   plt<-ggplot()+
@@ -1108,8 +1109,8 @@ scatterplot_linearfit<-function(x,esr1_topic,foxm1_topic,outname){
   return(object)
 }
 
-mcf7<-scatterplot_linearfit(x=mcf7,outname="yw_mcf7.control",foxm1_topic=mcf7_foxm1_topic,esr1_topic=mcf7_esr1_topic) #p val 0.2161 #Adjusted R-squared:  8.235e-05
-t47d<-scatterplot_linearfit(x=t47d,outname="yw_t47d.control",foxm1_topic=t47d_foxm1_topic,esr1_topic=t47d_esr1_topic) # pval p-value: < 2.2e-16 #Adjusted R-squared:  0.02529
+mcf7<-scatterplot_linearfit(x=mcf7,outname="yw_mcf7.control.newbin",foxm1_topic=mcf7_foxm1_topic,esr1_topic=mcf7_esr1_topic) #p val 0.2161 #Adjusted R-squared:  8.235e-05
+t47d<-scatterplot_linearfit(x=t47d,outname="yw_t47d.control.newbin",foxm1_topic=t47d_foxm1_topic,esr1_topic=t47d_esr1_topic) # pval p-value: < 2.2e-16 #Adjusted R-squared:  0.02529
 
 #save now that there is titan data and its binned
 saveRDS(mcf7,file="yw_mcf7.control.SeuratObject.rds")
@@ -1649,11 +1650,71 @@ wget http://homer.ucsd.edu/homer/motif/HomerMotifDB/homerResults/motif120.motif
   library(motifmatchr)
   library(chromVAR)
 library(universalmotif)
+  library(cicero)
+  library(SeuratObjects)
+  library(EnsDb.Hsapiens.v86)
+
 
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
 
 mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.rds")
 t47d<-readRDS(file="yw_t47d.control.SeuratObject.rds")
+
+#Run cicero for binned cells
+  #Cicero processing function
+  cicero_processing<-function(object_input,prefix){
+
+      #Generate CDS format from Seurat object
+      atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap")
+
+      # convert to CellDataSet format and make the cicero object
+      print("Making Cicero format CDS file")
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = atac.cds@reducedDimS)
+      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+      
+      # extract gene annotations from EnsDb
+      annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+      seqlevels(annotations)<-paste0("chr",seqlevels(annotations))
+
+      # change to UCSC style since the data was mapped to hg38
+      #seqlevelsStyle(annotations) <- 'UCSC'
+      genome(annotations) <- "hg38"
+
+      genome <- annotations@seqinfo # get the chromosome sizes from the Seurat object
+      genome.df <- data.frame("chr" = genome@seqnames, "length" = genome@seqlengths) # convert chromosome sizes to a dataframe
+      
+      print("Running Cicero to generate connections.")
+      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
+      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+      
+      print("Generating CCANs")
+      ccans <- generate_ccans(conns) # generate ccans
+      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+      
+      print("Adding CCAN links into Seurat Object and Returning.")
+      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
+      DefaultAssay(object_input)<-"peaks"
+      Links(object_input) <- links
+      return(object_input)
+  }
+
+t47d_foxm1<-subset(t47d,topic_bin=="FOXM1")
+t47d_foxm1<-cicero_processing(object_input=t47d_foxm1,prefix="yw_t47d.control.FOXM1")
+saveRDS(t47d_foxm1,"yw_t47d.control.SeuratObject.unnormGA.FOXM1.Rds")
+
+t47d_esr1<-subset(t47d,topic_bin=="ESR1")
+t47d_esr1<-cicero_processing(object_input=t47d_esr1,prefix="yw_t47d.control.esr1")
+saveRDS(t47d_esr1,"yw_t47d.control.SeuratObject.unnormGA.FOXM1.Rds")
+
+mcf7_foxm1<-subset(mcf7,topic_bin=="FOXM1")
+mcf7_foxm1<-cicero_processing(object_input=mcf7_foxm1,prefix="yw_mcf7.control.FOXM1")
+saveRDS(mcf7_foxm1,"yw_mcf7.control.SeuratObject.unnormGA.FOXM1.Rds")
+
+mcf7_esr1<-subset(mcf7,topic_bin=="ESR1")
+mcf7_esr1<-cicero_processing(object_input=mcf7_esr1,prefix="yw_mcf7.control.esr1")
+saveRDS(mcf7_esr1,"yw_mcf7.control.SeuratObject.unnormGA.ESR1.Rds")
+
+#use link plot to generate cicero links
 
 #Generate Coverage Plots Across Genes
 #Pick DE genes from the topic_binned data
@@ -1692,9 +1753,9 @@ cov_plots<-function(dat=mcf7,gene_name,motif.name=c("MA0112.3"),add.foxm1=TRUE,o
     ident=c("ESR1","FOXM1"),
     expression.assay = "SCT",
     peaks.group.by="motif_overlap",
+    #ymax=10,
     extend.upstream = 5000,
-    extend.downstream = 5000,
-    ymax=10)
+    extend.downstream = 5000)
   plt_feat <- FeaturePlot(
     object = dat,
     features = gene_name,
