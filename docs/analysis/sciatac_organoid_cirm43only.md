@@ -2037,7 +2037,7 @@ write.table(da_ga_df,file="orgo_cirm43.onevrest.da_tfmodules.txt",sep="\t",col.n
   orgo_bg_bed<-makeGRangesFromDataFrame(orgo_bg_bed)
   cirm43_da_peaks<-read.table("orgo_cirm43.onevrest.da_peaks.txt",header=T)
 
-  dir.create("./GREAT_analysis")
+  dir.create("./GREAT_analysis.QC2")
 
   write("Beginning loop through all annotation groups.", stderr())
 
@@ -2066,7 +2066,7 @@ write.table(da_ga_df,file="orgo_cirm43.onevrest.da_tfmodules.txt",sep="\t",col.n
       for (j in 1:length(names(tb))){
             write(paste("Outputting DA GREAT Analysis for", enriched_group_input, as.character(names(tb))[j]), stderr())
             tabl_name<-gsub(" ","",as.character(names(tb))[j])
-            write.table(as.data.frame(tb[[j]]),file=paste0("./GREAT_analysis/",prefix,"_DApeaks_",enriched_group_input,".",tabl_name,".txt"),sep="\t",col.names=T,row.names=T,quote=F)
+            write.table(as.data.frame(tb[[j]]),file=paste0("./GREAT_analysis.QC2/",prefix,"_DApeaks_",enriched_group_input,".",tabl_name,".txt"),sep="\t",col.names=T,row.names=T,quote=F)
         }
   }
 
@@ -2120,8 +2120,9 @@ write.table(da_ga_df,file="orgo_cirm43.onevrest.da_tfmodules.txt",sep="\t",col.n
   library(motifmatchr)
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
-  orgo_cirm43<-readRDS("orgo_cirm43.QC.SeuratObject.Rds") #reading in QC passing cells
-  dat<-subset(orgo_cirm43,seurat_clusters %in% c("2","1","6"))
+  orgo_cirm43<-readRDS("orgo_cirm43.QC2.SeuratObject.Rds") #reading in QC passing cells
+  dat<-subset(orgo_cirm43,DIV %in% c("30","60","90"))
+  dat<-subset(dat,seurat_clusters %in% c("2","1","3"))
 
   cistopic_processing<-function(seurat_input,prefix){
       cistopic_counts_frmt<-seurat_input$peaks@counts #grabbing counts matrices
@@ -2141,14 +2142,14 @@ write.table(da_ga_df,file="orgo_cirm43.onevrest.da_tfmodules.txt",sep="\t",col.n
   }
           
 
-  cistopic_processing(seurat_input=dat,prefix="orgo_cirm43.ExN")
-  cistopic_models<-readRDS("orgo_cirm43.ExN.CisTopicObject.Rds")
+  cistopic_processing(seurat_input=dat,prefix="orgo_cirm43.QC2.ExN")
+  cistopic_models<-readRDS("orgo_cirm43.QC2.ExN.CisTopicObject.Rds")
 
   #set topics based on derivative
   cisTopicObject<-cisTopic::selectModel(cistopic_models,type="derivative",keepModels=T)
 
   #saving model selected RDS
-  saveRDS(cisTopicObject,file="orgo_cirm43.ExN.CisTopicObject.Rds")
+  saveRDS(cisTopicObject,file="orgo_cirm43.QC2.ExN.CisTopicObject.Rds")
 
   ####Function to include topics and umap in seurat object
   cistopic_wrapper<-function(object_input=orgo_atac,cisTopicObject=orgo_cisTopicObject,resolution=0.8){   
@@ -2202,19 +2203,21 @@ write.table(da_ga_df,file="orgo_cirm43.onevrest.da_tfmodules.txt",sep="\t",col.n
 
 
   DefaultAssay(dat)<-"peaks"
-  dat<-cistopic_wrapper(object_input=dat,cisTopicObject=cisTopicObject,resolution=0.09)
+  dat<-cistopic_wrapper(object_input=dat,cisTopicObject=cisTopicObject,resolution=0.2)
 
-  plt<-DimPlot(dat,group.by=c("DIV","seurat_clusters"))
-  ggsave(plt,file="ExN.qc.umap.pdf")
-  system("slack -F ExN.qc.umap.pdf ryan_todo")
+  for (i in c("DIV","seurat_clusters")){
+  plt<-DimPlot(dat,group.by=i)
+  ggsave(plt,file=paste0("ExN.qc.",i,"umap.pdf"),height=5,width=5)
+  system(paste0("slack -F ",paste0("ExN.qc.",i,"umap.pdf")," ryan_todo"))}
 
-  plt<-FeaturePlot(dat,c("tss_enrichment","FRIP","log10_uniq_reads"),order=T)
-  ggsave(plt,file="ExN.qc.umap.features.pdf",width=10)
-  system("slack -F ExN.qc.umap.features.pdf ryan_todo")
+  for (i in c("tss_enrichment","FRIP","log10_uniq_reads")){
+  plt<-FeaturePlot(dat,feature=i,order=T)
+  ggsave(plt,file=paste0("ExN.qc.",i,"umap.pdf"),height=5,width=5)
+  system(paste0("slack -F ",paste0("ExN.qc.",i,"umap.pdf")," ryan_todo"))}
+  
+  saveRDS(dat,file="orgo_cirm43.QC2.ExN.SeuratObject.Rds")   ###save Seurat file
 
-  saveRDS(dat,file="orgo_cirm43.ExN.SeuratObject.Rds")   ###save Seurat file
-
-  dat<-readRDS("orgo_cirm43.ExN.SeuratObject.Rds")
+  dat<-readRDS("orgo_cirm43.QC2.ExN.SeuratObject.Rds")
 
 da_one_v_rest<-function(i,obj,group,assay.="peaks"){
   da_peaks_tmp <- FindMarkers(
@@ -2224,7 +2227,8 @@ da_one_v_rest<-function(i,obj,group,assay.="peaks"){
       test.use = 'LR',
       latent.vars = 'nCount_peaks',
       only.pos=T,
-      assay=assay.
+      assay=assay.,
+      logfc.threshold=0.1
       )
   da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
   if(assay.=="peaks"){
@@ -2252,7 +2256,86 @@ da_one_v_rest<-function(i,obj,group,assay.="peaks"){
   dat_da_peaks<-do.call("rbind",dat_da_peaks)
   dat_da_peaks$enriched_group<-dat_da_peaks$enriched_group-1#correct enriched group numbering
   write("Outputting One v Rest DA Table.", stderr())
-  write.table(dat_da_peaks,file="orgo_cirm43.ExN.da_peaks.txt",sep="\t",col.names=T,row.names=T,quote=F)
+  write.table(dat_da_peaks,file="orgo_cirm43.QC2.ExN.da_peaks.txt",sep="\t",col.names=T,row.names=T,quote=F)
+
+as.data.frame(dat_da_peaks %>% group_by(enriched_group) %>% filter(p_val_adj<0.05) %>% arrange(p_val_adj))$gene_name
+
+#Perform parallel application of DA test for gene activity
+  n.cores=length(unique(dat$seurat_clusters))
+  dat_da_ga<-mclapply(
+      unique(dat$seurat_clusters),
+      FUN=da_one_v_rest,
+      obj=dat,
+      group="seurat_clusters",
+      assay.="GeneActivity",
+      mc.cores=n.cores)
+
+  #Merge the final data frame from the list for 1vrest DA
+  dat_da_ga<-do.call("rbind",dat_da_ga)
+  dat_da_ga$enriched_group<-dat_da_ga$enriched_group-1#correct enriched group numbering
+
+  as.data.frame(dat_da_ga %>% group_by(enriched_group) %>% filter(p_val_adj<0.05) %>% arrange(p_val_adj))$da_region
+
+  write("Outputting One v Rest DA Table.", stderr())
+  write.table(dat_da_ga,file="orgo_cirm43.QC2.ExN.da_geneactivity.txt",sep="\t",col.names=T,row.names=T,quote=F)
+
+  dat_da_ga<-read.table(file="orgo_cirm43.QC2.ExN.da_geneactivity.txt",sep="\t",col.names=T,row.names=T)
+```
+
+## Install Rmagic for data imputation of plots
+Make a new conda environment
+```bash
+conda create -n magic
+conda activate magic
+conda install scprep
+cd /home/groups/CEDAR/mulqueen/src/miniconda3/envs/magic/lib/R/library/MAGIC
+git clone https://github.com/KrishnaswamyLab/MAGIC
+cd MAGIC/python
+python setup.py install --user
+cd ../Rmagic
+R CMD INSTALL .
+```
+
+```R
+#conda activate magic
+library(Signac, lib.loc="/home/groups/CEDAR/mulqueen/src/miniconda3/lib/R/library")
+library(Seurat, lib.loc="/home/groups/CEDAR/mulqueen/src/miniconda3/lib/R/library")
+library(Rmagic)
+#install.magic(conda="/home/groups/CEDAR/mulqueen/src/miniconda3/bin/conda")
+library(ggplot2)
+library(patchwork)
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  dat<-readRDS("orgo_cirm43.QC2.ExN.SeuratObject.Rds")
+
+gene_list=c("SOX2","PAX6","NHLH1","NEUROD2","MEF2C","TBR1","FOXG1","EOMES","DLX5","LHX9","BCL11B")
+DefaultAssay(dat)<-"GeneActivity"
+dat<-magic(dat,genes=gene_list,n.jobs=6)
+
+DefaultAssay(dat)<-"MAGIC_GeneActivity"
+plt<-FeaturePlot(dat,features=gene_list,order=T,cols=c("white","red"))
+ggsave(plt,file="test.magic.pdf")
+system("slack -F test.magic.pdf ryan_todo")
+
+
+
+chromvar_genes<-c("MA0143.4","MA0069.1","MA0048.2","MA0668.1","MA0497.1","MA0802.1","MA0613.1","MA0800.1","MA1476.2","MA0701.1","UN0114.1")
+ga_genes<-c("SOX2","PAX6","NHLH1","NEUROD2","MEF2C","TBR1","FOXG1","EOMES","DLX5","LHX9","BCL11B")
+DefaultAssay(dat)<-"MAGIC_GeneActivity"
+
+for ( i in 1:length(ga_genes)){
+plt<-FeaturePlot(dat,features=c(ga_genes[i],chromvar_genes[i]),order=T, blend=TRUE,cols=c("white","red","blue"))+ggtitle(ga_genes[i])
+ggsave(plt,file="test.magic.pdf",width=20)
+system("slack -F test.magic.pdf ryan_todo")
+}
+
+```
+
+
+<!--
+```R
+
+
+
 
 
   da_one_v_one<-function(i,obj,group,j_list,assay.="peaks"){
@@ -2358,7 +2441,7 @@ print(wrap_plots(out1) + patchwork::plot_layout(ncol = 1))
 dev.off()
 system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
 ```
-
+-->
 
 Adding feature overlap with Trevino hSS and hCS data to differentiate subpallial and cortical projecting neurons
 
@@ -2761,49 +2844,6 @@ cbBuild -o ExN_cellbrowser -p 8888
 ```
 
 
-## Install Rmagic for data imputation of plots
-Make a new conda environment
-```bash
-conda create -n magic
-conda activate magic
-conda install scprep
-cd /home/groups/CEDAR/mulqueen/src/miniconda3/envs/magic/lib/R/library/MAGIC
-git clone https://github.com/KrishnaswamyLab/MAGIC
-cd MAGIC/python
-python setup.py install --user
-cd ../Rmagic
-R CMD INSTALL .
-```
-
-```R
-#conda activate magic
-library(Signac, lib.loc="/home/groups/CEDAR/mulqueen/src/miniconda3/lib/R/library")
-library(Seurat, lib.loc="/home/groups/CEDAR/mulqueen/src/miniconda3/lib/R/library")
-library(Rmagic)
-#install.magic(conda="/home/groups/CEDAR/mulqueen/src/miniconda3/bin/conda")
-library(ggplot2)
-library(patchwork)
-setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-orgo_cirm43<-readRDS("orgo_cirm43.QC.SeuratObject.Rds") #reading in QC passing cells
-DefaultAssay(orgo_cirm43)<-"GeneActivity"
-orgo_cirm43<-magic(orgo_cirm43,genes=c("SOX2","PAX6","NHLH1","NEUROD2","MEF2C"),n.jobs=5)
-
-DefaultAssay(orgo_cirm43)<-"MAGIC_GeneActivity"
-plt<-FeaturePlot(orgo_cirm43,features=c("SOX2","PAX6","NHLH1","NEUROD6","MEF2C"),order=T)
-ggsave(plt,file="test.magic.pdf")
-system("slack -F test.magic.pdf ryan_todo")
-
-chromvar_genes<-c("MA0143.4","MA0069.1","MA0048.2","MA0668.1","MA0497.1")
-ga_genes<-c("SOX2","PAX6","NHLH1","NEUROD2","MEF2C")
-DefaultAssay(orgo_cirm43)<-"MAGIC_GeneActivity"
-
-for ( i in 1:length(ga_genes)){
-plt<-FeaturePlot(orgo_cirm43,features=c(ga_genes[i],chromvar_genes[i]),order=T, blend=TRUE,cols=c("white","red","blue"))
-ggsave(plt,file="test.magic.pdf",width=20)
-system("slack -F test.magic.pdf ryan_todo")
-}
-
-```
 ## Pseudotime of RG Maturation
 
 Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately. This is to build a more biologically meaninful trajectory for cells.
@@ -2918,9 +2958,11 @@ Running radial glia (RG) like and excitatory neuron like (ExN) cells serparately
   DefaultAssay(dat)<-"peaks"
   dat<-cistopic_wrapper(object_input=dat,cisTopicObject=cisTopicObject,resolution=0.2)
 
-  plt<-DimPlot(dat,group.by=c("DIV","seurat_clusters","original_clusters"))
-  ggsave(plt,file="RG.qc.umap.pdf",width=15)
-  system("slack -F RG.qc.umap.pdf ryan_todo")
+  for(i in c("DIV","seurat_clusters","original_clusters")){
+  plt<-DimPlot(dat,group.by=i)
+  ggsave(plt,file=paste0("RG.qc.",i,"umap.pdf"),width=15)
+  system(paste0("slack -F ",paste0("RG.qc.",i,"umap.pdf")," ryan_todo"))
+  }
 
   saveRDS(dat,file="orgo_cirm43.RG.SeuratObject.Rds")   ###save Seurat file
 
@@ -3008,17 +3050,20 @@ library(zoo)
 setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
 atac_sub<-readRDS("orgo_cirm43.RG.SeuratObject.Rds")
+DefaultAssay(atac_sub)<-"peaks"
+atac_sub@meta.data<-atac_sub@meta.data[order(row.names(atac_sub@meta.data)),]
 
-plt<-DimPlot(atac_sub,group.by=c("DIV","differentiation_exp","prep","seurat_clusters"))
-ggsave(plt,file="orgo_cirm43.RG_subset.features.pdf",width=15)
-system("slack -F orgo_cirm43.RG_subset.features.pdf ryan_todo")
-
+  for(i in c("DIV","seurat_clusters","original_clusters")){
+  plt<-DimPlot(atac_sub,group.by=i)
+  ggsave(plt,file=paste0("RG.qc.",i,"umap.pdf"),width=5,height=5)
+  system(paste0("slack -F ",paste0("RG.qc.",i,"umap.pdf")," ryan_todo"))
+  }
 
 sce <- as.SingleCellExperiment(atac_sub, assay = "peaks") #convert to slingshot sce format
-sce <- slingshot(sce, reducedDim="UMAP", clusterLabels = colData(sce)$seurat_clusters, start.clus = 3 ) #use seurat clusters as cluster labels
+sce <- slingshot(sce, reducedDim="UMAP", clusterLabels = colData(sce)$seurat_clusters, start.clus = "2" ) #use seurat clusters as cluster labels
 
 colors <- colorRampPalette(brewer.pal(11,'Spectral')[-6])(100) #set up color palette
-plotcol <- colors[cut(sce$slingPseudotime_1, breaks=100)]
+plotcol <- colors[cut(sce$slingPseudotime_2, breaks=100)]
 
 pdf(file="orgo_cirm43.RG_subset.slingshot.pseudotime.pdf") #print pseudotime over RG dims plot
 plot(reducedDims(sce)$UMAP, col = plotcol, pch=16, asp = 1)
@@ -3026,17 +3071,21 @@ lines(SlingshotDataSet(sce), lwd=1, col='black')
 dev.off()
 system("slack -F orgo_cirm43.RG_subset.slingshot.pseudotime.pdf ryan_todo")
 
+atac_sub<-AddMetaData(atac_sub,setNames(sce$slingPseudotime_2,sce$cellID),col.name="pseudotime")
+
 
 #plot metadata variables over pseudotime
-plt1<-ggplot()+geom_density(aes(x=slingPseudotime(sce)[,1],group=colData(sce)@listData$DIV,fill=as.factor(colData(sce)@listData$DIV)),alpha=0.1)+theme_minimal()
-plt2<-ggplot()+geom_density(aes(x=slingPseudotime(sce)[,1],group=colData(sce)@listData$Phase,fill=as.factor(colData(sce)@listData$Phase)),alpha=0.1)+theme_minimal()
-plt3<-ggplot()+geom_density(aes(x=slingPseudotime(sce)[,1],group=colData(sce)@listData$differentiation_exp,fill=as.factor(colData(sce)@listData$differentiation_exp)),alpha=0.1)+theme_minimal()
-
-ggsave(plt1/plt2/plt3,file="RG_subset.metadatadensity.pseudotime.pdf")
+plt1<-ggplot()+geom_density(aes(x=atac_sub$pseudotime,group=atac_sub$DIV,fill=as.factor(atac_sub$DIV)),alpha=0.1)+theme_minimal()
+plt2<-ggplot()+geom_density(aes(x=atac_sub$pseudotime,group=atac_sub$Phase,fill=as.factor(atac_sub$Phase)),alpha=0.1)+theme_minimal()
+plt3<-ggplot()+geom_density(aes(x=atac_sub$pseudotime,group=atac_sub$differentiation_exp,fill=as.factor(atac_sub$differentiation_exp)),alpha=0.1)+theme_minimal()
+plt4<-FeaturePlot(atac_sub,feature="pseudotime",order=T)
+ggsave(plt1/plt2/plt3/plt4,file="RG_subset.metadatadensity.pseudotime.pdf")
 system("slack -F RG_subset.metadatadensity.pseudotime.pdf ryan_todo")
 
-atac_sub$pseudotime<-setNames(sce$slingPseudotime_1,colnames(sce))
-atac_sub<-subset(atac_sub,pseudotime!="NA")
+saveRDS(atac_sub,"orgo_cirm43.RG.SeuratObject.Rds")
+
+atac_sub<-subset(atac_sub,pseudotime!="NA") #remove NA values
+
 #Test if things vary by pseudotime, set up matrices to test
 geneactivity=as.matrix(atac_sub@assays$GeneActivity@data) # gene activity
 cistopics=t(atac_sub@reductions$cistopic@cell.embeddings) # cistopic
@@ -3113,6 +3162,10 @@ pseudotime_gam_fit<-function(x=chromvar,y=pseudotime,z=-1,prefix="test",colfun,f
   win.dat<-as.data.frame(do.call("rbind",roll_win_out))
   row.names(win.dat)<-row.names(x)
 
+  print("Scaling Windows")
+  win.dat<-apply(win.dat,1,rescale)
+  win.dat<-t(win.dat)
+
   print("Making Heatmap")
   plt<-Heatmap(win.dat,
   row_order=match(row.names(gam.dat),row.names(win.dat)),
@@ -3133,16 +3186,16 @@ pseudotime_gam_fit<-function(x=chromvar,y=pseudotime,z=-1,prefix="test",colfun,f
 
 
 cividis_col<-colorRamp2(c(0, 0.5, 1), cividis(3))
-pseudotime_gam_fit(x=jaspar_tffamily,y=pseudotime,z=-1,prefix="jaspar_tffamily",colfun=cividis_col,filt_to_top_perc=-1,bins=100)
+pseudotime_gam_fit(x=jaspar_tffamily,y=pseudotime,z=-1,prefix="jaspar_tffamily",colfun=cividis_col,filt_to_top_perc=0.5,bins=100)
 
-cividis_col<-colorRamp2(c(0, 0.5, 1), cividis(3))
-pseudotime_gam_fit(x=chromvar,y=pseudotime,z=-1,prefix="chromvar",colfun=cividis_col,filt_to_top_perc=0.75,bins=100)
+cividis_col<-colorRamp2(c(0, 0.5, 1, cividis(3))
+pseudotime_gam_fit(x=chromvar,y=pseudotime,z=-1,prefix="chromvar",colfun=cividis_col,filt_to_top_perc=0.80,bins=100)
 
 cistopic_col<-colorRamp2(c(0, 0.5, 1), rev(c("#004529","#78c679","#f7f7f7")))
 pseudotime_gam_fit(x=cistopics,y=pseudotime,z=-1,prefix="cistopic",colfun=cistopic_col,bins=100)
 
-magma_col<-colorRamp2(c(0, 0.5, 1), magma(3))
-pseudotime_gam_fit(x=geneactivity,y=pseudotime,z=-1,prefix="GA",colfun=magma_col,filt_to_top_perc=0.9,bins=50)
+magma_col<-colorRamp2(c(0,0.5, 1), magma(3))
+pseudotime_gam_fit(x=geneactivity,y=pseudotime,z=-1,prefix="GA",colfun=magma_col,filt_to_top_perc=0.95,bins=100)
 
 
 ```
