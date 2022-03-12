@@ -1032,7 +1032,8 @@ library(patchwork)
 library(circlize)
 library(viridis)
 library(reshape2)
-
+library(cisTopic)
+library(ComplexHeatmap)
 
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
 
@@ -1047,6 +1048,72 @@ t47d_foxm1_topic="lda_11";t47d_esr1_topic="lda_23"
 
 #Function to fit a linear regression to the relevant topics, and then bin data by quantiles
 #maybe change binning to be based on ratio?
+
+#Plot cistopic by cell matrix
+dat_mcf7_cistopic<-readRDS(file="yw_mcf7.control.CisTopicObject.Rds")
+dat_t47d_cistopic<-readRDS(file="yw_t47d.control.CisTopicObject.Rds")
+
+
+make_heatmap<-function(seurat_object=mcf7,
+  object=dat_mcf7_cistopic,
+  method='Probability',
+  colorBy=c('sample'),
+  topic_order=mcf7_foxm1_topic,
+  other_topic=mcf7_esr1_topic,
+  outname){
+
+    colorPal <- grDevices::colorRampPalette(c("white","red"))
+    col_sample<-c("YW_si_Control_plus_Veh"="red","YW_si_Control_plus_E2"="blue")
+    foxm1_list<-seurat_object@reductions$titan_lda@cell.embeddings[,topic_order]
+    esr1_list<-seurat_object@reductions$titan_lda@cell.embeddings[,other_topic]
+    col_foxm1<-colorRamp2(breaks=c(min(foxm1_list),max(foxm1_list)),colors=c("white","blue"))
+    col_esr1<-colorRamp2(breaks=c(min(esr1_list),max(esr1_list)),colors=c("white","red"))
+    #col_foxm1<-grDevices::colorRampPalette(c("white","black"))
+    topic.mat <- modelMatSelection(object, "cell", method)
+    rownames(topic.mat) <- paste("Topic", seq(1, nrow(topic.mat)))
+    colnames(topic.mat) <- object@cell.names
+    object.cell.data <- object@cell.data
+    #set up ordering
+    object.cell.data$sample_order<-ifelse(object.cell.data$sample=="YW_si_Control_plus_Veh",0,1)
+    object.cell.data$foxm1_topic<-foxm1_list
+    object.cell.data$esr1_topic<-esr1_list
+    col_order<-with(object.cell.data,order(sample_order,foxm1_topic))
+    object.cell.data<-object.cell.data[col_order,]
+    topic.mat<-topic.mat[,col_order]
+
+
+        heatmap <- ComplexHeatmap::Heatmap(topic.mat,
+            col = colorPal(20), 
+            top_annotation = HeatmapAnnotation(treatment = anno_simple(object.cell.data$sample,col=col_sample),
+              foxm1_topic=anno_simple(object.cell.data$foxm1_topic,col=col_foxm1),
+              esr1_topic=anno_simple(object.cell.data$esr1_topic,col=col_esr1)),
+            column_split = object.cell.data[,"sample"],
+            column_order=1:ncol(topic.mat),
+            name = method,
+            show_column_names = FALSE, 
+            show_row_names = TRUE,
+            column_title = "Topic contribution per cell", 
+            column_title_gp = gpar(fontface = "bold"))
+        pdf(outname)
+        print(heatmap)
+        dev.off()
+        system(paste0("slack -F ",outname, " ryan_todo"))
+}
+
+make_heatmap(object=dat_mcf7_cistopic,
+  topic_order=mcf7_foxm1_topic,
+  other_topic=mcf7_esr1_topic,
+  seurat_object=mcf7,
+  outname="yw_mcf7_cellbyTopic_heatmap.pdf")
+
+make_heatmap(object=dat_t47d_cistopic,
+  topic_order=t47d_foxm1_topic,
+  other_topic=t47d_esr1_topic,
+  seurat_object=t47d,
+  outname="yw_t47d_cellbyTopic_heatmap.pdf")
+
+
+
 
 scatterplot_linearfit<-function(x,esr1_topic,foxm1_topic,outname){
   titan_dat<-as.data.frame(x@reductions$titan_lda@cell.embeddings) #get titan from y
@@ -1119,11 +1186,12 @@ saveRDS(t47d,file="yw_t47d.control.SeuratObject.rds")
 table(mcf7$topic_bin)
 table(t47d$topic_bin)
 Idents(mcf7)<-mcf7$topic_bin
-#       ESR1 FOXM1
-# 5904   304   230
+#      ESR1 FOXM1
+# 4159  1152  1127
 Idents(t47d)<-t47d$topic_bin
 #       ESR1 FOXM1
-# 6206   257   152
+# 4797   914   904
+
 find_markers_topic_bin<-function(x,assay_name,outname,logfc.threshold_set=0,min.pct_set=0,cistrome_cellline="MCF"){
   x_da<-FindMarkers(object=x,ident.1 = "ESR1", ident.2="FOXM1", test.use = 'LR', logfc.threshold=logfc.threshold_set,latent.vars = "nCount_peaks", only.pos=F, assay=assay_name,min.pct=min.pct_set)
   
@@ -1173,14 +1241,15 @@ find_markers_topic_bin<-function(x,assay_name,outname,logfc.threshold_set=0,min.
 
 #Run DA/DE based on titan topic bins
 find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="chromvar")
-find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="peaks")
 find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="cistrome_score",cistrome_cellline="MCF")
 find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="SCT")
 
 find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="chromvar")
-find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="peaks")
 find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="cistrome_score",cistrome_cellline="T47")
 find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="SCT")
+
+find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="peaks")
+find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="peaks")
 
 
 #Plot blend of foxm1 and esr1 topics over the umap
@@ -1649,12 +1718,11 @@ wget http://homer.ucsd.edu/homer/motif/HomerMotifDB/homerResults/motif120.motif
   library(ggplot2)
   library(motifmatchr)
   library(chromVAR)
-library(universalmotif)
-  library(cicero)
-  library(SeuratObjects)
+  library(universalmotif)
   library(EnsDb.Hsapiens.v86)
-
-
+  library(cicero,lib.loc="/home/groups/oroaklab/nishida/R_4.0.0_arsn") 
+  library(monocle3,lib.loc="/home/groups/oroaklab/nishida/R_4.0.0_arsn") 
+  library(SeuratWrappers)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
 
 mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.rds")
@@ -1665,11 +1733,11 @@ t47d<-readRDS(file="yw_t47d.control.SeuratObject.rds")
   cicero_processing<-function(object_input,prefix){
 
       #Generate CDS format from Seurat object
-      atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap")
+      atac.cds <- as.cell_data_set(object_input,assay="peaks")
 
       # convert to CellDataSet format and make the cicero object
       print("Making Cicero format CDS file")
-      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = atac.cds@reducedDimS)
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = atac.cds@int_colData$reducedDims$MULTIMODAL_UMAP)
       saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
       
       # extract gene annotations from EnsDb
@@ -1701,18 +1769,22 @@ t47d<-readRDS(file="yw_t47d.control.SeuratObject.rds")
 t47d_foxm1<-subset(t47d,topic_bin=="FOXM1")
 t47d_foxm1<-cicero_processing(object_input=t47d_foxm1,prefix="yw_t47d.control.FOXM1")
 saveRDS(t47d_foxm1,"yw_t47d.control.SeuratObject.unnormGA.FOXM1.Rds")
+t47d_foxm1<-readRDS("yw_t47d.control.SeuratObject.unnormGA.FOXM1.Rds")
 
 t47d_esr1<-subset(t47d,topic_bin=="ESR1")
-t47d_esr1<-cicero_processing(object_input=t47d_esr1,prefix="yw_t47d.control.esr1")
-saveRDS(t47d_esr1,"yw_t47d.control.SeuratObject.unnormGA.FOXM1.Rds")
+t47d_esr1<-cicero_processing(object_input=t47d_esr1,prefix="yw_t47d.control.ESR1")
+saveRDS(t47d_esr1,"yw_t47d.control.SeuratObject.unnormGA.ESR1.Rds")
+t47d_esr1<-readRDS("yw_t47d.control.SeuratObject.unnormGA.ESR1.Rds")
 
 mcf7_foxm1<-subset(mcf7,topic_bin=="FOXM1")
 mcf7_foxm1<-cicero_processing(object_input=mcf7_foxm1,prefix="yw_mcf7.control.FOXM1")
 saveRDS(mcf7_foxm1,"yw_mcf7.control.SeuratObject.unnormGA.FOXM1.Rds")
+mcf7_foxm1<-readRDS("yw_mcf7.control.SeuratObject.unnormGA.FOXM1.Rds")
 
 mcf7_esr1<-subset(mcf7,topic_bin=="ESR1")
-mcf7_esr1<-cicero_processing(object_input=mcf7_esr1,prefix="yw_mcf7.control.esr1")
+mcf7_esr1<-cicero_processing(object_input=mcf7_esr1,prefix="yw_mcf7.control.ESR1")
 saveRDS(mcf7_esr1,"yw_mcf7.control.SeuratObject.unnormGA.ESR1.Rds")
+mcf7_esr1<-readRDS("yw_mcf7.control.SeuratObject.unnormGA.ESR1.Rds")
 
 #use link plot to generate cicero links
 
@@ -1730,7 +1802,7 @@ foxm1<-read_matrix(file="motif120.motif",header=">",positions="rows")
 foxm1<-convert_motifs(foxm1,class="TFBSTools-PWMatrix")
 foxm1@ID<-"foxm1"
 
-cov_plots<-function(dat=mcf7,gene_name,motif.name=c("MA0112.3"),add.foxm1=TRUE,outname){
+cov_plots<-function(dat=mcf7,gene_name,motif.name=c("MA0112.3"),add.foxm1=TRUE,outname,foxm1_link,esr1_link){
   
   peak_annot<-granges(dat@assays$peaks) #set up peak motif overlap as annotation track
   peak_annot$motif_overlap<-""
@@ -1756,15 +1828,22 @@ cov_plots<-function(dat=mcf7,gene_name,motif.name=c("MA0112.3"),add.foxm1=TRUE,o
     #ymax=10,
     extend.upstream = 5000,
     extend.downstream = 5000)
-  plt_feat <- FeaturePlot(
-    object = dat,
-    features = gene_name,
-    raster=T,
-    reduction="multimodal_topic_umap",
-    order=T,
-    cols=c("white","red"))
-  plt<-(plt_cov)+ggtitle(gene_name)
-  ggsave(plt,file=paste0(outname,gene_name,".featureplots.pdf"),height=5,width=10,limitsize=F)
+  plt_foxm1 <- CoveragePlot(
+    foxm1_link,
+    region=gene_name,
+    assay="peaks",
+    ident=c("FOXM1"),
+    extend.upstream=5000,
+    extend.downstream=5000)
+  plt_esr1 <- CoveragePlot(
+    esr1_link,
+    region=gene_name,
+    assay="peaks",
+    ident=c("ESR1"),
+    extend.upstream=5000,
+    extend.downstream=5000)
+  plt<-(plt_cov/plt_foxm1/plt_esr1)+ggtitle(gene_name)
+  ggsave(plt,file=paste0(outname,gene_name,".featureplots.pdf"),height=15,width=10,limitsize=F)
   system(paste0("slack -F ",outname,gene_name,".featureplots.pdf ryan_todo"))
 }
 
@@ -1775,13 +1854,13 @@ cov_plots<-function(dat=mcf7,gene_name,motif.name=c("MA0112.3"),add.foxm1=TRUE,o
 DefaultAssay(mcf7) <- "SCT"
 outname="yw.mcf7.control_"
 for (i in geneset){
-  cov_plots(dat=mcf7,gene_name=i,outname="yw.mcf7.control_")
+  cov_plots(dat=mcf7,gene_name=i,outname="yw.mcf7.control_",foxm1_link=t47d_foxm1,esr1_link=t47d_esr1)
 }
 
 DefaultAssay(t47d) <- "SCT"
 outname="yw.t47d.control_"
 for (i in geneset){
-  cov_plots(dat=t47d,gene_name=i,outname="yw.t47d.control_")
+  cov_plots(dat=t47d,gene_name=i,outname="yw.t47d.control_",foxm1_link=mcf7_foxm1,esr1_link=mcf7_esr1)
 }
 
 
