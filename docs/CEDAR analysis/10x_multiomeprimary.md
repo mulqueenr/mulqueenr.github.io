@@ -1802,6 +1802,9 @@ foxm1<-read_matrix(file="motif120.motif",header=">",positions="rows")
 foxm1<-convert_motifs(foxm1,class="TFBSTools-PWMatrix")
 foxm1@ID<-"foxm1"
 
+
+
+#####################Old style of plotting######################
 cov_plots<-function(dat=mcf7,gene_name,motif.name=c("MA0112.3"),add.foxm1=TRUE,outname,foxm1_link,esr1_link){
   
   peak_annot<-granges(dat@assays$peaks) #set up peak motif overlap as annotation track
@@ -1862,6 +1865,8 @@ outname="yw.t47d.control_"
 for (i in geneset){
   cov_plots(dat=t47d,gene_name=i,outname="yw.t47d.control_",foxm1_link=mcf7_foxm1,esr1_link=mcf7_esr1)
 }
+#####################Old style of plotting######################
+
 
 
 
@@ -1877,6 +1882,63 @@ mcf7_peaks[mcf7_peaks$gene_name=="CENPE",]
 
 t47d_peaks[t47d_peaks$gene_name=="CENPE",]
 
+
+
+
+
+
+
+
+#####Using a custom Plotting function###############
+#PGR chr11:101020000-101140000
+#CENPE chr1:214600000-214660000
+
+
+#####################Old style of plotting######################
+cov_plots<-function(dat=mcf7,gene_range,motif.name=c("MA0112.3"),add.foxm1=TRUE,outname,foxm1_link,esr1_link){
+  
+  peak_annot<-granges(dat@assays$peaks) #set up peak motif overlap as annotation track
+  peak_annot$motif_overlap<-""
+  for (i in length(motif.name)){ #jarspar formatted names
+    overlap_motif_idx<-findOverlaps(granges(peak_annot),dat@assays$peaks@motifs@positions[motif.name[i]])@from
+    peak_annot[overlap_motif_idx,]$motif_overlap<-paste(peak_annot[overlap_motif_idx,]$motif_overlap,motif.name[i])
+  }
+  if(add.foxm1){ #add foxm1 (not included in Jaspar but used in homer)
+    motif.positions <- motifmatchr::matchMotifs(pwms = foxm1, subject = granges(dat@assays$peaks), out = 'positions', genome = BSgenome.Hsapiens.UCSC.hg38 )
+    overlap_motif_idx<-findOverlaps(granges(peak_annot),motif.positions[[1]])@from
+    peak_annot[overlap_motif_idx,]$motif_overlap<-paste(peak_annot[overlap_motif_idx,]$motif_overlap,"foxm1")
+  }
+
+  dat@assays$peaks@meta.features$motif_overlap<-peak_annot$motif_overlap
+  
+  plt_cov <- CoveragePlot(
+    object = dat,
+    region = gene_range,
+    assay="peaks",
+    ident=c("ESR1","FOXM1"),
+    expression.assay = "SCT",
+    peaks.group.by="motif_overlap",
+    #ymax=10,
+    extend.upstream = 5000,
+    extend.downstream = 5000)
+  plt_foxm1 <- CoveragePlot(
+    foxm1_link,
+    region=gene_range,
+    assay="peaks",
+    ident=c("FOXM1"),
+    extend.upstream=5000,
+    extend.downstream=5000)
+  plt_esr1 <- CoveragePlot(
+    esr1_link,
+    region=gene_range,
+    assay="peaks",
+    ident=c("ESR1"),
+    extend.upstream=5000,
+    extend.downstream=5000)
+  plt<-(plt_cov/plt_foxm1/plt_esr1)+ggtitle(gene_name)
+  ggsave(plt,file=paste0(outname,gene_name,".featureplots.pdf"),height=15,width=10,limitsize=F)
+  system(paste0("slack -F ",outname,gene_name,".featureplots.pdf ryan_todo"))
+}
 ```
 
 ## Fragment overlap with chip-seq peaks
