@@ -1192,9 +1192,12 @@ Idents(t47d)<-t47d$topic_bin
 #       ESR1 FOXM1
 # 4797   914   904
 
-find_markers_topic_bin<-function(x,assay_name,outname,logfc.threshold_set=0,min.pct_set=0,cistrome_cellline="MCF"){
-  x_da<-FindMarkers(object=x,ident.1 = "ESR1", ident.2="FOXM1", test.use = 'LR', logfc.threshold=logfc.threshold_set,latent.vars = "nCount_peaks", only.pos=F, assay=assay_name,min.pct=min.pct_set)
-  
+find_markers_topic_bin<-function(x,assay_name,outname,logfc.threshold_set=0,min.pct_set=0,cistrome_cellline="MCF",latent.vars="NA"){
+  if(!(latent.vars=="NA")){
+  x_da<-FindMarkers(object=x,ident.1 = "ESR1", ident.2="FOXM1", test.use = 'LR', logfc.threshold=logfc.threshold_set,latent.vars = latent.vars, only.pos=F, assay=assay_name,min.pct=min.pct_set)
+  } else {
+  x_da<-FindMarkers(object=x,ident.1 = "ESR1", ident.2="FOXM1", test.use = 'LR', logfc.threshold=logfc.threshold_set, only.pos=F, assay=assay_name,min.pct=min.pct_set)
+  }
   #if statements to handle formating the different modalities
   if(assay_name=="cistrome_score"){ #if assay is cistrome limit to correct cell line
     x_da<-x_da[startsWith(row.names(x_da),cistrome_cellline),] #subset to same cell line cistrome data
@@ -1248,8 +1251,8 @@ find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="chromvar")
 find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="cistrome_score",cistrome_cellline="T47")
 find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="SCT")
 
-find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="peaks")
-find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="peaks")
+find_markers_topic_bin(x=mcf7,outname="yw_mcf7.control",assay_name="peaks",latent.vars="atac_peak_region_fragments")
+find_markers_topic_bin(x=t47d,outname="yw_t47d.control",assay_name="peaks",latent.vars="atac_peak_region_fragments")
 
 
 #Plot blend of foxm1 and esr1 topics over the umap
@@ -1786,6 +1789,38 @@ mcf7_esr1<-cicero_processing(object_input=mcf7_esr1,prefix="yw_mcf7.control.ESR1
 saveRDS(mcf7_esr1,"yw_mcf7.control.SeuratObject.unnormGA.ESR1.Rds")
 mcf7_esr1<-readRDS("yw_mcf7.control.SeuratObject.unnormGA.ESR1.Rds")
 
+```
+Plot genome tracks
+
+```R
+ library(Signac)
+  library(Seurat)
+  library(JASPAR2020)
+  library(TFBSTools)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(patchwork)
+  set.seed(1234)
+  library(motifmatchr)
+  library(parallel)
+  library(ggplot2)
+  library(motifmatchr)
+  library(chromVAR)
+  library(universalmotif)
+  library(EnsDb.Hsapiens.v86)
+  library(cicero,lib.loc="/home/groups/oroaklab/nishida/R_4.0.0_arsn") 
+  library(monocle3,lib.loc="/home/groups/oroaklab/nishida/R_4.0.0_arsn") 
+  library(SeuratWrappers)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
+
+mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.rds")
+t47d<-readRDS(file="yw_t47d.control.SeuratObject.rds")
+mcf7$topic_bin<-factor(mcf7$topic_bin,levels=c("ESR1","FOXM1"))
+t47d$topic_bin<-factor(t47d$topic_bin,levels=c("ESR1","FOXM1"))
+t47d_foxm1<-readRDS("yw_t47d.control.SeuratObject.unnormGA.FOXM1.Rds")
+t47d_esr1<-readRDS("yw_t47d.control.SeuratObject.unnormGA.ESR1.Rds")
+mcf7_foxm1<-readRDS("yw_mcf7.control.SeuratObject.unnormGA.FOXM1.Rds")
+mcf7_esr1<-readRDS("yw_mcf7.control.SeuratObject.unnormGA.ESR1.Rds")
+
 #use link plot to generate cicero links
 
 #Generate Coverage Plots Across Genes
@@ -1803,99 +1838,23 @@ foxm1<-convert_motifs(foxm1,class="TFBSTools-PWMatrix")
 foxm1@ID<-"foxm1"
 
 
-
-#####################Old style of plotting######################
-cov_plots<-function(dat=mcf7,gene_name,motif.name=c("MA0112.3"),add.foxm1=TRUE,outname,foxm1_link,esr1_link){
-  
-  peak_annot<-granges(dat@assays$peaks) #set up peak motif overlap as annotation track
-  peak_annot$motif_overlap<-""
-  for (i in length(motif.name)){ #jarspar formatted names
-    overlap_motif_idx<-findOverlaps(granges(peak_annot),dat@assays$peaks@motifs@positions[motif.name[i]])@from
-    peak_annot[overlap_motif_idx,]$motif_overlap<-paste(peak_annot[overlap_motif_idx,]$motif_overlap,motif.name[i])
-  }
-  if(add.foxm1){ #add foxm1 (not included in Jaspar but used in homer)
-    motif.positions <- motifmatchr::matchMotifs(pwms = foxm1, subject = granges(dat@assays$peaks), out = 'positions', genome = BSgenome.Hsapiens.UCSC.hg38 )
-    overlap_motif_idx<-findOverlaps(granges(peak_annot),motif.positions[[1]])@from
-    peak_annot[overlap_motif_idx,]$motif_overlap<-paste(peak_annot[overlap_motif_idx,]$motif_overlap,"foxm1")
-  }
-
-  dat@assays$peaks@meta.features$motif_overlap<-peak_annot$motif_overlap
-  plt_cov <- CoveragePlot(
-    object = dat,
-    region = gene_name,
-    features = gene_name,
-    assay="peaks",
-    ident=c("ESR1","FOXM1"),
-    expression.assay = "SCT",
-    peaks.group.by="motif_overlap",
-    #ymax=10,
-    extend.upstream = 5000,
-    extend.downstream = 5000)
-  plt_foxm1 <- CoveragePlot(
-    foxm1_link,
-    region=gene_name,
-    assay="peaks",
-    ident=c("FOXM1"),
-    extend.upstream=5000,
-    extend.downstream=5000)
-  plt_esr1 <- CoveragePlot(
-    esr1_link,
-    region=gene_name,
-    assay="peaks",
-    ident=c("ESR1"),
-    extend.upstream=5000,
-    extend.downstream=5000)
-  plt<-(plt_cov/plt_foxm1/plt_esr1)+ggtitle(gene_name)
-  ggsave(plt,file=paste0(outname,gene_name,".featureplots.pdf"),height=15,width=10,limitsize=F)
-  system(paste0("slack -F ",outname,gene_name,".featureplots.pdf ryan_todo"))
-}
-
-#mcf7@assays$peaks@motifs@positions$MA0112.3 #ESR1 motif
-
-#Add FOXM1 binding motif
-
-DefaultAssay(mcf7) <- "SCT"
-outname="yw.mcf7.control_"
-for (i in geneset){
-  cov_plots(dat=mcf7,gene_name=i,outname="yw.mcf7.control_",foxm1_link=t47d_foxm1,esr1_link=t47d_esr1)
-}
-
-DefaultAssay(t47d) <- "SCT"
-outname="yw.t47d.control_"
-for (i in geneset){
-  cov_plots(dat=t47d,gene_name=i,outname="yw.t47d.control_",foxm1_link=mcf7_foxm1,esr1_link=mcf7_esr1)
-}
-#####################Old style of plotting######################
-
-
-
-
 mcf7_peaks<-read.table("yw_mcf7.control_peaks_ESR1vFOXM1bins.markers.txt")
 mcf7_rna<-read.table("yw_mcf7.control_SCT_ESR1vFOXM1bins.markers.txt")
 t47d_peaks<-read.table("yw_t47d.control_peaks_ESR1vFOXM1bins.markers.txt")
 t47d_rna<-read.table("yw_t47d.control_SCT_ESR1vFOXM1bins.markers.txt")
 
+mcf7_peaks[mcf7_peaks$gene_name=="PGR",]
 
-
-
-mcf7_peaks[mcf7_peaks$gene_name=="CENPE",]
-
-t47d_peaks[t47d_peaks$gene_name=="CENPE",]
-
-
-
-
-
-
+t47d_peaks[t47d_peaks$gene_name=="PGR",]
 
 
 #####Using a custom Plotting function###############
-#PGR chr11:101020000-101140000
-#CENPE chr1:214600000-214660000
+#PGR chr11-101020000-101140000
+#CENPE chr1-214600000-214660000
 
 
 #####################Old style of plotting######################
-cov_plots<-function(dat=mcf7,gene_range,motif.name=c("MA0112.3"),add.foxm1=TRUE,outname,foxm1_link,esr1_link){
+cov_plots<-function(dat=mcf7,gene_range="chr11-101020000-101140000",gene_name="PGR",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="test",foxm1_link=mcf7_foxm1,esr1_link=mcf7_esr1,ymax=50){
   
   peak_annot<-granges(dat@assays$peaks) #set up peak motif overlap as annotation track
   peak_annot$motif_overlap<-""
@@ -1911,34 +1870,40 @@ cov_plots<-function(dat=mcf7,gene_range,motif.name=c("MA0112.3"),add.foxm1=TRUE,
 
   dat@assays$peaks@meta.features$motif_overlap<-peak_annot$motif_overlap
   
-  plt_cov <- CoveragePlot(
-    object = dat,
-    region = gene_range,
-    assay="peaks",
-    ident=c("ESR1","FOXM1"),
-    expression.assay = "SCT",
-    peaks.group.by="motif_overlap",
-    #ymax=10,
-    extend.upstream = 5000,
-    extend.downstream = 5000)
-  plt_foxm1 <- CoveragePlot(
-    foxm1_link,
-    region=gene_range,
-    assay="peaks",
-    ident=c("FOXM1"),
-    extend.upstream=5000,
-    extend.downstream=5000)
-  plt_esr1 <- CoveragePlot(
-    esr1_link,
-    region=gene_range,
-    assay="peaks",
-    ident=c("ESR1"),
-    extend.upstream=5000,
-    extend.downstream=5000)
-  plt<-(plt_cov/plt_foxm1/plt_esr1)+ggtitle(gene_name)
-  ggsave(plt,file=paste0(outname,gene_name,".featureplots.pdf"),height=15,width=10,limitsize=F)
-  system(paste0("slack -F ",outname,gene_name,".featureplots.pdf ryan_todo"))
+  annot_plot<-AnnotationPlot(object=dat, region=gene_range)
+  peak_plot<-PeakPlot(object=dat,region=gene_range,group.by="motif_overlap")
+
+  esr1_cov <- CoveragePlot(object = dat, region = gene_range, assay="peaks", ident=c("ESR1"),annotation=FALSE,peaks=FALSE,links=FALSE ,ymax=ymax) 
+  esr1_links<-LinkPlot(object=esr1_link, region=gene_range,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
+  foxm1_cov <- CoveragePlot(object = dat, region = gene_range, assay="peaks", ident=c("FOXM1"),annotation=FALSE,peaks=FALSE,links=FALSE ,ymax=ymax ) 
+  foxm1_links<-LinkPlot(object=foxm1_link, region=gene_range,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
+
+  esr1_expr_plot<-ExpressionPlot(object=dat, features=gene_name, assay="SCT", ident=c("ESR1"))+xlim(c(0,5))
+  foxm1_expr_plot<-ExpressionPlot(object=dat, features=gene_name, assay="SCT", ident=c("FOXM1"))+xlim(c(0,5)) 
+  layout<-"
+  HHH#
+  AAAE
+  FFF#
+  BBB#
+  CCCI
+  GGG#
+  DDD#
+  "
+
+  plt<-wrap_plots(A=esr1_cov,B=esr1_links,C=foxm1_cov,D=foxm1_links,E=esr1_expr_plot,F=peak_plot,G=peak_plot,H=annot_plot,I=foxm1_expr_plot,design=layout,heights = c(1,3,1,2,3,1,2))+ggtitle(outname)
+  return(plt)
 }
+
+#PGR
+mcf7_plot<-cov_plots(dat=mcf7,gene_range="chr11-100920000-101200000",gene_name="PGR",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="mcf7",foxm1_link=mcf7_foxm1,esr1_link=mcf7_esr1,ymax=30)
+t47d_plot<-cov_plots(dat=t47d,gene_range="chr11-100920000-101200000",gene_name="PGR",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="t47d",foxm1_link=t47d_foxm1,esr1_link=t47d_esr1,ymax=30)
+ggsave(mcf7_plot/t47d_plot,file=paste0("yw_control.PGR.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","yw_control.PGR.featureplots.pdf"," ryan_todo"))
+#CENPF
+mcf7_plot<-cov_plots(dat=mcf7,gene_range="chr1-214550000-214700000",gene_name="CENPF",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="mcf7",foxm1_link=mcf7_foxm1,esr1_link=mcf7_esr1,ymax=30)
+t47d_plot<-cov_plots(dat=t47d,gene_range="chr1-214550000-214700000",gene_name="CENPF",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="t47d",foxm1_link=t47d_foxm1,esr1_link=t47d_esr1,ymax=30)
+ggsave(mcf7_plot/t47d_plot,file=paste0("yw_control.CENPF.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","yw_control.CENPF.featureplots.pdf"," ryan_todo"))
 ```
 
 ## Fragment overlap with chip-seq peaks
