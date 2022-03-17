@@ -1094,7 +1094,7 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
   pubprimary <- subset(pubprimary, cells = sample(x = colnames(pubprimary@assays$RNA@data), size = length(colnames(pubprimary@assays$RNA@data))/10) )
   pubprimary<-SetIdent(pubprimary,value="Type")
   #subset to cell types expected to occur in organoids
-  pubprimary<-subset(pubprimary,idents=c("Excitatory Neuron","IPC","Radial Glia"))
+  pubprimary<-subset(pubprimary,idents=c("Excitatory Neuron","IPC","Radial Glia","Inhibitory Neuron"))
 
   #Our ATAC
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
@@ -1244,7 +1244,7 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
     ggsave(plt,file="cirm43.predictedid.umap.pdf",width=10,height=30,limitsize=F)
     system("slack -F cirm43.predictedid.umap.pdf ryan_todo")
 
-    predictdat<-as.data.frame(t(orgo_cirm43@assays$celltype_prediction@data))[,1:3]
+    predictdat<-as.data.frame(t(orgo_cirm43@assays$celltype_prediction@data))[,1:4]
     predictdat$seurat_clusters<-orgo_cirm43@meta.data[row.names(predictdat),]$seurat_clusters
   
     predictdat<-melt(predictdat)
@@ -1259,7 +1259,7 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
 
     predictdat<-predictdat[colnames(predictdat) %in% clus_order]
     plt<-Heatmap(predictdat,
-    row_order=c("Radial Glia","IPC","Excitatory Neuron"),
+    row_order=c("Radial Glia","IPC","Excitatory Neuron","Inhibitory Neuron"),
     column_order=clus_order,
     col=colfun)
     pdf("predictedid.heatmap.pdf")
@@ -2074,7 +2074,7 @@ write.table(da_ga_df,file="orgo_cirm43.onevrest.da_tfmodules.txt",sep="\t",col.n
   mclapply(unique(cirm43_da_peaks$enriched_group), FUN=function(x){great_processing(enriched_group_input=x,peak_dataframe=cirm43_da_peaks,prefix="cirm43",bg=orgo_bg_bed)},mc.cores=7)
 
 ```
-
+<!--
 
 ## Check Accelerated Regions
 ```R
@@ -2096,6 +2096,39 @@ write.table(da_ga_df,file="orgo_cirm43.onevrest.da_tfmodules.txt",sep="\t",col.n
   #18/288 #predicted brain/neural tube activity
 
 
+```
+-->
+## Make 3D UMAP Projection
+```R
+library(Signac)
+library(Seurat)
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+orgo_cirm43<-readRDS("orgo_cirm43.QC2.SeuratObject.Rds") #reading in QC passing cells
+DefaultAssay(orgo_cirm43)<-"peaks"
+
+umap_dat <- RunUMAP(object = orgo_cirm43, n.components=3,reduction = 'cistopic', dims = 1:ncol(orgo_cirm43@reductions$cistopic))
+umap_dat<-as.data.frame(umap_dat@reductions$umap@cell.embeddings)
+umap_dat$cluster<-orgo_cirm43@meta.data[match(row.names(umap_dat),row.names(orgo_cirm43@meta.data)),]$postqc_clusters
+#check to make sure the cluster assignment is correct
+library(ggplot2)
+plt<-ggplot(umap_dat,aes(x=UMAP_1,y=UMAP_2,color=cluster))+geom_point()
+ggsave(plt,file="3dplot.test.pdf")
+system("slack -F 3dplot.test.pdf ryan_todo")
+
+#now just assign colors, and fit blender python script format
+umap_dat$cluster_color<-"NA"
+umap_dat[umap_dat$cluster=="0",]$cluster_color="#ff9933"
+umap_dat[umap_dat$cluster=="1",]$cluster_color="#336666"
+umap_dat[umap_dat$cluster=="2",]$cluster_color="#6666cc"
+umap_dat[umap_dat$cluster=="3",]$cluster_color="#6699cc"
+umap_dat[umap_dat$cluster=="4",]$cluster_color="#99cc99"
+umap_dat[umap_dat$cluster=="5",]$cluster_color="#ffff66"
+umap_dat[umap_dat$cluster=="6",]$cluster_color="#cc6699"
+
+umap_dat$cellID<-row.names(umap_dat)
+umap_dat<-umap_dat[,c(4,6,1,2,3,5)]
+write.table(umap_dat,file="orgo_postqc_blender.table",row.names=F,col.names=F,sep="\t",quote=F)
+system("slack -F orgo_postqc_blender.table ryan_todo")
 ```
 
 ## Cell Type Analyses
@@ -2279,7 +2312,57 @@ as.data.frame(dat_da_peaks %>% group_by(enriched_group) %>% filter(p_val_adj<0.0
   write("Outputting One v Rest DA Table.", stderr())
   write.table(dat_da_ga,file="orgo_cirm43.QC2.ExN.da_geneactivity.txt",sep="\t",col.names=T,row.names=T,quote=F)
 
-  dat_da_ga<-read.table(file="orgo_cirm43.QC2.ExN.da_geneactivity.txt",sep="\t",col.names=T,row.names=T)
+  dat_da_ga<-read.table(file="orgo_cirm43.QC2.ExN.da_geneactivity.txt",sep="\t",col.names=T,row.names=1)
+
+```
+
+###Run cicero per cluster to generate link plots
+
+```R
+
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(patchwork)
+library(monocle3,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #using old install of monocle, just need for as.cell_data_set conversion
+library(cicero,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #and using old version of cicero
+library(EnsDb.Hsapiens.v86)
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+dat<-readRDS("orgo_cirm43.QC2.ExN.SeuratObject.Rds")
+
+#Cicero processing function
+cicero_processing<-function(object_input=orgo_atac,prefix="orgo_atac"){
+    #Generate CDS format from Seurat object
+    atac.cds <- as.cell_data_set(object_input,assay="peaks",reduction="umap")
+    # convert to CellDataSet format and make the cicero object
+    print("Making Cicero format CDS file")
+    atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
+    saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+    
+    genome <- seqlengths(object_input) # get the chromosome sizes from the Seurat object
+    genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
+    
+    print("Running Cicero to generate connections.")
+    conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
+    saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+    
+    print("Generating CCANs")
+    ccans <- generate_ccans(conns) # generate ccans
+    saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+    
+    print("Adding CCAN links into Seurat Object and Returning.")
+    links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
+    Links(object_input) <- links
+    return(object_input)
+}
+
+for(i in unique(dat$seurat_clusters)){
+  dat_subset<-subset(dat,seurat_clusters==i)
+  dat_subset-cicero_processing(object_input=dat_subset,prefix=paste0("orgo_cirm43.QC2.ExN.",i))
+  saveRDS(dat_subset,paste0("orgo_cirm43.QC2.ExN.",i,".SeuratObject.unnormGA.Rds"))
+}
+
 ```
 
 ## Install Rmagic for data imputation of plots
