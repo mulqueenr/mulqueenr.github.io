@@ -1708,7 +1708,6 @@ wget http://homer.ucsd.edu/homer/motif/HomerMotifDB/homerResults/motif120.motif
 ```
 
 ```R
-
   library(Signac)
   library(Seurat)
   library(JASPAR2020)
@@ -2011,69 +2010,6 @@ plot_cistrome(obj_in=mcf7,cellline="MCF7")
 
 ```
 
-
-<!--
-
-## Subset DA Peaks by DE Genes
-Using genes associated with topics (11 is FOXM1 and 17 is ESR1)
-
-```R
-library(Signac)
-library(Seurat)
-library(ComplexHeatmap)
-library(JASPAR2020)
-library(TFBSTools)
-library(grid)
-library(dplyr)
-library(ggplot2)
-library(ggrepel)
-library(parallel)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(patchwork)
-library(circlize)
-library(viridis)
-
-setwd("/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
-
-mcf7_topic_geneset<-read.table("Model_MCF7_E2_20T_CLR_5000Variable_M10_top50_genes_topics.txt",sep="\t",skip=1,header=T) #MCF7 gene topics, 2 is FOXM1 8 is ESR1
-mcf7_foxm1_genes<-mcf7_topic_geneset$Topic_2
-mcf7_esr1_genes<-mcf7_topic_geneset$Topic_8
-t47d_topic_geneset<-read.table("Model_PEPE_T47D_20T_CLR_5000Variable_M10_top50_genes_topics.txt",sep="\t",header=T) #t47d gene topics, 11 is FOXM1 17 is ESR1
-t47d_foxm1_genes<-t47d_topic_geneset$Topic_11
-t47d_esr1_genes<-t47d_topic_geneset$Topic_17
-
-mcf7_da_tf<-read.table(file="mcf7_topicbin_TF.txt",header=T,sep="\t")
-t47d_da_tf<-read.table(file="t47d_topicbin_TF.txt",header=T,sep="\t")
-
-mcf7_da<-read.table("mcf7_topicbin_DApeaks.txt",sep="\t",header=T)
-t47d_da<-read.table("t47d_topicbin_DApeaks.txt",sep="\t",header=T)
-
-mcf7_da_tf$topic_enrichment<-NA
-mcf7_da_tf[which(mcf7_da_tf$tf_name %in% mcf7_foxm1_genes),]$topic_enrichment<-"FOXM1"
-mcf7_da_tf[which(mcf7_da_tf$tf_name %in% mcf7_esr1_genes),]$topic_enrichment<-"ESR1"
-t47d_da_tf$topic_enrichment<-NA
-t47d_da_tf[which(t47d_da_tf$tf_name %in% t47d_foxm1_genes),]$topic_enrichment<-"FOXM1"
-t47d_da_tf[which(t47d_da_tf$tf_name %in% t47d_esr1_genes),]$topic_enrichment<-"ESR1"
-
-mcf7_da$topic_enrichment<-NA
-mcf7_da[which(mcf7_da$gene_name %in% mcf7_foxm1_genes),]$topic_enrichment<-"FOXM1"
-mcf7_da[which(mcf7_da$gene_name %in% mcf7_esr1_genes),]$topic_enrichment<-"ESR1"
-t47d_da$topic_enrichment<-NA
-t47d_da[which(t47d_da$gene_name %in% t47d_foxm1_genes),]$topic_enrichment<-"FOXM1"
-t47d_da[which(t47d_da$gene_name %in% t47d_esr1_genes),]$topic_enrichment<-"ESR1"
-
-write.table(t47d_da,file="t47d_topicbin_DApeaks.txt",col.names=T,sep="\t")
-system("slack -F t47d_topicbin_DApeaks.txt ryan_todo")
-write.table(mcf7_da,file="mcf7_topicbin_DApeaks.txt",col.names=T,sep="\t")
-system("slack -F mcf7_topicbin_DApeaks.txt ryan_todo")
-
-write.table(t47d_da_tf,file="t47d_topicbin_TF.txt",col.names=T,sep="\t")
-system("slack -F t47d_topicbin_TF.txt ryan_todo")
-write.table(mcf7_da_tf,file="mcf7_topicbin_TF.txt",col.names=T,sep="\t")
-system("slack -F mcf7_topicbin_TF.txt ryan_todo")
-```
-
--->
 
 ## Ryan Primary Tissue Multiome Analysis
 

@@ -1270,6 +1270,180 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
   saveRDS(orgo_cirm43,file="orgo_cirm43.QC2.SeuratObject.Rds")
 ```
 
+## Marker gene plotting
+
+```R
+  library(Signac)
+  library(Seurat)
+  library(JASPAR2020)
+  library(TFBSTools)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(patchwork)
+  set.seed(1234)
+  library(motifmatchr)
+  library(parallel)
+  library(ggplot2)
+  library(motifmatchr)
+  library(chromVAR)
+  library(universalmotif)
+  library(EnsDb.Hsapiens.v86)
+  library(cicero,lib.loc="/home/groups/oroaklab/nishida/R_4.0.0_arsn") 
+  library(monocle3,lib.loc="/home/groups/oroaklab/nishida/R_4.0.0_arsn") 
+  library(SeuratWrappers)
+
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  orgo_cirm43<-readRDS(file="orgo_cirm43.QC2.SeuratObject.Rds")
+
+#Run cicero for binned cells
+  #Cicero processing function
+  cicero_processing<-function(object_input,prefix){
+
+      #Generate CDS format from Seurat object
+      atac.cds <- as.CellDataSet(object_input,assay="peaks")
+
+      # convert to CellDataSet format and make the cicero object
+      print("Making Cicero format CDS file")
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = atac.cds@reducedDimS)
+      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+      
+      # extract gene annotations from EnsDb
+      annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+      seqlevels(annotations)<-paste0("chr",seqlevels(annotations))
+
+      # change to UCSC style since the data was mapped to hg38
+      #seqlevelsStyle(annotations) <- 'UCSC'
+      genome(annotations) <- "hg38"
+
+      genome <- annotations@seqinfo # get the chromosome sizes from the Seurat object
+      genome.df <- data.frame("chr" = genome@seqnames, "length" = genome@seqlengths) # convert chromosome sizes to a dataframe
+      
+      print("Running Cicero to generate connections.")
+      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
+      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+      
+      print("Generating CCANs")
+      ccans <- generate_ccans(conns) # generate ccans
+      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+      
+      print("Adding CCAN links into Seurat Object and Returning.")
+      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
+      DefaultAssay(object_input)<-"peaks"
+      Links(object_input) <- links
+      return(object_input)
+  }
+
+orgo_div30<-subset(orgo_cirm43,DIV=="30")
+orgo_div30<-cicero_processing(object_input=orgo_div30,prefix="orgo_cirm43.QC2.DIV30")
+saveRDS(orgo_div30,"orgo_cirm43.QC2.DIV30.Rds")
+#orgo_div30<-readRDS("orgo_cirm43.QC2.DIV30.Rds")
+
+orgo_div60<-subset(orgo_cirm43,DIV=="60")
+orgo_div60<-cicero_processing(object_input=orgo_div60,prefix="orgo_cirm43.QC2.DIV60")
+saveRDS(orgo_div60,"orgo_cirm43.QC2.DIV60.Rds")
+#orgo_div60<-readRDS("orgo_cirm43.QC2.DIV60.Rds")
+
+orgo_div90<-subset(orgo_cirm43,DIV=="90")
+orgo_div90<-cicero_processing(object_input=orgo_div90,prefix="orgo_cirm43.QC2.DIV90")
+saveRDS(orgo_div90,"orgo_cirm43.QC2.DIV90.Rds")
+#orgo_div90<-readRDS("orgo_cirm43.QC2.DIV90.Rds")
+
+
+
+```
+Plot genome tracks
+
+```R
+ library(Signac)
+  library(Seurat)
+  library(JASPAR2020)
+  library(TFBSTools)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+  library(patchwork)
+  set.seed(1234)
+  library(motifmatchr)
+  library(parallel)
+  library(ggplot2)
+  library(motifmatchr)
+  library(chromVAR)
+  library(universalmotif)
+  library(EnsDb.Hsapiens.v86)
+  library(cicero,lib.loc="/home/groups/oroaklab/nishida/R_4.0.0_arsn") 
+  library(monocle3,lib.loc="/home/groups/oroaklab/nishida/R_4.0.0_arsn") 
+  library(SeuratWrappers)
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  orgo_cirm43<-readRDS(file="orgo_cirm43.QC2.SeuratObject.Rds")
+orgo_div30<-readRDS("orgo_cirm43.QC2.DIV30.Rds")
+orgo_div60<-readRDS("orgo_cirm43.QC2.DIV60.Rds")
+orgo_div90<-readRDS("orgo_cirm43.QC2.DIV90.Rds")
+
+#use link plot to generate cicero links
+
+#Generate Coverage Plots Across Genes
+#Pick DE genes from the topic_binned data
+#Pull gene list from DE genes, and RIME paper https://ars.els-cdn.com/content/image/1-s2.0-S221112471300017X-figs3.jpg
+geneset<-c()
+#MA0112.3 is ESR1 can add more
+#
+#geneset<-c("GREB1","CUX2","CENPE","PGR","NEAT1","ERBB4","TOP2A","KIF14","FMN1","ABCC12","ABCC11","TMEM164","CENPF","AURKA","FMN1","PIK3R3","GREB1","STMN1")
+geneset<-c("PGR","CENPF")
+
+#####Using a custom Plotting function###############
+#PGR chr11-101020000-101140000
+#CENPE chr1-214600000-214660000
+
+
+#####################Old style of plotting######################
+cov_plots<-function(dat=mcf7,gene_range="chr11-101020000-101140000",gene_name="PGR",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="test",foxm1_link=mcf7_foxm1,esr1_link=mcf7_esr1,ymax=50){
+  
+  peak_annot<-granges(dat@assays$peaks) #set up peak motif overlap as annotation track
+  peak_annot$motif_overlap<-""
+  for (i in length(motif.name)){ #jarspar formatted names
+    overlap_motif_idx<-findOverlaps(granges(peak_annot),dat@assays$peaks@motifs@positions[motif.name[i]])@from
+    peak_annot[overlap_motif_idx,]$motif_overlap<-paste(peak_annot[overlap_motif_idx,]$motif_overlap,motif.name[i])
+  }
+  if(add.foxm1){ #add foxm1 (not included in Jaspar but used in homer)
+    motif.positions <- motifmatchr::matchMotifs(pwms = foxm1, subject = granges(dat@assays$peaks), out = 'positions', genome = BSgenome.Hsapiens.UCSC.hg38 )
+    overlap_motif_idx<-findOverlaps(granges(peak_annot),motif.positions[[1]])@from
+    peak_annot[overlap_motif_idx,]$motif_overlap<-paste(peak_annot[overlap_motif_idx,]$motif_overlap,"foxm1")
+  }
+
+  dat@assays$peaks@meta.features$motif_overlap<-peak_annot$motif_overlap
+  
+  annot_plot<-AnnotationPlot(object=dat, region=gene_range)
+  peak_plot<-PeakPlot(object=dat,region=gene_range,group.by="motif_overlap")
+
+  esr1_cov <- CoveragePlot(object = dat, region = gene_range, assay="peaks", ident=c("ESR1"),annotation=FALSE,peaks=FALSE,links=FALSE ,ymax=ymax) 
+  esr1_links<-LinkPlot(object=esr1_link, region=gene_range,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
+  foxm1_cov <- CoveragePlot(object = dat, region = gene_range, assay="peaks", ident=c("FOXM1"),annotation=FALSE,peaks=FALSE,links=FALSE ,ymax=ymax ) 
+  foxm1_links<-LinkPlot(object=foxm1_link, region=gene_range,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
+
+  esr1_expr_plot<-ExpressionPlot(object=dat, features=gene_name, assay="SCT", ident=c("ESR1"))+xlim(c(0,5))
+  foxm1_expr_plot<-ExpressionPlot(object=dat, features=gene_name, assay="SCT", ident=c("FOXM1"))+xlim(c(0,5)) 
+  layout<-"
+  HHH#
+  AAAE
+  FFF#
+  BBB#
+  CCCI
+  GGG#
+  DDD#
+  "
+
+  plt<-wrap_plots(A=esr1_cov,B=esr1_links,C=foxm1_cov,D=foxm1_links,E=esr1_expr_plot,F=peak_plot,G=peak_plot,H=annot_plot,I=foxm1_expr_plot,design=layout,heights = c(1,3,1,2,3,1,2))+ggtitle(outname)
+  return(plt)
+}
+
+#PGR
+mcf7_plot<-cov_plots(dat=mcf7,gene_range="chr11-100920000-101200000",gene_name="PGR",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="mcf7",foxm1_link=mcf7_foxm1,esr1_link=mcf7_esr1,ymax=30)
+t47d_plot<-cov_plots(dat=t47d,gene_range="chr11-100920000-101200000",gene_name="PGR",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="t47d",foxm1_link=t47d_foxm1,esr1_link=t47d_esr1,ymax=30)
+ggsave(mcf7_plot/t47d_plot,file=paste0("yw_control.PGR.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","yw_control.PGR.featureplots.pdf"," ryan_todo"))
+#CENPF
+mcf7_plot<-cov_plots(dat=mcf7,gene_range="chr1-214550000-214700000",gene_name="CENPF",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="mcf7",foxm1_link=mcf7_foxm1,esr1_link=mcf7_esr1,ymax=30)
+t47d_plot<-cov_plots(dat=t47d,gene_range="chr1-214550000-214700000",gene_name="CENPF",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="t47d",foxm1_link=t47d_foxm1,esr1_link=t47d_esr1,ymax=30)
+ggsave(mcf7_plot/t47d_plot,file=paste0("yw_control.CENPF.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","yw_control.CENPF.featureplots.pdf"," ryan_todo"))
+```
 <!--
 Continued processing using Ziffra Primary single-cell ATAC data set for integration
 
