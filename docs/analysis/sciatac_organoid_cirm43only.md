@@ -519,6 +519,7 @@ df.to_csv('orgo.scrublet.tsv', index=False, sep="\t")
   saveRDS(orgo_cirm43,file="orgo_cirm43.SeuratObject.chromvar.Rds")
 ```
 
+
 ### Performing cisTopic and UMAP
 
 
@@ -1298,13 +1299,15 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
   #Cicero processing function
   cicero_processing<-function(object_input,prefix){
 
-      #Generate CDS format from Seurat object
-      atac.cds <- as.CellDataSet(object_input,assay="peaks")
-
-      # convert to CellDataSet format and make the cicero object
-      print("Making Cicero format CDS file")
+      if(dim(object_input)[2]<15000){
+      atac.cds <- as.CellDataSet(object_input,assay="peaks") #Generate CDS format from Seurat object
       atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = atac.cds@reducedDimS)
+      }else{
+      atac.cds<-make_atac_cds(mefa4::Melt(object_input@assays$peaks@counts[rowSums(object_input@assays$peaks@counts)>0,]),) #For larger files use raw data, this is only because my version of monocle and cicero are a bit outdated
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = object_input@reductions$umap@cell.embeddings)
+      }
       saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+
       
       # extract gene annotations from EnsDb
       annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
@@ -1376,24 +1379,31 @@ orgo_div30<-readRDS("orgo_cirm43.QC2.DIV30.Rds")
 orgo_div60<-readRDS("orgo_cirm43.QC2.DIV60.Rds")
 orgo_div90<-readRDS("orgo_cirm43.QC2.DIV90.Rds")
 
+Idents(orgo_cirm43)<-orgo_cirm43$DIV
+
+# extract position frequency matrices for the motifs
+pwm <- getMatrixSet(
+  x = JASPAR2020,
+  opts = list(species = 9606, all_versions = FALSE)
+)
+
+# add motif information
+DefaultAssay(orgo_cirm43)<-"peaks"
+orgo_cirm43 <- AddMotifs(orgo_cirm43, genome = BSgenome.Hsapiens.UCSC.hg38, pfm = pwm)
+saveRDS(orgo_cirm43,file="orgo_cirm43.QC2.SeuratObject.Rds")
+
 #use link plot to generate cicero links
 
 #Generate Coverage Plots Across Genes
-#Pick DE genes from the topic_binned data
-#Pull gene list from DE genes, and RIME paper https://ars.els-cdn.com/content/image/1-s2.0-S221112471300017X-figs3.jpg
-geneset<-c()
-#MA0112.3 is ESR1 can add more
-#
-#geneset<-c("GREB1","CUX2","CENPE","PGR","NEAT1","ERBB4","TOP2A","KIF14","FMN1","ABCC12","ABCC11","TMEM164","CENPF","AURKA","FMN1","PIK3R3","GREB1","STMN1")
-geneset<-c("PGR","CENPF")
 
 #####Using a custom Plotting function###############
-#PGR chr11-101020000-101140000
-#CENPE chr1-214600000-214660000
-
+#SOX2 chr3-181711925-181714436 MA0143.4
+#TBR1 chr2-161416297-161425870 MA0802.1
+#EOMES chr3-27715949-27722713 MA0800.1
+#HOPX chr4-56647988-56681899
 
 #####################Old style of plotting######################
-cov_plots<-function(dat=mcf7,gene_range="chr11-101020000-101140000",gene_name="PGR",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="test",foxm1_link=mcf7_foxm1,esr1_link=mcf7_esr1,ymax=50){
+cov_plots<-function(dat=orgo_cirm43,gene_range="chr11-101020000-101140000",gene_name="PGR",motif.name=c("MA0112.3"),outname="test",div30=orgo_div30,div60=orgo_div60,div90=orgo_div90){
   
   peak_annot<-granges(dat@assays$peaks) #set up peak motif overlap as annotation track
   peak_annot$motif_overlap<-""
@@ -1401,48 +1411,58 @@ cov_plots<-function(dat=mcf7,gene_range="chr11-101020000-101140000",gene_name="P
     overlap_motif_idx<-findOverlaps(granges(peak_annot),dat@assays$peaks@motifs@positions[motif.name[i]])@from
     peak_annot[overlap_motif_idx,]$motif_overlap<-paste(peak_annot[overlap_motif_idx,]$motif_overlap,motif.name[i])
   }
-  if(add.foxm1){ #add foxm1 (not included in Jaspar but used in homer)
-    motif.positions <- motifmatchr::matchMotifs(pwms = foxm1, subject = granges(dat@assays$peaks), out = 'positions', genome = BSgenome.Hsapiens.UCSC.hg38 )
-    overlap_motif_idx<-findOverlaps(granges(peak_annot),motif.positions[[1]])@from
-    peak_annot[overlap_motif_idx,]$motif_overlap<-paste(peak_annot[overlap_motif_idx,]$motif_overlap,"foxm1")
-  }
-
   dat@assays$peaks@meta.features$motif_overlap<-peak_annot$motif_overlap
   
   annot_plot<-AnnotationPlot(object=dat, region=gene_range)
   peak_plot<-PeakPlot(object=dat,region=gene_range,group.by="motif_overlap")
 
-  esr1_cov <- CoveragePlot(object = dat, region = gene_range, assay="peaks", ident=c("ESR1"),annotation=FALSE,peaks=FALSE,links=FALSE ,ymax=ymax) 
-  esr1_links<-LinkPlot(object=esr1_link, region=gene_range,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
-  foxm1_cov <- CoveragePlot(object = dat, region = gene_range, assay="peaks", ident=c("FOXM1"),annotation=FALSE,peaks=FALSE,links=FALSE ,ymax=ymax ) 
-  foxm1_links<-LinkPlot(object=foxm1_link, region=gene_range,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
+  div30_cov <- CoveragePlot(object = dat, region = gene_range, assay="peaks", ident=c("30"),annotation=FALSE,peaks=FALSE,links=FALSE ) 
+  div30_links<-LinkPlot(object=div30, region=gene_range,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
+  div60_cov <- CoveragePlot(object = dat, region = gene_range, assay="peaks", ident=c("60"),annotation=FALSE,peaks=FALSE,links=FALSE ) 
+  div60_links<-LinkPlot(object=div60, region=gene_range,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
+  div90_cov <- CoveragePlot(object = dat, region = gene_range, assay="peaks", ident=c("90"),annotation=FALSE,peaks=FALSE,links=FALSE ) 
+  div90_links<-LinkPlot(object=div90, region=gene_range,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
 
-  esr1_expr_plot<-ExpressionPlot(object=dat, features=gene_name, assay="SCT", ident=c("ESR1"))+xlim(c(0,5))
-  foxm1_expr_plot<-ExpressionPlot(object=dat, features=gene_name, assay="SCT", ident=c("FOXM1"))+xlim(c(0,5)) 
+  div30_chromvar_plot<-ExpressionPlot(object=dat, features=motif.name, assay="chromvar", ident=c("30"))+xlim(c(0,5))
+  div60_chromvar_plot<-ExpressionPlot(object=dat, features=motif.name, assay="chromvar", ident=c("60"))+xlim(c(0,5))
+  div90_chromvar_plot<-ExpressionPlot(object=dat, features=motif.name, assay="chromvar", ident=c("90"))+xlim(c(0,5))
+  
+  div30_ga_plot<-ExpressionPlot(object=dat, features=gene_name, assay="GeneActivity", ident=c("30"))#+xlim(c(0,5))
+  div60_ga_plot<-ExpressionPlot(object=dat, features=gene_name, assay="GeneActivity", ident=c("60"))#+xlim(c(0,5))
+  div90_ga_plot<-ExpressionPlot(object=dat, features=gene_name, assay="GeneActivity", ident=c("90"))#+xlim(c(0,5))
   layout<-"
-  HHH#
-  AAAE
-  FFF#
-  BBB#
-  CCCI
-  GGG#
-  DDD#
+  KKK##
+  AAACL
+  BBB##
+  DDDFM
+  EEE##
+  GGGIN
+  HHH##
+  JJJ##
   "
-
-  plt<-wrap_plots(A=esr1_cov,B=esr1_links,C=foxm1_cov,D=foxm1_links,E=esr1_expr_plot,F=peak_plot,G=peak_plot,H=annot_plot,I=foxm1_expr_plot,design=layout,heights = c(1,3,1,2,3,1,2))+ggtitle(outname)
+  plt<-wrap_plots(A=div30_cov,B=div30_links,C=div30_chromvar_plot,
+  D=div60_cov,E=div60_links,F=div60_chromvar_plot,
+  G=div90_cov,H=div90_links,I=div90_chromvar_plot,
+  J=peak_plot,K=annot_plot,
+  L=div30_ga_plot,M=div60_ga_plot,N=div90_ga_plot,
+  design=layout,heights = c(1,3,1,3,1,3,1,1))+ggtitle(outname)
   return(plt)
 }
 
-#PGR
-mcf7_plot<-cov_plots(dat=mcf7,gene_range="chr11-100920000-101200000",gene_name="PGR",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="mcf7",foxm1_link=mcf7_foxm1,esr1_link=mcf7_esr1,ymax=30)
-t47d_plot<-cov_plots(dat=t47d,gene_range="chr11-100920000-101200000",gene_name="PGR",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="t47d",foxm1_link=t47d_foxm1,esr1_link=t47d_esr1,ymax=30)
-ggsave(mcf7_plot/t47d_plot,file=paste0("yw_control.PGR.featureplots.pdf"),height=40,width=20,limitsize=F)
-system(paste0("slack -F ","yw_control.PGR.featureplots.pdf"," ryan_todo"))
-#CENPF
-mcf7_plot<-cov_plots(dat=mcf7,gene_range="chr1-214550000-214700000",gene_name="CENPF",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="mcf7",foxm1_link=mcf7_foxm1,esr1_link=mcf7_esr1,ymax=30)
-t47d_plot<-cov_plots(dat=t47d,gene_range="chr1-214550000-214700000",gene_name="CENPF",motif.name=c("MA0112.3"),add.foxm1=TRUE,outname="t47d",foxm1_link=t47d_foxm1,esr1_link=t47d_esr1,ymax=30)
-ggsave(mcf7_plot/t47d_plot,file=paste0("yw_control.CENPF.featureplots.pdf"),height=40,width=20,limitsize=F)
-system(paste0("slack -F ","yw_control.CENPF.featureplots.pdf"," ryan_todo"))
+#SOX2
+sox2_plot<-cov_plots(gene_range="chr3-181701925-181724436",gene_name="SOX2",motif.name=c("MA0143.4"),outname="sox2")
+ggsave(sox2_plot,file=paste0("orgo_cirm43.SOX2.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","orgo_cirm43.SOX2.featureplots.pdf"," ryan_todo"))
+
+#TBR1
+tbr1_plot<-cov_plots(gene_range="chr2-161406297-161435870",gene_name="TBR1",motif.name=c("MA0802.1"),outname="TBR1")
+ggsave(tbr1_plot,file=paste0("orgo_cirm43.TBR1.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","orgo_cirm43.TBR1.featureplots.pdf"," ryan_todo"))
+
+#EOMES
+eomes_plot<-cov_plots(gene_range="chr3-27705949-27732713",gene_name="EOMES",motif.name=c("MA0800.1"),outname="EOMES")
+ggsave(eomes_plot,file=paste0("orgo_cirm43.EOMES.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","orgo_cirm43.EOMES.featureplots.pdf"," ryan_todo"))
 ```
 <!--
 Continued processing using Ziffra Primary single-cell ATAC data set for integration
