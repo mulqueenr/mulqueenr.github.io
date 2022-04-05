@@ -1299,13 +1299,13 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
   #Cicero processing function
   cicero_processing<-function(object_input,prefix){
 
-      if(dim(object_input)[2]<15000){
+      #if(dim(object_input)[2]<15000){
       atac.cds <- as.CellDataSet(object_input,assay="peaks") #Generate CDS format from Seurat object
       atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = atac.cds@reducedDimS)
-      }else{
-      atac.cds<-make_atac_cds(mefa4::Melt(object_input@assays$peaks@counts[rowSums(object_input@assays$peaks@counts)>0,]),) #For larger files use raw data, this is only because my version of monocle and cicero are a bit outdated
-      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = object_input@reductions$umap@cell.embeddings)
-      }
+      #}else{
+      #atac.cds<-make_atac_cds(mefa4::Melt(object_input@assays$peaks@counts[rowSums(object_input@assays$peaks@counts)>0,]),) #For larger files use raw data, this is only because my version of monocle and cicero are a bit outdated
+      #atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = object_input@reductions$umap@cell.embeddings)
+      #}
       saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
 
       
@@ -1335,6 +1335,15 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
       return(object_input)
   }
 
+#run cicero linkage per cluster
+for (i in orgo_cirm43$seurat_clusters){
+  dat<-subset(orgo_cirm43,seurat_clusters==i)
+  dat<-cicero_processing(object_input=dat,prefix=paste0("orgo_cirm43.QC2.",i))
+  saveRDS(dat,paste0("orgo_cirm43.QC2.",i,".Rds"))
+}
+
+
+#run per DIV?
 orgo_div30<-subset(orgo_cirm43,DIV=="30")
 orgo_div30<-cicero_processing(object_input=orgo_div30,prefix="orgo_cirm43.QC2.DIV30")
 saveRDS(orgo_div30,"orgo_cirm43.QC2.DIV30.Rds")
@@ -1392,6 +1401,19 @@ DefaultAssay(orgo_cirm43)<-"peaks"
 orgo_cirm43 <- AddMotifs(orgo_cirm43, genome = BSgenome.Hsapiens.UCSC.hg38, pfm = pwm)
 saveRDS(orgo_cirm43,file="orgo_cirm43.QC2.SeuratObject.Rds")
 
+# gather the footprinting information for sets of motifs
+orgo_cirm43 <- Footprint(
+  object = orgo_cirm43,
+  motif.name = c("SOX2","TBR1","EOMES"),
+  genome = BSgenome.Hsapiens.UCSC.hg38
+)
+
+# plot the footprint data for each group of cells
+p2 <- PlotFootprint(orgo_cirm43, features = c("SOX2","TBR1","EOMES"))
+p2 + patchwork::plot_layout(ncol = 1)
+ggsave(p2,file=paste0("orgo_cirm43.TF_footprints.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","orgo_cirm43.TF_footprints.pdf"," ryan_todo"))
+
 #use link plot to generate cicero links
 
 #Generate Coverage Plots Across Genes
@@ -1401,7 +1423,7 @@ saveRDS(orgo_cirm43,file="orgo_cirm43.QC2.SeuratObject.Rds")
 #TBR1 chr2-161416297-161425870 MA0802.1
 #EOMES chr3-27715949-27722713 MA0800.1
 #HOPX chr4-56647988-56681899
-
+#BCL11B chr14-99169287-99272197 MA1989.1
 #####################Old style of plotting######################
 cov_plots<-function(dat=orgo_cirm43,gene_range="chr11-101020000-101140000",gene_name="PGR",motif.name=c("MA0112.3"),outname="test",div30=orgo_div30,div60=orgo_div60,div90=orgo_div90){
   
@@ -1462,6 +1484,12 @@ system(paste0("slack -F ","orgo_cirm43.TBR1.featureplots.pdf"," ryan_todo"))
 #EOMES
 eomes_plot<-cov_plots(gene_range="chr3-27705949-27732713",gene_name="EOMES",motif.name=c("MA0800.1"),outname="EOMES")
 ggsave(eomes_plot,file=paste0("orgo_cirm43.EOMES.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","orgo_cirm43.EOMES.featureplots.pdf"," ryan_todo"))
+
+
+#BCL11B
+bcl11b_plot<-cov_plots(gene_range="chr14-99159287-99282197",gene_name="BCL11B",motif.name=c("MA1989.1"),outname="BCL11B")
+ggsave(bcl11b_plot,file=paste0("orgo_cirm43.EOMES.featureplots.pdf"),height=40,width=20,limitsize=F)
 system(paste0("slack -F ","orgo_cirm43.EOMES.featureplots.pdf"," ryan_todo"))
 ```
 <!--
@@ -2607,118 +2635,6 @@ system("slack -F test.magic.pdf ryan_todo")
 
 ```
 
-
-<!--
-```R
-
-
-
-
-
-  da_one_v_one<-function(i,obj,group,j_list,assay.="peaks"){
-      i<-as.character(i)
-      da_tmp_2<-list()
-      for (j in j_list){
-          if ( i != j){
-          da_peaks_tmp <- FindMarkers(
-              object = obj,
-              ident.1 = i,
-              ident.2 = j,
-              group.by = group,
-              test.use = 'LR',
-              latent.vars = 'nCount_peaks',
-              only.pos=T,
-              assay=assay.,
-              logfc.threshold=0.1
-              )
-          da_peaks_tmp$da_region<-row.names(da_peaks_tmp)
-          if(assay.=="peaks"){
-          closest_genes <- ClosestFeature(obj,da_peaks_tmp$da_region)
-          da_peaks_tmp<-cbind(da_peaks_tmp,closest_genes)}
-          da_peaks_tmp$enriched_group<-c(i)
-          da_peaks_tmp$compared_group<-c(j)
-          da_tmp_2[[paste(i,j)]]<-da_peaks_tmp
-          }
-      }
-      return(da_tmp_2)
-    }
-
-  n.cores=length(unique(dat$seurat_clusters))
-  dat_da_peaks<-mclapply(
-      unique(dat$seurat_clusters),
-      FUN=da_one_v_one,
-      obj=dat,
-      group="seurat_clusters",
-      j_list=do.call("as.character",list(unique(dat$seurat_clusters))),
-      mc.cores=n.cores)
-
-  #Merge the final data frame from the list for 1v1 DA
-  dat_da_peaks<-do.call("rbind",do.call("rbind",dat_da_peaks))
-
-  write("Outputting One v One DA Table.", stderr())
-  write.table(dat_da_peaks,file="ExN.onevone.da_peaks.txt",sep="\t",col.names=T,row.names=T,quote=F)
-  system("slack -F ExN.onevone.da_peaks.txt ryan_todo")
-
-
-#Perform parallel application of DA test
-  n.cores=length(unique(dat$seurat_clusters))
-  dat_da_chromvar<-mclapply(
-      unique(dat$seurat_clusters),
-      FUN=da_one_v_rest,
-      obj=dat,
-      group="seurat_clusters",
-      assay.="chromvar",
-      mc.cores=n.cores)
-
-  #Merge the final data frame from the list for 1vrest DA
-  dat_da_chromvar<-do.call("rbind",dat_da_chromvar)
-  dat_da_chromvar$enriched_group<-dat_da_chromvar$enriched_group-1#correct enriched group numbering
-  write("Outputting One v Rest DA Table.", stderr())
-  write.table(dat_da_chromvar,file="orgo_cirm43.ExN.da_chromvar.txt",sep="\t",col.names=T,row.names=T,quote=F)
-
-  dat_da_tf<-mclapply(
-      unique(dat$seurat_clusters),
-      FUN=da_one_v_one,
-      obj=dat,
-      group="seurat_clusters",
-      j_list=do.call("as.character",list(unique(dat$seurat_clusters))),
-      assay.="chromvar",
-      mc.cores=n.cores)
-
-  #Merge the final data frame from the list for 1v1 DA
-  dat_da_tf<-do.call("rbind",do.call("rbind",dat_da_tf))
-
-  write("Outputting One v One DA Table.", stderr())
-  write.table(dat_da_tf,file="ExN.onevone.da_chromvar.txt",sep="\t",col.names=T,row.names=T,quote=F)
-  system("slack -F ExN.onevone.da_chromvar.txt ryan_todo")
-
-# extract position frequency matrices for the motifs
-pwm <- getMatrixSet(
-  x = JASPAR2020,
-  opts = list(species = 9606, all_versions = FALSE)
-)
-
-# add motif information
-DefaultAssay(dat)<-"peaks"
-dat <- AddMotifs(dat, genome = BSgenome.Hsapiens.UCSC.hg38, pfm = pwm)
-saveRDS(dat,file="orgo_cirm43.ExN.SeuratObject.Rds")
-
-
-#function for plotting footprints in data sets
-plot_footprints<-function(x,footprints){
-  x <- Footprint(object = x, motif.name = footprints, genome = BSgenome.Hsapiens.UCSC.hg38, in.peaks=F)   # gather the footprinting information for sets of motifs
-  p2 <- PlotFootprint(x, features = footprints,label=F,normalization="subtract")   # plot the footprint data for each group of cells, might want to change idents
-  return(p2)
-}
-
-out1<-mclapply(c("SOX2","PAX6","NEUROD2","TBR1","EOMES","NEUROD1","NEUROG1","BCL11B"),FUN=function(z) plot_footprints(x=dat,footprints=z),mc.cores=8) #plot and return 5 at a time
-outname="ExN"
-pdf(paste0(outname,".motif_footprints.pdf"),height=5*length(out1))
-print(wrap_plots(out1) + patchwork::plot_layout(ncol = 1))
-dev.off()
-system(paste("slack -F ",paste0(outname,".motif_footprints.pdf")," ryan_todo" ))
-```
--->
 
 Adding feature overlap with Trevino hSS and hCS data to differentiate subpallial and cortical projecting neurons
 
