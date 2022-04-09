@@ -1336,7 +1336,7 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
   }
 
 #run cicero linkage per cluster
-for (i in orgo_cirm43$seurat_clusters){
+for (i in unique(orgo_cirm43$seurat_clusters)){
   dat<-subset(orgo_cirm43,seurat_clusters==i)
   dat<-cicero_processing(object_input=dat,prefix=paste0("orgo_cirm43.QC2.",i))
   saveRDS(dat,paste0("orgo_cirm43.QC2.",i,".Rds"))
@@ -1384,11 +1384,16 @@ Plot genome tracks
   library(SeuratWrappers)
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
   orgo_cirm43<-readRDS(file="orgo_cirm43.QC2.SeuratObject.Rds")
-orgo_div30<-readRDS("orgo_cirm43.QC2.DIV30.Rds")
-orgo_div60<-readRDS("orgo_cirm43.QC2.DIV60.Rds")
-orgo_div90<-readRDS("orgo_cirm43.QC2.DIV90.Rds")
 
-Idents(orgo_cirm43)<-orgo_cirm43$DIV
+orgo_0<-readRDS("orgo_cirm43.QC2.0.Rds")
+orgo_1<-readRDS("orgo_cirm43.QC2.1.Rds")
+orgo_2<-readRDS("orgo_cirm43.QC2.2.Rds")
+orgo_3<-readRDS("orgo_cirm43.QC2.3.Rds")
+orgo_4<-readRDS("orgo_cirm43.QC2.4.Rds")
+orgo_5<-readRDS("orgo_cirm43.QC2.5.Rds")
+orgo_6<-readRDS("orgo_cirm43.QC2.6.Rds")
+
+Idents(orgo_cirm43)<-orgo_cirm43$seurat_clusters
 
 # extract position frequency matrices for the motifs
 pwm <- getMatrixSet(
@@ -1414,6 +1419,7 @@ p2 + patchwork::plot_layout(ncol = 1)
 ggsave(p2,file=paste0("orgo_cirm43.TF_footprints.pdf"),height=40,width=20,limitsize=F)
 system(paste0("slack -F ","orgo_cirm43.TF_footprints.pdf"," ryan_todo"))
 
+
 #use link plot to generate cicero links
 
 #Generate Coverage Plots Across Genes
@@ -1425,7 +1431,17 @@ system(paste0("slack -F ","orgo_cirm43.TF_footprints.pdf"," ryan_todo"))
 #HOPX chr4-56647988-56681899
 #BCL11B chr14-99169287-99272197 MA1989.1
 #####################Old style of plotting######################
-cov_plots<-function(dat=orgo_cirm43,gene_range="chr11-101020000-101140000",gene_name="PGR",motif.name=c("MA0112.3"),outname="test",div30=orgo_div30,div60=orgo_div60,div90=orgo_div90){
+#plot all panels for each subset (cluster in this case)
+plot_panels<-function(dat.=dat,gene_range.=gene_range,gene_name.=gene_name,motif.name.=motif.name,obj_subset=orgo_0,ident_subset="0"){
+  panel_plots<-list()
+  panel_plots[["panel_cov"]]<- CoveragePlot(object = dat., region = gene_range., assay="peaks", ident=ident_subset,annotation=FALSE,peaks=FALSE,links=FALSE ) 
+  panel_plots[["panel_links"]]<-LinkPlot(object=obj_subset, region=gene_range.,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
+  panel_plots[["panel_chromvar_plot"]]<-ExpressionPlot(object=dat., features=motif.name., assay="chromvar", ident=ident_subset)+xlim(c(0,5))
+  panel_plots[["panel_ga_plot"]]<-ExpressionPlot(object=dat., features=gene_name., assay="GeneActivity", ident=ident_subset)#+xlim(c(0,5))
+  return(panel_plots)
+}
+
+cov_plots<-function(dat=orgo_cirm43,gene_range="chr11-101020000-101140000",gene_name="PGR",motif.name=c("MA0112.3"),outname="test"){
   
   peak_annot<-granges(dat@assays$peaks) #set up peak motif overlap as annotation track
   peak_annot$motif_overlap<-""
@@ -1438,36 +1454,23 @@ cov_plots<-function(dat=orgo_cirm43,gene_range="chr11-101020000-101140000",gene_
   annot_plot<-AnnotationPlot(object=dat, region=gene_range)
   peak_plot<-PeakPlot(object=dat,region=gene_range,group.by="motif_overlap")
 
-  div30_cov <- CoveragePlot(object = dat, region = gene_range, assay="peaks", ident=c("30"),annotation=FALSE,peaks=FALSE,links=FALSE ) 
-  div30_links<-LinkPlot(object=div30, region=gene_range,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
-  div60_cov <- CoveragePlot(object = dat, region = gene_range, assay="peaks", ident=c("60"),annotation=FALSE,peaks=FALSE,links=FALSE ) 
-  div60_links<-LinkPlot(object=div60, region=gene_range,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
-  div90_cov <- CoveragePlot(object = dat, region = gene_range, assay="peaks", ident=c("90"),annotation=FALSE,peaks=FALSE,links=FALSE ) 
-  div90_links<-LinkPlot(object=div90, region=gene_range,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
+  clus0_panels<-plot_panels(obj_subset=orgo_0,ident_subset="0")
+  clus1_panels<-plot_panels(obj_subset=orgo_1,ident_subset="1")
+  clus2_panels<-plot_panels(obj_subset=orgo_2,ident_subset="2")
+  clus3_panels<-plot_panels(obj_subset=orgo_3,ident_subset="3")
+  clus4_panels<-plot_panels(obj_subset=orgo_4,ident_subset="4")
+  clus5_panels<-plot_panels(obj_subset=orgo_5,ident_subset="5")
+  clus6_panels<-plot_panels(obj_subset=orgo_6,ident_subset="6")
 
-  div30_chromvar_plot<-ExpressionPlot(object=dat, features=motif.name, assay="chromvar", ident=c("30"))+xlim(c(0,5))
-  div60_chromvar_plot<-ExpressionPlot(object=dat, features=motif.name, assay="chromvar", ident=c("60"))+xlim(c(0,5))
-  div90_chromvar_plot<-ExpressionPlot(object=dat, features=motif.name, assay="chromvar", ident=c("90"))+xlim(c(0,5))
-  
-  div30_ga_plot<-ExpressionPlot(object=dat, features=gene_name, assay="GeneActivity", ident=c("30"))#+xlim(c(0,5))
-  div60_ga_plot<-ExpressionPlot(object=dat, features=gene_name, assay="GeneActivity", ident=c("60"))#+xlim(c(0,5))
-  div90_ga_plot<-ExpressionPlot(object=dat, features=gene_name, assay="GeneActivity", ident=c("90"))#+xlim(c(0,5))
+    #define layout of plots
   layout<-"
-  KKK##
-  AAACL
-  BBB##
-  DDDFM
-  EEE##
-  GGGIN
-  HHH##
-  JJJ##
+    FFF##
+    AAACD
+    BBBCD
+    EEE##
   "
-  plt<-wrap_plots(A=div30_cov,B=div30_links,C=div30_chromvar_plot,
-  D=div60_cov,E=div60_links,F=div60_chromvar_plot,
-  G=div90_cov,H=div90_links,I=div90_chromvar_plot,
-  J=peak_plot,K=annot_plot,
-  L=div30_ga_plot,M=div60_ga_plot,N=div90_ga_plot,
-  design=layout,heights = c(1,3,1,3,1,3,1,1))+ggtitle(outname)
+  clus0_plt<-wrap_plots(A=clus0_panels$panel_cov,B=clus0_panels$panel_links,C=clus0_panels$panel_chromvar_plot,D=clus0_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
+
   return(plt)
 }
 
