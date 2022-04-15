@@ -1435,7 +1435,7 @@ system(paste0("slack -F ","orgo_cirm43.TF_footprints.pdf"," ryan_todo"))
 plot_panels<-function(dat.=dat,gene_range.=gene_range,gene_name.=gene_name,motif.name.=motif.name,obj_subset=orgo_0,ident_subset="0"){
   panel_plots<-list()
   panel_plots[["panel_cov"]]<- CoveragePlot(object = dat., region = gene_range., assay="peaks", ident=ident_subset,annotation=FALSE,peaks=FALSE,links=FALSE ) 
-  panel_plots[["panel_links"]]<-LinkPlot(object=obj_subset, region=gene_range.,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.5))
+  panel_plots[["panel_links"]]<-LinkPlot(object=obj_subset, region=gene_range.,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.8))
   panel_plots[["panel_chromvar_plot"]]<-ExpressionPlot(object=dat., features=motif.name., assay="chromvar", ident=ident_subset)+xlim(c(0,5))
   panel_plots[["panel_ga_plot"]]<-ExpressionPlot(object=dat., features=gene_name., assay="GeneActivity", ident=ident_subset)#+xlim(c(0,5))
   return(panel_plots)
@@ -1471,6 +1471,18 @@ cov_plots<-function(dat=orgo_cirm43,gene_range="chr11-101020000-101140000",gene_
   "
   clus0_plt<-wrap_plots(A=clus0_panels$panel_cov,B=clus0_panels$panel_links,C=clus0_panels$panel_chromvar_plot,D=clus0_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
 
+  clus1_plt<-wrap_plots(A=clus1_panels$panel_cov,B=clus1_panels$panel_links,C=clus1_panels$panel_chromvar_plot,D=clus1_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
+
+  clus2_plt<-wrap_plots(A=clus2_panels$panel_cov,B=clus2_panels$panel_links,C=clus2_panels$panel_chromvar_plot,D=clus2_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
+
+  clus3_plt<-wrap_plots(A=clus3_panels$panel_cov,B=clus3_panels$panel_links,C=clus3_panels$panel_chromvar_plot,D=clus3_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
+
+  clus4_plt<-wrap_plots(A=clus4_panels$panel_cov,B=clus4_panels$panel_links,C=clus4_panels$panel_chromvar_plot,D=clus4_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
+
+  clus5_plt<-wrap_plots(A=clus5_panels$panel_cov,B=clus5_panels$panel_links,C=clus5_panels$panel_chromvar_plot,D=clus5_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
+
+  clus6_plt<-wrap_plots(A=clus6_panels$panel_cov,B=clus6_panels$panel_links,C=clus6_panels$panel_chromvar_plot,D=clus6_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
+  plt<-clus6_plt/clus5_plt/clus0_plt/clus4_plt/clus1_plt/clus3_plt/clus2_plt
   return(plt)
 }
 
@@ -2299,30 +2311,170 @@ write.table(da_ga_df,file="orgo_cirm43.onevrest.da_tfmodules.txt",sep="\t",col.n
   mclapply(unique(cirm43_da_peaks$enriched_group), FUN=function(x){great_processing(enriched_group_input=x,peak_dataframe=cirm43_da_peaks,prefix="cirm43",bg=orgo_bg_bed)},mc.cores=7)
 
 ```
-<!--
 
-## Check Accelerated Regions
+### Plot Differential Gene Activity through Clusters
+
+
 ```R
+library(JASPAR2020)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(Signac)
+library(Seurat)
+library(ggplot2)
+library(ComplexHeatmap)
+library(ggdendro)
+library(dendextend)
+library(parallel)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(RColorBrewer)
+library(viridis)
+library(circlize)
+library(TFBSTools)
+
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
-  library(Signac)
-  library(GenomicRanges)
-  orgo_cirm43<-readRDS("orgo_cirm43.QC.SeuratObject.Rds")
-  har<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/Public_Data/nCHAR.txt",header=T)  
-  length(unique(findOverlaps(query = makeGRangesFromDataFrame(har), subject = orgo_cirm43@assays$peaks@ranges)))
-  #154/2745 #all human accelerated regions
 
-  har<-har[har$enhancer_activity=="Yes",]
+  dat<-readRDS("orgo_cirm43.QC.SeuratObject.Rds")
 
-  length(unique(findOverlaps(query = makeGRangesFromDataFrame(har), subject = orgo_cirm43@assays$peaks@ranges)))
-  #55/773 #predicted enhancer activity
 
-  har<-har[!(har$predicted_tissue_activity %in% c("N/A","limb","heart;limb","other")),]
-  length(unique(findOverlaps(query = makeGRangesFromDataFrame(har), subject = orgo_cirm43@assays$peaks@ranges)))
-  #18/288 #predicted brain/neural tube activity
+#Plot out top ga for each cluster
+da_ga<-read.csv(file="orgo_cirm43.onevrest.da_ga.txt",sep="\t")
+da_ga$gene_name<-da_ga$da_region
+da_ga<-da_ga[complete.cases(da_ga),]
+
+da_ga$label<-""
+for (x in unique(da_ga$enriched_group)){
+selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:8))$da_region
+da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$label<- da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$da_region
+}
+
+#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+dat_ga<-as.data.frame(t(as.data.frame(dat[["GeneActivity"]]@data)))
+sum_ga<-split(dat_ga,dat$seurat_clusters) #group by rows to seurat clusters
+sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
+sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
+
+sum_ga<-t(scale(sum_ga))
+
+#cluster by all marker genes
+sum_da_dend <- t(sum_ga) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 1:3)
+saveRDS(sum_da_dend,file="orgo_cirm43.geneactivity.dend.rds") 
+
+
+sum_ga<-sum_ga[row.names(sum_ga) %in% unique(da_ga$label),]
+
+#annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+#annot<-annot[!(annot$subcluster_col=="NA"),]
+#annot<-annot[!duplicated(annot$cluster_ID),]
+#annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
+#annot<-annot[match(colnames(sum_ga),annot$cluster_ID),]
+sum_ga_plot<-t(sum_ga)
+
+#annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+
+#side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+#                col=list(
+#                    celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
+#                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
+#                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+#                        ))
+
+#bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga_plot), labels = colnames(sum_ga_plot)))
+
+colfun=colorRamp2(quantile(unlist(sum_ga_plot), probs=c(0.5,0.90,0.95)),magma(3))
+plt1<-Heatmap(sum_ga_plot,
+    cluster_rows=sum_da_dend,
+    #left_annotation=side_ha,
+    col=colfun,
+    #bottom_annotation=bottom_ha,
+    column_names_gp = gpar(fontsize = 8),
+    row_names_gp=gpar(fontsize=7),
+    column_names_rot=90
+)
+
+pdf("orgo_cirm43.geneactivity.heatmap.pdf",height=20,width=20)
+plt1
+dev.off()
+system("slack -F orgo_cirm43.geneactivity.heatmap.pdf ryan_todo")
+
+
+########################Plot out top TF for each cluster###################
+da_tf<-read.csv(file="orgo_cirm43.onevrest.da_chromvar.txt",sep="\t")
+da_tf$tf_name <- unlist(lapply(unlist(lapply(da_tf$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
+da_tf<-da_tf[complete.cases(da_tf),]
+
+da_tf$label<-""
+for (x in unique(da_tf$enriched_group)){
+selc_genes<-head(as.data.frame(as.data.frame(da_tf) %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val_adj)))),n=8)$tf_name
+da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$label<- da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$tf_name
+}
+
+#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+dat_tf<-as.data.frame(t(as.data.frame(dat[["chromvar"]]@data)))
+sum_tf<-split(dat_tf,dat$seurat_clusters) #group by rows to seurat clusters
+sum_tf<-lapply(sum_tf,function(x) apply(x,2,mean)) #take average across group
+sum_tf<-do.call("rbind",sum_tf) #condense to smaller data frame
+
+sum_tf<-t(scale(sum_tf))
+sum_tf<-sum_tf[,!endsWith(colnames(sum_tf),"NA")] #remove NA (doublet cells)
+
+#clustered by all marker genes ga
+sum_da_dend<-readRDS(file="orgo_cirm43.geneactivity.dend.rds") 
+
+
+sum_tf<-sum_tf[row.names(sum_tf) %in% unique(da_tf[da_tf$label!="",]$da_region),]
+row.names(sum_tf)<-da_tf[match(row.names(sum_tf),da_tf$da_region,nomatch=0),]$tf_name
+#annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+#annot<-annot[!(annot$subcluster_col=="NA"),]
+#annot<-annot[!duplicated(annot$cluster_ID),]
+#annot<-annot[annot$cluster_ID %in% colnames(sum_tf),]
+#annot<-annot[match(colnames(sum_tf),annot$cluster_ID),]
+sum_tf_plot<-t(sum_tf)
+
+#annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+
+#ide_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+#                col=list(
+#                    celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
+#                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
+#                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+#                        ))
+
+#bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_tf_plot), labels = colnames(sum_tf_plot)))
+
+colfun=colorRamp2(quantile(unlist(sum_tf_plot), probs=c(0.5,0.90,0.95)),cividis(3))
+plt1<-Heatmap(sum_tf_plot,
+    cluster_rows=sum_da_dend,
+#    left_annotation=side_ha,
+    col=colfun,
+    #bottom_annotation=bottom_ha,
+    column_names_gp = gpar(fontsize = 8),
+    row_names_gp=gpar(fontsize=7),
+    column_names_rot=90
+)
+
+plt1<-draw(plt1)
+
+
+pdf("orgo_cirm43.tf.heatmap.pdf",height=20,width=20)
+draw(plt1)
+dev.off()
+system("slack -F orgo_cirm43.tf.heatmap.pdf ryan_todo")
+
+#Plot motifs alongside chromvar plot
+library(ggplot2)
+library(patchwork)
+
+motif_order<-names(dat@assays$peaks@motifs@motif.names[match(colnames(sum_tf_plot)[column_order(plt1)],unlist(dat@assays$peaks@motifs@motif.names),nomatch=0)])
+plt<-MotifPlot(object = dat,motifs = motif_order,ncol=1)+theme_void()+theme(strip.text = element_blank())
+
+ggsave(plt,file="orgo_cirm43.tf.heatmap.motif.pdf",height=100,width=2,limitsize=F)
+system("slack -F orgo_cirm43.tf.heatmap.motif.pdf ryan_todo")
 
 
 ```
--->
+
 ## Make 3D UMAP Projection
 ```R
 library(Signac)
@@ -2358,7 +2510,7 @@ system("slack -F orgo_postqc_blender.table ryan_todo")
 
 ## Cell Type Analyses
 
-### Recluster clusters 2 1 6 for Excitatory Neurons
+### Recluster clusters 2 1 3 for Excitatory Neurons
 ```R
  library(Signac)
   library(Seurat)
@@ -2539,9 +2691,194 @@ as.data.frame(dat_da_peaks %>% group_by(enriched_group) %>% filter(p_val_adj<0.0
 
   dat_da_ga<-read.table(file="orgo_cirm43.QC2.ExN.da_geneactivity.txt",sep="\t",col.names=T,row.names=1)
 
+
+
+#Perform parallel application of DA test for chromvar
+  n.cores=length(unique(dat$seurat_clusters))
+  dat_da_chrom<-mclapply(
+      unique(dat$seurat_clusters),
+      FUN=da_one_v_rest,
+      obj=dat,
+      group="seurat_clusters",
+      assay.="chromvar",
+      mc.cores=n.cores)
+
+  #Merge the final data frame from the list for 1vrest DA
+  dat_da_chrom<-do.call("rbind",dat_da_chrom)
+  dat_da_chrom$enriched_group<-dat_da_chrom$enriched_group-1#correct enriched group numbering
+
+  as.data.frame(dat_da_chrom %>% group_by(enriched_group) %>% filter(p_val_adj<0.05) %>% arrange(p_val_adj))$da_region
+
+  write("Outputting One v Rest DA Table.", stderr())
+  write.table(dat_da_chrom,file="orgo_cirm43.QC2.ExN.da_chromvar.txt",sep="\t",col.names=T,row.names=T,quote=F)
+
 ```
 
-###Run cicero per cluster to generate link plots
+
+### Plot Differential Gene Activity through ExN Subclusters
+
+
+```R
+library(JASPAR2020)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(Signac)
+library(Seurat)
+library(ggplot2)
+library(ComplexHeatmap)
+library(ggdendro)
+library(dendextend)
+library(parallel)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(RColorBrewer)
+library(viridis)
+library(circlize)
+library(TFBSTools)
+
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+
+  dat<-readRDS("orgo_cirm43.QC2.ExN.SeuratObject.Rds")
+
+
+#Plot out top ga for each cluster
+da_ga<-read.csv(file="orgo_cirm43.QC2.ExN.da_geneactivity.txt",sep="\t")
+da_ga$gene_name<-da_ga$da_region
+da_ga<-da_ga[complete.cases(da_ga),]
+
+da_ga$label<-""
+for (x in unique(da_ga$enriched_group)){
+selc_genes<-as.data.frame(da_ga %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val_adj))) %>% slice(1:8))$da_region
+da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$label<- da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$da_region
+}
+
+#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+dat_ga<-as.data.frame(t(as.data.frame(dat[["GeneActivity"]]@data)))
+sum_ga<-split(dat_ga,dat$seurat_clusters) #group by rows to seurat clusters
+sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
+sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
+
+sum_ga<-t(scale(sum_ga))
+
+#cluster by all marker genes
+sum_da_dend <- t(sum_ga) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 1:3)
+saveRDS(sum_da_dend,file="ExN.geneactivity.dend.rds") 
+
+
+sum_ga<-sum_ga[row.names(sum_ga) %in% unique(da_ga$label),]
+
+#annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+#annot<-annot[!(annot$subcluster_col=="NA"),]
+#annot<-annot[!duplicated(annot$cluster_ID),]
+#annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
+#annot<-annot[match(colnames(sum_ga),annot$cluster_ID),]
+sum_ga_plot<-t(sum_ga)
+
+#annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+
+#side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+#                col=list(
+#                    celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
+#                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
+#                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+#                        ))
+
+#bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga_plot), labels = colnames(sum_ga_plot)))
+
+colfun=colorRamp2(quantile(unlist(sum_ga_plot), probs=c(0.5,0.90,0.95)),magma(3))
+plt1<-Heatmap(sum_ga_plot,
+    cluster_rows=sum_da_dend,
+    #left_annotation=side_ha,
+    col=colfun,
+    #bottom_annotation=bottom_ha,
+    column_names_gp = gpar(fontsize = 8),
+    row_names_gp=gpar(fontsize=7),
+    column_names_rot=90
+)
+
+pdf("ExN.geneactivity.heatmap.pdf",height=20,width=20)
+plt1
+dev.off()
+system("slack -F ExN.geneactivity.heatmap.pdf ryan_todo")
+
+
+########################Plot out top TF for each cluster###################
+da_tf<-read.csv(file="orgo_cirm43.QC2.ExN.da_chromvar.txt",sep="\t")
+da_tf$tf_name<-row.names(da_tf)
+da_tf<-da_tf[complete.cases(da_tf),]
+
+da_tf$label<-""
+for (x in unique(da_tf$enriched_group)){
+selc_genes<-head(as.data.frame(as.data.frame(da_tf) %>% filter(enriched_group==x) %>% arrange(rev(desc(p_val_adj)))),n=8)$tf_name
+da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$label<- da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$tf_name
+}
+
+#Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+dat_tf<-as.data.frame(t(as.data.frame(dat[["chromvar"]]@data)))
+sum_tf<-split(dat_tf,dat$seurat_clusters) #group by rows to seurat clusters
+sum_tf<-lapply(sum_tf,function(x) apply(x,2,mean)) #take average across group
+sum_tf<-do.call("rbind",sum_tf) #condense to smaller data frame
+
+sum_tf<-t(scale(sum_tf))
+sum_tf<-sum_tf[,!endsWith(colnames(sum_tf),"NA")] #remove NA (doublet cells)
+
+#clustered by all marker genes ga
+sum_da_dend<-readRDS(file="ExN.geneactivity.dend.rds") 
+
+
+sum_tf<-sum_tf[row.names(sum_tf) %in% unique(da_tf[da_tf$label!="",]$da_region),]
+row.names(sum_tf)<-da_tf[match(row.names(sum_tf),da_tf$da_region,nomatch=0),]$tf_name
+#annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+#annot<-annot[!(annot$subcluster_col=="NA"),]
+#annot<-annot[!duplicated(annot$cluster_ID),]
+#annot<-annot[annot$cluster_ID %in% colnames(sum_tf),]
+#annot<-annot[match(colnames(sum_tf),annot$cluster_ID),]
+sum_tf_plot<-t(sum_tf)
+
+#annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+
+#ide_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+#                col=list(
+#                    celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
+#                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
+#                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+#                        ))
+
+#bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_tf_plot), labels = colnames(sum_tf_plot)))
+
+colfun=colorRamp2(quantile(unlist(sum_tf_plot), probs=c(0.5,0.90,0.95)),cividis(3))
+plt1<-Heatmap(sum_tf_plot,
+    cluster_rows=sum_da_dend,
+#    left_annotation=side_ha,
+    col=colfun,
+    #bottom_annotation=bottom_ha,
+    column_names_gp = gpar(fontsize = 8),
+    row_names_gp=gpar(fontsize=7),
+    column_names_rot=90
+)
+
+plt1<-draw(plt1)
+
+
+pdf("ExN.tf.heatmap.pdf",height=20,width=20)
+draw(plt1)
+dev.off()
+system("slack -F ExN.tf.heatmap.pdf ryan_todo")
+
+#Plot motifs alongside chromvar plot
+library(ggplot2)
+library(patchwork)
+
+motif_order<-names(dat@assays$peaks@motifs@motif.names[match(colnames(sum_tf_plot)[column_order(plt1)],unlist(dat@assays$peaks@motifs@motif.names),nomatch=0)])
+plt<-MotifPlot(object = dat,motifs = motif_order,ncol=1)+theme_void()+theme(strip.text = element_blank())
+
+ggsave(plt,file="ExN.tf.heatmap.motif.pdf",height=100,width=2,limitsize=F)
+system("slack -F ExN.tf.heatmap.motif.pdf ryan_todo")
+
+
+```
+
+### Run cicero per cluster to generate link plots
 
 ```R
 
@@ -2632,8 +2969,8 @@ DefaultAssay(dat)<-"MAGIC_GeneActivity"
 
 for ( i in 1:length(ga_genes)){
 plt<-FeaturePlot(dat,features=c(ga_genes[i],chromvar_genes[i]),order=T, blend=TRUE,cols=c("white","red","blue"))+ggtitle(ga_genes[i])
-ggsave(plt,file="test.magic.pdf",width=20)
-system("slack -F test.magic.pdf ryan_todo")
+ggsave(plt,file=paste0(ga_genes[i],".magic.pdf"),width=20)
+system(paste0("slack -F ",paste0(ga_genes[i],".magic.pdf")," ryan_todo"))
 }
 
 ```
