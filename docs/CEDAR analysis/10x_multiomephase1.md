@@ -1007,6 +1007,7 @@ chrorder<-paste0("chr",c(1:22,"X","Y","M"))
 gene_order$seqnames<-factor(gene_order$seqnames,levels=chrorder) # set chr order
 gene_order<-with(gene_order, gene_order[order(seqnames, start),]) #order by chr and start position
 write.table(gene_order,file="inferCNV.gene_order.txt",sep="\t",col.names=F,row.names=F,quote=F)
+gene_order<-read.table("inferCNV.gene_order.txt")
 
 ####RUNNING INFERCNV#####
 infercnv_per_sample<-function(dat){
@@ -1038,26 +1039,16 @@ infercnv_per_sample<-function(dat){
                                HMM=TRUE,
                                resume_mode=T)
   saveRDS(infercnv_obj,paste0(outname,"_inferCNV","/",basename(outname),"inferCNV.Rds"))
+  system(paste0("slack -F ",outname,"_inferCNV","/","infercnv.png", " ryan_todo") )
+  saveRDS(dat,file=dat_file_path)
 
-  infercnv_obj<-readRDS(paste0(outname,"_inferCNV","/",basename(outname),"inferCNV.Rds"))
-  mat<-as.data.frame(t(infercnv_obj@expr.data))
-
-  plt<-Heatmap(mat,
-    column_order=1:ncol(mat),
-    show_row_names=FALSE,
-    show_column_names=FALSE)
-
-  pdf(paste0(outname,"_inferCNV","/",basename(outname),"inferCNV.heatmap.pdf"))
-  plt<-draw(plt)
-  dev.off()
-  system(paste0("slack -F ",outname,"_inferCNV","/",basename(outname),"inferCNV.heatmap.pdf", " ryan_todo") )
 }
+lapply(sample_in,function(x) infercnv_per_sample(dat=x))
 
 
 ###Trying CASPER for CNV Profiling
 
 library(CaSpER) 
-/home/groups/oroaklab/adey_lab/projects/s3/s3WGS/200730_s3FinalAnalysis/s3atac_data/barnyard_analysis
 
 casper_per_sample<-function(sample_name="rm1",bam_folder_name="RM_1"){
   system(paste0("mkdir ",sample_name,"_casper_test"))
