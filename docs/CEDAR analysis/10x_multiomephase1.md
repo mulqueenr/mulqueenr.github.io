@@ -832,12 +832,6 @@ lapply(c(1,3,4,5,6,7,8,9,10,11,12),single_sample_label_transfer)
 
 ```
 
-
-###############################################################################################################
-#################### HERE #####################################################################################
-###############################################################################################################
-
-
 ### Plot multimodal dimensionality reduction for cistopic embedding
 
 ```R
@@ -1272,7 +1266,7 @@ lapply(sample_in,function(x) casper_per_sample(dat=x))
   library(BiocParallel)
   register(MulticoreParam(5))
 
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/")
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
 
 sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.rds")))
 
@@ -1301,13 +1295,23 @@ chromvar_per_sample<-function(dat){
   dat <- SetAssayData(object = dat, assay = 'peaks', slot = 'motifs', new.data = motif.hg38)
   dat <- RegionStats(object = dat, genome = BSgenome.Hsapiens.UCSC.hg38,assay="peaks")
   dat <- RunChromVAR( object = dat,genome = BSgenome.Hsapiens.UCSC.hg38,assay="peaks")
-  saveRDS(dat,file="210924_cellline.SeuratObject.Rds")
+  saveRDS(dat,file=dat_file_path)
 
 }
 
+lapply(sample_in,chromvar_per_sample)
+
+#chromvar of merged samples
+chromvar_per_sample(dat="/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/phase1.SeuratObject.rds")
 
 
 ```
+
+
+
+###############################################################################################################
+#################### HERE #####################################################################################
+###############################################################################################################
 
 ## Cicero
 
