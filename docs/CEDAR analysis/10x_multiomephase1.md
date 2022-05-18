@@ -832,6 +832,50 @@ lapply(c(1,3,4,5,6,7,8,9,10,11,12),single_sample_label_transfer)
 
 ```
 
+### Add sample metadata
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
+
+#from tumor sample information
+meta_data_in<-as.data.frame(cbind("sample"=c(paste0("sample_",seq(1,12))),
+  "diagnosis"= c("DCIS", "IDC", "IDC", "IDC", "IDC", "IDC", "DCIS", "IDC", "IDC", "IDC", "IDC", "IDC"),
+  "molecular_type"=c("DCIS", "er+_pr+_her2-", "er+_pr-_her2-", "er+_pr-_her2-", "er+_pr+_her2-", "er+_pr+_her2-", "DCIS", "er+_pr+_her2-", "er+_pr+_her2-", "er+_pr-_her2-", "er+_pr-_her2-", "er+_pr+_her2-")))
+
+sample_metadata<-function(dat){
+  dat_file_path=dat
+  file_in=basename(dat)
+  sample_name=substr(file_in,1,nchar(file_in)-17)
+  dir_in=dirname(dat)
+  dat<-readRDS(dat) #read in as seurat object
+  print(paste("Read in",dat_file_path))
+  saveRDS(dat,paste0(dat_file_path,".backup")) #save a backup RDS file
+  print("Made backup file")
+  dat<-AddMetaData(dat,meta_data_in[match(dat$sample,meta_data_in$sample),]$diagnosis,col.name="diagnosis")
+  dat<-AddMetaData(dat,meta_data_in[match(dat$sample,meta_data_in$sample),]$molecular_type,col.name="molecular_type")
+  saveRDS(dat,dat_file_path)
+  print("Finished Sample")
+}
+
+#run umap projections of merged samples
+dat="/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/phase1.SeuratObject.rds"
+sample_metadata(dat)
+
+#run umap projections of all dim reductions per sample
+sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.rds")))
+lapply(sample_in,sample_metadata)
+
+
+```
+
 ### Plot multimodal dimensionality reduction for cistopic embedding
 
 ```R
@@ -853,63 +897,75 @@ library(ggplot2)
 
 
 plot_reductions<-function(dat){
-#dat is full path to seurat object
-dat_file_path=dat
-outname<-substr(dat_file_path,1,nchar(dat_file_path)-3)
-dat<-readRDS(dat)
+  #dat is full path to seurat object
+  dat_file_path=dat
+  file_in=basename(dat)
+  sample_name=substr(file_in,1,nchar(file_in)-17)
+  dir_in=dirname(dat)
+  dat<-readRDS(dat) #read in as seurat object
+  outname=paste0(dir_in,"/",sample_name,".")
+
+  #set up colors for samples
+  ###########Color Schema#################
+  type_cols<-c(
+  #epithelial
+  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+  "B-cells" ="#089099", "T-cells" ="#003147", #other
+  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
+
+  diag_cols<-c("IDC"="red", "DCIS"="grey")
+
+  molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"="#F7B7BB")
+  ########################################
+  alpha_val=0.33
+
+  #add cistopic reduction to umap projections
+  p1<-DimPlot(dat,reduction="rna_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("RNA UMAP")
+  p2<-DimPlot(dat,reduction="atac_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("ATAC UMAP")
+  p3<-DimPlot(dat,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Multimodal UMAP (LSI)")
 
 
-#set up colors for samples
-my_cols = brewer.pal(length(unique(dat$predicted.id)),"Spectral")
-alpha_val=0.33
-
-#add cistopic reduction to umap projections
-p1<-DimPlot(dat,reduction="rna_umap",group.by="predicted.id",cols=alpha(my_cols,alpha_val))+ggtitle("RNA UMAP")
-p2<-DimPlot(dat,reduction="atac_umap",group.by="predicted.id",cols=alpha(my_cols,alpha_val))+ggtitle("ATAC UMAP")
-p3<-DimPlot(dat,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(my_cols,alpha_val))+ggtitle("Multimodal UMAP (LSI)")
-
-
-#Try multimodal with cistopic
-dat <- RunUMAP(
-  object = dat,
-  reduction="cistopic",
-  reduction.name="cistopic_umap",
-  dims=1:ncol(dat@reductions$cistopic),
-  assay = "peaks",
-  verbose = TRUE
-)
+  #Try multimodal with cistopic
+  dat <- RunUMAP(
+    object = dat,
+    reduction="cistopic",
+    reduction.name="cistopic_umap",
+    dims=1:ncol(dat@reductions$cistopic),
+    assay = "peaks",
+    verbose = TRUE
+  )
 
 
-# build a joint neighbor graph using both assays
-dat2 <- FindMultiModalNeighbors(
-  object = dat,
-  reduction.list = list("pca", "cistopic"), 
-  dims.list = list(1:50, 1:ncol(dat@reductions$cistopic)), 
-  modality.weight.name = "RNA.weight",
-  verbose = TRUE
-)
+  # build a joint neighbor graph using both assays
+  dat2 <- FindMultiModalNeighbors(
+    object = dat,
+    reduction.list = list("pca", "cistopic"), 
+    dims.list = list(1:50, 1:ncol(dat@reductions$cistopic)), 
+    modality.weight.name = "RNA.weight",
+    verbose = TRUE
+  )
 
-# build a joint UMAP visualization
-dat2 <- RunUMAP(
-  object = dat2,
-  nn.name = "weighted.nn",
-  reduction.name="multimodal_umap",
-  assay = "RNA",
-  verbose = TRUE
-)
+  # build a joint UMAP visualization
+  dat2 <- RunUMAP(
+    object = dat2,
+    nn.name = "weighted.nn",
+    reduction.name="multimodal_umap",
+    assay = "RNA",
+    verbose = TRUE
+  )
 
-###########plot cistopic umap too
-p5<-DimPlot(dat2,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(my_cols,alpha_val))+ggtitle("Multimodal UMAP (Cistopic)")
-p6<-DimPlot(dat,reduction="cistopic_umap",group.by="predicted.id",cols=alpha(my_cols,alpha_val))+ggtitle("Cistopic UMAP")
+  ###########plot cistopic umap too
+  p5<-DimPlot(dat2,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Multimodal UMAP (Cistopic)")
+  p6<-DimPlot(dat,reduction="cistopic_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Cistopic UMAP")
 
-#Finally Plot results
-plt<-(p1 | p2)/(p3)/(p6 | p5)
-ggsave(plt,file=paste0(outname,"multimodal.umap.pdf"),width=10,height=20)
-system(paste0("slack -F ",outname,"multimodal.umap.pdf ryan_todo"))
-saveRDS(dat,file=dat_file_path)
+  #Finally Plot results
+  plt<-(p1 | p2)/(p3)/(p6 | p5)
+  ggsave(plt,file=paste0(outname,"multimodal.umap.pdf"),width=10,height=20)
+  system(paste0("slack -F ",outname,"multimodal.umap.pdf ryan_todo"))
+  saveRDS(dat,file=dat_file_path)
 
-plt_cell_count<-dat@meta.data[,c("sample","predicted.id")]
-return(plt_cell_count)
+  plt_cell_count<-dat@meta.data[,c("sample","predicted.id","diagnosis","molecular_type")]
+  return(plt_cell_count)
 }
 
 
@@ -925,10 +981,20 @@ saveRDS(out,"sample_swarbrick_celltype_assignment.rds") #save nested list of cel
 #plot output of celltype count per sample
 out<-readRDS("sample_swarbrick_celltype_assignment.rds")
 out<-do.call("rbind",out)
-colnames(out)<-c("sample","celltype") #rename just for simplicity
-my_cols = setNames(brewer.pal(length(unique(out$celltype)),"Spectral"),unique(out$celltype)) # set up colors
-plt1<-ggplot(out,aes(x=sample,fill=celltype))+geom_bar()+theme_minimal()+scale_fill_manual(values=my_cols)
-plt2<-ggplot(out,aes(x=sample,fill=celltype))+geom_bar(position="fill")+theme_minimal()+scale_fill_manual(values=my_cols)
+colnames(out)<-c("sample","celltype","diagnosis","molecular_type") #rename just for simplicity
+  ###########Color Schema#################
+  type_cols<-c(
+  #epithelial
+  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+  "B-cells" ="#089099", "T-cells" ="#003147", #other
+  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
+
+  diag_cols<-c("IDC"="red", "DCIS"="grey")
+
+  molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"="#F7B7BB")
+  ########################################
+plt1<-ggplot(out,aes(x=sample,fill=celltype))+geom_bar()+theme_minimal()+scale_fill_manual(values=type_cols)+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
+plt2<-ggplot(out,aes(x=sample,fill=celltype))+geom_bar(position="fill")+theme_minimal()+scale_fill_manual(values=type_cols)+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
 plt<-plt1/plt2
 ggsave(plt,file="sample_swarbrick_celltype_assignment.pdf")
 system("slack -F sample_swarbrick_celltype_assignment.pdf ryan_todo")
@@ -1111,10 +1177,27 @@ infercnv_per_sample<-function(dat){
                                resume_mode=T)
   saveRDS(infercnv_obj,paste0(outname,"_inferCNV","/",basename(outname),"inferCNV.Rds"))
   system(paste0("slack -F ",outname,"_inferCNV","/","infercnv.png"," -T ","\"",outname,"\"" ," ryan_todo") )
+  #infercnv_obj<-readRDS(paste0(outname,"_inferCNV","/",basename(outname),"inferCNV.Rds"))
 
 }
 lapply(sample_in,function(x) infercnv_per_sample(dat=x))
 
+
+```
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+library(ComplexHeatmap)
+library(circlize)
+library(patchwork)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
 
 ###Trying CASPER for CNV Profiling
 
@@ -1180,18 +1263,58 @@ casper_per_sample<-function(dat){
   dev.off()
   system(paste0("slack -F ",paste0(dir_in,"_casper/",sample_name,".Distrubution.pdf"), " ryan_todo"))
 
+  object<-readRDS(paste0(dir_in,"_casper/",sample_name,".initialobj.rds"))
   ## runCaSpER
   final.objects <- runCaSpER(object, removeCentromere=T, cytoband=cytoband, method="iterative")
 
   ## summarize large scale events 
   finalChrMat <- extractLargeScaleEvents (final.objects, thr=0.75) 
-  obj <- final.objects[[9]]
-  saveRDS(obj,paste0(dir_in,"_casper/",sample_name,".finalobj.rds"))
+  final.obj <- final.objects[[9]]
+  saveRDS(final.obj,paste0(dir_in,"_casper/",sample_name,".finalobj.rds"))
   saveRDS(finalChrMat,paste0(dir_in,"_casper/",sample_name,".finalchrmat.rds"))
+  final.obj<-readRDS(paste0(dir_in,"_casper/",sample_name,".finalobj.rds"))
+
+  #remove all NA columns
+  #final.obj <- final.obj[!apply(is.na(final.obj[-1,]), 1, all),]
+
+  #breakdown of function CaSpER::plotHeatmap10x
+    assignInNamespace(x = "draw_matrix", value = draw_matrix2,
+        ns = asNamespace("pheatmap"))
+    assignInNamespace(x = "draw_colnames", value = "draw_colnames_45",
+        ns = asNamespace("pheatmap"))
+    data <- final.obj@control.normalized.noiseRemoved[[3]]
+    x.center <- mean(data)
+    quantiles = quantile(data[data != x.center], c(0.01, 0.99))
+    delta = max(abs(c(x.center - quantiles[1], quantiles[2] -x.center)))
+    low_threshold = x.center - delta
+    high_threshold = x.center + delta
+    x.range = c(low_threshold, high_threshold)
+    data[data < low_threshold] <- low_threshold
+    data[data > high_threshold] <- high_threshold
+    breaks <- seq(x.range[1], x.range[2], length = 16)
+    color <- colorRampPalette(rev(brewer.pal(11, "RdYlBu")))(length(breaks))
+    idx <- cumsum(table(object@annotation.filt$Chr)[as.character(1:22)])
+    xlabel <- rep("", length(rownames(object@data)))
+    half <- round(table(object@annotation.filt$Chr)[as.character(1:22)]/2)[-1]
+    xpos <- c(half[1], (idx[-22] + half))
+    xlabel[xpos] <- 1:22
+
+    pheatmap(t(data), cluster_cols = F, cluster_rows = T,
+        gaps_col = idx, color = color, breaks = breaks, labels_col = xlabel,
+        show_rownames = F, filename = paste0(dir_in,"_casper/",sample_name,".heatmap.pdf"))
+  system(paste0("slack -F ",paste0(dir_in,"_casper/",sample_name,".heatmap.pdf"), " ryan_todo"))
 
 
-  #plotHeatmap10x(object=obj, fileName=paste0(dir_in,"_casper/",sample_name,".heatmap.pdf"),cnv.scale= 3, cluster_cols = F, cluster_rows = T, show_rownames = T, only_soi = T)
-  #system(paste0("slack -F ",paste0(dir_in,"_casper/",sample_name,".heatmap.pdf"), " ryan_todo"))
+  pdf(paste0(dir_in,"_casper/",sample_name,".LargeCNV.heatmap.pdf"))
+  Heatmap(finalChrMat,
+    cluster_columns=F,
+    show_row_names=F,
+    column_names_rot = 45,
+    column_split=sort(rep(c(1:22),2)),
+    column_names_gp = gpar(fontsize = 5))
+  dev.off()
+  system(paste0("slack -F ",paste0(dir_in,"_casper/",sample_name,".LargeCNV.heatmap.pdf")," ryan_todo"))
+
 
   #### VISUALIZATION 
   chrMat <- finalChrMat
@@ -1224,7 +1347,6 @@ casper_per_sample<-function(dat){
 sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.rds")))
 
 lapply(sample_in,function(x) casper_per_sample(dat=x))
-
 
 
 
@@ -1307,12 +1429,6 @@ chromvar_per_sample(dat="/home/groups/CEDAR/mulqueen/projects/multiome/220414_mu
 
 ```
 
-
-
-###############################################################################################################
-#################### HERE #####################################################################################
-###############################################################################################################
-
 ## Cicero
 
 ```R
@@ -1321,26 +1437,34 @@ chromvar_per_sample(dat="/home/groups/CEDAR/mulqueen/projects/multiome/220414_mu
   library(SeuratWrappers)
   library(ggplot2)
   library(patchwork)
-  library(monocle3)
-  library(cicero)
+  library(cicero,lib.loc="/home/groups/oroaklab/nishida/R_4.0.0_arsn") #using old libraries because exacloud doesn't like the new ones
+  library(monocle3,lib.loc="/home/groups/oroaklab/nishida/R_4.0.0_arsn") #using old libraries because exacloud doesn't like the new ones
   library(SeuratObjects)
   library(EnsDb.Hsapiens.v86)
-  setwd("/home/groups/CEDAR/mulqueen/projects/10x_atacrna")
+  setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
+  
+  sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.rds")))
+
   #Cicero processing function
-  cicero_processing<-function(object_input,prefix){
+  cicero_processing<-function(dat){
+      dat_file_path=dat
+      file_in=basename(dat)
+      sample_name=substr(file_in,1,nchar(file_in)-17)
+      dir_in=dirname(dat)
+      dat<-readRDS(dat) #read in as seurat object
 
       #Generate CDS format from Seurat object
-      atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap")
+      atac.cds <- as.CellDataSet(dat,assay="peaks",reduction="multimodal_umap")
 
       # convert to CellDataSet format and make the cicero object
       print("Making Cicero format CDS file")
       atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = atac.cds@reducedDimS)
-      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
-      
+      saveRDS(atac.cicero,paste0(dir_in,"/",sample_name,".atac_cicero_cds.Rds"))
+        
+
       # extract gene annotations from EnsDb
       annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
       seqlevels(annotations)<-paste0("chr",seqlevels(annotations))
-      #seqnames(annotations)<-paste0("chr",seqnames(annotations))
 
       # change to UCSC style since the data was mapped to hg38
       #seqlevelsStyle(annotations) <- 'UCSC'
@@ -1351,122 +1475,412 @@ chromvar_per_sample(dat="/home/groups/CEDAR/mulqueen/projects/multiome/220414_mu
       
       print("Running Cicero to generate connections.")
       conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
-      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+      saveRDS(conns,paste0(dir_in,"/",sample_name,".atac_cicero_conns.Rds"))
       
       print("Generating CCANs")
       ccans <- generate_ccans(conns) # generate ccans
-      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+      saveRDS(ccans,paste0(dir_in,"/",sample_name,".atac_cicero_ccans.Rds"))
       
       print("Adding CCAN links into Seurat Object and Returning.")
       links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
-      DefaultAssay(object_input)<-"peaks"
-      Links(object_input) <- links
-      return(object_input)
+      DefaultAssay(dat)<-"peaks"
+      Links(dat) <- links
+
+      # generate unnormalized gene activity matrix
+      # gene annotation sample
+      hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+
+      pos <-as.data.frame(hg38_annotations,row.names=NULL)
+      pos$chromosome<-paste0("chr",pos$seqnames)
+      pos$gene<-pos$gene_id
+      pos <- subset(pos, strand == "+")
+      pos <- pos[order(pos$start),] 
+      pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
+      pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
+
+      neg <-as.data.frame(hg38_annotations,row.names=NULL)
+      neg$chromosome<-paste0("chr",neg$seqnames)
+      neg$gene<-neg$gene_id
+      neg <- subset(neg, strand == "-")
+      neg <- neg[order(neg$start,decreasing=TRUE),] 
+      neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
+      neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
+
+      gene_annotation<- rbind(pos, neg)
+      gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
+      names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
+
+      atac.cds<- annotate_cds_by_site(atac.cds, gene_annotation)
+      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns)
+      saveRDS(unnorm_ga,paste0(dir_in,"/",sample_name,".atac_cicero_unnormGA.Rds"))
+      # remove any rows/columns with all zeroes
+      unnorm_ga <- unnorm_ga[!Matrix::rowSums(unnorm_ga) == 0, 
+                             !Matrix::colSums(unnorm_ga) == 0]
+      dat[['GeneActivity']]<- CreateAssayObject(counts = unnorm_ga) 
+      # normalize
+      # note for CCAN comparisons, multiple files should be normalized together
+      dat <- NormalizeData(
+        object = dat,
+        assay = 'GeneActivity',
+        normalization.method = 'LogNormalize',
+        scale.factor = median(dat$nFeature_GeneActivity)
+      )
+      saveRDS(dat,dat_file_path)
   }
 
-t47d<-readRDS("210924_t47d.SeuratObject.Rds")
-t47d<-cicero_processing(object_input=t47d,prefix="210924_t47d")
-saveRDS(t47d,"210924_t47d.SeuratObject.unnormGA.Rds")
+lapply(sample_in,cicero_processing)
 
-mcf7<-readRDS("210924_mcf7.SeuratObject.Rds")
-mcf7<-cicero_processing(object_input=mcf7,prefix="210924_mcf7")
-saveRDS(mcf7,"210924_mcf7.SeuratObject.unnormGA.Rds")
-
-  # generate unnormalized gene activity matrix
-  # gene annotation sample
-  hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
-
-  pos <-as.data.frame(hg38_annotations,row.names=NULL)
-  pos$chromosome<-paste0("chr",pos$seqnames)
-  pos$gene<-pos$gene_id
-  pos <- subset(pos, strand == "+")
-  pos <- pos[order(pos$start),] 
-  pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
-  pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
-
-  neg <-as.data.frame(hg38_annotations,row.names=NULL)
-  neg$chromosome<-paste0("chr",neg$seqnames)
-  neg$gene<-neg$gene_id
-  neg <- subset(neg, strand == "-")
-  neg <- neg[order(neg$start,decreasing=TRUE),] 
-  neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
-  neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
-
-  gene_annotation<- rbind(pos, neg)
-  gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
-  names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
-
-
-
-  geneactivity_processing<-function(cds_input,conns_input,prefix){
-      atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
-      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
-      saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
-  }
-
-#combined
-  conns<-as.data.frame(readRDS("210924_cellline_atac_cicero_conns.Rds"))
-  obj.cicero<-readRDS("210924_cellline_atac_cicero_cds.Rds")
-  geneactivity_processing(cds_input=as.CellDataSet(combined,assay="peaks",reduction="umap"),conns_input=conns,prefix="210924_cellline")
-
-  #Read in unnormalized GA
-  cicero_gene_activities<-readRDS("210924_cellline.unnorm_GA.Rds")
-  combined[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
-
-  # normalize
-  combined <- NormalizeData(
-    object = combined,
-    assay = 'GeneActivity',
-    normalization.method = 'LogNormalize',
-    scale.factor = median(combined$nCount_GeneActivity)
-  )
-  saveRDS(combined,"210924_cellline.SeuratObject.Rds")
-
-
-#t47d
-  conns<-as.data.frame(readRDS("210924_t47d_atac_cicero_conns.Rds"))
-  obj.cicero<-readRDS("210924_t47d_atac_cicero_cds.Rds")
-  geneactivity_processing(cds_input=as.CellDataSet(t47d,assay="peaks",reduction="umap"),conns_input=conns,prefix="210924_t47d")
-
-  #Read in unnormalized GA
-  cicero_gene_activities<-readRDS("210924_t47d.unnorm_GA.Rds")
-  t47d[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
-
-  # normalize
-  t47d <- NormalizeData(
-    object = t47d,
-    assay = 'GeneActivity',
-    normalization.method = 'LogNormalize',
-    scale.factor = median(t47d$nCount_GeneActivity)
-  )
-  saveRDS(t47d,"210924_t47d.SeuratObject.Rds")
-
-
-#mcf7
-  conns<-as.data.frame(readRDS("210924_mcf7_atac_cicero_conns.Rds"))
-  obj.cicero<-readRDS("210924_mcf7_atac_cicero_cds.Rds")
-  geneactivity_processing(cds_input=as.CellDataSet(mcf7,assay="peaks",reduction="umap"),conns_input=conns,prefix="210924_mcf7")
-
-  #Read in unnormalized GA
-  cicero_gene_activities<-readRDS("210924_mcf7.unnorm_GA.Rds")
-  mcf7[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
-
-  # normalize
-  mcf7 <- NormalizeData(
-    object = mcf7,
-    assay = 'GeneActivity',
-    normalization.method = 'LogNormalize',
-    scale.factor = median(mcf7$nCount_GeneActivity)
-  )
-  saveRDS(mcf7,"210924_mcf7.SeuratObject.Rds")
+#run on all merged sample
+cicero_processing(dat="/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/phase1.SeuratObject.rds")
 
 ```
 
 
+### Integration: Now Clustering together on RNA profiles using harmony to integrate
+
+```R
+library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
+library(cisTopic)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(Matrix)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
 
 
+###########Color Schema#################
+type_cols<-c(
+#epithelial
+"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+"B-cells" ="#089099", "T-cells" ="#003147", #other
+"CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
+
+diag_cols<-c("IDC"="red", "DCIS"="grey")
+
+molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"="#F7B7BB")
+########################################
 
 
+dat<-readRDS("phase1.SeuratObject.rds")
+pdf("phase1.Harmonyconvergence.pdf")
+dat<-RunHarmony(dat,group.by.vars="sample",reduction="pca",plot_convergence=T)
+dev.off()
+system("slack -F phase1.Harmonyconvergence.pdf ryan_todo")
+
+dat <- dat %>% 
+    RunUMAP(reduction.name="harmonyumap",reduction = "harmony", dims = 1:20) %>% 
+    FindNeighbors(reduction = "harmony", dims = 1:20) %>% 
+    FindClusters(resolution = 0.5) %>% 
+    identity()
+
+alpha_val=0.33
+
+plt1<-DimPlot(dat,reduction="harmonyumap",group.by="sample")#+scale_fill_manual(samp_cols)
+plt2<-DimPlot(dat,reduction="harmonyumap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))
+plt3<-DimPlot(dat,reduction="harmonyumap",group.by="diagnosis",cols=alpha(diag_cols,alpha_val))
+plt4<-DimPlot(dat,reduction="harmonyumap",group.by="molecular_type",cols=alpha(molecular_type_cols,alpha_val))
+ggsave(plt1|plt2|plt3|plt4,file="phase1.Harmonyumap.pdf",width=20)
+system("slack -F phase1.Harmonyumap.pdf ryan_todo")
+
+saveRDS(dat,"phase1.SeuratObject.rds")
+
+#3d umap
+out_3d <- RunUMAP(object=dat, n.components=3, reduction.name="harmonyumap",reduction = "harmony", dims = 1:20)
+#format
+#Astrocytes    TAGGTCCGACGTACTAGGGCCTCGGTCTATGGCCTA    4.24424248742567    -1.74691044949975    -6.48374510684418    #1C7D54
+#Astrocytes    ATTCAGAAGCATCGCGCAGCCAGACTCTATGGCCTA    3.60301401455387    -1.96493138894082    -6.47136162049336    #1C7D54
+#Astrocytes    TCAACGAGTTCGCGATGGTCAGAGCCCGCCGATATC    5.51775913941571    -1.87741656898663    -6.76243310557264    #1C7D54
+out_3d_dat<-as.data.frame(cbind(out_3d@meta.data[,c("predicted.id")],row.names(out_3d@meta.data),Embeddings(out_3d,"harmonyumap")))
+colnames(out_3d_dat)[1]<-"predicted.id"
+col_dat<-as.data.frame(cbind(names(type_cols),unname(type_cols)))
+colnames(col_dat)<-c("predicted.id","cols")
+dat_out<-merge(out_3d_dat,col_dat,by="predicted.id")
+write.table(dat_out,file="multiome_tumor.tsv",sep="\t",quote=F,col.names=F,row.names=F)
+system("slack -F multiome_tumor.tsv ryan_todo")
+
+```
+
+## 3D Plot in Blender
+
+Open blender, go to python console (Shift+F4) then copy and paste the code below
+
+```python
+#1. import modules
+import bpy
+import math
+import time
+import bmesh
+
+#set up variables
+file_in="//rdsdcw.ohsu.edu/cedarX/Projects/breast_cancer_multiome/Experiment_2_Phase1/multiome_tumor.tsv" 
+file_out="//rdsdcw.ohsu.edu/cedarX/Projects/breast_cancer_multiome/Experiment_2_Phase1/multiome_tumor.blend"
+
+
+#Read in file and store it in memory (this doesn't take up much memory)
+file_xyz=open(file_in,"r") #change path to whatever filepath you want. I got my computer refurbished and it was named Chad. I swear it wasn't me.
+tabraw=file_xyz.readlines()[1:]
+data_count=len(tabraw)
+file_xyz.close()
+
+#initialize an object, a sphere, for our data points.
+bpy.ops.mesh.primitive_uv_sphere_add(radius=0.05,segments=64, ring_count=32) #higher segments and ring_counts will make a smoother sphere, but I dont think its necessary
+obj=bpy.context.active_object #select the sphere we just made
+
+#set up a master shader material
+mat = bpy.data.materials.new(name='mymat')
+mat.use_nodes = True #use node trees, these can be seen by switching a panel to the shader editor if you want. It will look like the above shader, just not nicely placed.
+mat_nodes = mat.node_tree.nodes
+mat_links = mat.node_tree.links
+mat = bpy.data.materials['mymat'] #Get the material you want 
+node_to_delete =  mat.node_tree.nodes['Principled BSDF'] #Get the node in its node tree (replace the name below)
+mat.node_tree.nodes.remove( node_to_delete ) #Remove it
+#add all the nodes, using col_node as variable of each node as it is being made. then using that to modify default value fields
+col_node=mat_nodes.new('ShaderNodeRGB')
+col_node=mat_nodes.new('ShaderNodeFresnel')
+bpy.data.materials["mymat"].node_tree.nodes['Fresnel'].inputs[0].default_value = 1.33
+
+col_node=mat_nodes.new('ShaderNodeHueSaturation')
+bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value"].inputs[0].default_value = 1
+bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value"].inputs[1].default_value = 0.7
+bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value"].inputs[2].default_value = 2
+bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value"].inputs[3].default_value = 0
+
+col_node=mat_nodes.new('ShaderNodeMath')
+bpy.data.materials["mymat"].node_tree.nodes["Math"].operation = 'MULTIPLY'
+
+col_node=mat_nodes.new('ShaderNodeBsdfRefraction')
+bpy.data.materials["mymat"].node_tree.nodes["Refraction BSDF"].inputs[1].default_value = 1
+
+col_node=mat_nodes.new('ShaderNodeBsdfGlossy')
+bpy.data.materials["mymat"].node_tree.nodes["Glossy BSDF"].inputs[1].default_value = 1
+
+col_node=mat_nodes.new('ShaderNodeHueSaturation')
+bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value.001"].inputs[0].default_value = 1
+bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value.001"].inputs[1].default_value = 0.4
+bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value.001"].inputs[2].default_value = 2
+
+col_node=mat_nodes.new('ShaderNodeMixShader')
+col_node=mat_nodes.new('ShaderNodeVolumeAbsorption')
+bpy.data.materials["mymat"].node_tree.nodes["Volume Absorption"].inputs[1].default_value = 0.3
+
+col_node=mat_nodes.new('ShaderNodeBsdfTranslucent')
+col_node=mat_nodes.new('ShaderNodeLightPath')
+col_node=mat_nodes.new('ShaderNodeMixShader')
+
+#build node tree links (going from left most inputs)
+#sorry this is a monstrosity
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes['RGB'].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value"].inputs[4])
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes['RGB'].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value.001"].inputs[4])
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes['RGB'].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Volume Absorption"].inputs[0])
+
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes['Fresnel'].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Math"].inputs[0])
+
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes['Hue Saturation Value'].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Refraction BSDF"].inputs[0])
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes['Hue Saturation Value'].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Glossy BSDF"].inputs[0])
+
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Math"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Mix Shader"].inputs[0])
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Refraction BSDF"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Mix Shader"].inputs[1])
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Glossy BSDF"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Mix Shader"].inputs[2])
+
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value.001"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Translucent BSDF"].inputs[0])
+
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Volume Absorption"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Material Output"].inputs[1])
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Translucent BSDF"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Mix Shader.001"].inputs[2])
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Mix Shader"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Mix Shader.001"].inputs[1])
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Light Path"].outputs[1], bpy.data.materials["mymat"].node_tree.nodes["Mix Shader.001"].inputs[0])
+
+mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Mix Shader.001"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Material Output"].inputs[0])
+
+
+#set up render engine and scene
+bpy.context.scene.render.engine="CYCLES" #set render engine to CYCLES
+bpy.data.scenes["Scene"].cycles.denoiser="NLM" #set denoiser for render
+bpy.data.scenes["Scene"].cycles.samples=512 #this is a whole lotta sampling
+bpy.context.scene.render.image_settings.color_depth = '16' #more color channels!
+bpy.context.scene.render.resolution_x = 3840 #up the resolution
+bpy.context.scene.render.resolution_y = 2160
+bpy.data.objects["Sphere"].hide_render = True # hide sphere in render
+bpy.data.objects["Sphere"].hide_viewport=True
+bpy.data.lights["Light"].energy = 100000 # increase light wattage
+bpy.data.lights["Light"].shadow_soft_size= 1
+bpy.data.objects["Light"].location=(5,-5,10) #location and rotation i deteremined manually and just set up here for convenience
+
+#set up stage by cutting up the default cube vertices and smoothing it
+obj_cube=bpy.data.objects["Cube"]
+obj_cube.scale=(30,30,30) #scale up the cube
+#this is to cut out a vertex to make an open box
+bpy.context.view_layer.objects.active = obj_cube
+bpy.ops.object.mode_set(mode='EDIT')
+bpy.ops.mesh.select_mode(type="VERT")  # Switch to edge select mode
+bm = bmesh.from_edit_mesh(obj_cube.data)  # Create bmesh object for easy mesh evaluation
+bm.verts.ensure_lookup_table()
+bm.verts.remove(bm.verts[2]) # Write the mesh back
+bmesh.update_edit_mesh(obj_cube.data)  # Update the mesh in edit mode
+bpy.ops.object.mode_set(mode='OBJECT') #switch back to object mode when done
+bpy.ops.object.modifier_add(type='SUBSURF') #make it smooth
+bpy.data.objects["Cube"].modifiers["Subdivision"].render_levels=6
+bpy.data.objects["Cube"].location=(-4,4.3,17.725) #change the location for more dramatic shadows
+
+#move the camera and rotate
+bpy.data.objects["Camera"].location=(34.61997604370117, -40.53969955444336, 25.66326904296875)
+bpy.data.objects["Camera"].rotation_euler=(1.1093189716339111, 0.0, 0.8149281740188599)
+
+#finally ready to start reading in our data
+scene=bpy.context.scene
+
+#set up a material per hex color, name as annotation
+#this is looping through the file, grabbing the unique clusters and there color codes, then making a dictionary for look up later
+start = time.time()
+annot={}
+for line in tabraw[1:]:
+  line=line.replace('\n','')
+  l=line.split('\t')
+  if l[0] not in annot:
+    hexcode=l[5].lstrip("#")
+    rgb=[int(hexcode[i:i+2], 16) for i in (0, 2, 4)]
+    r=float(rgb[0])/255 #color of spheres, blender uses 0-1 scale
+    g=float(rgb[1])/255
+    b=float(rgb[2])/255
+    clust=str(l[0])
+    annot[clust]=[r,g,b]
+
+end = time.time()
+print(end - start)
+
+#make a custom material shader for each annotation (just changing color)
+#this copies the material shader we set up earlier, and then changes the input color
+master_mat=source_mat = bpy.data.materials["mymat"]
+for i in annot.keys():
+  copied_mat = master_mat.copy()
+  copied_mat.name=i
+  bpy.data.materials[i].node_tree.nodes["RGB"].outputs[0].default_value[0]=annot[i][0]
+  bpy.data.materials[i].node_tree.nodes["RGB"].outputs[0].default_value[1]=annot[i][1]
+  bpy.data.materials[i].node_tree.nodes["RGB"].outputs[0].default_value[2]=annot[i][2]
+
+
+#make a custom collection for each annotation. this makes a "master sphere" to link for each cluster also
+for i in annot.keys():
+  collection = bpy.data.collections.new(i) #make new collection
+  bpy.context.scene.collection.children.link(collection) #link new collection
+  mat = bpy.data.materials.get(i) #set material properties of collection
+  name=str(i)+"_master" #make name of master sphere
+  new_obj = bpy.data.objects.new(name, scene.objects.get("Sphere").data) #make a new copy
+  new_obj.data = scene.objects.get("Sphere").data.copy()
+  bpy.data.collections[i].objects.link(new_obj) #link new object to collection
+  new_obj.data.materials.append(mat) #add material
+  bpy.data.objects[name].hide_render = True # hide masters
+  bpy.data.objects[name].hide_viewport=True
+
+#make a dictionary look up for copying master spheres
+master_sphere={}
+for i in annot.keys():
+  master_sphere[i]=scene.objects.get(i+"_master").data
+
+#define a nice function to copy data points and link them to the master spheres. also places the copies into nice cluster named collections for easier navigation.
+def add_data_point(input_dat):
+    line=input_dat
+    line=line.replace('\n','')
+    l=line.split('\t')
+    #print(line)
+    x=float(l[2]) #location of spheres
+    y=float(l[3])
+    z=float(l[4])
+    name=str(l[1])
+    clust=str(l[0])
+    my_new_obj = bpy.data.objects.new(name,master_sphere[clust])
+    my_new_obj.location = (x,y,z)       
+    my_new_obj.hide_viewport=False
+    my_new_obj.hide_render=False
+    bpy.data.collections[clust].objects.link(my_new_obj)
+
+n=1000
+in_list = [tabraw[i * n:(i + 1) * n] for i in range((len(tabraw) + n + 1) // n )] 
+for in_dat_list in in_list:
+  start = time.time()
+  out=[add_data_point(in_dat) for in_dat in in_dat_list] 
+  end = time.time()
+  print(end - start)
+
+
+#some last minute tweaks, here are some convenience functions if you want to change things. I also encourage you to play around with lighting and camera positioning to get some interesting views of your data.
+#to adjust size of points
+for clust in annot.keys():
+  for i in bpy.data.collections[clust].objects:
+    i.scale=(0.8,0.8,0.8)
+
+
+#to adjust alpha value and translucence of material properties
+for clust in annot.keys():
+  bpy.data.materials[clust].node_tree.nodes["RGB"].outputs[0].default_value[3] = 0.3
+  bpy.data.materials[clust].node_tree.nodes["Volume Absorption"].inputs[1].default_value = 0.1
+
+
+bpy.ops.wm.save_as_mainfile(filepath=file_out) #save blender file
+
+bpy.context.scene.render.filepath = 'cortex.test.png'
+bpy.ops.render.render(write_still=True) #render and save file
+
+```
+
+#Run SC_subtype, proportion of cells in each, what is epigenome of each?
+#Her2 Amp
+#Clinical data add to metadat, plot cell type distro by diagnosis, recolor umaps by diagnosis
+#Magic on T cell imputations
+
+
+#ER binding poor and good outcome from patients, overlap with ATAC data
+http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Poor%20outcome%20ER%20regions.bed.gz
+http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Good%20outcome%20ER%20regions.bed.gz
+
+#sample specificity between cancer and normal epithelial, superenhancers are open more frequently
+
+
+## Add per cell subtyping to epithelial cells
+
+```R
+library(Signac)
+library(Seurat)
+library(ggplot2)
+set.seed(1234)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
+
+sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.rds")))
+
+#Features determined by EMBO manuscript
+module_feats<-list()
+module_feats[["Basal_SC"]]=c('EMP1', 'TAGLN', 'TTYH1', 'RTN4', 'TK1', 'BUB3', 'IGLV3.25', 'FAM3C', 'TMEM123', 'KDM5B', 'KRT14', 'ALG3', 'KLK6', 'EEF2', 'NSMCE4A', 'LYST', 'DEDD', 'HLA.DRA', 'PAPOLA', 'SOX4', 'ACTR3B', 'EIF3D', 'CACYBP', 'RARRES1', 'STRA13', 'MFGE8', 'FRZB', 'SDHD', 'UCHL1', 'TMEM176A', 'CAV2', 'MARCO', 'P4HB', 'CHI3L2', 'APOE', 'ATP1B1', 'C6orf15', 'KRT6B', 'TAF1D', 'ACTA2', 'LY6D', 'SAA2', 'CYP27A1', 'DLK1', 'IGKV1.5', 'CENPW', 'RAB18', 'TNFRSF11B', 'VPS28', 'HULC', 'KRT16', 'CDKN2A', 'AHNAK2', 'SEC22B', 'CDC42EP1', 'HMGA1', 'CAV1', 'BAMBI', 'TOMM22', 'ATP6V0E2', 'MTCH2', 'PRSS21', 'HDAC2', 'ZG16B', 'GAL', 'SCGB1D2', 'S100A2', 'GSPT1', 'ARPC1B', 'NIT1', 'NEAT1', 'DSC2', 'RP1.60O19.1', 'MAL2', 'TMEM176B', 'CYP1B1', 'EIF3L', 'FKBP4', 'WFDC2', 'SAA1', 'CXCL17', 'PFDN2', 'UCP2', 'RAB11B', 'FDCSP', 'HLA.DPB1', 'PCSK1N', 'C4orf48', 'CTSC')
+module_feats[["Her2E_SC"]]=c('PSMA2', 'PPP1R1B', 'SYNGR2', 'CNPY2', 'LGALS7B', 'CYBA', 'FTH1', 'MSL1', 'IGKV3.15', 'STARD3', 'HPD', 'HMGCS2', 'ID3', 'NDUFB8', 'COTL1', 'AIM1', 'MED24', 'CEACAM6', 'FABP7', 'CRABP2', 'NR4A2', 'COX14', 'ACADM', 'PKM', 'ECH1', 'C17orf89', 'NGRN', 'ATG5', 'SNHG25', 'ETFB', 'EGLN3', 'CSNK2B', 'RHOC', 'PSENEN', 'CDK12', 'ATP5I', 'ENTHD2', 'QRSL1', 'S100A7', 'TPM1', 'ATP5C1', 'HIST1H1E', 'LGALS1', 'GRB7', 'AQP3', 'ALDH2', 'EIF3E', 'ERBB2', 'LCN2', 'SLC38A10', 'TXN', 'DBI', 'RP11.206M11.7', 'TUBB', 'CRYAB', 'CD9', 'PDSS2', 'XIST', 'MED1', 'C6orf203', 'PSMD3', 'TMC5', 'UQCRQ', 'EFHD1', 'BCAM', 'GPX1', 'EPHX1', 'AREG', 'CDK2AP2', 'SPINK8', 'PGAP3', 'NFIC', 'THRSP', 'LDHB', 'MT1X', 'HIST1H4C', 'LRRC26', 'SLC16A3', 'BACE2', 'MIEN1', 'AR', 'CRIP2', 'NME1', 'DEGS2', 'CASC3', 'FOLR1', 'SIVA1', 'SLC25A39', 'IGHG1', 'ORMDL3', 'KRT81', 'SCGB2B2', 'LINC01285', 'CXCL8', 'KRT15', 'RSU1', 'ZFP36L2', 'DKK1', 'TMED10', 'IRX3', 'S100A9', 'YWHAZ')
+module_feats[["LumA_SC"]]=c('SH3BGRL', 'HSPB1', 'PHGR1', 'SOX9', 'CEBPD', 'CITED2', 'TM4SF1', 'S100P', 'KCNK6', 'AGR3', 'MPC2', 'CXCL13', 'RNASET2', 'DDIT4', 'SCUBE2', 'KRT8', 'MZT2B', 'IFI6', 'RPS26', 'TAGLN2', 'SPTSSA', 'ZFP36L1', 'MGP', 'KDELR2', 'PPDPF', 'AZGP1', 'AP000769.1', 'MYBPC1', 'S100A1', 'TFPI2', 'JUN', 'SLC25A6', 'HSP90AB1', 'ARF5', 'PMAIP1', 'TNFRSF12A', 'FXYD3', 'RASD1', 'PYCARD', 'PYDC1', 'PHLDA2', 'BZW2', 'HOXA9', 'XBP1', 'AGR2', 'HSP90AA1') 
+module_feats[["LumB_SC"]]=c('UGCG', 'ARMT1', 'ISOC1', 'GDF15', 'ZFP36', 'PSMC5', 'DDX5', 'TMEM150C', 'NBEAL1', 'CLEC3A', 'GADD45G', 'MARCKS', 'FHL2', 'CCDC117', 'LY6E', 'GJA1', 'PSAP', 'TAF7', 'PIP', 'HSPA2', 'DSCAM.AS1', 'PSMB7', 'STARD10', 'ATF3', 'WBP11', 'MALAT1', 'C6orf48', 'HLA.DRB1', 'HIST1H2BD', 'CCND1', 'STC2', 'NR4A1', 'NPY1R', 'FOS', 'ZFAND2A', 'CFL1', 'RHOB', 'LMNA', 'SLC40A1', 'CYB5A', 'SRSF5', 'SEC61G', 'CTSD', 'DNAJC12', 'IFITM1', 'MAGED2', 'RBP1', 'TFF1', 'APLP2', 'TFF3', 'TRH', 'NUPR1', 'EMC3', 'TXNIP', 'ARPC4', 'KCNE4', 'ANPEP', 'MGST1', 'TOB1', 'ADIRF', 'TUBA1B', 'MYEOV2', 'MLLT4', 'DHRS2', 'IFITM2')
+module_feats[["proliferation_score"]]<-c("BIRC5", "CCNB1", "CDC20", "NUF2", "CEP55", "NDC80", "MKI67", "PTTG1", "RRM2", "TYMS","UBE2C")
+
+
+  #Cicero processing function
+subtyping<-function(dat){
+      dat_file_path=dat
+      file_in=basename(dat)
+      sample_name=substr(file_in,1,nchar(file_in)-17)
+      dir_in=dirname(dat)
+      dat<-readRDS(dat) #read in as seurat object
+      dat_sub<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial"))
+      module_scores<-AddModuleScore(dat_sub,features=module_feats,assay="RNA",search=TRUE,name=names(module_feats)) #use add module function to add cell scores
+      module_scores<-module_scores@meta.data[seq(ncol(module_scores@meta.data)-4,ncol(module_scores@meta.data))]
+      dat<-AddMetaData(dat,metadata=module_scores)
+      colnames(dat@meta.data)<-names(module_feats) #it adds a number at the end to each name by default, which I don't like
+      saveRDS(dat,file=dat_file_path)
+
+}
+
+#run on all samples
+lapply(sample_in,subtyping)
+subtyping(dat="/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/phase1.SeuratObject.rds")
+
+
+```
 <!---
 ###############################################################
 
