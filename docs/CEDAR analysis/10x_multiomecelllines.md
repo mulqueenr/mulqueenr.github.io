@@ -2,7 +2,7 @@
 title: 10X Multiome Tumor Test
 layout: cedar_analysis
 author: Ryan Mulqueen
-permalink: /10xmultiome_primary/
+permalink: /10xmultiome_cellline/
 category: CEDAR
 ---
 
