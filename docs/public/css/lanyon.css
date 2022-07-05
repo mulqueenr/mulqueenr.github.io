@@ -510,9 +510,9 @@ a.sidebar-nav-item:focus {
   background-color: var(--highlight-color1);
   color: white;
   padding-left: 0.3rem;
-  font-size: 1rem; /* Increased text to enable scrolling */
+  font-size: 0.5rem; /* Increased text to enable scrolling */
   border-top: 0.1rem;
-  transition: 0.4s; /* 💡 This small transition makes setting of the active state smooth */
+  transition: 0.8s; /* 💡 This small transition makes setting of the active state smooth */
 
 }
 
