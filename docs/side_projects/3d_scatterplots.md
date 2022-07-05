@@ -336,6 +336,12 @@ bpy.ops.wm.save_as_mainfile(filepath="C:/Users/mulqueen/Desktop/cortex.blend") #
 bpy.context.scene.render.filepath = 'cortex.test.png'
 bpy.ops.render.render(write_still=True) #render and save file
 
+
+
+#run on exacloud
+#blender -b hgap_all.blend -o //render_test/ -E CYCLES -s 20 -e 1000 -t 40 -a -x 1 -F PNG &
+
+
 ```
 
 ## Bonus
