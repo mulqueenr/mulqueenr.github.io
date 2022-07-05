@@ -29,7 +29,7 @@ Using chipseq bed files held on cistrome for accessibility analysis.
 ## Specify File Location
 Generate libraries csv file specifying fastq locations for cellranger-arc.
 
-### Yahong Libraries
+### Libraries
 ```bash
 echo """fastqs,sample,library_type
 /home/groups/CEDAR/mulqueen/sequencing_data/EXP211227HM/211229_A01058_0202_AHT33MDRXY/EXP211227HM/SI-NA-H10_1,EXP211227HM_si_Control_plus_E2,Chromatin Accessibility
@@ -87,7 +87,7 @@ for i in `ls *csv`; do
    --localmem=90 ; done &
 ```
 
-## Yahong Cell Line Multiome Analysis
+## Cell Line Multiome Analysis
 
 ```R
 library(Signac)
@@ -521,7 +521,7 @@ ggsave(plt1/(plt2|plt3),file="YW_control.celltype.pdf",width=10)
 system("slack -F YW_control.celltype.pdf ryan_todo")
 
 ```
-## Yahong Data TITAN Analysis
+## Data TITAN Analysis
 ### Cell line specific Cistopic Processing
 
 Now that cell lines are split out, can re-run cistopic for biological interpretation.
