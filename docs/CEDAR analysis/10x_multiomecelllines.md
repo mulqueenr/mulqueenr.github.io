@@ -2154,6 +2154,35 @@ system(paste0("slack -F mcf7.screg.umap.pdf ryan_todo"))
 #save Seurat Objects 
 saveRDS(mcf7,file="yw_mcf7.control.SeuratObject.screg.rds")
 saveRDS(t47d,file="yw_t47d.control.SeuratObject.screg.rds")
+
+
+#read in Seurat Objects
+mcf7<-readRDS(file="yw_mcf7.control.SeuratObject.screg.rds")
+t47d<-readRDS(file="yw_t47d.control.SeuratObject.screg.rds")
+
+mcf7_foxm1_topic="lda_4";mcf7_esr1_topic="lda_37"
+t47d_foxm1_topic="lda_11";t47d_esr1_topic="lda_23"
+
+
+#Plot blend of foxm1 and esr1 topics over the umap
+plt<-FeaturePlot(object = mcf7, features = c(mcf7_foxm1_topic, mcf7_esr1_topic),blend = T,col=c("white","red","blue"),reduction="umap.RegNMF",order=T)
+ggsave(plt,file="mcf7_titantopic.screg.umap.pdf",width=13)
+system("slack -F mcf7_titantopic.screg.umap.pdf ryan_todo")
+
+#Plot blend of foxm1 and esr1 topics over the umap
+plt<-FeaturePlot(object = t47d, features = c(t47d_foxm1_topic, t47d_esr1_topic),blend = T,col=c("white","red","blue"),reduction="umap.RegNMF",order=T)
+ggsave(plt,file="t47d_titantopic.screg.umap.pdf",width=13)
+system("slack -F t47d_titantopic.screg.umap.pdf ryan_todo")
+
+#Finally Plot results
+plt<-DimPlot(mcf7,reduction="umap.RegNMF",group.by="sample")+ggtitle("MCF7 scREG UMAP")
+ggsave(plt,file="mcf7.screg.umap.pdf",height=10,width=10)
+system("slack -F mcf7.screg.umap.pdf ryan_todo")
+
+plt<-DimPlot(t47d,reduction="umap.RegNMF",group.by="sample")+ggtitle("T47D scREG UMAP")
+ggsave(plt,file="t47d.screg.umap.pdf",height=10,width=10)
+system("slack -F t47d.screg.umap.pdf ryan_todo")
+
 ```
 
 Now going to run the cluster specific analysis for both sample (control v E2+) and binned cells (ESR1 v FOXM1 cells)
@@ -2280,11 +2309,11 @@ screg_furtherprocessing(regnmf_output=mcf7_regnmf,seurat_object=mcf7,outname="mc
 screg_furtherprocessing(regnmf_output=t47d_regnmf,seurat_object=t47d,outname="t47d",group.by="topic_bin")
 ```
 
+### JAE Model (Amateur)
+
 Alternative multiome joint embedding strategies
 https://github.com/openproblems-bio/neurips2021_multimodal_topmethods/tree/main/src/joint_embedding/methods/jae
 
-
-### JAE Model (Amateur)
 
 ```bash
 pip install numpy scipy anndata sklearn pickle-mixin umap-learn tensorflow scanpy
@@ -2727,7 +2756,47 @@ mcf7_jae<-read.table("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi
 t47d_jae<-read.table("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/amateur/yw.t47djae.table.tsv",header=F)
 
 
-plt<-ggplot(data=t47d_jae,aes(x=V1,y=V2))+geom_point()
-ggsave(plt,file="test.pdf")
-system("slack -F test.pdf ryan_todo")
+integrate_jae_with_seurat<-function(object,jae_in){
+cell.embeddings<-as.matrix(jae_in)
+row.names(cell.embeddings)<-colnames(object$RNA)
+colnames(cell.embeddings)<-paste0("jae_",1:ncol(cell.embeddings))
+dim_reduc<-CreateDimReducObject(embeddings = cell.embeddings, key = "Dim",assay = "RNA")
+object[["Amateur"]]<-dim_reduc
+object <- RunUMAP(object, reduction = "Amateur", dims = 1:ncol(cell.embeddings), reduction.name = "umap.Amateur")
+return(object)
+}
+
+
+t47d<-integrate_jae_with_seurat(object=t47d,jae_in=t47d_jae)
+mcf7<-integrate_jae_with_seurat(object=mcf7,jae_in=mcf7_jae)
+
+
+mcf7_foxm1_topic="lda_4";mcf7_esr1_topic="lda_37"
+t47d_foxm1_topic="lda_11";t47d_esr1_topic="lda_23"
+
+
+#Plot blend of foxm1 and esr1 topics over the umap
+plt<-FeaturePlot(object = mcf7, features = c(mcf7_foxm1_topic, mcf7_esr1_topic),blend = T,col=c("white","red","blue"),reduction="umap.Amateur",order=T)
+ggsave(plt,file="mcf7_titantopic.Amateur.umap.pdf",width=13)
+system("slack -F mcf7_titantopic.Amateur.umap.pdf ryan_todo")
+
+#Plot blend of foxm1 and esr1 topics over the umap
+plt<-FeaturePlot(object = t47d, features = c(t47d_foxm1_topic, t47d_esr1_topic),blend = T,col=c("white","red","blue"),reduction="umap.Amateur",order=T)
+ggsave(plt,file="t47d_titantopic.Amateur.umap.pdf",width=13)
+system("slack -F t47d_titantopic.Amateur.umap.pdf ryan_todo")
+
+#Finally Plot results
+plt<-DimPlot(mcf7,reduction="umap.Amateur",group.by="sample")+ggtitle("MCF7 Amateur UMAP")
+ggsave(plt,file="mcf7.Amateur.umap.pdf",height=10,width=10)
+system("slack -F mcf7.Amateur.umap.pdf ryan_todo")
+
+plt<-DimPlot(t47d,reduction="umap.Amateur",group.by="sample")+ggtitle("T47D Amateur UMAP")
+ggsave(plt,file="t47d.Amateur.umap.pdf",height=10,width=10)
+system("slack -F t47d.Amateur.umap.pdf ryan_todo")
+
+#save Final Seurat Objects
+#Keep screg objects as backup
+saveRDS(mcf7,file="yw_mcf7.control.SeuratObject.rds")
+saveRDS(t47d,file="yw_t47d.control.SeuratObject.rds")
+
 ```
