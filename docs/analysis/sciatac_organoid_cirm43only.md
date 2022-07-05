@@ -1384,15 +1384,6 @@ Plot genome tracks
   library(SeuratWrappers)
   setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
   orgo_cirm43<-readRDS(file="orgo_cirm43.QC2.SeuratObject.Rds")
-
-orgo_0<-readRDS("orgo_cirm43.QC2.0.Rds")
-orgo_1<-readRDS("orgo_cirm43.QC2.1.Rds")
-orgo_2<-readRDS("orgo_cirm43.QC2.2.Rds")
-orgo_3<-readRDS("orgo_cirm43.QC2.3.Rds")
-orgo_4<-readRDS("orgo_cirm43.QC2.4.Rds")
-orgo_5<-readRDS("orgo_cirm43.QC2.5.Rds")
-orgo_6<-readRDS("orgo_cirm43.QC2.6.Rds")
-
 Idents(orgo_cirm43)<-orgo_cirm43$seurat_clusters
 
 # extract position frequency matrices for the motifs
@@ -1432,80 +1423,39 @@ system(paste0("slack -F ","orgo_cirm43.TF_footprints.pdf"," ryan_todo"))
 #BCL11B chr14-99169287-99272197 MA1989.1
 #####################Old style of plotting######################
 #plot all panels for each subset (cluster in this case)
-plot_panels<-function(dat.=dat,gene_range.=gene_range,gene_name.=gene_name,motif.name.=motif.name,obj_subset=orgo_0,ident_subset="0"){
-  panel_plots<-list()
-  panel_plots[["panel_cov"]]<- CoveragePlot(object = dat., region = gene_range., assay="peaks", ident=ident_subset,annotation=FALSE,peaks=FALSE,links=FALSE ) 
-  panel_plots[["panel_links"]]<-LinkPlot(object=obj_subset, region=gene_range.,min.cutoff=0.1)+scale_colour_gradient(low="white",high="red",limits=c(0,0.8))
-  panel_plots[["panel_chromvar_plot"]]<-ExpressionPlot(object=dat., features=motif.name., assay="chromvar", ident=ident_subset)+xlim(c(0,5))
-  panel_plots[["panel_ga_plot"]]<-ExpressionPlot(object=dat., features=gene_name., assay="GeneActivity", ident=ident_subset)#+xlim(c(0,5))
-  return(panel_plots)
-}
 
-cov_plots<-function(dat=orgo_cirm43,gene_range="chr11-101020000-101140000",gene_name="PGR",motif.name=c("MA0112.3"),outname="test"){
-  
-  peak_annot<-granges(dat@assays$peaks) #set up peak motif overlap as annotation track
-  peak_annot$motif_overlap<-""
-  for (i in length(motif.name)){ #jarspar formatted names
-    overlap_motif_idx<-findOverlaps(granges(peak_annot),dat@assays$peaks@motifs@positions[motif.name[i]])@from
-    peak_annot[overlap_motif_idx,]$motif_overlap<-paste(peak_annot[overlap_motif_idx,]$motif_overlap,motif.name[i])
-  }
-  dat@assays$peaks@meta.features$motif_overlap<-peak_annot$motif_overlap
-  
-  annot_plot<-AnnotationPlot(object=dat, region=gene_range)
-  peak_plot<-PeakPlot(object=dat,region=gene_range,group.by="motif_overlap")
+dat<-orgo_cirm43
 
-  clus0_panels<-plot_panels(obj_subset=orgo_0,ident_subset="0")
-  clus1_panels<-plot_panels(obj_subset=orgo_1,ident_subset="1")
-  clus2_panels<-plot_panels(obj_subset=orgo_2,ident_subset="2")
-  clus3_panels<-plot_panels(obj_subset=orgo_3,ident_subset="3")
-  clus4_panels<-plot_panels(obj_subset=orgo_4,ident_subset="4")
-  clus5_panels<-plot_panels(obj_subset=orgo_5,ident_subset="5")
-  clus6_panels<-plot_panels(obj_subset=orgo_6,ident_subset="6")
-
-    #define layout of plots
-  layout<-"
-    FFF##
-    AAACD
-    BBBCD
-    EEE##
-  "
-  clus0_plt<-wrap_plots(A=clus0_panels$panel_cov,B=clus0_panels$panel_links,C=clus0_panels$panel_chromvar_plot,D=clus0_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
-
-  clus1_plt<-wrap_plots(A=clus1_panels$panel_cov,B=clus1_panels$panel_links,C=clus1_panels$panel_chromvar_plot,D=clus1_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
-
-  clus2_plt<-wrap_plots(A=clus2_panels$panel_cov,B=clus2_panels$panel_links,C=clus2_panels$panel_chromvar_plot,D=clus2_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
-
-  clus3_plt<-wrap_plots(A=clus3_panels$panel_cov,B=clus3_panels$panel_links,C=clus3_panels$panel_chromvar_plot,D=clus3_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
-
-  clus4_plt<-wrap_plots(A=clus4_panels$panel_cov,B=clus4_panels$panel_links,C=clus4_panels$panel_chromvar_plot,D=clus4_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
-
-  clus5_plt<-wrap_plots(A=clus5_panels$panel_cov,B=clus5_panels$panel_links,C=clus5_panels$panel_chromvar_plot,D=clus5_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
-
-  clus6_plt<-wrap_plots(A=clus6_panels$panel_cov,B=clus6_panels$panel_links,C=clus6_panels$panel_chromvar_plot,D=clus6_panels$panel_ga_plot,E=peak_plot,F=annot_plot,design=layout,heights = c(1,2,2,1))+ggtitle(outname)
-  plt<-clus6_plt/clus5_plt/clus0_plt/clus4_plt/clus1_plt/clus3_plt/clus2_plt
-  return(plt)
-}
-
+dat$seurat_clusters<-factor(dat$seurat_clusters,levels=c(6,5,0,4,1,3,2))
 #SOX2
-sox2_plot<-cov_plots(gene_range="chr3-181701925-181724436",gene_name="SOX2",motif.name=c("MA0143.4"),outname="sox2")
+sox2_plot<-CoveragePlot(object = dat, region="SOX2", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="SOX2",expression.assay="GeneActivity") 
 ggsave(sox2_plot,file=paste0("orgo_cirm43.SOX2.featureplots.pdf"),height=40,width=20,limitsize=F)
 system(paste0("slack -F ","orgo_cirm43.SOX2.featureplots.pdf"," ryan_todo"))
 
+
+#PAX6
+PAX6_plot<-CoveragePlot(object = dat, region="PAX6", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="PAX6",expression.assay="GeneActivity") 
+ggsave(PAX6_plot,file=paste0("orgo_cirm43.PAX6.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","orgo_cirm43.PAX6.featureplots.pdf"," ryan_todo"))
+
+
 #TBR1
-tbr1_plot<-cov_plots(gene_range="chr2-161406297-161435870",gene_name="TBR1",motif.name=c("MA0802.1"),outname="TBR1")
-ggsave(tbr1_plot,file=paste0("orgo_cirm43.TBR1.featureplots.pdf"),height=40,width=20,limitsize=F)
+TBR1_plot<-CoveragePlot(object = dat, region="TBR1", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="TBR1",expression.assay="GeneActivity") 
+ggsave(TBR1_plot,file=paste0("orgo_cirm43.TBR1.featureplots.pdf"),height=40,width=20,limitsize=F)
 system(paste0("slack -F ","orgo_cirm43.TBR1.featureplots.pdf"," ryan_todo"))
 
+
 #EOMES
-eomes_plot<-cov_plots(gene_range="chr3-27705949-27732713",gene_name="EOMES",motif.name=c("MA0800.1"),outname="EOMES")
-ggsave(eomes_plot,file=paste0("orgo_cirm43.EOMES.featureplots.pdf"),height=40,width=20,limitsize=F)
+EOMES_plot<-CoveragePlot(object = dat, region="EOMES", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="EOMES",expression.assay="GeneActivity") 
+ggsave(EOMES_plot,file=paste0("orgo_cirm43.EOMES.featureplots.pdf"),height=40,width=20,limitsize=F)
 system(paste0("slack -F ","orgo_cirm43.EOMES.featureplots.pdf"," ryan_todo"))
 
 
 #BCL11B
-bcl11b_plot<-cov_plots(gene_range="chr14-99159287-99282197",gene_name="BCL11B",motif.name=c("MA1989.1"),outname="BCL11B")
-ggsave(bcl11b_plot,file=paste0("orgo_cirm43.EOMES.featureplots.pdf"),height=40,width=20,limitsize=F)
-system(paste0("slack -F ","orgo_cirm43.EOMES.featureplots.pdf"," ryan_todo"))
+BCL11B_plot<-CoveragePlot(object = dat, region="BCL11B", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="BCL11B",expression.assay="GeneActivity") 
+ggsave(BCL11B_plot,file=paste0("orgo_cirm43.BCL11B.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","orgo_cirm43.BCL11B.featureplots.pdf"," ryan_todo"))
+
 ```
 <!--
 Continued processing using Ziffra Primary single-cell ATAC data set for integration
