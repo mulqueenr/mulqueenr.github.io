@@ -6,7 +6,7 @@ permalink: /10xmultiome_cellline/
 category: CEDAR
 ---
 
-Multiome processing for 10X multiome data
+Multiome processing for 10X multiome data on Cell Lines
 
 ## File Location
 ```bash

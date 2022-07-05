@@ -6,7 +6,7 @@ permalink: /10xmultiome_primaryprelim/
 category: CEDAR
 ---
 
-Multiome processing for 10X multiome data
+Multiome processing for 10X multiome data on Primary Tumors (Preliminary Data)
 
 ## File Location
 ```bash
