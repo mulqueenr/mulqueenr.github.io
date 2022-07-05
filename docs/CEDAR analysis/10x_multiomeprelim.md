@@ -1,5 +1,5 @@
 ---
-title: 10X Multiome Tumor Test
+title: 10X Multiome Tumor Preliminary
 layout: cedar_analysis
 author: Ryan Mulqueen
 permalink: /10xmultiome_primaryprelim/
