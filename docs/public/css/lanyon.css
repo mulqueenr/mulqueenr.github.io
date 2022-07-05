@@ -208,7 +208,7 @@ h1, h2, h3, h4, h5, h6 {
   border-bottom: 1px solid var(--highlight-color1);
 }
 .sidebar-nav-item {
-  font-size: 16px;
+  font-size: 12px;
   display: block;
   padding: .5rem 1rem;
   border-top: 0px solid var(--highlight-color1);
@@ -470,7 +470,7 @@ a.sidebar-nav-item:focus {
 .sidenav a, .dropdown-btn {
   padding: 6px 8px 6px 16px;
   text-decoration: none;
-  font-size: 10px;
+  font-size: 15px;
   color: var(--main-text-color);
   display: block;
   border: none;
@@ -494,7 +494,7 @@ a.sidebar-nav-item:focus {
 /* Main content */
 .main {
   margin-left: 200rem; /* Same as the width of the sidenav */
-  font-size: 8px; /* Increased text to enable scrolling */
+  font-size: 16rem; /* Increased text to enable scrolling */
   padding: 0rem 10rem;
 }
 
