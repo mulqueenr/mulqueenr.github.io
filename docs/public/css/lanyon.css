@@ -209,7 +209,7 @@ h1, h2, h3, h4, h5, h6 {
   border-bottom: 1px solid var(--highlight-color1);
 }
 .sidebar-nav-item {
-  font-size: 12px;
+  font-size: 1rem;
   display: block;
   padding: .5rem 1rem;
   border-top: 0px solid var(--highlight-color1);
