@@ -470,7 +470,7 @@ a.sidebar-nav-item:focus {
 .sidenav a, .dropdown-btn {
   padding: 6px 8px 6px 16px;
   text-decoration: none;
-  font-size: 15px;
+  font-size: 10px;
   color: var(--main-text-color);
   display: block;
   border: none;
@@ -494,7 +494,7 @@ a.sidebar-nav-item:focus {
 /* Main content */
 .main {
   margin-left: 200rem; /* Same as the width of the sidenav */
-  font-size: 16rem; /* Increased text to enable scrolling */
+  font-size: 8px; /* Increased text to enable scrolling */
   padding: 0rem 10rem;
 }
 
