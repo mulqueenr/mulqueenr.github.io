@@ -1972,8 +1972,10 @@ plot_cistrome(obj_in=mcf7,cellline="MCF7")
 
 ```
 
-### Multiome Analysis with scREG
-Per reviewer suggestion going to try multiome analysis with alternative tools to Signac.
+## Additional Joint Embedding Multiome Analysis Methods
+
+### scREG
+Trying multiome analysis with alternative tools to Signac.
 First going to use scREG https://github.com/Durenlab/RegNMF
 
 Installing package...
@@ -2024,6 +2026,7 @@ zcat /home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/YW_si_Control_pl
 #set up features
 zcat /home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/YW_si_Control_plus_E2/outs/filtered_feature_bc_matrix/features.tsv.gz /home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/YW_si_Control_plus_Veh/outs/filtered_feature_bc_matrix/features.tsv.gz > /home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/screg_fragments/features.tsv
 ```
+
 ```R
 #conda activate regnmf
 library(RegNMF)
