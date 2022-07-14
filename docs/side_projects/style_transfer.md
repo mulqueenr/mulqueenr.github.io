@@ -1,5 +1,5 @@
 ```bash
-cd /mnt/c/Documents\ and\ Settings/mulqueen/Desktop/TEST_GIF
+cd /mnt/c/Documents\ and\ Settings/mulqueen/Documents/style_transfer
 ```
 
 From (here)[https://www.tensorflow.org/tutorials/generative/style_transfer]
@@ -53,21 +53,22 @@ def imshow(image, title=None):
 Set images
 ```python
 #content_path = '/mnt/c/Documents and Settings/mulqueen/Desktop/TEST_GIF/screen/jpgs/1_00000.png'
-content_path = '/mnt/c/Documents and Settings/mulqueen/Desktop/TEST_GIF/screen/jpgs/frame_10_delay-0.1s.png'
+content_path = '/mnt/c/Documents and Settings/mulqueen/Documents/style_transfer/waddington_landscape.jpg'
 
 #style_path = tf.keras.utils.get_file('kandinsky5.jpg','https://storage.googleapis.com/download.tensorflow.org/example_images/Vassily_Kandinsky%2C_1913_-_Composition_7.jpg')
-style_path = '/mnt/c/Documents and Settings/mulqueen/Desktop/TEST_GIF/picasso.jpg'
+style_path = '/mnt/c/Documents and Settings/mulqueen/Documents/style_transfer/line_art_style.jpeg'
 #style_path = '/mnt/c/Documents and Settings/mulqueen/Desktop/TEST_GIF/starrynight.jpg'
 #style_path = '/mnt/c/Documents and Settings/mulqueen/Desktop/TEST_GIF/lily.jpg'
 #style_path = '/mnt/c/Documents and Settings/mulqueen/Desktop/TEST_GIF/scream.jpg'
 #style_path = '/mnt/c/Documents and Settings/mulqueen/Desktop/TEST_GIF/davinci.jpg'
 
+
 content_image = load_img(content_path)
 style_image = load_img(style_path)
-```
-Quick transfer of images from prebuilt model
+#```
+#Quick transfer of images from prebuilt model
 
-```python
+#```python
 import tensorflow_hub as hub
 hub_model = hub.load('https://tfhub.dev/google/magenta/arbitrary-image-stylization-v1-256/2')
 stylized_image = hub_model(tf.constant(content_image), tf.constant(style_image))[0]

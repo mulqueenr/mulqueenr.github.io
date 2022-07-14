@@ -2240,7 +2240,7 @@ SplitGroup.default<-function(foldername,barcord,W3,H,Reg_symbol_name,Reg_peak_na
 
   for (i in 1:clustern) {
     cluster_name=cluster_names[i] #fixed here to call cluster names rather than number
-    topk=order(W3_cluster[,i])[1:10000]
+    topk=order(W3_cluster[,i])#just include all peaks
     outdf=df[topk,]
     outdf$Reg=W3_cluster[topk,i]
     filename=paste0(RegFolderName,"Reg_cluster",cluster_name,".bed") #fixed this to output cluster name
@@ -2267,7 +2267,7 @@ t47d<-readRDS(file="yw_t47d.control.SeuratObject.screg.rds")
 mcf7@meta.data$topic_bin[mcf7@meta.data$topic_bin==""]<-"rest"
 t47d@meta.data$topic_bin[t47d@meta.data$topic_bin==""]<-"rest"
 
-screg_furtherprocessing<-function(regnmf_output=mcf7_regnmf,seurat_object=mcf7,outname="mcf7",group.by="sample"){
+screg_furtherprocessing<-function(regnmf_output=mcf7_regnmf,seurat_object=mcf7,outname="mcf7",group.by="sample",chr.="chr11",start.=100900000,end.=101200000){
   #regnmf_output=mcf7_regnmf;seurat_object=mcf7;outname="mcf7"
   ans<-seurat_object@meta.data[,group.by]
   out_foldername=paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/screg_fragments/",
@@ -2296,9 +2296,9 @@ plt<-Visualization(
               wholef="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/screg_fragments/",#generated earlier
               peakf=visual_need["peak_clusterF"],
               regf=visual_need["RE_clusterF"],
-              chr="chr11",
-              from=101010000,
-              to=101150000,
+              chr=chr.,
+              from=start.,
+              to=end.,
               clusterlist=unique(ans),
               width=20,
               height=10)
@@ -2306,10 +2306,18 @@ system("slack -F result.pdf ryan_todo")
 }
 
 
+
+#PGR (using default)
 screg_furtherprocessing(regnmf_output=mcf7_regnmf,seurat_object=mcf7,outname="mcf7")
 screg_furtherprocessing(regnmf_output=t47d_regnmf,seurat_object=t47d,outname="t47d")
 screg_furtherprocessing(regnmf_output=mcf7_regnmf,seurat_object=mcf7,outname="mcf7",group.by="topic_bin")
 screg_furtherprocessing(regnmf_output=t47d_regnmf,seurat_object=t47d,outname="t47d",group.by="topic_bin")
+
+##CENPF
+screg_furtherprocessing(regnmf_output=mcf7_regnmf,seurat_object=mcf7,outname="mcf7",chr.="chr1",start.=214500000,end.=214700000)
+screg_furtherprocessing(regnmf_output=t47d_regnmf,seurat_object=t47d,outname="t47d",chr.="chr1",start.=214500000,end.=214700000)
+screg_furtherprocessing(regnmf_output=mcf7_regnmf,seurat_object=mcf7,outname="mcf7",group.by="topic_bin",chr.="chr1",start.=214500000,end.=214700000)
+screg_furtherprocessing(regnmf_output=t47d_regnmf,seurat_object=t47d,outname="t47d",group.by="topic_bin",chr.="chr1",start.=214500000,end.=214700000)
 ```
 
 ### JAE Model (Amateur)
