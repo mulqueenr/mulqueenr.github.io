@@ -8,6 +8,7 @@ category: side_projects
 
 
 
+
 https://pytorch.org/get-started/locally/
 
 ## Install pytorch
@@ -404,5 +405,65 @@ plt.imshow(img, interpolation='nearest')
 drawComponents(S, 'random')
 plt.show()
 plt.imsave(image[:-3]+"seg2.png",img)
+
+```
+
+
+
+# try stardist?
+```bash
+conda install -n stardist
+conda activate stardist
+
+pip install stardist
+```
+
+https://pypi.org/project/stardist/
+
+Should I annotate a few entire raw images/stacks, or is it better to annotate several smaller image crops?
+In general, it is better to annotate several image crops instead of entire (big) images or stacks. It is important that the content within annotated training images is representative of the content within images that you want to predict on later, after the model has been trained. In other words, the training data should cover the full range of variability that you expect in your (future) data.
+https://gist.github.com/maweigert/9f2684f36d3272786461a0c18d4ea176
+
+ImageJ/Fiji
+We currently provide a ImageJ/Fiji plugin that can be used to run pretrained StarDist models on 2D or 2D+time images. Installation and usage instructions can be found at the plugin page.
+
+First using pretrained model, hopefully chromosomes are sufficiently blobby
+
+
+```python
+from stardist.models import StarDist2D
+
+# prints a list of available models
+StarDist2D.from_pretrained()
+
+image = "/mnt/c/Documents and Settings/mulqueen/Documents/karyotype/1280px-NHGRI_human_male_karyotype.png"
+image_dest="/mnt/c/Documents and Settings/mulqueen/Documents/karyotype/"
+# creates a pretrained model
+model = StarDist2D.from_pretrained('2D_versatile_fluo')
+
+from stardist.data import test_image_nuclei_2d
+from stardist.plot import render_label
+from csbdeep.utils import normalize
+import matplotlib.pyplot as plt
+import numpy as np
+
+def rgb2gray(rgb):
+    return np.dot(rgb[...,:3], [0.2989, 0.5870, 0.1140])
+
+img = test_image_nuclei_2d()
+img = plt.imread(image,0)
+labels, _ = model.predict_instances(normalize(img))
+
+plt.subplot(1,2,1)
+plt.imshow(img, cmap="gray")
+plt.axis("off")
+plt.title("input image")
+plt.savefig(image_dest+"test.png")
+
+plt.subplot(1,2,2)
+plt.imshow(render_label(labels, img=img))
+plt.axis("off")
+plt.title("prediction + input overlay")
+plt.savefig(image_dest+"test2.png")
 
 ```
