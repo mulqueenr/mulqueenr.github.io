@@ -1274,11 +1274,13 @@ lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),singl
 
 ```
 
+
+<!--
+
 ### Check Cell Type Assignment By Prediction Grouping
 https://ars.els-cdn.com/content/image/1-s2.0-S1097276521007954-gr5.jpg
 
-<!--
-###NOT RUN YET####
+
 
 ```R
 library(Signac)
@@ -1430,9 +1432,9 @@ infercnv_per_sample<-function(x){
 
   DefaultAssay(dat)<-"RNA" #using raw counts, and not SOUPX corrected counts for this
   dat$cnv_ref<-"FALSE"
-  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
-  #excluding T-cells because some show EPCAM expression, and want to make sure there isn't cross-labelling. will rerun with T-cells properly listed in reference if they are confirmed to show low levels of CNVs
-  dat<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial","T-cells","Endothelial","B-cells","Myeloid","Plasmablasts","PVL")) 
+  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+  #excluding T-cells due do low level but nonexclusive cell label prediction
+  dat<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial","Endothelial","T-cells","B-cells","Myeloid","Plasmablasts","PVL")) 
 
   #write out gene order list
   gene_order<-annotation[!duplicated(annotation$gene_name),]
@@ -1467,10 +1469,9 @@ infercnv_per_sample<-function(x){
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.png"," -T ","\"",outname,"\"" ," ryan_todo") )
 }
 
-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),infercnv_per_sample)
-
-
-
+lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",4,10,12),infercnv_per_sample)
+#
+#4 10 12 listed last because I might want to rereun them with less threads
 ```
 
 <!--
@@ -1739,6 +1740,7 @@ bone <- Footprint(
 # plot the footprint data for each group of cells
 p2 <- PlotFootprint(bone, features = c("GATA3"))
 ```
+-->
 
 ## Run CaSpER on RNA 
 
@@ -1754,29 +1756,46 @@ library(ggplot2)
 library(ComplexHeatmap)
 library(circlize)
 library(patchwork)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
 ###Trying CASPER for CNV Profiling
 
 library(CaSpER) 
 
-casper_per_sample<-function(dat){
-  file_in=basename(dat)
-  sample_name=substr(file_in,1,nchar(file_in)-17)
-  dir_in=dirname(dat)
-  system(paste0("mkdir ",dir_in,"_casper"))
+casper_per_sample<-function(x){
+  if(x %in% 1:12){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    sample_name<-x
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  obj_name=basename(file_in)
+  dir_in=dirname(file_in)
+  system(paste0("mkdir ",dir_in,"/casper"))
   bam_location<-paste0(dir_in,"/gex_possorted_bam.bam")
   BAFExtract_location<-"/home/groups/CEDAR/mulqueen/src/BAFExtract/bin/BAFExtract"
   hg38_list_location<-"/home/groups/CEDAR/mulqueen/src/BAFExtract/hg38.list" #downloaded from https://github.com/akdess/BAFExtract
   hg38_folder_location<-"/home/groups/CEDAR/mulqueen/src/BAFExtract/hg38/"
-  baf_sample_directory<-paste0(dir_in,"_casper")
-  dat<-readRDS(dat)
+  baf_sample_directory<-paste0(dir_in,"/casper")
+
   DefaultAssay(dat)<-"RNA"
   dat$cnv_ref<-"FALSE"
-  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
-  dat<-subset(dat,predicted.id %in% c("Endothelial","B-cells","Cancer Epithelial","Normal Epithelial")) #just look at epithelial
+  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+  dat<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial","Endothelial","T-cells","B-cells","Myeloid","Plasmablasts","PVL")) 
 
-  dat<-subset(dat,predicted.id %in% c("Endothelial","B-cells","Cancer Epithelial","Normal Epithelial")) #just look at epithelial
   control<-names(dat$cnv_ref == "TRUE") #pulling this from the inferCNV function
   log.ge <- as.matrix(dat@assays$RNA@data)
   genes <- rownames(log.ge)
@@ -1812,13 +1831,13 @@ casper_per_sample<-function(dat){
     control.sample.ids=control, 
     cytoband=cytoband)
 
-  saveRDS(object,paste0(dir_in,"_casper/",sample_name,".initialobj.rds"))
+  saveRDS(object,paste0(dir_in,"/casper/",sample_name,".initialobj.rds"))
 
-  pdf(paste0(dir_in,"_casper/",sample_name,".Distrubution.pdf"))
+  pdf(paste0(dir_in,"/casper/",sample_name,".Distrubution.pdf"))
   plot(density(as.vector(object@control.normalized[[3]])))
   plot(density(log2(object@control.normalized.noiseRemoved[[3]]+1)))
   dev.off()
-  system(paste0("slack -F ",paste0(dir_in,"_casper/",sample_name,".Distrubution.pdf"), " ryan_todo"))
+  system(paste0("slack -F ",paste0(dir_in,"/casper/",sample_name,".Distrubution.pdf"), " ryan_todo"))
 
   object<-readRDS(paste0(dir_in,"_casper/",sample_name,".initialobj.rds"))
   ## runCaSpER
@@ -1827,9 +1846,9 @@ casper_per_sample<-function(dat){
   ## summarize large scale events 
   finalChrMat <- extractLargeScaleEvents (final.objects, thr=0.75) 
   final.obj <- final.objects[[9]]
-  saveRDS(final.obj,paste0(dir_in,"_casper/",sample_name,".finalobj.rds"))
-  saveRDS(finalChrMat,paste0(dir_in,"_casper/",sample_name,".finalchrmat.rds"))
-  final.obj<-readRDS(paste0(dir_in,"_casper/",sample_name,".finalobj.rds"))
+  saveRDS(final.obj,paste0(dir_in,"/casper/",sample_name,".finalobj.rds"))
+  saveRDS(finalChrMat,paste0(dir_in,"/casper/",sample_name,".finalchrmat.rds"))
+  final.obj<-readRDS(paste0(dir_in,"/casper/",sample_name,".finalobj.rds"))
 
   #remove all NA columns
   #final.obj <- final.obj[!apply(is.na(final.obj[-1,]), 1, all),]
@@ -1858,11 +1877,11 @@ casper_per_sample<-function(dat){
 
     pheatmap(t(data), cluster_cols = F, cluster_rows = T,
         gaps_col = idx, color = color, breaks = breaks, labels_col = xlabel,
-        show_rownames = F, filename = paste0(dir_in,"_casper/",sample_name,".heatmap.pdf"))
-  system(paste0("slack -F ",paste0(dir_in,"_casper/",sample_name,".heatmap.pdf"), " ryan_todo"))
+        show_rownames = F, filename = paste0(dir_in,"/casper/",sample_name,".heatmap.pdf"))
+  system(paste0("slack -F ",paste0(dir_in,"/casper/",sample_name,".heatmap.pdf"), " ryan_todo"))
 
 
-  pdf(paste0(dir_in,"_casper/",sample_name,".LargeCNV.heatmap.pdf"))
+  pdf(paste0(dir_in,"/casper/",sample_name,".LargeCNV.heatmap.pdf"))
   Heatmap(finalChrMat,
     cluster_columns=F,
     show_row_names=F,
@@ -1870,7 +1889,7 @@ casper_per_sample<-function(dat){
     column_split=sort(rep(c(1:22),2)),
     column_names_gp = gpar(fontsize = 5))
   dev.off()
-  system(paste0("slack -F ",paste0(dir_in,"_casper/",sample_name,".LargeCNV.heatmap.pdf")," ryan_todo"))
+  system(paste0("slack -F ",paste0(dir_in,"/casper/",sample_name,".LargeCNV.heatmap.pdf")," ryan_todo"))
 
 
   #### VISUALIZATION 
@@ -1896,14 +1915,15 @@ casper_per_sample<-function(dat){
         vjust = 0.2, colour = "black"), axis.ticks = element_line(size = 0.4), 
       plot.title = element_text(colour = "black", hjust = 0, 
         size = 6, face = "bold"))
-  ggsave(p,file=paste0(dir_in,"_casper/",sample_name,".final_plot.pdf"))
-  system(paste0("slack -F ",paste0(dir_in,"_casper/",sample_name,".final_plot.pdf"), " ryan_todo"))
+  ggsave(p,file=paste0(dir_in,"/casper/",sample_name,".final_plot.pdf"))
+  system(paste0("slack -F ",paste0(dir_in,"/casper/",sample_name,".final_plot.pdf"), " ryan_todo"))
 
 }
 
-sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.rds")))
+lapply(c(11,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",4,10,12),function(x) casper_per_sample(x))
+#done  1,3,5,6,7,8,9,
 
-lapply(sample_in,function(x) casper_per_sample(dat=x))
+
 
 ```
 ### Plotting of CaSpER Output
@@ -2005,6 +2025,8 @@ lapply(sample_in,function(x) casper_per_sample_plot(dat=x))
 
 
 ```
+
+<!--
 
 ## Output metadata per sample
 ```R
@@ -2254,8 +2276,10 @@ dev.off()
 system(paste0("slack -F ",paste0(wd,"/",outname,".umap.pdf")," ryan_todo"))
 saveRDS(atac_sub,"phase2.QC.SeuratObject.rds")
 ```
+### Vibe check on cell type prediction
 
-Plot out a heatmap of cell type scores per sample and prediction. I'm trying to figure out how specific they are and if results are concordant.
+Plot out a heatmap of cell type scores per sample and prediction. I'm trying to figure out how specific they are and if results are concordant. Also plotting top 10 genes from Swarbrick gross cell type identification as a heatmap
+Genes from Supplementary Table 9 (major classification).
 
 ```R
 library(Signac)
@@ -2270,9 +2294,9 @@ library(seriation)
 
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
-atac_sub<-readRDS("phase2.QC.SeuratObject.rds")
+dat_in<-readRDS("phase2.QC.SeuratObject.rds")
 
-dat<-atac_sub@meta.data
+dat<-dat_in@meta.data
 
 
 swarbrick_out<-as.data.frame(dat %>% group_by(sample,predicted.id) %>% summarize(
@@ -2345,7 +2369,50 @@ table(dat[dat$predicted.id%in%c("Cancer Epithelial","Normal Epithelial"),]$sampl
 #      704       356      1648       284      4466      2768       792       448
 # sample_7  sample_8  sample_9
 #     1860       415      1096
+
+
+#########THIS PORTION TO BE FIXED#######################
+
+gene_list<-read.table("/home/groups/CEDAR/mulqueen/ref/breast_cancer_celltype_genelist.tsv",sep="\t",head=T)
+gene_list<-as.data.frame(gene_list %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC))
+gene_list<-gene_list[!duplicated(gene_list$gene),]
+
+rna_mat<-dat_in@assays$SoupXRNA@data
+rna_mat<-rna_mat[row.names(rna_mat) %in% gene_list$gene,]
+rna_mat<-as.data.frame(t(as.data.frame(rna_mat)))
+rna_mat$samp<-paste(dat$sample,dat$predicted.id)
+rna_mat<-as.data.frame(rna_mat) %>% group_by(samp) %>% summarise_at(vars(!starts_with("samp")), ~mean(as.numeric(.x), na.rm = TRUE))
+#rna_mat<-AggregateExpression(dat_in, assays = "SoupXRNA", features = gene_list$gene, return.seurat = FALSE, group.by = c("sample","predicted.id"), #sample slot = "data")
+rna_mat<-as.data.frame(rna_mat)
+row.names(rna_mat)<-rna_mat$samp
+rna_mat<-rna_mat[colnames(rna_mat) != "samp"]
+rna_mat<-as.data.frame(scale(rna_mat))
+
+
+gene_list<-gene_list[gene_list$gene %in% colnames(rna_mat),]
+top_ha<-columnAnnotation(df= data.frame(celltype=gene_list$cluster),
+                col=list(
+                    celltype=setNames(type_cols,names(type_cols))
+                    ))
+
+rna<-Heatmap(rna_mat,
+  column_order=1:ncol(rna_mat),
+  column_split=gene_list$cluster,
+  top_annotation=top_ha,
+  row_order = get_order(o, 1),  
+  col=colorRamp2(c(0, max(rna_mat,na.rm=T)), c("white", "black"))
+)
+
+
+
+pdf("predictions.heatmap.pdf",width=30)
+swarbrick+EMBO+rna
+dev.off()
+system("slack -F predictions.heatmap.pdf ryan_todo")
+
 ```
+For some reason T-cells are showing high expression across the board. 
+
 
 ## Run ChromVAR on all data
 
@@ -2363,20 +2430,18 @@ register(SerialParam()) #using single core mode
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
 dat<-readRDS("phase2.QC.SeuratObject.rds")
-
+DefaultAssay(dat)<-"ATAC"
 # Get a list of motif position frequency matrices from the JASPAR database
 pfm <- getMatrixSet(
   x = JASPAR2020,
   opts = list(species =9606, all_versions = FALSE))
 
-# Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
-peaks<-granges(dat[["peaks"]])
-peaks<-peaks[seqnames(peaks) %in% c(paste0("chr",c(1:22,"X"))),]
-
-#####NOT WORKING########
 main.chroms <- standardChromosomes(BSgenome.Hsapiens.UCSC.hg38)
-keep.peaks <- which(as.character(seqnames(granges(dat))) %in% main.chroms)
-dat[["peaks"]] <- subset(dat[["peaks"]], features = rownames(dat[["peaks"]])[keep.peaks])
+keep.peaks <- which(as.character(seqnames(granges(dat[["ATAC"]]))) %in% main.chroms)
+dat[["ATAC"]] <- subset(dat[["ATAC"]], features = rownames(dat[["ATAC"]][keep.peaks]))
+
+# Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
+peaks<-granges(dat[["ATAC"]])
 
 motif.matrix.hg38 <- CreateMotifMatrix(features = peaks, 
   pwm = pfm, 
@@ -2387,24 +2452,23 @@ motif.hg38 <- CreateMotifObject(data = motif.matrix.hg38,
   pwm = pfm)
 
 dat <- SetAssayData(object = dat, 
-  assay = 'peaks', 
+  assay = 'ATAC', 
   slot = 'motifs', 
   new.data = motif.hg38)
 
 dat <- RegionStats(object = dat, 
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  assay="peaks")
+  assay="ATAC")
 
 dat <- RunChromVAR( object = dat,
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  assay="peaks")
+  assay="ATAC")
 
 saveRDS(dat,file="phase2.QC.SeuratObject.rds")
 
 ```
-<!--
-## Cicero Enhancer-Promoter Linkage
-This is to generate enhancer promoter linkages at genes. Using all data to improve ability to detect linkages between peaks.
+## Using Signac Gene Activity Function
+This is to generate enhancer promoter linkages at genes (by proximity). Running on all data.
 
 ```R
 library(Signac)
@@ -2418,325 +2482,31 @@ library(EnsDb.Hsapiens.v86)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
 dat<-readRDS("phase2.QC.SeuratObject.rds")
+gene_activity<-GeneActivity(dat,process_n=10000)
+saveRDS(gene_activity,file="phase2.QC.GeneActivity.rds")
 
-#Cicero processing function
-cicero_processing<-function(object_input,prefix){
-
-    #Generate CDS format from Seurat object
-    atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap")
-
-    # convert to CellDataSet format and make the cicero object
-    print("Making Cicero format CDS file")
-    atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = atac.cds@reducedDimS)
-    saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="."))
-    
-    # extract gene annotations from EnsDb
-    annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
-    seqlevels(annotations)<-paste0("chr",seqlevels(annotations))
-
-    # change to UCSC style since the data was mapped to hg38
-    #seqlevelsStyle(annotations) <- 'UCSC'
-    genome(annotations) <- "hg38"
-
-    genome <- annotations@seqinfo # get the chromosome sizes from the Seurat object
-    genome.df <- data.frame("chr" = genome@seqnames, "length" = genome@seqlengths) # convert chromosome sizes to a dataframe
-    
-    print("Running Cicero to generate connections.")
-    conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
-    saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="."))
-    
-    print("Generating CCANs")
-    ccans <- generate_ccans(conns) # generate ccans
-    saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="."))
-    
-    print("Adding CCAN links into Seurat Object and Returning.")
-    links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
-    DefaultAssay(object_input)<-"peaks"
-    Links(object_input) <- links
-    return(object_input)
-}
-
-dat<-cicero_processing(object_input=dat,prefix="phase2.QC")
-saveRDS(dat,file="phase2.QC.SeuratObject.unnormGA.rds")
-
-# generate unnormalized gene activity matrix
-  # gene annotation sample
-  hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
-
-  pos <-as.data.frame(hg38_annotations,row.names=NULL)
-  pos$chromosome<-paste0("chr",pos$seqnames)
-  pos$gene<-pos$gene_id
-  pos <- subset(pos, strand == "+")
-  pos <- pos[order(pos$start),] 
-  pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
-  pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
-
-  neg <-as.data.frame(hg38_annotations,row.names=NULL)
-  neg$chromosome<-paste0("chr",neg$seqnames)
-  neg$gene<-neg$gene_id
-  neg <- subset(neg, strand == "-")
-  neg <- neg[order(neg$start,decreasing=TRUE),] 
-  neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
-  neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
-
-  gene_annotation<- rbind(pos, neg)
-  gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
-  names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
-
-  geneactivity_processing<-function(cds_input,conns_input,prefix){
-      atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
-      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
-      saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
-  }
-
-#t47d
-   conns<-as.data.frame(readRDS("yw_t47d.control_atac_cicero_conns.Rds"))
-   obj.cicero<-readRDS("yw_t47d.control_atac_cicero_cds.Rds")
-   geneactivity_processing(cds_input=as.CellDataSet(t47d,assay="peaks",reduction="umap"),conns_input=conns,prefix="yw_t47d.control")
-
-#Read in unnormalized GA
-cicero_gene_activities<-readRDS("yw_t47d.control.unnorm_GA.Rds")
-t47d[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
-# normalize
-   t47d <- NormalizeData(
-     object = t47d,
-     assay = 'GeneActivity',
-     normalization.method = 'LogNormalize',
-     scale.factor = median(t47d$nCount_GeneActivity)
-   )
-   saveRDS(t47d,"yw_t47d.control.SeuratObject.rds")
-```
--->
-<!--
-## Run HMMcopy on ATAC Data
-```R
-
-library(parallel)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(WGSmapp)
-library(SCOPE)
-library(HMMcopy)
-library(dplyr)
-library(ComplexHeatmap)
-library(circlize)
-library(ggplot2)
-library(patchwork)
-library(reshape2)
-library(philentropy)
-library(dendextend)
-library(Seurat)
-library(Signac)
-sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.rds")))
-
-dat<-sample_in[7]
-#set up single cell bam files from given directory
-prepare_bam_bed_obj<-function(dat=sample_in[1],resol.){
-    file_in=basename(dat)
-    sample_name=substr(file_in,1,nchar(file_in)-17)
-    dir_in=dirname(dat)
-    dat<-readRDS(dat)
-    print(paste("Read in file:",file_in))
-    dat$cnv_ref<-"FALSE"
-    dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
-    DefaultAssay(dat)<-"RNA"
-    sampname<-row.names(dat@meta.data)
-    print("Set up sample names.")
-
-    #Initalization
-    bamFile <- list.files(dir_in, pattern = "atac_possorted_bam.bam$")
-    bamdir <- file.path(dir_in, bamFile)
-
-    #set genomic window size to 500kb
-    bambedObj <- get_bam_bed(bamdir = dir_in, sampname = sampname, hgref = "hg38",resolution=resol.,sex=T)#resolution of 100 = 100kbp
-    print("Setting up reference genome.")
-    #Compute GC content and mappability for each reference bin.
-    mapp <- get_mapp(bambedObj$ref, hgref = "hg38")
-    gc <- get_gc(bambedObj$ref, hgref = "hg38")
-    values(bambedObj$ref) <- cbind(values(bambedObj$ref), DataFrame(gc, mapp))
-    return(bambedObj)
-}
-
-
-#modified scope get_coverage_scDNA
-read_in_reads<-function(x=bambedObj){
-    bamurl <- list.files(x$bamdir, pattern = "atac_possorted_bam.bam$")
-    what <- c("rname", "pos", "mapq", "qwidth")
-    flag <- scanBamFlag(isPaired = TRUE,
-            isUnmappedQuery = FALSE, 
-            isNotPassingQualityControls = FALSE,
-            isFirstMateRead = TRUE)
-    param <- ScanBamParam(what = what, 
-                          flag = flag,
-                          tag="CB")  #added cell barcode tag to extraction
-    print("Reading in bam file, this might take a while...")
-    bam <- scanBam(paste0(x$bamdir,"/atac_possorted_bam.bam"), param = param)[[1]]
-    bam.ref <- GRanges(seqnames = bam$rname, ranges = IRanges(start = bam[["pos"]],width = bam[["qwidth"]]))
-    values(bam.ref) <- DataFrame(cellID=bam$tag$CB)
-    bam.ref<-bam.ref[bam.ref$cellID %in% x$sampname,] 
-
-    ##################filter to just sampnames, then split, then make a count overlap for each one of the nested list#######
-    bam.ref<-split(bam.ref,bam.ref$cellID)
-
-    bam.ref<-lapply(bam.ref,function(y) suppressWarnings(y[countOverlaps(y,mask.ref) == 0]))#filter out masked regions
-    Y<- lapply(bam.ref,function(y) countOverlaps(x$ref, y))
-    Y_out<-do.call("cbind",Y)
-    colnames(Y_out)<-names(Y)
-    Y_out<-as.data.frame(Y_out)
-    ref_out<-as.data.frame(x$ref)
-    row.names(Y_out)<-paste0(ref_out$seqnames,":",ref_out$start,"_",ref_out$end)
-    return(Y_out)
-}
-
-#standard read correction
-hmm_generator<-function(i){
-    cellname<-colnames(Y_out)[i]
-    dat<-cbind(ref,Y_out[,i])
-    colnames(dat)[ncol(dat)]<-"reads"
-    dat_copy <- suppressWarnings(correctReadcount(dat))
-    write.table(dat_copy,
-    file=paste0("counts_",cellname,".tsv"),
-    sep="\t",quote=F,row.names=T,col.names=T)
-    return(dat_copy)
-}
-
-
-#standard segmentation
-copy_seg_func<-function(i){
-    dat<-copy_estimate[[i]]
-    dat<-HMMsegment(dat) #run HMMsegment
-    segs<-makeGRangesFromDataFrame(dat$segs,keep.extra.columns=T)   #make granges object
-    out_segs_idx<-as.data.frame(findOverlaps(segs,ref_granges)) #overlap GRanges for plotting consistent matrix bins
-    out_segs<-segs[out_segs_idx$queryHits,]$state #return list of states length of reference bins
-    return(out_segs)
-}
-
-perform_atac_cnv_calling<-function(dat,resol=1000){
-  file_in=basename(dat)
-  sample_name=substr(file_in,1,nchar(file_in)-17) # setting up output names here
-  dir_in=dirname(dat)
-
-  bambedObj<-prepare_bam_bed_obj(dat=dat,resol.=resol)
-  #Set up genome masking of duplicated regions and gaps
-  # Get segmental duplication regions
-  seg.dup <- read.table(system.file("extdata", "GRCh38GenomicSuperDup.tab", package = "WGSmapp"))
-  # Get hg38 gaps
-  gaps <- read.table(system.file("extdata", "hg38gaps.txt", package = "WGSmapp"))
-  #Set up genome masking from SCOPE get_masked_ref function
-  seg.dup <- seg.dup[!is.na(match(seg.dup[,1], paste('chr', c(seq_len(22), 'X', 'Y'), sep = ''))),]
-  seg.dup <- GRanges(seqnames = seg.dup[,1], ranges = IRanges(start = seg.dup[,2], end = seg.dup[,3]))
-  gaps <- gaps[!is.na(match(gaps[,2], paste('chr', c(seq_len(22), 'X', 'Y'), sep = ''))),]
-  gaps <- GRanges(seqnames = gaps[,2], ranges = IRanges(start = gaps[,3], end = gaps[,4]))
-  mask.ref <- sort(c(seg.dup, gaps)) # Generate mask region
-
-  #generate raw count matrix
-  Y_out<-read_in_reads(x=bambedObj)
-  saveRDS(Y_out,file="test.rawcount.500kbp.rds")
-
-  #Prepare windows with gc and mappability data
-    ref <- as.data.frame(bambedObj$ref)
-    ref$gc<-ref$gc/100 #fitting to HMMcopy analysis
-    ref$chr<-ref$seqname
-    #ref$chr<-substr(ref$seqname,4,6)
-    ref<-ref[c("chr","start","end","gc","mapp")]
-    colnames(ref)<-c("chr","start","end","gc","map")
-    ref_granges<-makeGRangesFromDataFrame(ref,keep.extra.columns=T) #used in the next few functions for overlapping consistent windows
-    Y_out<-Y_out[,colSums(Y_out)>2000] #filter out cells with less that 2000 reads
-
-  #Normalize bins
-  copy_estimate<-lapply(1:ncol(Y_out),hmm_generator) #correct bins by gc content, 
-  names(copy_estimate)<-colnames(Y_out)
-  saveRDS(copy_estimate,file="copyestimate.500kb.rds")
-  copy_estimate<-readRDS(file="copyestimate.500kb.rds")
-
-
-#segmentation for plotting
-copy_segmentation<-lapply(1:length(copy_estimate),copy_seg_func) #segment genome by copy estimate (log2 of cor.map)
-copy_segmentation<-lapply(copy_segmentation,as.numeric)
-names(copy_segmentation)<-colnames(Y_out)
-copy_segmentation<-as.data.frame(do.call("cbind",copy_segmentation))
-row.names(copy_segmentation)<-paste0(ref$chr,":",ref$start,"_",ref$end)
-copy_segmentation<-as.data.frame(t(copy_segmentation))
-saveRDS(copy_segmentation,file="copysegmentation.500kb.rds")
-copy_segmentation<-readRDS(file="copysegmentation.500kb.rds")
-
-copy_segmentation<-copy_segmentation[,!grepl("Y",colnames(copy_segmentation))] #remove Y
-
-
-
-#filter to qc cells and set up annotations
-    Y_plot<-as.data.frame(t(Y_out))
-    Y_plot<-Y_plot[,!grepl("Y",colnames(Y_plot))]
-    Y_plot<-as.data.frame(Y_plot %>% mutate_all(., ~ ifelse(.!=0, log10(.+0.00000000001), log10(1))))
-
-    col_fun_reads=colorRamp2(quantile(unlist(Y_plot),c(0.1,0.2,0.3,0.5,0.6,0.8,0.9),na.rm=T),
-    c("#336699","#99CCCC","#CCCCCC","#CCCC66","#CC9966","#993333","#990000"))
-
-    col_fun_cn=structure(c("#2166ac", "#67a9cf", "#f7f7f7","#fddbc7","#ef8a62","#b2182b","#630410"), names = c("1", "2", "3", "4", "5", "6","7"))
-
-#optimize segmentation 
-#https://github.com/shahcompbio/single_cell_pipeline/blob/master/single_cell/workflows/hmmcopy/scripts/hmmcopy.R
-#https://advances.sciencemag.org/content/6/50/eabd6454
-#Set up clustering of cells
-    dist_method="euclidean"
-    dist_x<-philentropy::distance(copy_segmentation,method=dist_method,as.dist.obj=T,use.row.names=T)
-    dend <- dist_x %>%  hclust(method="ward.D2") %>% as.dendrogram(edge.root=F,h=2) 
-    k_search<-find_k(dend,krange=2:10) #search for optimal K from 5-10
-    k_clus_number<-k_search$nc
-    k_clus_id<-k_search$pamobject$clustering
-    dend <- color_branches(dend, k = k_clus_number)    #split breakpoint object by clusters
-
-#Read count raw
-plt1<-Heatmap(Y_plot,
-    show_row_names=F,
-    #row_split=cell_annot$bulk,
-    show_column_names=F,
-    column_order=1:ncol(Y_plot),
-    col=col_fun_reads,
-    cluster_rows=dend,
-    row_title="Raw read count",
-    name="Log10 Reads",#,
-    column_split=factor(unlist(lapply(strsplit(colnames(Y_plot),":"),"[",1)),levels=unique(unlist(lapply(strsplit(colnames(Y_plot),":"),"[",1))))
-    )
-
-#HMM segmentation
-plt2<-Heatmap(copy_segmentation,
-    show_row_names=F,
-    show_column_names=F,
-    #row_split=cell_annot$bulk,
-    column_order=1:ncol(copy_segmentation),
-    col=col_fun_cn,
-    cluster_rows=dend,
-    row_title="Segmentation",
-    name="copy state",
-    column_split=factor(unlist(lapply(strsplit(colnames(copy_segmentation),":"),"[",1)),levels=unique(unlist(lapply(strsplit(colnames(copy_segmentation),":"),"[",1))))
+dat[["GeneActivity"]]<-CreateAssayObject(counts=gene_activity)
+dat<- NormalizeData(
+  object = dat,
+  assay = "GeneActivity",
+  normalization.method = 'LogNormalize',
+  scale.factor = median(dat$nCount_GeneActivity)
 )
-    #left_annotation=ha,    )
+saveRDS(dat,file="phase2.QC.SeuratObject.rds")
 
-
-pdf("HMMcopy_test.pdf",width=10,height=3)
-par(mfrow=c(2,1))
-plt1
-plt2
-dev.off()
-
-system("slack -F HMMcopy_test.pdf ryan_todo")
-
-}
-
-
-perform_atac_cnv_calling(dat=sample_in[7])
 ```
+
 
 ## Add per cell subtyping to epithelial cells
-
+This is from SC subtyping (the method from the Swarbrick paper). Supplemental Table 4. 
 ```R
 library(Signac)
 library(Seurat)
 library(ggplot2)
 set.seed(1234)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
-sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.rds")))
+dat<-readRDS("phase2.QC.SeuratObject.rds")
 
 #Features determined by EMBO manuscript
 module_feats<-list()
@@ -2747,189 +2517,166 @@ module_feats[["LumB_SC"]]=c('UGCG', 'ARMT1', 'ISOC1', 'GDF15', 'ZFP36', 'PSMC5',
 module_feats[["proliferation_score"]]<-c("BIRC5", "CCNB1", "CDC20", "NUF2", "CEP55", "NDC80", "MKI67", "PTTG1", "RRM2", "TYMS","UBE2C")
 
 
-  #Cicero processing functionq
-subtyping<-function(dat){
-      dat_file_path=dat
-      file_in=basename(dat)
-      sample_name=substr(file_in,1,nchar(file_in)-17)
-      dir_in=dirname(dat)
-      dat<-readRDS(dat) #read in as seurat object
-      dat_sub<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial"))
-      module_scores<-AddModuleScore(dat_sub,features=module_feats,assay="RNA",search=TRUE,name=names(module_feats)) #use add module function to add cell scores
-      module_scores<-module_scores@meta.data[seq(ncol(module_scores@meta.data)-4,ncol(module_scores@meta.data))]
-      colnames(module_scores)<-names(module_feats) #it adds a number at the end to each name by default, which I don't like
-      dat<-AddMetaData(dat,metadata=module_scores)
-      saveRDS(dat,file=dat_file_path)
-}
+dat_sub<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial"))
+module_scores<-AddModuleScore(dat_sub,features=module_feats,assay="RNA",search=TRUE,name=names(module_feats)) #use add module function to add cell scores
+module_scores<-module_scores@meta.data[seq(ncol(module_scores@meta.data)-4,ncol(module_scores@meta.data))]
+colnames(module_scores)<-names(module_feats) #it adds a number at the end to each name by default, which I don't like
 
-#run on all samples
-lapply(sample_in,subtyping)
-subtyping(dat="/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/phase1.SeuratObject.rds")
+dat<-AddMetaData(dat,metadata=module_scores)
+saveRDS(dat,file="phase2.QC.SeuratObject.rds")
 
 
 ```
 
-### ChromVar for Transcription Factor Motifs
 
+## Pseudobulk Clustering of Stroma, Immune and Epithelial Cells
+
+### Epithelial Clustering
 ```R
-  library(Signac)
-  library(Seurat)
-  library(JASPAR2020)
-  library(TFBSTools)
-  library(BSgenome.Hsapiens.UCSC.hg38)
-  library(patchwork)
-  set.seed(1234)
-  library(BiocParallel)
-  register(MulticoreParam(5))
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(cisTopic)
+library(SeuratWrappers)
+library(patchwork)
+set.seed(1234)
+library(org.Hs.eg.db)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(AUCell)
+library(rtracklayer)
+library(parallel)
+library(RColorBrewer)
+library(ggplot2)
+set.seed(1234)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
-
-sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.rds")))
-
-  #Read in data and modify to monocle CDS file
-  #read in RDS file.
-
-  # Get a list of motif position frequency matrices from the JASPAR database
-  pfm <- getMatrixSet(
-    x = JASPAR2020,
-    opts = list(species =9606, all_versions = FALSE))
-
-chromvar_per_sample<-function(dat){
-  dat_file_path=dat
-  file_in=basename(dat)
-  sample_name=substr(file_in,1,nchar(file_in)-17)
-  dir_in=dirname(dat)
-  dat<-readRDS(dat) #read in as seurat object
-
-  # Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
-  # Create a new Mofif object to store the results
-  #for combined
-  peaks<-granges(dat[["peaks"]])
-  peaks<-peaks[seqnames(peaks) %in% c(paste0("chr",c(1:22,"X","Y"))),]
-  motif.matrix.hg38 <- CreateMotifMatrix(features = peaks, pwm = pfm, genome = BSgenome.Hsapiens.UCSC.hg38, use.counts = FALSE)
-  motif.hg38 <- CreateMotifObject(data = motif.matrix.hg38, pwm = pfm)
-  dat <- SetAssayData(object = dat, assay = 'peaks', slot = 'motifs', new.data = motif.hg38)
-  dat <- RegionStats(object = dat, genome = BSgenome.Hsapiens.UCSC.hg38,assay="peaks")
-  dat <- RunChromVAR( object = dat,genome = BSgenome.Hsapiens.UCSC.hg38,assay="peaks")
-  saveRDS(dat,file=dat_file_path)
-
-}
-
-lapply(sample_in,chromvar_per_sample)
-
-#chromvar of merged samples
-chromvar_per_sample(dat="/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/phase1.SeuratObject.rds")
+dat<-readRDS("phase2.QC.SeuratObject.rds")
 
 
-```
+#set up colors for samples
+###########Color Schema#################
+type_cols<-c(
+#epithelial
+"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+"B-cells" ="#089099", "T-cells" ="#003147", #other
+"CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
+diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
+molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
+########################################
+alpha_val=0.33
 
-## Cicero
 
-```R
-  library(Signac)
-  library(Seurat)
-  library(SeuratWrappers)
-  library(ggplot2)
-  library(patchwork)
-  library(cicero,lib.loc="/home/groups/oroaklab/nishida/R_4.0.0_arsn") #using old libraries because exacloud doesn't like the new ones
-  library(monocle3,lib.loc="/home/groups/oroaklab/nishida/R_4.0.0_arsn") #using old libraries because exacloud doesn't like the new ones
-  library(SeuratObjects)
-  library(EnsDb.Hsapiens.v86)
-  setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
+celltype_cistopic_generation<-function(celltype_list=c("Cancer Epithelial","Normal Epithelial"),outname="epithelial"){
+  atac_sub<-subset(dat,predicted.id %in% celltype_list)
+
+  cistopic_counts_frmt<-atac_sub@assays$peaks@counts
+  row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
+  sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
+  print("made cistopic object")
+  sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(10:30),nCores=5,addModels=FALSE)
+  saveRDS(sub_cistopic_models,file=paste0(outname,".CisTopicObject.Rds"))
+
+  sub_cistopic_models<- selectModel(sub_cistopic_models, type='derivative')
   
-  sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.rds")))
+  saveRDS(sub_cistopic_models,file=paste0(outname,".CisTopicObject.Rds"))
+  sub_cistopic_models<-readRDS(file=paste0(outname,".CisTopicObject.Rds"))
+  print("finshed running cistopic")
 
-  #Cicero processing function
-  cicero_processing<-function(dat){
-      dat_file_path=dat
-      file_in=basename(dat)
-      sample_name=substr(file_in,1,nchar(file_in)-17)
-      dir_in=dirname(dat)
-      dat<-readRDS(dat) #read in as seurat object
+  #Add cell embeddings into seurat
+  cell_embeddings<-as.data.frame(sub_cistopic_models@selected.model$document_expects)
+  colnames(cell_embeddings)<-sub_cistopic_models@cell.names
+  n_topics<-nrow(cell_embeddings)
+  row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
+  cell_embeddings<-as.data.frame(t(cell_embeddings))
 
-      #Generate CDS format from Seurat object
-      atac.cds <- as.CellDataSet(dat,assay="peaks",reduction="multimodal_umap")
+  #Add feature loadings into seurat
+  feature_loadings<-as.data.frame(sub_cistopic_models@selected.model$topics)
+  row.names(feature_loadings)<-paste0("topic_",1:n_topics)
+  feature_loadings<-as.data.frame(t(feature_loadings))
 
-      # convert to CellDataSet format and make the cicero object
-      print("Making Cicero format CDS file")
-      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = atac.cds@reducedDimS)
-      saveRDS(atac.cicero,paste0(dir_in,"/",sample_name,".atac_cicero_cds.Rds"))
-        
-
-      # extract gene annotations from EnsDb
-      annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
-      seqlevels(annotations)<-paste0("chr",seqlevels(annotations))
-
-      # change to UCSC style since the data was mapped to hg38
-      #seqlevelsStyle(annotations) <- 'UCSC'
-      genome(annotations) <- "hg38"
-
-      genome <- annotations@seqinfo # get the chromosome sizes from the Seurat object
-      genome.df <- data.frame("chr" = genome@seqnames, "length" = genome@seqlengths) # convert chromosome sizes to a dataframe
-      
-      print("Running Cicero to generate connections.")
-      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
-      saveRDS(conns,paste0(dir_in,"/",sample_name,".atac_cicero_conns.Rds"))
-      
-      print("Generating CCANs")
-      ccans <- generate_ccans(conns) # generate ccans
-      saveRDS(ccans,paste0(dir_in,"/",sample_name,".atac_cicero_ccans.Rds"))
-      
-      print("Adding CCAN links into Seurat Object and Returning.")
-      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
-      DefaultAssay(dat)<-"peaks"
-      Links(dat) <- links
-
-      # generate unnormalized gene activity matrix
-      # gene annotation sample
-      hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
-
-      pos <-as.data.frame(hg38_annotations,row.names=NULL)
-      pos$chromosome<-paste0("chr",pos$seqnames)
-      pos$gene<-pos$gene_id
-      pos <- subset(pos, strand == "+")
-      pos <- pos[order(pos$start),] 
-      pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
-      pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
-
-      neg <-as.data.frame(hg38_annotations,row.names=NULL)
-      neg$chromosome<-paste0("chr",neg$seqnames)
-      neg$gene<-neg$gene_id
-      neg <- subset(neg, strand == "-")
-      neg <- neg[order(neg$start,decreasing=TRUE),] 
-      neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
-      neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
-
-      gene_annotation<- rbind(pos, neg)
-      gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
-      names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
-
-      atac.cds<- annotate_cds_by_site(atac.cds, gene_annotation)
-      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns)
-      saveRDS(unnorm_ga,paste0(dir_in,"/",sample_name,".atac_cicero_unnormGA.Rds"))
-      # remove any rows/columns with all zeroes
-      unnorm_ga <- unnorm_ga[!Matrix::rowSums(unnorm_ga) == 0, 
-                             !Matrix::colSums(unnorm_ga) == 0]
-      dat[['GeneActivity']]<- CreateAssayObject(counts = unnorm_ga) 
-      # normalize
-      # note for CCAN comparisons, multiple files should be normalized together
-      dat <- NormalizeData(
-        object = dat,
-        assay = 'GeneActivity',
-        normalization.method = 'LogNormalize',
-        scale.factor = median(dat$nFeature_GeneActivity)
-      )
-      saveRDS(dat,dat_file_path)
+  #combined cistopic results (cistopic loadings and umap with seurat object)
+  cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
+  print("Cistopic Loading into Seurat")
+  atac_sub@reductions$cistopic<-cistopic_obj
+  n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic")) #add scaling for ncount peaks somewhere in here
+  print("Running UMAP")
+  atac_sub<-RunUMAP(atac_sub,reduction="cistopic",dims=1:n_topics)
+  atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics ) 
+  atac_sub <- FindClusters(object = atac_sub, verbose = TRUE, graph.name="peaks_snn", resolution=0.2 ) 
+  print("Plotting UMAPs")
+  plt1<-DimPlot(atac_sub,reduction="umap",group.by=c("seurat_clusters"))
+  pdf(paste0(outname,".cistopic.umap.pdf"),width=10)
+  print(plt1)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".cistopic.umap.pdf")," ryan_todo"))
+  saveRDS(atac_sub,paste0(outname,".SeuratObject.rds"))
   }
 
-lapply(sample_in,cicero_processing)
+celltype_cistopic_generation(celltype_list=c("Cancer Epithelial","Normal Epithelial"),outname="epithelial")
+celltype_cistopic_generation(celltype_list=c("B-cells","T-cells","Myeloid","Plasmablasts"),outname="immune")
+celltype_cistopic_generation(celltype_list=c("CAFs","Endothelial","PVL"),outname="stromal")
 
-#run on all merged sample
-cicero_processing(dat="/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/phase1.SeuratObject.rds")
+
+#Rerun other clustering now that data is subset
+celltype_clustering<-function(x,outname){
+  dat<-readRDS(x)
+
+  #set up colors for samples
+  my_cols = brewer.pal(1,"Spectral")
+  alpha_val=0.33
+
+  #RNA Processing
+  DefaultAssay(dat) <- "SoupXRNA"
+  dat <- SCTransform(dat)
+  dat <- RunPCA(dat)
+  dat<- RunUMAP(object = dat, reduction.name="rna_umap", reduction="pca", assay = "SoupXRNA", verbose = TRUE, dims=1:50 ) 
+  p1<-DimPlot(dat,reduction="rna_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("RNA UMAP")+theme(legend.position="none")
+
+  #DNA Accessibility processing
+  DefaultAssay(dat) <- "peaks"
+  dat <- FindTopFeatures(dat, min.cutoff = 5)
+  dat <- RunTFIDF(dat)
+  dat <- RunSVD(dat)
+  dat<- RunUMAP(object = dat, reduction.name="atac_umap", reduction="lsi", assay = "peaks", verbose = TRUE, dims=2:40 )
+  p2<-DimPlot(dat,reduction="atac_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("ATAC UMAP")+theme(legend.position="none")
+
+
+  # build a joint neighbor graph using both assays (ATAC LSI)
+    dat <- FindMultiModalNeighbors(object = dat, reduction.list = list("pca", "lsi"), dims.list = list(1:50, 2:40),modality.weight.name = "RNA.weight", verbose = TRUE )
+    # build a joint UMAP visualization
+    dat <- RunUMAP(object = dat, nn.name = "weighted.nn", reduction.name="multimodal_umap", assay = "SoupXRNA", verbose = TRUE ) 
+    p3<-DimPlot(dat,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Multimodal UMAP Doublets")+theme(legend.position="none")
+
+  #Try multimodal with cistopic
+    dat <- RunUMAP(object = dat, reduction="cistopic", reduction.name="cistopic_umap", dims=1:ncol(dat@reductions$cistopic), assay = "peaks", verbose = TRUE )
+    # build a joint neighbor graph using both assays
+    dat <- FindMultiModalNeighbors(object = dat, reduction.list = list("pca", "cistopic"), dims.list = list(1:50, 1:ncol(dat@reductions$cistopic)), modality.weight.name = "RNA.weight", verbose = TRUE )
+    # build a joint UMAP visualization
+    dat <- RunUMAP(object = dat, nn.name = "weighted.nn", reduction.name="multimodal_umap", assay = "SoupXRNA", verbose = TRUE )
+
+  #plot cistopic umap too
+  p4<-DimPlot(dat,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
+  p5<-DimPlot(dat,reduction="cistopic_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Cistopic UMAP")+theme(legend.position="none")
+  p6<-DimPlot(dat,reduction="multimodal_umap",group.by="sample")+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
+  #Cluster on multimodal graph
+  dat <- FindClusters(dat, resolution = 0.8, verbose = FALSE,graph="wknn")
+
+
+  #Finally Plot results
+  plt<-(p1 | p2)/(p3 | p4)/(p5|p6)
+  ggsave(plt,file=paste0(outname,".umap.pdf"))
+  system(paste0("slack -F ",paste0(outname,".umap.pdf")," ryan_todo"))
+  saveRDS(dat,file=paste0(outname,".SeuratObject.rds"))
+}
+
+celltype_clustering(x="stromal.SeuratObject.rds",outname="stromal")
+celltype_clustering(x="immune.SeuratObject.rds",outname="immune")
+celltype_clustering(x="epithelial.SeuratObject.rds",outname="epithelial")
+
+
 
 ```
-
-
 ### Integration: Now Clustering together on RNA profiles using harmony to integrate
 
 ```R
@@ -2950,8 +2697,8 @@ setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
 type_cols<-c(
 #epithelial
 "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-"B-cells" ="#089099", "T-cells" ="#003147", #other
-"CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
+"B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
+"CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
 
 diag_cols<-c("IDC"="red", "DCIS"="grey")
 
