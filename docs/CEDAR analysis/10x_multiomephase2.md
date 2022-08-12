@@ -1839,7 +1839,7 @@ casper_per_sample<-function(x){
   dev.off()
   system(paste0("slack -F ",paste0(dir_in,"/casper/",sample_name,".Distrubution.pdf"), " ryan_todo"))
 
-  object<-readRDS(paste0(dir_in,"_casper/",sample_name,".initialobj.rds"))
+  object<-readRDS(paste0(dir_in,"/casper/",sample_name,".initialobj.rds"))
   ## runCaSpER
   final.objects <- runCaSpER(object, removeCentromere=T, cytoband=cytoband, method="iterative")
 
@@ -1920,8 +1920,7 @@ casper_per_sample<-function(x){
 
 }
 
-lapply(c(11,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",4,10,12),function(x) casper_per_sample(x))
-#done  1,3,5,6,7,8,9,
+lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12),function(x) casper_per_sample(x))
 
 
 
@@ -2026,6 +2025,23 @@ lapply(sample_in,function(x) casper_per_sample_plot(dat=x))
 
 ```
 
+Files for Travis
+
+Transfering:
+- Metadata
+- Counts matrix (atac)
+- peaks bed file
+- inferCNV folder
+- Caseper folder
+- atac_possorted_bam.bam
+- Seurat Object
+
+```bash
+for i in 
+```
+```R
+/home/groups/CEDAR/scATACcnv/Hisham_data/final_data
+```
 <!--
 
 ## Output metadata per sample
