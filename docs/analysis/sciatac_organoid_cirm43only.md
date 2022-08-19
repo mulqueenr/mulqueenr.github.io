@@ -3813,12 +3813,23 @@ atac_sub<-subset(atac_sub,pseudotime!="NA") #remove NA values
 
 ```
 
+Using Supplementary Table S3 from Bhaduri paper for organoid cluster markers.
+Uploaded to the server to be processed into an R data set.
+
+```R
+rationale<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/ref/Bhaduri_S3.organoidmarkers.rationale.tsv.txt",sep="\t",head=T)
+colnames(rationale)[1]<-"cluster"
+markers<-read.table("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/ref/Bhaduri_S3.organoidmarkers.tsv.txt",sep="\t",head=T)
+markers<-markers[markers$adjusted.p_val<=0.05,]
+out<-merge(markers,rationale,by="cluster")
+saveRDS(out,file="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/ref/Bhaduri_clusters.rds")
+```
+
 ```R
 
 library(slingshot)
 library(Seurat)
 library(Signac)
-library(scales)
 library(viridis)
 library(Matrix)
 library(SingleCellExperiment)
@@ -3834,8 +3845,11 @@ library(reshape2)
 library(qvalue)
 library(RColorBrewer)
 library(zoo)
+library(scales)
 setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
+########Heatmap shoutouts###########
+markers<-readRDS(file="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/ref/Bhaduri_clusters.rds")
 
 #from https://broadinstitute.github.io/2019_scWorkshop/functional-pseudotime-analysis.html
 # Fit GAM for each gene using pseudotime as independent variable.
@@ -3911,6 +3925,25 @@ pseudotime_gam_fit<-function(x=chromvar,y=pseudotime,z=-1,prefix="test",colfun,f
   win.dat<-win.dat[order(unlist(lapply(1:nrow(win.dat),function(i) which(win.dat[i,]==max(win.dat[i,]))))),]
 
   print("Making Heatmap")
+
+  if(endsWith(prefix,"GA") | endsWith(prefix,"chromvar")){
+  label_idx=which(row.names(win.dat) %in% markers$Gene)
+  col_markers=setNames(colorRampPalette(brewer.pal(8, "Set1"))(length(unique(markers$Subtype))),unique(markers$Subtype))
+  markers$col<-unname(col_markers[match(markers$Subtype,names(col_markers))]) #set up color of text by cell subtype
+  ha = rowAnnotation(genes = anno_mark(at = label_idx, 
+  labels = row.names(win.dat)[label_idx],
+  labels_gp = gpar(col =markers[markers$Gene %in% row.names(win.dat)[label_idx],]$col,fontsize=30)
+  ))
+  plt<-Heatmap(win.dat,
+  row_order = 1:nrow(win.dat),
+  column_order=1:ncol(win.dat),
+  row_names_gp = gpar(fontsize = 3),
+  column_names_gp = gpar(fontsize = 3),
+  show_column_names=F,
+  right_annotation=ha,
+  col=colfun
+  )
+  } else {
   plt<-Heatmap(win.dat,
   row_order = 1:nrow(win.dat),
   column_order=1:ncol(win.dat),
@@ -3919,11 +3952,13 @@ pseudotime_gam_fit<-function(x=chromvar,y=pseudotime,z=-1,prefix="test",colfun,f
   show_column_names=F,
   col=colfun
   )
+  }
 
-  pdf(paste0(prefix,".pseudotime.chromvar.heatmap.zscored.540.slidingbin.pdf"),width=50,height=50)
+
+  pdf(paste0(prefix,".pseudotime.chromvar.heatmap.zscored.slidingbin.pdf"),width=50,height=50)
   plt<-draw(plt)#,annotation_legend_list=lgd_list)
   dev.off()
-  system(paste0("slack -F ",prefix,".pseudotime.chromvar.heatmap.zscored.540.slidingbin.pdf"," ryan_todo"))
+  system(paste0("slack -F ",prefix,".pseudotime.chromvar.heatmap.zscored.slidingbin.pdf"," ryan_todo"))
 
 }
 
@@ -3960,7 +3995,7 @@ cistopic_col<-colorRamp2(c(0, 0.5, 1), rev(c("#004529","#78c679","#f7f7f7")))
 pseudotime_gam_fit(x=cistopics,y=pseudotime,z=-1,prefix=paste0(prefix,".cistopic"),colfun=cistopic_col,bins=100)
 
 magma_col<-colorRamp2(c(0,0.5, 1), magma(3))
-pseudotime_gam_fit(x=geneactivity,y=pseudotime,z=-1,prefix=paste0(prefix,".GA"),colfun=magma_col,filt_to_top_perc=0.95,bins=100)
+pseudotime_gam_fit(x=geneactivity,y=pseudotime,z=-1,prefix=paste0(prefix,".GA"),colfun=magma_col,filt_to_top_perc=0.99,bins=100)
 }
 
 pseudotime_processing(x="orgo_cirm43.RG.540.SeuratObject.Rds",prefix="orgo_cirm43.RG.540")

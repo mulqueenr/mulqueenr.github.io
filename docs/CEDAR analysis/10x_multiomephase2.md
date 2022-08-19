@@ -1474,7 +1474,7 @@ lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",4,10,12),infer
 #4 10 12 listed last because I might want to rereun them with less threads
 ```
 
-<!--
+
 ### Plot inferCNV output
 
 ```R
@@ -1495,10 +1495,7 @@ library(reshape2)
 library(philentropy)
 library(dendextend)
 
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
-
-sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.2.rds")))
-
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
   ###########Color Schema#################
   type_cols<-c(
@@ -1513,18 +1510,35 @@ sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/g
   #########################################
 
 ####RUNNING INFERCNV#####
-infercnv_per_sample_plot<-function(dat){
-  #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
+infercnv_per_sample_plot<-function(x){
+
+  if(x %in% 1:12){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+    #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
   #dat is full path to seurat object
-  dat_file_path=dat
-  outname<-substr(dat_file_path,1,nchar(dat_file_path)-3)
-  dat<-readRDS(dat)
+  dat_file_path=file_in
   dat$cnv_ref<-"FALSE"
-  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
-  DefaultAssay(dat)<-"RNA"
-  infercnv_obj<-readRDS(paste0(outname,"_inferCNV","/",basename(outname),"inferCNV.Rds"))
-  outname<-substr(dat_file_path,1,nchar(dat_file_path)-17) #redo outname to remove "seuratobject" from filename
+  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #this is same as initial run of inferCNV, just didn't save seurat object
+  infercnv_obj<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
   cnv<-t(infercnv_obj@expr.data)
+  cnv_ref<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="TRUE",]),]
   cnv<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="FALSE",]),]
   col_fun = colorRamp2(c(min(unlist(cnv)), median(unlist(cnv)), max(unlist(cnv))), c("blue", "white", "red"))
 
@@ -1535,10 +1549,11 @@ infercnv_per_sample_plot<-function(dat){
   k_clus_number<-k_search$nc
   k_clus_id<-k_search$pamobject$clustering
   dend <- color_branches(dend, k = k_clus_number)    #split breakpoint object by clusters
-  saveRDS(dend,file=paste0(outname,".inferCNV.dend.Rds")) #save dendrogram
+  saveRDS(dend,file=paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.dend.Rds")) #save dendrogram
 
   #set up heatmap annotation
   met<-as.data.frame(dat@meta.data)
+  met_ref<-met[row.names(met) %in% row.names(cnv_ref),]
   met<-met[row.names(met) %in% row.names(cnv),]
   read_count_col<-colorRamp2(c(min(met$gex_exonic_umis+met$gex_intronic_umis),
     max(met$gex_exonic_umis+met$gex_intronic_umis)), 
@@ -1558,17 +1573,32 @@ infercnv_per_sample_plot<-function(dat){
       cluster_rows=dend,
       left_annotation=ha,
       column_split=infercnv_obj@gene_order$chr)
-    pdf(paste0(outname,".inferCNV.heatmap.pdf"),width=20)
+  ha_ref = HeatmapAnnotation(which="row",
+    cell_type=met_ref$predicted.id,
+    #cnv_ref=met$cnv_ref,
+    read_count= met_ref$gex_exonic_umis+met_ref$gex_intronic_umis,
+          col = list(cell_type = type_cols,
+            #cnv_ref=ref_cols,
+            read_count=read_count_col))
+  plt1_ref<-Heatmap(cnv_ref,
+      show_row_names=F,
+      show_column_names=F,
+      column_order=1:ncol(cnv),
+      col=col_fun,
+      left_annotation=ha_ref,
+      column_split=infercnv_obj@gene_order$chr)
+    pdf(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.heatmap.pdf"),width=20)
+    print(plt1_ref)
     print(plt1)
     dev.off()
-    system(paste0("slack -F ",paste0(outname,".inferCNV.heatmap.pdf")," ryan_todo"))
+    system(paste0("slack -F ",paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.heatmap.pdf")," ryan_todo"))
 }
 
-lapply(sample_in,function(x) infercnv_per_sample_plot(dat=x))
+lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",4,10,12),infercnv_per_sample_plot)
 
 ```
 
-
+<!--
 Plot differences between epithelial lineages
 
 ```R
@@ -1740,7 +1770,7 @@ bone <- Footprint(
 # plot the footprint data for each group of cells
 p2 <- PlotFootprint(bone, features = c("GATA3"))
 ```
--->
+--->
 
 ## Run CaSpER on RNA 
 
@@ -1920,9 +1950,9 @@ casper_per_sample<-function(x){
 
 }
 
-lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12),function(x) casper_per_sample(x))
+lapply(c(4,10,12),function(x) casper_per_sample(x))
 
-
+#1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,
 
 ```
 ### Plotting of CaSpER Output
@@ -1943,10 +1973,7 @@ library(reshape2)
 library(philentropy)
 library(dendextend)
 library(CaSpER)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
-
-sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.rds")))
-
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
   ###########Color Schema#################
   type_cols<-c(
@@ -1958,27 +1985,45 @@ sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/g
   ref_cols<-c(
   "TRUE"="grey",
   "FALSE"="red")
+
   #########################################
 
 ####RUNNING INFERCNV#####
-casper_per_sample_plot<-function(dat){
+casper_per_sample_plot<-function(x){
   #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
   #dat is full path to seurat object
-  print(paste("Reading in:",dat))
-  file_in=basename(dat)
-  sample_name=substr(file_in,1,nchar(file_in)-17)
-  dir_in=dirname(dat)
-  dat<-readRDS(dat)
+  if(x %in% 1:12){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    sample_name<-x
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  obj_name=basename(file_in)
+  dir_in=dirname(file_in)
   dat$cnv_ref<-"FALSE"
-  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
   DefaultAssay(dat)<-"RNA"
   print(paste("Reading in:",paste0(dir_in,"_casper/",sample_name,".finalobj.rds")))
   final.obj<-readRDS(paste0(dir_in,"_casper/",sample_name,".finalobj.rds"))
 
-  cnv<-t(final.obj@control.normalized.noiseRemoved[[3]])
+  cnv<-t(log2(final.obj@control.normalized.noiseRemoved[[3]])) #from casper plot heatmap function call
+  cnv_ref<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="TRUE",]),]
   cnv<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="FALSE",]),]
-  col_fun = colorRamp2(c(min(unlist(cnv)), median(unlist(cnv)), max(unlist(cnv))), c("blue", "white", "red"))
-
+  #col_fun = colorRamp2(c(min(unlist(cnv)), median(unlist(cnv)), max(unlist(cnv))), c("blue", "white", "red"))
+  col_fun = colorRamp2(seq(-2, 2, by = 1),c("#1207A3","#8F88D2","#FFFEFE","#DB7A7B","#BB0103"))
   print("Performing distance calculation.")
   dist_method="euclidean"
   dist_x<-philentropy::distance(cnv,method=dist_method,as.dist.obj=T,use.row.names=T)
@@ -1993,10 +2038,12 @@ casper_per_sample_plot<-function(dat){
   print("Generating heatmap of CNVs.")
   #set up heatmap annotation
   met<-as.data.frame(dat@meta.data)
+  met_ref<-met[row.names(met) %in% row.names(cnv_ref),]
   met<-met[row.names(met) %in% row.names(cnv),]
   read_count_col<-colorRamp2(c(min(met$gex_exonic_umis+met$gex_intronic_umis),
     max(met$gex_exonic_umis+met$gex_intronic_umis)), 
     c("white","black"))
+
   ha = HeatmapAnnotation(which="row",
     cell_type=met$predicted.id,
     #cnv_ref=met$cnv_ref,
@@ -2011,37 +2058,235 @@ casper_per_sample_plot<-function(dat){
       col=col_fun,
       cluster_rows=dend,
       left_annotation=ha,
-      column_split=final.obj@annotation.filt$Chr)
+      column_split=factor(final.obj@annotation.filt$Chr, levels = 1:22)
+      )
+  ha_ref = HeatmapAnnotation(which="row",
+    cell_type=met_ref$predicted.id,
+    #cnv_ref=met$cnv_ref,
+    read_count= met_ref$gex_exonic_umis+met_ref$gex_intronic_umis,
+          col = list(cell_type = type_cols,
+            #cnv_ref=ref_cols,
+            read_count=read_count_col))
+  plt1_ref<-Heatmap(cnv_ref,
+      show_row_names=F,
+      show_column_names=F,
+      column_order=1:ncol(cnv_ref),
+      col=col_fun,
+      left_annotation=ha_ref,
+      column_split=factor(final.obj@annotation.filt$Chr, levels = 1:22))
     pdf(paste0(dir_in,"_casper/",sample_name,".casper.heatmap.pdf"),width=20)
+    print(plt1_ref)
     print(plt1)
     dev.off()
     system(paste0("slack -F ",paste0(dir_in,"_casper/",sample_name,".casper.heatmap.pdf")," ryan_todo"))
 }
 
-lapply(sample_in,function(x) casper_per_sample_plot(dat=x))
-
-
+lapply(c(15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) casper_per_sample_plot(x))
+#1,3,5,6,7,8,9,
 
 
 ```
 
-Files for Travis
+Compare CASPER and InferCNV Results
 
-Transfering:
+```R
+library(dendextend)
+library(ggalluvial)
+library(Seurat)
+library(Signac)
+
+cnv_comparisons<-function(x){
+  if(x %in% 1:12){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    sample_name<-x
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  obj_name=basename(file_in)
+  dir_in=dirname(file_in)
+  
+  infercnv_dend<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.dend.Rds"))
+  casper_dend<-readRDS(paste0(dir_in,"_casper/",sample_name,".casper.dend.Rds")) 
+
+  #use Bkplot to define cluster count to use
+  dl<-dendlist(intersect_trees(infercnv_dend,casper_dend))
+  pdf(paste0(dir_in,"/",sample_name,".RNA.CNVs.Bkplot.pdf"),width=20)
+  Bk_plot(dl[[1]],dl[[2]],p.adjust.method="bonferroni",k=2:25,xlim=c(0,25))
+  dev.off()
+  system(paste0("slack -F ",paste0(dir_in,"/",sample_name,".RNA.CNVs.Bkplot.pdf")," ryan_todo"))
+
+  k_search<-find_k(infercnv_dend,krange=2:10) #search for optimal K from 2-10
+  infer_cnv_k_clus_number<-k_search$nc
+  print(paste("Determined ",infer_cnv_k_clus_number," of clusters for InferCNV."))
+  k_search<-find_k(casper_dend,krange=2:10) #search for optimal K from 2-10
+  casper_k_clus_number<-k_search$nc
+  print(paste("Determined ",casper_k_clus_number," of clusters for Casper."))
+  
+  k_clus_number<-max(c(infer_cnv_k_clus_number,casper_k_clus_number)) #use max number of clusters
+  print(paste("Using ",k_clus_number," of clusters for both."))
+
+  dat<-AddMetaData(dat,cutree(infercnv_dend,k=k_clus_number),col.name="InferCNV_clusters")
+  dat<-AddMetaData(dat,cutree(casper_dend,k=k_clus_number),col.name="CaSpER_clusters")
+  saveRDS(dat,file_in)
+
+  metadata<-dat@meta.data
+  metadata<-metadata[metadata$predicted.id %in% c("Cancer Epithelial","Normal Epithelial" ),]
+  metadata<-metadata[!is.na(metadata$InferCNV_clusters) & !is.na(metadata$CaSpER_clusters),]
+  metadata$InferCNV_clusters<-as.character(metadata$InferCNV_clusters)
+  metadata$CaSpER_clusters<-as.character(metadata$CaSpER_clusters)
+
+  plt<-ggplot(metadata,
+       aes(y =   match(row.names(metadata),labels(infercnv_dend)[order.dendrogram(infercnv_dend)]),
+        axis1 = InferCNV_clusters,
+        axis2 = CaSpER_clusters)) +
+  geom_alluvium(aes(fill = predicted.id), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "black", color = "grey") +
+  geom_label(stat = "stratum", aes(label = after_stat(stratum))) +
+  scale_x_discrete(limits = c("InferCNV_clusters", "CaSpER_clusters"), expand = c(.05, .05)) +
+  scale_fill_brewer(type = "qual", palette = "Set1") +
+  ggtitle("Copy Number Lineages")
+  ggsave(plt,file=paste0(dir_in,"/",sample_name,".RNA.CNVs.alluvial.pdf"))
+  system(paste0("slack -F ",paste0(dir_in,"/",sample_name,".RNA.CNVs.alluvial.pdf")," ryan_todo"))
+
+  if(nrow(metadata)<500){
+  infercnv_dend <- color_branches(infercnv_dend, k = k_clus_number)    #split breakpoint object by clusters
+  casper_dend <- color_branches(casper_dend, k = k_clus_number)    #split breakpoint object by clusters
+  dl<-dendlist(intersect_trees(infercnv_dend,casper_dend))
+  pdf(paste0(dir_in,"/",sample_name,".RNA.CNVs.tanglegram.pdf"),width=20)
+  tanglegram(dl, 
+    main_left="InferCNV",
+    main_right="CaSpER",
+    main="Tangled",
+    sub=paste("entanglement =", round(entanglement(dl), 2)))
+  dl_sorted<-untangle(dl, method = "step2side")
+  tanglegram(dl_sorted,    
+    main_left="InferCNV",
+    main_right="CaSpER",
+    main="Untangled",
+    sub=paste("entanglement =", round(entanglement(dl_sorted), 2)))
+  dev.off()
+  system(paste0("slack -F ",paste0(dir_in,"/",sample_name,".RNA.CNVs.tanglegram.pdf")," ryan_todo"))
+  cor_cophenetic(dl[[1]],dl[[2]])
+  cor_bakers_gamma(dl[[1]],dl[[2]])
+  }
+}
+
+lapply(c("RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) cnv_comparisons(x))
+#to run 15, 16, 19, 20
+#ran 1,3,5,6,7,8,9
+```
+### Files for Travis
+
+Transfering to /home/groups/CEDAR/scATACcnv/Hisham_data/final_data:
 - Metadata
 - Counts matrix (atac)
 - peaks bed file
 - inferCNV folder
-- Caseper folder
+- Casper folder
+- atac_possorted_bam.bam
+- Seurat Object
+
+```R
+library(Signac)
+library(Seurat)
+
+transfer_data<-function(x){
+if(x %in% 1:12){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    sample_name<-x
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  metadata<-as.data.frame(dat@meta.data)
+  counts_matrix<-as.data.frame(dat[["peaks"]]@counts)
+  peaks_bed_file<-as.data.frame(do.call("rbind",strsplit(row.names(dat[["peaks"]]),"-")))
+  write.table(metadata,file=paste0(wd,"/","metadata.tsv"),sep="\t",col.names=T,row.names=T)
+  write.table(counts_matrix,file=paste0(wd,"/","counts_matrix.tsv"),sep="\t",col.names=T,row.names=T)
+  write.table(peaks_bed_file,file=paste0(wd,"/","peaks.bed"),sep="\t",col.names=F,row.names=F)
+  print(paste("Finished sample:",sample_name))
+}
+
+lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12),function(x) transfer_data(x))
+```
+
+- Metadata
+- Counts matrix (atac)
+- peaks bed file
+- inferCNV folder
+- Casper folder
 - atac_possorted_bam.bam
 - Seurat Object
 
 ```bash
-for i in 
+out_dir="/home/groups/CEDAR/scATACcnv/Hisham_data/final_data"
+mkdir $out_dir
+
+
+for i in 1 3 5 6 7 8 9 10 11 12; do
+  sample="sample_"${i}
+  in_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_"${i}"/outs"
+  mkdir ${out_dir}"/"${sample};
+  cp ${in_dir}"/metadata.tsv" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/peaks.bed" ${out_dir}"/sample_"${i}
+  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/sample_"${i}
+  cp -r ${in_dir}"/casper" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/"${sample}".QC.SeuratObject.rds" ${out_dir}"/sample_"${i} & done &
+
+
+for i in 15 16 19 20; do
+  sample="sample_"${i}
+  in_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_"${i}"/outs"
+  mkdir ${out_dir}"/"${sample};
+  cp ${in_dir}"/metadata.tsv" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/peaks.bed" ${out_dir}"/sample_"${i}
+  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/sample_"${i}
+  cp -r ${in_dir}"/casper" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/"${sample}".QC.SeuratObject.rds" ${out_dir}"/sample_"${i} & done &
+
+for i in "RM_1" "RM_2" "RM_3" "RM_4"; do
+  sample=${i}
+  in_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/"${i}"/outs"
+  mkdir ${out_dir}"/"${sample};
+  cp ${in_dir}"/metadata.tsv" ${out_dir}"/"${sample}
+  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/"${sample}
+  cp ${in_dir}"/peaks.bed" ${out_dir}"/"${sample}
+  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/"${sample}
+  cp -r ${in_dir}"/casper" ${out_dir}"/"${sample}
+  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/"${sample}
+  cp ${in_dir}"/"${sample}".QC.SeuratObject.rds" ${out_dir}"/"${sample} & done &
+
 ```
-```R
-/home/groups/CEDAR/scATACcnv/Hisham_data/final_data
-```
+
 <!--
 
 ## Output metadata per sample
@@ -2693,6 +2938,7 @@ celltype_clustering(x="epithelial.SeuratObject.rds",outname="epithelial")
 
 
 ```
+
 ### Integration: Now Clustering together on RNA profiles using harmony to integrate
 
 ```R
