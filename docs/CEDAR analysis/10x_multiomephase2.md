@@ -1955,6 +1955,7 @@ lapply(c(4,10,12),function(x) casper_per_sample(x))
 #1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,
 
 ```
+
 ### Plotting of CaSpER Output
 ```R
 library(Signac)
@@ -2942,7 +2943,7 @@ celltype_clustering(x="epithelial.SeuratObject.rds",outname="epithelial")
 ### Integration: Now Clustering together on RNA profiles using harmony to integrate
 
 ```R
-library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
+library(harmony)
 library(cisTopic)
 library(Signac)
 library(Seurat)
@@ -2952,7 +2953,7 @@ set.seed(1234)
 library(EnsDb.Hsapiens.v86)
 library(Matrix)
 
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
 
 ###########Color Schema#################
@@ -2968,29 +2969,49 @@ molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"
 ########################################
 
 
-dat<-readRDS("phase1.SeuratObject.rds")
-pdf("phase1.Harmonyconvergence.pdf")
-dat<-RunHarmony(dat,group.by.vars="sample",reduction="pca",plot_convergence=T)
-dev.off()
-system("slack -F phase1.Harmonyconvergence.pdf ryan_todo")
 
-dat <- dat %>% 
-    RunUMAP(reduction.name="harmonyumap",reduction = "harmony", dims = 1:20) %>% 
-    FindNeighbors(reduction = "harmony", dims = 1:20) %>% 
-    FindClusters(resolution = 0.5) %>% 
-    identity()
+
+
+
+harmony_sample_integration<-function(x,outname){
+dat<-readRDS(x)
+dat<-RunHarmony(dat,group.by.vars="sample",reduction.save="harmony_atac",assay.use="ATAC",reduction="cistopic",project.dim=F)
+dat<-RunHarmony(dat,group.by.vars="sample",reduction.save="harmony_rna",assay.use="RNA",reduction="pca",project.dim=F)
+
+dat<-RunUMAP(dat,reduction.name="harmonyumap_rna",reduction = "harmony_rna",dims=1:dim(dat@reductions$harmony_rna)[2]) 
+dat<-RunUMAP(dat,reduction.name="harmonyumap_atac",reduction = "harmony_atac",dims=1:dim(dat@reductions$harmony_atac)[2]) 
 
 alpha_val=0.33
 
-plt1<-DimPlot(dat,reduction="harmonyumap",group.by="sample")#+scale_fill_manual(samp_cols)
-plt2<-DimPlot(dat,reduction="harmonyumap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))
-plt3<-DimPlot(dat,reduction="harmonyumap",group.by="diagnosis",cols=alpha(diag_cols,alpha_val))
-plt4<-DimPlot(dat,reduction="harmonyumap",group.by="molecular_type",cols=alpha(molecular_type_cols,alpha_val))
-ggsave(plt1|plt2|plt3|plt4,file="phase1.Harmonyumap.pdf",width=20)
-system("slack -F phase1.Harmonyumap.pdf ryan_todo")
+plt1<-DimPlot(dat,reduction="harmonyumap_rna",group.by="sample")#+scale_fill_manual(samp_cols)
+plt2<-DimPlot(dat,reduction="harmonyumap_rna",group.by="predicted.id")#,cols=alpha(type_cols,alpha_val))
+plt3<-DimPlot(dat,reduction="harmonyumap_rna",group.by="diagnosis")#,cols=alpha(diag_cols,alpha_val))
+plt4<-DimPlot(dat,reduction="harmonyumap_rna",group.by="molecular_type")#,cols=alpha(molecular_type_cols,alpha_val))
 
-saveRDS(dat,"phase1.SeuratObject.rds")
+plt5<-DimPlot(dat,reduction="harmonyumap_atac",group.by="sample")#+scale_fill_manual(samp_cols)
+plt6<-DimPlot(dat,reduction="harmonyumap_atac",group.by="predicted.id")#,cols=alpha(type_cols,alpha_val))
+plt7<-DimPlot(dat,reduction="harmonyumap_atac",group.by="diagnosis")#,cols=alpha(diag_cols,alpha_val))
+plt8<-DimPlot(dat,reduction="harmonyumap_atac",group.by="molecular_type")#,cols=alpha(molecular_type_cols,alpha_val))
+ggsave((plt1|plt2|plt3|plt4)/(plt5|plt6|plt7|plt8),file=paste0(outname,".Harmonyumap.pdf"),width=20)
+system(paste0("slack -F ",outname,".Harmonyumap.pdf ryan_todo"))
 
+saveRDS(dat,file=x)
+}
+
+harmony_sample_integration(x="stromal.SeuratObject.rds",outname="stromal")
+harmony_sample_integration(x="immune.SeuratObject.rds",outname="immune")
+harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial")
+
+```
+
+## Comparison of cell types across diagnoses and other factors.
+
+```R
+
+```
+# 3D Plotting in Blender
+
+```R
 #3d umap
 out_3d <- RunUMAP(object=dat, n.components=3, reduction.name="harmonyumap",reduction = "harmony", dims = 1:20)
 #format
