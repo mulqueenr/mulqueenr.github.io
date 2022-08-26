@@ -1830,7 +1830,7 @@ setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
   diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
   molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
   pam50_colors<-c("Basal"="red","Her2"="pink","LumA"="blue","LumB"="cyan","Normal"="grey","NA"="black")
-  embo_colors<-c("EMBO_Basal"="green","EMBO_LP"="blue","EMBO_ML"="orange","EMBO_Str"="red","NA"="black")
+  embo_colors<-c("Basal"="green","LP"="blue","ML"="orange","Str"="red","NA"="black")
   ########################################
 
 
@@ -2270,31 +2270,25 @@ library(ggplot2)
 library(RColorBrewer)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/")
 
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/")
 
 dat<-readRDS("phase2.QC.SeuratObject.rds")
 
 #call peaks per predicted.id cell type
-for(i in unique(dat$predicted.id)){
-  dat_sub<-subset(dat,predicted.id==i)
-  # call peaks using MACS2
-  DefaultAssay(dat_sub)<-"ATAC"
-  peaks <- CallPeaks(dat_sub, macs2.path = "/home/groups/CEDAR/mulqueen/src/miniconda3/bin/macs2")
+peaks <- CallPeaks(dat, 
+  assay="ATAC",
+  group.by="predicted.id",
+  combine.peaks=FALSE,
+  macs2.path = "/home/groups/CEDAR/mulqueen/src/miniconda3/bin/macs2")
   #use this set of peaks for all samples
 
+for(i in 1:length(peaks)){
   # remove peaks on nonstandard chromosomes and in genomic blacklist regions
-  peaks <- keepStandardChromosomes(peaks, pruning.mode = "coarse")
-  peaks <- subsetByOverlaps(x = peaks, ranges = blacklist_hg38_unified, invert = TRUE)
-  print(paste0("Generated peakset for ",i))
-  saveRDS(peaks,file=paste0(i,".peakset.rds"))
+  peak_name<-unique(dat$predicted.id)[i]
+  peaks_out <- keepStandardChromosomes(peaks[[i]], pruning.mode = "coarse")
+  peaks_out <- subsetByOverlaps(x = peaks_out, ranges = blacklist_hg38_unified, invert = TRUE)
+  print(paste0("Generated peakset for ",peak_name))
+  write.table(as.data.frame(peaks_out)[1:3],file=paste0(peak_name,".bed"),sep="\t",quote=F,col.names=F,row.names=F)
 }
-
-#Forgot to write them out as bed files. Doing that now with another loop
-for(i in list.files(".",pattern=".peakset.rds$")){
-  peaks<-readRDS(i)
-  write.table(as.data.frame(peaks)[1:3],file=paste0(substr(basename(i),1,nchar(basename(i))-4),".bed"),sep="\t",quote=F,col.names=F,row.names=F)
-}
-
 
 ```
 
