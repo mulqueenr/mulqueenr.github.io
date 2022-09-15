@@ -2158,6 +2158,168 @@ lapply(c("RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) cnv_comparisons(x)
 #to run 15, 16, 19, 20
 #ran 1,3,5,6,7,8,9
 ```
+
+### ATAC CNV Calling with copyscAT
+Using scATAC calling algorithm copyscAT from git repo https://github.com/spcdot/CopyscAT/
+Installation...
+```R
+library(devtools)
+Sys.setenv("R_REMOTES_NO_ERRORS_FROM_WARNINGS" = "true")
+install_github("spcdot/copyscat")
+library(CopyscAT)
+```
+Modifies the copyscAT python script (https://github.com/spcdot/CopyscAT/blob/master/process_fragment_file.py) to filter based on a metadata table rather than read count (since I already QC cells) then posted to a subdirectory
+
+```bash
+mkdir /home/groups/CEDAR/mulqueen/ref/copyscat
+```
+
+Now Running samples
+
+Code from https://github.com/spcdot/CopyscAT/blob/master/copyscat_tutorial.R
+
+```R
+library(Seurat)
+library(Signac)
+library(CopyscAT)
+library(BSgenome.Hsapiens.UCSC.hg38)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+#Generate tile references
+generateReferences(BSgenome.Hsapiens.UCSC.hg38,genomeText = "hg38",tileWidth = 1e6,outputDir = "/home/groups/CEDAR/mulqueen/ref/copyscat")
+
+##### REGULAR WORKFLOW #####
+#initialize the environment
+initialiseEnvironment(genomeFile="/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_chrom_sizes.tsv",
+                      cytobandFile="/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_1e+06_cytoband_densities_granges.tsv",
+                      cpgFile="/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_1e+06_cpg_densities.tsv",
+                      binSize=1e6,
+                      minFrags=1e4,
+                      cellSuffix=c("-1","-2"),
+                      lowerTrim=0.5,
+                      upperTrim=0.8)
+
+#Set up copyscAT Loop per sample
+copyscAT_per_sample<-function(x){
+  if(x %in% 1:12){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    sample_name<-x
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  obj_name=basename(file_in)
+  dir_in=dirname(file_in)
+  system(paste0("mkdir ",dir_in,"/copyscat"))
+  #do python script preprocessing (basically just count fragments per window per cell)
+  system(paste0("python /home/groups/CEDAR/mulqueen/ref/copyscat/process_fragment_file.py ",
+  "-i ",dir_in,"/atac_fragments.tsv.gz",
+  " -o ",dir_in,"/copyscat/copyscat.1mb.tsv",
+  " -b ","1000000",
+  " -f ","500",
+  " -g ","/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_chrom_sizes.tsv",
+  " -c ",dir_in,"/metadata.tsv")) #modification takes in metadata table to filter cells by name, ignores -f flag
+  setOutputFile(paste0(dir_in,"/copyscat"),"copyscat_out")
+  #PART 1: INITIAL DATA NORMALIZATION
+  scData<-readInputTable(paste0(dir_in,"/copyscat/copyscat.1mb.tsv"))
+  scData_k_norm <- normalizeMatrixN(scData,
+    logNorm = FALSE,
+    maxZero=2000,
+    imputeZeros = FALSE,
+    blacklistProp = 0.8,
+    blacklistCutoff=125,
+    dividingFactor=1,
+    upperFilterQuantile = 0.95)
+  #collapse into chromosome arm level
+  summaryFunction<-cutAverage
+  scData_collapse<-collapseChrom3N(scData_k_norm,
+    summaryFunction=summaryFunction,
+    binExpand = 1,
+    minimumChromValue = 100,
+    logTrans = FALSE,
+    tssEnrich = 1,
+    logBase=2,
+    minCPG=300,
+    powVal=0.73) 
+  #apply additional filters
+  scData_collapse<-filterCells(scData_collapse,minimumSegments = 40,minDensity = 0.1)
+  #show unscaled chromosome list
+  graphCNVDistribution(scData_collapse,outputSuffix = "test_violinsn2")
+  #PART 2: ASSESSMENT OF CHROMOSOME-LEVEL CNVs 
+  #ALTERNATE METHOD FOR CNV CALLING (with normal cells as background)
+  #Using same normal cell selection as used for CASPER and InferCNV
+  dat$cnv_ref<-"FALSE"
+  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+  control<-names(dat$cnv_ref == "TRUE") #pulling this from the inferCNV function
+  #compute central tendencies based on normal cells only
+  control <- control[control %in% colnames(scData_collapse)] #filter control list to control cells that survived filter
+  median_iqr <- computeCenters(scData_collapse %>% select(chrom,control),summaryFunction=summaryFunction)
+  #setting medianQuantileCutoff to -1 and feeding non-neoplastic barcodes in as normalCells can improve accuracy of CNV calls
+  candidate_cnvs<-identifyCNVClusters(scData_collapse,median_iqr,
+    useDummyCells = TRUE,
+    propDummy=0.25,
+    minMix=0.01,
+    deltaMean = 0.03,
+    deltaBIC2 = 0.25,
+    bicMinimum = 0.1,
+    subsetSize=800,
+    fakeCellSD = 0.09,
+    uncertaintyCutoff = 0.65,
+    summaryFunction=summaryFunction,
+    maxClust = 4,
+    mergeCutoff = 3,
+    IQRCutoff = 0.25,
+    medianQuantileCutoff = -1,
+    normalCells=control) 
+  candidate_cnvs_clean<-clusterCNV(initialResultList = candidate_cnvs,medianIQR = candidate_cnvs[[3]],minDiff=1.0) #= 1.5)
+  #to save this data you can use annotateCNV4 as per usual
+  final_cnv_list<-annotateCNV4(candidate_cnvs_clean, saveOutput=TRUE,outputSuffix = "clean_cnv",sdCNV = 0.6,filterResults=TRUE,filterRange=0.4)
+  saveRDS(final_cnv_list,file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs.rds"))
+  #the other option is to use annotateCNV4B and feed in the normalBarcodes - this will set the "normal" population to 2 -- if the data is noisy it may lead to false positives so use with caution
+  #you may also use this version if you have a list of normal barcodes generated elsewhere
+  #final_cnv_list<-annotateCNV4B(candidate_cnvs_clean, control, saveOutput=TRUE,outputSuffix = "clean_cnv_b2",sdCNV = 0.6,filterResults=TRUE,filterRange=0.4,minAlteredCellProp = 0.5)
+  #PART 2B: smoothing CNV calls with clusters
+  #data smoothing: can provide CNV as list or as an input file (CSV)
+  #smoothedCNVList<-smoothClusters(scDataSampClusters,inputCNVList = final_cnv_list[[3]],percentPositive = 0.4,removeEmpty = FALSE)
+  #PART 3: identify double minutes / amplifications
+  #note: this is slow, and may take ~5 minutes
+  #if very large dataset, may run on subset of the data to estimate the amplifications in distinct clusters
+  #option to compile this code
+  #library(compiler)
+  #dmRead<-cmpfun(identifyDoubleMinutes)
+  #
+  #minThreshold is a time-saving option that doesn't call changepoints on any cell with a maximum Z score less than 4 - you can adjust this to adjust sensitivity of double minute calls (note - lower value = slower)
+  #dm_candidates<-dmRead(scData_k_norm,minCells=100,qualityCutoff2 = 100,minThreshold = 4) 
+  #write.table(x=dm_candidates,file=str_c(scCNVCaller$locPrefix,scCNVCaller$outPrefix,"samp_dm.csv"),quote=FALSE,row.names = FALSE,sep=",")
+  #PART 4: assess putative LOH regions
+  #note: this is in beta, interpret results with caution
+  #loh_regions<-getLOHRegions(scData_k_norm,diffThreshold = 3,lossCutoff = -0.75,minLength = 2e6,minSeg=2,targetFun=IQR,lossCutoffCells = 200,quantileLimit=0.2,cpgCutoff=100,dummyQuantile=0.6,dummyPercentile=0.4,dummySd=0.1)
+  #if(length(loh_regions>0)){
+  #write.table(x=loh_regions[[1]],file=str_c(scCNVCaller$locPrefix,scCNVCaller$outPrefix,"samp_loss.csv"),quote=FALSE,row.names = FALSE,sep=",")}
+  #PART 5: quantify cycling cells
+  #this uses the signal from a particular chromosome (we use chromosome X as typically not altered in our samples) to identify 2N versus 4N DNA content within cells
+  #if there is a known alteration in X in your samples, try using a different chromosome
+  #barcodeCycling<-estimateCellCycleFraction(scData,sampName="sample",cutoff=1000)
+  #take max as 
+  #write.table(barcodeCycling[order(names(barcodeCycling))]==max(barcodeCycling),file=str_c(scCNVCaller$locPrefix,scCNVCaller$outPrefix,"_cycling_cells.tsv"),sep="\t",quote=FALSE,row.names=TRUE,col.names=FALSE)
+  print(paste("Finished sample",sample_name))
+}
+
+lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",4,10,12),copyscAT_per_sample)
+
+```
 ### Files for Travis
 
 Transfering to /home/groups/CEDAR/scATACcnv/Hisham_data/final_data:
