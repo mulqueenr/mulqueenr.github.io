@@ -2194,11 +2194,6 @@ sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
 sum_ga<-t(sum_ga)
 sum_ga<-sum_ga[,!endsWith(colnames(sum_ga),"NA")] #remove NA (doublet cells)
 
-###Subset by columns and markers
-#sum_ga_sub<-sum_ga[match(markers$marker_2,row.names(sum_ga),nomatch=0),]
-#sum_ga_sub<-sum_ga_sub[!duplicated(sum_ga_sub),]
-#markers<-markers[match(row.names(sum_ga_sub),markers$marker_2,nomatch=0),]
-
 simpleCap <- function(x) {
   s <- strsplit(x, " ")[[1]]
   paste(toupper(substring(s, 1,1)), tolower(substring(s, 2)),
@@ -2271,12 +2266,13 @@ celltype<-celltype[!is.na(celltype)]
 cluster<-cluster[!is.na(cluster)]
 subcluster<-subcluster[!is.na(subcluster)]
 cluster<-cluster[!is.na(names(cluster))]
-top_ha<-columnAnnotation(df= data.frame(cluster=annot$seurat_clusters, celltype=annot$celltype), #subcluster=annot$cluster_ID,
+top_ha<-columnAnnotation(df= data.frame(cluster=annot$seurat_clusters, celltype=annot$celltype, subcluster=annot$cluster_ID), 
                 col=list(celltype=celltype,cluster=cluster,subcluster=subcluster),
                     show_legend = c(TRUE, TRUE,FALSE))  
 
-
-colfun=colorRamp2(quantile(unlist(sum_ga_plot), probs=c(0.5,0.90,0.95)),magma(3))
+762.6284 pt 113.3457 pt 
+176.6231 pt 239.3815 pt
+colfun=colorRamp2(quantile(unlist(sum_ga_sub), probs=c(0.5,0.90,0.95)),magma(3))
 
 plt1<-Heatmap(sum_ga_sub,
     clustering_distance_columns="euclidean",
@@ -2429,7 +2425,7 @@ marker_plot<-function(j,k=celltype_name,l=hg38_atac,m="hg38_",n="seurat_clusters
 
 dir.create("marker_sets")
 
-hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
+hg38_atac<-readRDS(file="hg38_SeuratObject.PF.Rds")
 marker_list<-readRDS("grosscelltype_markerlist.rds")
 
 
@@ -2467,8 +2463,8 @@ marker_plot<-function(j,k=celltype_name,l=mm10_atac,m="mm10_",n="seurat_clusters
     dev.off()
 }
 
-mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
-marker_list<-readRDS("./marker_sets/grosscelltype_markerlist.rds")
+mm10_atac<-readRDS(file="mm10_SeuratObject.PF.Rds")
+marker_list<-readRDS("grosscelltype_markerlist.rds")
 summary(mm10_atac@meta.data$seurat_clusters) #setting tile cells to 99 to downsample
 downsamp=30
 
@@ -2487,6 +2483,10 @@ celltype=`ls hg38*genebody_accessibility.pdf | awk '{split($1,a,"_");print a[2]}
 for i in $celltype ; do convert `echo hg38_${i}_*genebody_accessibility.pdf` markerset_hg38_${i}.pdf; done
 
 ```
+### Updating Marker List with Higher Resolution
+
+Using Allen Brain Span dendrogram to determine cell types in mouse data.
+http://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_mouse_ctx-hpf_10x/dend.RData
 
 ### Plotting of subcluster marker sets
 
@@ -2585,6 +2585,23 @@ mm10_out<-cbind(mm10_atac$celltype,
     mm10_atac$celltype_col)
 write.table(mm10_out,"mm10_3d.umap.tsv",sep="\t",col.names=F,row.names=F,quote=F)
 system("slack -F mm10_3d.umap.tsv ryan_todo")
+
+###Repeat with subcluster coloring
+hg38_out<-cbind(hg38_atac$cluster_ID,
+    colnames(hg38_atac),
+    as.data.frame(hg38_atac@reductions$umap3d@cell.embeddings),
+    hg38_atac$subcluster_col)
+write.table(hg38_out,"hg38_3d.subclus.umap.tsv",sep="\t",col.names=F,row.names=F,quote=F)
+system("slack -F hg38_3d.subclus.umap.tsv ryan_todo")
+
+
+###Repeat with subcluster coloring
+mm10_out<-cbind(mm10_atac$cluster_ID,
+    colnames(mm10_atac),
+    as.data.frame(mm10_atac@reductions$umap3d@cell.embeddings),
+    mm10_atac$subcluster_col)
+write.table(mm10_out,"mm10_3d.subclus.umap.tsv",sep="\t",col.names=F,row.names=F,quote=F)
+system("slack -F mm10_3d.subclus.umap.tsv ryan_todo")
 ```
 
 
