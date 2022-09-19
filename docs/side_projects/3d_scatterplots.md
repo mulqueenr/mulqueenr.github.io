@@ -80,6 +80,11 @@ h1 {
   </div>
 </div>
 
+## Package Release
+
+This processing is now released as a blender module for ease of use, and processing improvements. Please see https://github.com/mulqueenr/blender_3D_scatter_plot for more information!
+
+
 ## Introduction
 
 Here's how to generate 3D scatterplots of single cell experiments in Blender. To do this, we are going to use a similar shader to the one I use in the ["molecular render"](https://mulqueenr.github.io/molecular_render/) project. Additionally, I will be using blender's python console to read in a simple text file to populate a UMAP projection. 

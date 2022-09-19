@@ -1572,43 +1572,44 @@ library(ggplot2)
 library(ComplexHeatmap)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
+prediction_transfer<-function(x,brainspan,feat_name,feat_col,obj){
+    metadata_feat_name<-paste0("brainspan.predicted.",feat_name)
+    metadata_col_name<-paste0("brainspan.predicted.",feat_col)
+    Assay_Name<-paste0("predicted_",feat_name)
+    named_vec<-setNames(x$predicted.id,nm=row.names(x)) #set features
+    feat_assay<-CreateAssayObject(data = t(x[,2:ncol(x)])) #remove predicted id text
+    col_df<-brainspan@meta.data[c(feat_name,feat_col)]
+    col_df<-col_df[!duplicated(col_df),]
+    cols<-setNames(col_df[,feat_col],nm=col_df[,feat_name])
+    named_vec_color<-setNames(cols[named_vec],nm=names(named_vec)) #set named color vector
+    obj <- AddMetaData(object=obj, metadata=named_vec,col.name=metadata_feat_name)
+    obj <- AddMetaData(object=obj, metadata=named_vec_color,col.name=metadata_col_name)
+    obj[[Assay_Name]]<-feat_assay
+    return(obj)
+}
+
+
 predict_celltype<-function(object,brainspan,prefix){
     transfer.anchors <- FindTransferAnchors(reference = brainspan,query = object,query.assay="GeneActivity",reduction = 'cca')
     saveRDS(transfer.anchors,file=paste0(prefix,".transferanchors.rds"))
+    transfer.anchors<-readRDS(file=paste0(prefix,".transferanchors.rds"))
     #predict labels for class and subclass
+    predicted.labels.cluster <- TransferData(anchorset = transfer.anchors,refdata = brainspan$cluster_label,weight.reduction = "cca",dims = 1:30)
+    object<-prediction_transfer(x=predicted.labels.cluster,brainspan=brainspan,feat_name="cluster_label",feat_col="cluster_color",obj=object)
     predicted.labels.class <- TransferData(anchorset = transfer.anchors,refdata = brainspan$class_label,weight.reduction = "cca",dims = 1:30)
+    object<-prediction_transfer(x=predicted.labels.class,brainspan=brainspan,feat_name="class_label",feat_col="class_color",obj=object)
     predicted.labels.subclass <- TransferData(anchorset = transfer.anchors,refdata = brainspan$subclass_label,weight.reduction = "cca", dims = 1:30)
-    object <- AddMetaData(object = object, metadata = predicted.labels.class)
-    object <- AddMetaData(object = object, metadata = predicted.labels.subclass)
+    object<-prediction_transfer(x=predicted.labels.subclass,brainspan=brainspan,feat_name="subclass_label",feat_col="subclass_color",obj=object)
+    #remove any metadata columns labelled "prediction"
+    object@meta.data<-object@meta.data[!startsWith(colnames(object@meta.data),prefix="prediction.")]
     saveRDS(object,file=paste0(prefix,"_SeuratObject.PF.Rds"))
-
-    feat<-colnames(object@meta.data)[which(grepl("prediction.score",colnames(object@meta.data)))]
-    feat<-feat[feat !="prediction.score.max"]
-    plt<-FeaturePlot(object,features=feat,order=T)#plot feature plots
-    ggsave(plt,file=paste0(prefix,"_predicted.umap.png"),width=20,height=30)
-    system(paste0("slack -F ",prefix,"_predicted.umap.png ryan_todo"))
-
-    #plot merged cluster heatmap
-    #Generate Heatmap of TF ChromVar score and TF modules
-    pred<-object@meta.data[,feat]
-    colnames(pred)<-substring(colnames(pred),18) #remove "prediction.score" for readability
-    #Combine over subclusters
-    pred<-split(pred,paste(object$seurat_clusters,object$seurat_subcluster,sep="_")) #group by rows to seurat clusters
-    pred<-lapply(pred,function(x) apply(x,2,mean)) #take average across group
-    pred<-do.call("rbind",pred) #condense to smaller data frame
-    pred<-pred[!endsWith(row.names(pred),"NA"),] #remove doublets not assigned a subcluster
-
-    plt1<-Heatmap(pred,column_split=c(rep("class",3),rep("subclass",20)),clustering_distance_rows="maximum",clustering_distance_columns="maximum")
-    pdf(paste0(prefix,".complexheatmap.pdf"),height=20)
-    plt1
-    dev.off()
-    system(paste0("slack -F ",prefix,".complexheatmap.pdf ryan_todo"))
+    return(object)
 
 }
 
 hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
 brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
-predict_celltype(object=hg38_atac,brainspan=brainspan.,prefix="hg38")
+hg38_atac<-predict_celltype(object=hg38_atac,brainspan=brainspan.,prefix="hg38")
 
 #Mouse using smaller data set that is whole brain
 mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
