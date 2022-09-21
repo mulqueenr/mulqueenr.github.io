@@ -1440,180 +1440,6 @@ lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",4,10,12),infer
 #4 10 12 listed last because I might want to rereun them with less threads
 ```
 
-<!--
-Plot differences between epithelial lineages
-
-```R
-####Run InferCNV
-library(Signac)
-library(Seurat)
-library(EnsDb.Hsapiens.v86)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(GenomeInfoDb)
-set.seed(1234)
-library(stringr)
-library(ggplot2)
-library(infercnv)
-library(ComplexHeatmap)
-library(circlize)
-library(patchwork)
-library(reshape2)
-library(philentropy)
-library(dendextend)
-library(ggrepel)
-  library(TFBSTools)
-library(JASPAR2020)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1")
-
-find_markers_epithelial_lineage<-function(x,assay_name,logfc.threshold_set=0,min.pct_set=0,latent.vars="NA",i1="epithel_1",i2="epithel_2"){
-  if(!(latent.vars=="NA")){
-  x_da<-FindMarkers(object=x,ident.1 = i1, ident.2=i2, test.use = 'LR', logfc.threshold=logfc.threshold_set,latent.vars = latent.vars, only.pos=F, assay=assay_name,min.pct=min.pct_set)
-  } else {
-  x_da<-FindMarkers(object=x,ident.1 = i1, ident.2=i2, test.use = 'LR', logfc.threshold=logfc.threshold_set, only.pos=F, assay=assay_name,min.pct=min.pct_set)
-  }
-  #if statements to handle formating the different modalities
-  if(assay_name=="chromvar"){ #make chromvar names readable
-      print("Translating Chromvar Motif Names for Plot")
-      x_da$out_name <- unlist(lapply(unlist(lapply(row.names(x_da), function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
-  } else{
-    x_da$out_name<-row.names(x_da)
-  }
-  #if(assay_name=="peaks"){ #assign peak output to closest features
-  #  x_da_peaks<-colsplit(row.names(x_da), "\\-", names=c("chr", "start", "end"))
-  #  x_da_peaks<-GRanges(seqnames = x_da_peaks$chr, ranges = IRanges(start = x_da_peaks$start, end = x_da_peaks$end))
-  #  DefaultAssay(x)<-"peaks"
-  #  closest_genes <- ClosestFeature(x,x_da_peaks)
-  #  x_da <-cbind(x_da ,closest_genes)
-  #}
-
-  x_da$sig<-ifelse(x_da$p_val_adj<=0.05,"sig","non_sig")
-  x_da$label<-""
-
-  if(assay_name!="peaks"){ #ignore adding peaks names (too many), and add top 10 significant names to either side of comparison
-    ident_1_labels<- row.names(head(x_da[which((x_da$sig=="sig") & (x_da$avg_log2FC>0)),] ,n=10))#significant, is ident1 specific, is top 10
-    ident_2_labels<- row.names(head(x_da[which((x_da$sig=="sig") & (x_da$avg_log2FC<0)),] ,n=10))#significant, is ident1 specific, is top 10
-    x_da[c(ident_1_labels,ident_2_labels),]$label<-x_da[c(ident_1_labels,ident_2_labels),]$out_name
-        #trim cistrome cell line from name (for readability)
-  }
-  x_scale<-max(abs(x_da$avg_log2FC))*1.1 #find proper scaling for x axis
-
-  plt<-ggplot(x_da,aes(x=avg_log2FC,y=-log10(p_val_adj),color=sig,label=label,alpha=0.1))+
-    geom_point(size=0.5)+
-    theme_bw()+
-    scale_fill_manual(values=c("non_sig"="#999999", "sig"="#FF0000"))+
-    xlim(c(-x_scale,x_scale))+
-    geom_vline(xintercept=0)+
-    geom_hline(yintercept=-log10(0.05))+
-    geom_text_repel(size=2,segment.size=0.1,max.overlaps=Inf,min.segment.length = 0, nudge_y = 1, segment.angle = 20,color="black") +
-    theme(legend.position = "none",axis.title.x = element_blank(),axis.title.y = element_blank())
-    ggsave(plt,file=paste0(outname,"_",assay_name,"_",i1,"v",i2,".pdf"),width=2,units="in",height=3)
-  system(paste0("slack -F ",outname,"_",assay_name,"_",i1,"v",i2,".pdf"," ryan_todo"))
-  write.table(x_da,file=paste0(outname,"_",assay_name,"_",i1,"v",i2,".markers.txt"),col.names=T,sep="\t")
-  system(paste0("slack -F ",paste0(outname,"_",assay_name,"_",i1,"v",i2,".markers.txt")," ryan_todo"))
-}
-
-
-sample_in<-unlist(lapply(c(1,3,4,5,6,7,8,9,10,11,12),function(x) paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".SeuratObject.rds")))
-
-
-  ###########Color Schema#################
-  type_cols<-c(
-  #epithelial
-  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-  "B-cells" ="#089099", "T-cells" ="#003147", #other
-  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
-
-  ref_cols<-c(
-  "TRUE"="grey",
-  "FALSE"="red")
-
-  lineage_cols<-c(
-    "epithel_1"="#00B050",
-    "epithel_2"="#00b0f0",
-    "epithel_3"="#ff0000",
-    "NA"="grey")
-  #########################################
-dat<-sample_in[7]
-
-####RUNNING INFERCNV#####
-infercnv_lineage_differences<-function(dat){
-  #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
-  #dat is full path to seurat object
-  dat_file_path=dat
-  outname<-substr(dat_file_path,1,nchar(dat_file_path)-3)
-  dat<-readRDS(dat)
-  dat$cnv_ref<-"FALSE"
-  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
-  DefaultAssay(dat)<-"RNA"
-  outname<-substr(dat_file_path,1,nchar(dat_file_path)-17) #redo outname to remove "seuratobject" from filename
-  dend<-readRDS(file=paste0(outname,".inferCNV.dend.Rds")) #save dendrogram
-  tree_info<-data.frame(cutree(dend,3)) #i know this is 3 manually, but maybe it is saved in the object somewhere?
-  colnames(tree_info)<-"epithelial_lineage"
-  tree_info$epithelial_lineage<-paste0("epithel_",tree_info$epithelial_lineage)
-  dat<-AddMetaData(dat,metadata=tree_info,col.name="epithelial_lineage")
-  Idents(dat)<-dat$epithelial_lineage
-  plt<-DimPlot(dat,group.by="epithelial_lineage",cols=lineage_cols,reduction="rna_umap")
-  ggsave(plt,file=paste0(outname,".inferCNV.lineage.dim.pdf"))
-  system(paste0("slack -F ",paste0(outname,".inferCNV.lineage.dim.pdf")," ryan_todo"))
-
-  meta_dat<-as.data.frame(dat@meta.data)
-  meta_dat<-meta_dat[!isNA(meta_dat$epithelial_lineage),]
-  plt1<-ggplot(meta_dat,aes(x=epithelial_lineage,y=Basal_SC,color=epithelial_lineage))+geom_boxplot()+theme_minimal()+  theme(legend.position="none")
-  plt2<-ggplot(meta_dat,aes(x=epithelial_lineage,y=Her2E_SC,color=epithelial_lineage))+geom_boxplot()+theme_minimal()+  theme(legend.position="none")
-
-  plt3<-ggplot(meta_dat,aes(x=epithelial_lineage,y=LumA_SC,color=epithelial_lineage))+geom_boxplot()+theme_minimal()+  theme(legend.position="none")
-
-  plt4<-ggplot(meta_dat,aes(x=epithelial_lineage,y=LumB_SC,color=epithelial_lineage))+geom_boxplot()+theme_minimal()+  theme(legend.position="none")
-  plt5<-ggplot(meta_dat,aes(x=epithelial_lineage,y=proliferation_score,color=epithelial_lineage))+geom_boxplot()+theme_minimal()+  theme(legend.position="none")
-  plt<-plt1|plt2|plt3|plt4|plt5
-  ggsave(plt,file="test.pdf")
-  system("slack -F test.pdf ryan_todo")
-
-
-  find_markers_epithelial_lineage(dat,i1="epithel_2",i2="epithel_3",assay_name="SCT",latent.vars="nFeature_SCT")
-  find_markers_epithelial_lineage(dat,i1="epithel_2",i2="epithel_3",assay_name="peaks",latent.vars="atac_peak_region_fragments",logfc.threshold_set=0.1,min.pct_set=0.1)
-  find_markers_epithelial_lineage(dat,i1="epithel_1",i2="epithel_3",assay_name="chromvar")
-
-
-  gene_name="SRRM2"
-  Idents(dat)<-dat$seurat_clusters
-  dat@assays$peaks
-  frag.path=paste0(dirname(dat_file_path),"/atac_fragments.tsv.gz")
-  fragments <- Fragments(dat)  # get list of fragment objects
-  fragments_in<-CreateFragmentObject(path=frag.path)
-  fragments <- UpdatePath(fragments, new.path = frag.path)
-  Fragments(dat) <- NULL  # remove fragment information from assay
-
-  plt_cov <- CoveragePlot(
-    object = dat,
-    region = gene_name,
-    features = gene_name,
-    expression.assay = "SCT",
-    assay="peaks",
-    extend.upstream=100000,
-    extend_downstream=100000,
-    Links=F)
-
-
-  ggsave(plt_cov,file="test.pdf")
-  system("slack -F test.pdf ryan_todo")
-
-
-
-  # gather the footprinting information for sets of motifs
-
-bone <- Footprint(
-  object = dat,
-  motif.name = c("MA0748.2"),
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  assay="peaks"
-)
-
-# plot the footprint data for each group of cells
-p2 <- PlotFootprint(bone, features = c("GATA3"))
-```
---->
-
 ## Run CaSpER on RNA 
 
 ```R
@@ -2032,94 +1858,6 @@ casper_per_sample_plot<-function(x){
 }
 
 
-compare_RNA_cnv_results<-function(x){
-  if(x %in% 1:12){
-    sample_name<-paste0("sample_",x)
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    sample_name<-paste0("sample_",x)
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    sample_name<-x
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-  obj_name=basename(file_in)
-  dir_in=dirname(file_in)
-
-  infercnv_dend<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.dend.Rds"))
-  casper_dend<-readRDS(paste0(dir_in,"_casper/",sample_name,".casper.dend.Rds")) 
-
-  #use Bkplot to define cluster count to use
-  dl<-dendlist(intersect_trees(infercnv_dend,casper_dend))
-  pdf(paste0(dir_in,"/",sample_name,".RNA.CNVs.Bkplot.pdf"),width=20)
-  Bk_plot(dl[[1]],dl[[2]],p.adjust.method="bonferroni",k=2:25,xlim=c(0,25))
-  dev.off()
-  system(paste0("slack -F ",paste0(dir_in,"/",sample_name,".RNA.CNVs.Bkplot.pdf")," ryan_todo"))
-
-  k_search<-find_k(infercnv_dend,krange=2:10) #search for optimal K from 2-10
-  infer_cnv_k_clus_number<-k_search$nc
-  print(paste("Determined ",infer_cnv_k_clus_number," of clusters for InferCNV."))
-  k_search<-find_k(casper_dend,krange=2:10) #search for optimal K from 2-10
-  casper_k_clus_number<-k_search$nc
-  print(paste("Determined ",casper_k_clus_number," of clusters for Casper."))
-  
-  k_clus_number<-max(c(infer_cnv_k_clus_number,casper_k_clus_number)) #use max number of clusters
-  print(paste("Using ",k_clus_number," of clusters for both."))
-
-  dat<-AddMetaData(dat,cutree(infercnv_dend,k=k_clus_number),col.name="InferCNV_clusters")
-  dat<-AddMetaData(dat,cutree(casper_dend,k=k_clus_number),col.name="CaSpER_clusters")
-  saveRDS(dat,file_in)
-
-  metadata<-dat@meta.data
-  metadata<-metadata[metadata$predicted.id %in% c("Cancer Epithelial","Normal Epithelial" ),]
-  metadata<-metadata[!is.na(metadata$InferCNV_clusters) & !is.na(metadata$CaSpER_clusters),]
-  metadata$InferCNV_clusters<-as.character(metadata$InferCNV_clusters)
-  metadata$CaSpER_clusters<-as.character(metadata$CaSpER_clusters)
-
-  plt<-ggplot(metadata,
-       aes(y =   match(row.names(metadata),labels(infercnv_dend)[order.dendrogram(infercnv_dend)]),
-        axis1 = InferCNV_clusters,
-        axis2 = CaSpER_clusters)) +
-  geom_alluvium(aes(fill = predicted.id), width = 1/12) +
-  geom_stratum(width = 1/12, fill = "black", color = "grey") +
-  geom_label(stat = "stratum", aes(label = after_stat(stratum))) +
-  scale_x_discrete(limits = c("InferCNV_clusters", "CaSpER_clusters"), expand = c(.05, .05)) +
-  scale_fill_brewer(type = "qual", palette = "Set1") +
-  ggtitle("Copy Number Lineages")
-  ggsave(plt,file=paste0(dir_in,"/",sample_name,".RNA.CNVs.alluvial.pdf"))
-  system(paste0("slack -F ",paste0(dir_in,"/",sample_name,".RNA.CNVs.alluvial.pdf")," ryan_todo"))
-
-  if(nrow(metadata)<500){
-  infercnv_dend <- color_branches(infercnv_dend, k = k_clus_number)    #split breakpoint object by clusters
-  casper_dend <- color_branches(casper_dend, k = k_clus_number)    #split breakpoint object by clusters
-  dl<-dendlist(intersect_trees(infercnv_dend,casper_dend))
-  pdf(paste0(dir_in,"/",sample_name,".RNA.CNVs.tanglegram.pdf"),width=20)
-  tanglegram(dl, 
-    main_left="InferCNV",
-    main_right="CaSpER",
-    main="Tangled",
-    sub=paste("entanglement =", round(entanglement(dl), 2)))
-  dl_sorted<-untangle(dl, method = "step2side")
-  tanglegram(dl_sorted,    
-    main_left="InferCNV",
-    main_right="CaSpER",
-    main="Untangled",
-    sub=paste("entanglement =", round(entanglement(dl_sorted), 2)))
-  dev.off()
-  system(paste0("slack -F ",paste0(dir_in,"/",sample_name,".RNA.CNVs.tanglegram.pdf")," ryan_todo"))
-  cor_cophenetic(dl[[1]],dl[[2]])
-  cor_bakers_gamma(dl[[1]],dl[[2]])
-  }
-}
 
 lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) infercnv_per_sample_plot(x))
 lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) casper_per_sample_plot(x))
@@ -2254,7 +1992,7 @@ copyscAT_per_sample<-function(x){
     minCPG=300,
     powVal=0.73) 
   #apply additional filters
-  scData_collapse<-filterCells(scData_collapse,minimumSegments = 40,minDensity = 0.1)
+  #scData_collapse<-filterCells(scData_collapse,minimumSegments = 40,minDensity = 0.1)
   #show unscaled chromosome list
   graphCNVDistribution(scData_collapse,outputSuffix = "test_violinsn2")
   #PART 2: ASSESSMENT OF CHROMOSOME-LEVEL CNVs 
@@ -2287,37 +2025,138 @@ copyscAT_per_sample<-function(x){
   #to save this data you can use annotateCNV4 as per usual
   final_cnv_list<-annotateCNV4(candidate_cnvs_clean, saveOutput=TRUE,outputSuffix = "clean_cnv",sdCNV = 0.6,filterResults=TRUE,filterRange=0.4)
   saveRDS(final_cnv_list,file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs.rds"))
-  #the other option is to use annotateCNV4B and feed in the normalBarcodes - this will set the "normal" population to 2 -- if the data is noisy it may lead to false positives so use with caution
-  #you may also use this version if you have a list of normal barcodes generated elsewhere
-  #final_cnv_list<-annotateCNV4B(candidate_cnvs_clean, control, saveOutput=TRUE,outputSuffix = "clean_cnv_b2",sdCNV = 0.6,filterResults=TRUE,filterRange=0.4,minAlteredCellProp = 0.5)
-  #PART 2B: smoothing CNV calls with clusters
-  #data smoothing: can provide CNV as list or as an input file (CSV)
-  #smoothedCNVList<-smoothClusters(scDataSampClusters,inputCNVList = final_cnv_list[[3]],percentPositive = 0.4,removeEmpty = FALSE)
-  #PART 3: identify double minutes / amplifications
-  #note: this is slow, and may take ~5 minutes
-  #if very large dataset, may run on subset of the data to estimate the amplifications in distinct clusters
-  #option to compile this code
-  #library(compiler)
-  #dmRead<-cmpfun(identifyDoubleMinutes)
-  #
-  #minThreshold is a time-saving option that doesn't call changepoints on any cell with a maximum Z score less than 4 - you can adjust this to adjust sensitivity of double minute calls (note - lower value = slower)
-  #dm_candidates<-dmRead(scData_k_norm,minCells=100,qualityCutoff2 = 100,minThreshold = 4) 
-  #write.table(x=dm_candidates,file=str_c(scCNVCaller$locPrefix,scCNVCaller$outPrefix,"samp_dm.csv"),quote=FALSE,row.names = FALSE,sep=",")
-  #PART 4: assess putative LOH regions
-  #note: this is in beta, interpret results with caution
-  #loh_regions<-getLOHRegions(scData_k_norm,diffThreshold = 3,lossCutoff = -0.75,minLength = 2e6,minSeg=2,targetFun=IQR,lossCutoffCells = 200,quantileLimit=0.2,cpgCutoff=100,dummyQuantile=0.6,dummyPercentile=0.4,dummySd=0.1)
-  #if(length(loh_regions>0)){
-  #write.table(x=loh_regions[[1]],file=str_c(scCNVCaller$locPrefix,scCNVCaller$outPrefix,"samp_loss.csv"),quote=FALSE,row.names = FALSE,sep=",")}
-  #PART 5: quantify cycling cells
-  #this uses the signal from a particular chromosome (we use chromosome X as typically not altered in our samples) to identify 2N versus 4N DNA content within cells
-  #if there is a known alteration in X in your samples, try using a different chromosome
-  #barcodeCycling<-estimateCellCycleFraction(scData,sampName="sample",cutoff=1000)
-  #take max as 
-  #write.table(barcodeCycling[order(names(barcodeCycling))]==max(barcodeCycling),file=str_c(scCNVCaller$locPrefix,scCNVCaller$outPrefix,"_cycling_cells.tsv"),sep="\t",quote=FALSE,row.names=TRUE,col.names=FALSE)
   print(paste("Finished sample",sample_name))
 }
+lapply(c(1,3,5,6,8,19,"RM_1","RM_2", "RM_3","RM_4",4,10,12),copyscAT_per_sample)
 
-lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",4,10,12),copyscAT_per_sample)
+#Done: 
+#Not done: 7,9,11,15,16,20,
+
+```
+# Comparison of Clones determined by CNV Callers
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+library(infercnv)
+library(ComplexHeatmap)
+library(circlize)
+library(patchwork)
+library(reshape2)
+library(philentropy)
+library(CaSpER)
+library(dendextend)
+library(ggalluvial)
+
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+  ###########Color Schema#################
+  type_cols<-c(
+  #epithelial
+  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+  "B-cells" ="#089099", "T-cells" ="#003147", #other
+  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
+  diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
+  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
+  pam50_colors<-c("Basal"="red","Her2"="pink","LumA"="blue","LumB"="cyan","Normal"="grey","NA"="black")
+  embo_colors<-c("Basal"="green","LP"="blue","ML"="orange","Str"="red","NA"="black")
+  ########################################
+
+compare_RNA_cnv_results<-function(x){
+  if(x %in% 1:12){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    sample_name<-x
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  obj_name=basename(file_in)
+  dir_in=dirname(file_in)
+
+  infercnv_dend<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.dend.Rds"))
+  casper_dend<-readRDS(paste0(dir_in,"_casper/",sample_name,".casper.dend.Rds")) 
+
+  #use Bkplot to define cluster count to use
+  dl<-dendlist(intersect_trees(infercnv_dend,casper_dend))
+  pdf(paste0(dir_in,"/",sample_name,".RNA.CNVs.Bkplot.pdf"),width=20)
+  Bk_plot(dl[[1]],dl[[2]],p.adjust.method="bonferroni",k=2:25,xlim=c(0,25))
+  dev.off()
+  system(paste0("slack -F ",paste0(dir_in,"/",sample_name,".RNA.CNVs.Bkplot.pdf")," ryan_todo"))
+
+  k_search<-find_k(infercnv_dend,krange=2:10) #search for optimal K from 2-10
+  infer_cnv_k_clus_number<-k_search$nc
+  print(paste("Determined ",infer_cnv_k_clus_number," of clusters for InferCNV."))
+  k_search<-find_k(casper_dend,krange=2:10) #search for optimal K from 2-10
+  casper_k_clus_number<-k_search$nc
+  print(paste("Determined ",casper_k_clus_number," of clusters for Casper."))
+  
+  k_clus_number<-max(c(infer_cnv_k_clus_number,casper_k_clus_number)) #use max number of clusters
+  print(paste("Using ",k_clus_number," of clusters for both."))
+
+  dat<-AddMetaData(dat,cutree(infercnv_dend,k=k_clus_number),col.name="InferCNV_clusters")
+  dat<-AddMetaData(dat,cutree(casper_dend,k=k_clus_number),col.name="CaSpER_clusters")
+  saveRDS(dat,file_in)
+
+  metadata<-dat@meta.data
+  metadata<-metadata[metadata$predicted.id %in% c("Cancer Epithelial","Normal Epithelial" ),]
+  metadata<-metadata[!is.na(metadata$InferCNV_clusters) & !is.na(metadata$CaSpER_clusters),]
+  metadata$InferCNV_clusters<-as.character(metadata$InferCNV_clusters)
+  metadata$CaSpER_clusters<-as.character(metadata$CaSpER_clusters)
+
+  plt<-ggplot(metadata,
+       aes(y =   match(row.names(metadata),labels(infercnv_dend)[order.dendrogram(infercnv_dend)]),
+        axis1 = InferCNV_clusters,
+        axis2 = CaSpER_clusters)) +
+  geom_alluvium(aes(fill = predicted.id), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "black", color = "grey") +
+  geom_label(stat = "stratum", aes(label = after_stat(stratum))) +
+  scale_x_discrete(limits = c("InferCNV_clusters", "CaSpER_clusters"), expand = c(.05, .05)) +
+  scale_fill_brewer(type = "qual", palette = "Set1") +
+  ggtitle("Copy Number Lineages")
+  ggsave(plt,file=paste0(dir_in,"/",sample_name,".RNA.CNVs.alluvial.pdf"))
+  system(paste0("slack -F ",paste0(dir_in,"/",sample_name,".RNA.CNVs.alluvial.pdf")," ryan_todo"))
+
+  if(nrow(metadata)<500){
+  infercnv_dend <- color_branches(infercnv_dend, k = k_clus_number)    #split breakpoint object by clusters
+  casper_dend <- color_branches(casper_dend, k = k_clus_number)    #split breakpoint object by clusters
+  dl<-dendlist(intersect_trees(infercnv_dend,casper_dend))
+  pdf(paste0(dir_in,"/",sample_name,".RNA.CNVs.tanglegram.pdf"),width=20)
+  tanglegram(dl, 
+    main_left="InferCNV",
+    main_right="CaSpER",
+    main="Tangled",
+    sub=paste("entanglement =", round(entanglement(dl), 2)))
+  dl_sorted<-untangle(dl, method = "step2side")
+  tanglegram(dl_sorted,    
+    main_left="InferCNV",
+    main_right="CaSpER",
+    main="Untangled",
+    sub=paste("entanglement =", round(entanglement(dl_sorted), 2)))
+  dev.off()
+  system(paste0("slack -F ",paste0(dir_in,"/",sample_name,".RNA.CNVs.tanglegram.pdf")," ryan_todo"))
+  cor_cophenetic(dl[[1]],dl[[2]])
+  cor_bakers_gamma(dl[[1]],dl[[2]])
+  }
+}
 
 ```
 ### Files for Travis
