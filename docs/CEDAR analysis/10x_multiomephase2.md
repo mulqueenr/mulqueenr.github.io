@@ -911,7 +911,7 @@ setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 #from tumor sample information
 meta_data_in<-as.data.frame(cbind("sample"=c(paste0("sample_",c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20)),"RM_1","RM_2","RM_3","RM_4"),
   "diagnosis"= c("DCIS", "IDC", "IDC", "IDC", "IDC", "DCIS", "IDC", "IDC", "IDC", "IDC", "IDC", "NAT", "DCIS", "NAT", "IDC", "ILC", "IDC", "IDC", "NAT"), "molecular_type"=c(
-"DCIS", "ER+/PR-/HER2-", "ER+/PR-/HER2-", "ER+/PR+/HER2-", "ER+/PR+/HER2-", "DCIS", "ER+/PR+/HER2-", "ER+/PR+/HER2-", "ER+/PR-/HER2-", "ER+/PR-/HER2-", "ER+/PR+/HER2-", "NA", "DCIS", "NA", "ER+/PR+/HER2-", "ER+/PR+/HER2-", "ER+/PR-/HER2+", "ER+/PR-NA/HER2-", "NA")))
+"DCIS", "ER+/PR-/HER2-", "ER+/PR-/HER2-", "ER+/PR+/HER2-", "ER+/PR+/HER2-", "DCIS", "ER+/PR+/HER2-", "ER+/PR+/HER2-", "ER+/PR-/HER2-", "ER+/PR-/HER2-", "ER+/PR+/HER2-", "NA", "DCIS", "NA", "ER+/PR+/HER2-", "ER+/PR+/HER2-", "ER+/PR-/HER2+", "ER+/PR+/HER2-", "NA")))
 
 sample_metadata_merged<-function(dat){
   dat_file_path=dat
@@ -1176,7 +1176,8 @@ cd /home/groups/CEDAR/mulqueen/ref/embo
 #https://github.com/yunshun/HumanBreast10X/blob/main/Signatures/PAM50.txt
 ```
 
-## Use EMBO Paper Cell Type Signatures
+
+## Use EMBO and Swarbrick Paper Cell Types to Define Signatures
 ```R
 library(Signac)
 library(Seurat)
@@ -1185,20 +1186,49 @@ library(ggplot2)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
 #cell lineage
-load("/home/groups/CEDAR/mulqueen/ref/embo/Human-PosSigGenes.RData")
-ls()
-#[1] "Basal" "LP"    "ML"    "Str" #lineage types
-lineage_in=list(EMBO_Basal=Basal,EMBO_LP=LP,EMBO_ML=ML,EMBO_Str=Str)
+  load("/home/groups/CEDAR/mulqueen/ref/embo/Human-PosSigGenes.RData")
+  ls()
+  #[1] "Basal" "LP"    "ML"    "Str" #lineage types
+  lineage_in=list(EMBO_Basal=Basal,EMBO_LP=LP,EMBO_ML=ML,EMBO_Str=Str)
 
-immune_in<-read.table("/home/groups/CEDAR/mulqueen/ref/embo/ImmuneMarkers2.txt",header=T,sep="\t")
-immune_in<-lapply(split(immune_in,immune_in$CellType),function(x) x$Signatures)#split up data frame to a named list of genes per cell type
-names(immune_in)<-paste0("EMBO_",names(immune_in))#rename the list just so we can track the source
+#Immune markers
+  immune_in<-read.table("/home/groups/CEDAR/mulqueen/ref/embo/ImmuneMarkers2.txt",header=T,sep="\t")
+  immune_in<-lapply(split(immune_in,immune_in$CellType),function(x) x$Signatures)#split up data frame to a named list of genes per cell type
+  names(immune_in)<-paste0("EMBO_",names(immune_in))#rename the list just so we can track the source
 
-#using both the given PAM50 and the EMBO supplied more extensive gene list
-PAM50_in<-read.table("/home/groups/CEDAR/mulqueen/ref/embo/PAM50.txt",header=T,sep="\t")
-PAM50_in<-lapply(split(PAM50_in,PAM50_in$Subtype),function(x) x$Gene)#split up data frame to a named list of genes per cell type
-names(PAM50_in)<-paste0("PAM50_",names(PAM50_in))
-features_in=c(immune_in,PAM50_in)   
+#using both the given PAM50 short list and the Swarbrick supplied more extensive gene list below
+  PAM50_in<-read.table("/home/groups/CEDAR/mulqueen/ref/embo/PAM50.txt",header=T,sep="\t")
+  PAM50_in<-lapply(split(PAM50_in,PAM50_in$Subtype),function(x) x$Gene)#split up data frame to a named list of genes per cell type
+  names(PAM50_in)<-paste0("PAM50_",names(PAM50_in))
+  features_in=c(immune_in,PAM50_in)   
+
+#SCSubtype Features determined by Swarbrick manuscript (Supp Table 4)
+  module_feats<-list()
+  module_feats[["Basal_SC"]]=c('EMP1', 'TAGLN', 'TTYH1', 'RTN4', 'TK1', 'BUB3', 'IGLV3.25', 'FAM3C', 'TMEM123', 'KDM5B', 'KRT14', 'ALG3', 'KLK6', 'EEF2', 'NSMCE4A', 'LYST', 'DEDD', 'HLA.DRA', 'PAPOLA', 'SOX4', 'ACTR3B', 'EIF3D', 'CACYBP', 'RARRES1', 'STRA13', 'MFGE8', 'FRZB', 'SDHD', 'UCHL1', 'TMEM176A', 'CAV2', 'MARCO', 'P4HB', 'CHI3L2', 'APOE', 'ATP1B1', 'C6orf15', 'KRT6B', 'TAF1D', 'ACTA2', 'LY6D', 'SAA2', 'CYP27A1', 'DLK1', 'IGKV1.5', 'CENPW', 'RAB18', 'TNFRSF11B', 'VPS28', 'HULC', 'KRT16', 'CDKN2A', 'AHNAK2', 'SEC22B', 'CDC42EP1', 'HMGA1', 'CAV1', 'BAMBI', 'TOMM22', 'ATP6V0E2', 'MTCH2', 'PRSS21', 'HDAC2', 'ZG16B', 'GAL', 'SCGB1D2', 'S100A2', 'GSPT1', 'ARPC1B', 'NIT1', 'NEAT1', 'DSC2', 'RP1.60O19.1', 'MAL2', 'TMEM176B', 'CYP1B1', 'EIF3L', 'FKBP4', 'WFDC2', 'SAA1', 'CXCL17', 'PFDN2', 'UCP2', 'RAB11B', 'FDCSP', 'HLA.DPB1', 'PCSK1N', 'C4orf48', 'CTSC')
+  module_feats[["Her2E_SC"]]=c('PSMA2', 'PPP1R1B', 'SYNGR2', 'CNPY2', 'LGALS7B', 'CYBA', 'FTH1', 'MSL1', 'IGKV3.15', 'STARD3', 'HPD', 'HMGCS2', 'ID3', 'NDUFB8', 'COTL1', 'AIM1', 'MED24', 'CEACAM6', 'FABP7', 'CRABP2', 'NR4A2', 'COX14', 'ACADM', 'PKM', 'ECH1', 'C17orf89', 'NGRN', 'ATG5', 'SNHG25', 'ETFB', 'EGLN3', 'CSNK2B', 'RHOC', 'PSENEN', 'CDK12', 'ATP5I', 'ENTHD2', 'QRSL1', 'S100A7', 'TPM1', 'ATP5C1', 'HIST1H1E', 'LGALS1', 'GRB7', 'AQP3', 'ALDH2', 'EIF3E', 'ERBB2', 'LCN2', 'SLC38A10', 'TXN', 'DBI', 'RP11.206M11.7', 'TUBB', 'CRYAB', 'CD9', 'PDSS2', 'XIST', 'MED1', 'C6orf203', 'PSMD3', 'TMC5', 'UQCRQ', 'EFHD1', 'BCAM', 'GPX1', 'EPHX1', 'AREG', 'CDK2AP2', 'SPINK8', 'PGAP3', 'NFIC', 'THRSP', 'LDHB', 'MT1X', 'HIST1H4C', 'LRRC26', 'SLC16A3', 'BACE2', 'MIEN1', 'AR', 'CRIP2', 'NME1', 'DEGS2', 'CASC3', 'FOLR1', 'SIVA1', 'SLC25A39', 'IGHG1', 'ORMDL3', 'KRT81', 'SCGB2B2', 'LINC01285', 'CXCL8', 'KRT15', 'RSU1', 'ZFP36L2', 'DKK1', 'TMED10', 'IRX3', 'S100A9', 'YWHAZ')
+  module_feats[["LumA_SC"]]=c('SH3BGRL', 'HSPB1', 'PHGR1', 'SOX9', 'CEBPD', 'CITED2', 'TM4SF1', 'S100P', 'KCNK6', 'AGR3', 'MPC2', 'CXCL13', 'RNASET2', 'DDIT4', 'SCUBE2', 'KRT8', 'MZT2B', 'IFI6', 'RPS26', 'TAGLN2', 'SPTSSA', 'ZFP36L1', 'MGP', 'KDELR2', 'PPDPF', 'AZGP1', 'AP000769.1', 'MYBPC1', 'S100A1', 'TFPI2', 'JUN', 'SLC25A6', 'HSP90AB1', 'ARF5', 'PMAIP1', 'TNFRSF12A', 'FXYD3', 'RASD1', 'PYCARD', 'PYDC1', 'PHLDA2', 'BZW2', 'HOXA9', 'XBP1', 'AGR2', 'HSP90AA1') 
+  module_feats[["LumB_SC"]]=c('UGCG', 'ARMT1', 'ISOC1', 'GDF15', 'ZFP36', 'PSMC5', 'DDX5', 'TMEM150C', 'NBEAL1', 'CLEC3A', 'GADD45G', 'MARCKS', 'FHL2', 'CCDC117', 'LY6E', 'GJA1', 'PSAP', 'TAF7', 'PIP', 'HSPA2', 'DSCAM.AS1', 'PSMB7', 'STARD10', 'ATF3', 'WBP11', 'MALAT1', 'C6orf48', 'HLA.DRB1', 'HIST1H2BD', 'CCND1', 'STC2', 'NR4A1', 'NPY1R', 'FOS', 'ZFAND2A', 'CFL1', 'RHOB', 'LMNA', 'SLC40A1', 'CYB5A', 'SRSF5', 'SEC61G', 'CTSD', 'DNAJC12', 'IFITM1', 'MAGED2', 'RBP1', 'TFF1', 'APLP2', 'TFF3', 'TRH', 'NUPR1', 'EMC3', 'TXNIP', 'ARPC4', 'KCNE4', 'ANPEP', 'MGST1', 'TOB1', 'ADIRF', 'TUBA1B', 'MYEOV2', 'MLLT4', 'DHRS2', 'IFITM2')
+  module_feats[["proliferation_score"]]<-c("BIRC5", "CCNB1", "CDC20", "NUF2", "CEP55", "NDC80", "MKI67", "PTTG1", "RRM2", "TYMS","UBE2C")
+
+#Swarbrick Gene Module Classification (Supp Table 5)
+gene_module<-list()
+  gene_module[["gene_module_1"]]<-c('ATF3', 'JUN', 'NR4A1', 'IER2', 'DUSP1', 'ZFP36', 'JUNB', 'FOS', 'FOSB', 'PPP1R15A', 'KLF6', 'DNAJB1', 'EGR1', 'BTG2', 'HSPA1B', 'HSPA1A', 'RHOB', 'CLDN4', 'MAFF', 'GADD45B', 'IRF1', 'EFNA1', 'SERTAD1', 'TSC22D1', 'CEBPD', 'CCNL1', 'TRIB1', 'MYC', 'ELF3', 'LMNA', 'NFKBIA', 'TOB1', 'HSPB1', 'BRD2', 'MCL1', 'PNRC1', 'IER3', 'KLF4', 'ZFP36L2', 'SAT1', 'ZFP36L1', 'DNAJB4', 'PHLDA2', 'NEAT1', 'MAP3K8', 'GPRC5A', 'RASD1', 'NFKBIZ', 'CTD-3252C9.4', 'BAMBI', 'RND1', 'HES1', 'PIM3', 'SQSTM1', 'HSPH1', 'ZFAND5', 'AREG', 'CD55', 'CDKN1A', 'UBC', 'CLDN3', 'DDIT3', 'BHLHE40', 'BTG1', 'ANKRD37', 'SOCS3', 'NAMPT', 'SOX4', 'LDLR', 'TIPARP', 'TM4SF1', 'CSRNP1', 'GDF15', 'ZFAND2A', 'NR4A2', 'ERRFI1', 'RAB11FIP1', 'TRAF4', 'MYADM', 'ZC3H12A', 'HERPUD1', 'CKS2', 'BAG3', 'TGIF1', 'ID3', 'JUND', 'PMAIP1', 'TACSTD2', 'ETS2', 'DNAJA1', 'PDLIM3', 'KLF10', 'CYR61', 'MXD1', 'TNFAIP3', 'NCOA7', 'OVOL1', 'TSC22D3', 'HSP90AA1', 'HSPA6', 'C15orf48', 'RHOV', 'DUSP4', 'B4GALT1', 'SDC4', 'C8orf4', 'DNAJB6', 'ICAM1', 'DNAJA4', 'MRPL18', 'GRB7', 'HNRNPA0', 'BCL3', 'DUSP10', 'EDN1', 'FHL2', 'CXCL2', 'TNFRSF12A', 'S100P', 'HSPB8', 'INSIG1', 'PLK3', 'EZR', 'IGFBP5', 'SLC38A2', 'DNAJB9', 'H3F3B', 'TPM4', 'TNFSF10', 'RSRP1', 'ARL5B', 'ATP1B1', 'HSPA8', 'IER5', 'SCGB2A1', 'YPEL2', 'TMC5', 'FBXO32', 'MAP1LC3B', 'MIDN', 'GADD45G', 'VMP1', 'HSPA5', 'SCGB2A2', 'TUBA1A', 'WEE1', 'PDK4', 'STAT3', 'PERP', 'RBBP6', 'KCNQ1OT1', 'OSER1', 'SERP1', 'UBE2B', 'HSPE1', 'SOX9', 'MLF1', 'UBB', 'MDK', 'YPEL5', 'HMGCS1', 'PTP4A1', 'WSB1', 'CEBPB', 'EIF4A2', 'S100A10', 'ELMSAN1', 'ISG15', 'CCNI', 'CLU', 'TIMP3', 'ARL4A', 'SERPINH1', 'SCGB1D2', 'UGDH', 'FUS', 'BAG1', 'IFRD1', 'TFF1', 'SERTAD3', 'IGFBP4', 'TPM1', 'PKIB', 'MALAT1', 'XBP1', 'HEBP2', 'GEM', 'EGR2', 'ID2', 'EGR3', 'HSPD1', 'GLUL', 'DDIT4', 'CDC42EP1', 'RBM39', 'MT-ND5', 'CSNK1A1', 'SLC25A25', 'PEG10', 'DEDD2')
+
+gene_module[["gene_module_2"]]<-c('AZGP1', 'ATP5C1', 'ATP5F1', 'NHP2', 'MGP', 'RPN2', 'C14orf2', 'NQO1', 'REEP5', 'SSR2', 'NDUFA8', 'ATP5E', 'SH3BGRL', 'PIP', 'PRDX2', 'RAB25', 'EIF3L', 'PRDX1', 'USMG5', 'DAD1', 'SEC61G', 'CCT3', 'NDUFA4', 'APOD', 'CHCHD10', 'DDIT4', 'MRPL24', 'NME1', 'DCXR', 'NDUFAB1', 'ATP5A1', 'ATP5B', 'ATOX1', 'SLC50A1', 'POLR2I', 'TIMM8B', 'VPS29', 'TIMP1', 'AHCY', 'PRDX3', 'RBM3', 'GSTM3', 'ABRACL', 'RBX1', 'PAFAH1B3', 'AP1S1', 'RPL34', 'ATPIF1', 'PGD', 'CANX', 'SELENBP1', 'ATP5J', 'PSME2', 'PSME1', 'SDHC', 'AKR1A1', 'GSTP1', 'RARRES3', 'ISCU', 'NPM1', 'SPDEF', 'BLVRB', 'NDUFB3', 'RPL36A', 'MDH1', 'MYEOV2', 'MAGED2', 'CRIP2', 'SEC11C', 'CD151', 'COPE', 'PFN2', 'ALDH2', 'SNRPD2', 'TSTD1', 'RPL13A', 'HIGD2A', 'NDUFC1', 'PYCARD', 'FIS1', 'ITM2B', 'PSMB3', 'G6PD', 'CST3', 'SH3BGRL3', 'TAGLN2', 'NDUFA1', 'TMEM183A', 'S100A10', 'NGFRAP1', 'DEGS2', 'ARPC5', 'TM7SF2', 'RPS10', 'LAMTOR5', 'TMEM256', 'UQCRB', 'TMEM141', 'KRTCAP2', 'HM13', 'NDUFS6', 'PARK7', 'PSMD4', 'NDUFB11', 'TOMM7', 'EIF6', 'UQCRHL', 'ADI1', 'VDAC1', 'C9orf16', 'ETFA', 'LSM3', 'UQCRH', 'CYB5A', 'SNRPE', 'BSG', 'SSR3', 'DPM3', 'LAMTOR4', 'RPS11', 'FAM195A', 'TMEM261', 'ATP5I', 'EIF5A', 'PIN4', 'ATXN10', 'ATP5G3', 'ARPC3', 'UBA52', 'BEX4', 'ROMO1', 'SLC25A6', 'SDCBP', 'EIF4EBP1', 'PFDN6', 'PSMA3', 'RNF7', 'SPCS2', 'CYSTM1', 'CAPG', 'CD9', 'GRHPR', 'SEPP1', 'ESF1', 'TFF3', 'ARPC1B', 'ANXA5', 'WDR83OS', 'LYPLA1', 'COMT', 'MDH2', 'DNPH1', 'RAB13', 'EIF3K', 'PTGR1', 'LGALS3', 'TPI1', 'COPZ1', 'LDHA', 'PSMD8', 'EIF2S3', 'NME3', 'EIF3E', 'MRPL13', 'ZFAND6', 'FAM162A', 'ATP6V0E1', 'TMED10', 'HNRNPA3', 'PPA1', 'SNX17', 'APOA1BP', 'TUFM', 'ECHS1', 'GLTSCR2', 'RPS27L', 'NDUFB1', 'SSBP1', 'PRDX6', 'ENO1', 'PPP4C', 'COA3', 'TCEAL4', 'MRPL54', 'LAMTOR2', 'PAIP2', 'DAP', 'RPL22L1', 'C6orf203', 'TECR', 'PEBP1', 'TMED9', 'ATP6V1F', 'ESD', 'EIF3I', 'SCO2', 'ATP5D', 'UAP1', 'TMEM258', 'COX17')
+
+gene_module[["gene_module_3"]]<-c('HLA-B', 'HLA-A', 'VIM', 'CD74', 'SRGN', 'HLA-C', 'IFI27', 'HLA-E', 'IFITM1', 'PSMB9', 'RGCC', 'S100A4', 'HLA-DRA', 'ISG15', 'IL32', 'SPARC', 'TAGLN', 'IFITM3', 'IFITM2', 'IGFBP7', 'CALD1', 'HLA-DPB1', 'HLA-DPA1', 'B2M', 'TIMP1', 'RGS1', 'FN1', 'ACTA2', 'HLA-DRB1', 'SERPING1', 'ANXA1', 'TPM2', 'TMSB4X', 'CD69', 'CCL4', 'LAPTM5', 'GSN', 'APOE', 'STAT1', 'SPARCL1', 'IFI6', 'DUSP1', 'CXCR4', 'CCL5', 'UBE2L6', 'MYL9', 'SLC2A3', 'BST2', 'CAV1', 'CD52', 'ZFP36L2', 'HLA-DQB1', 'PDLIM1', 'TNFAIP3', 'CORO1A', 'RARRES3', 'TYMP', 'C1S', 'PTRF', 'PSME2', 'CYTIP', 'COL1A1', 'PSMB8', 'NNMT', 'HLA-DQA1', 'DUSP2', 'COL1A2', 'ARHGDIB', 'COL6A2', 'FOS', 'CCL2', 'BGN', 'ID3', 'TUBA1A', 'RAC2', 'LBH', 'HLA-DRB5', 'FCER1G', 'GBP1', 'C1QA', 'COTL1', 'LUM', 'MYL6', 'GBP2', 'BTG1', 'CD37', 'HCST', 'LIMD2', 'IFIT3', 'IL7R', 'PTPRC', 'NKG7', 'FYB', 'TAP1', 'LTB', 'S100A6', 'COL3A1', 'EMP3', 'A2M', 'JUNB', 'TPM1', 'FABP4', 'TXNIP', 'SAT1', 'FXYD5', 'CD3E', 'HLA-DMA', 'CTSC', 'TSC22D3', 'MYL12A', 'CST3', 'CNN2', 'PHLDA1', 'LYZ', 'IFI44L', 'MARCKS', 'ID1', 'DCN', 'TGFBI', 'BIRC3', 'THY1', 'LGALS1', 'GPX1', 'C1QB', 'CD2', 'CST7', 'COL6A3', 'ACAP1', 'IFI16', 'ITM2B', 'POSTN', 'LDHB', 'FLNA', 'FILIP1L', 'CDKN1A', 'IRF1', 'LGALS3', 'SERPINH1', 'EFEMP1', 'PSME1', 'SH3BGRL3', 'IL2RG', 'CD3D', 'SFRP2', 'TIMP3', 'ALOX5AP', 'GMFG', 'CYBA', 'TAGLN2', 'LAP3', 'RGS2', 'CLEC2B', 'TRBC2', 'NR4A2', 'S100A8', 'PSMB10', 'OPTN', 'CTSB', 'FTL', 'KRT17', 'AREG', 'MYH9', 'MMP7', 'COL6A1', 'GZMA', 'RNASE1', 'PCOLCE', 'PTN', 'PYCARD', 'ARPC2', 'SGK1', 'COL18A1', 'GSTP1', 'NPC2', 'SOD3', 'MFGE8', 'COL4A1', 'ADIRF', 'HLA-F', 'CD7', 'APOC1', 'TYROBP', 'C1QC', 'TAPBP', 'STK4', 'RHOH', 'RNF213', 'SOD2', 'TPM4', 'CALM1', 'CTGF', 'PNRC1', 'CD27', 'CD3G', 'PRKCDBP', 'PARP14', 'IGKC', 'IGFBP5', 'IFIT1', 'LY6E')
+
+gene_module[["gene_module_4"]]<-c('STMN1', 'H2AFZ', 'UBE2C', 'TUBA1B', 'BIRC5', 'HMGB2', 'ZWINT', 'TUBB', 'HMGB1', 'DEK', 'CDK1', 'HMGN2', 'UBE2T', 'TK1', 'RRM2', 'RANBP1', 'TYMS', 'CENPW', 'MAD2L1', 'CKS2', 'CKS1B', 'NUSAP1', 'TUBA1C', 'PTTG1', 'KPNA2', 'PCNA', 'CENPF', 'HIST1H4C', 'CDKN3', 'UBE2S', 'CCNB1', 'HMGA1', 'DTYMK', 'SNRPB', 'CDC20', 'NASP', 'MCM7', 'PLP2', 'TUBB4B', 'PLK1', 'CCNB2', 'MKI67', 'TOP2A', 'TPX2', 'PKMYT1', 'PRC1', 'SMC4', 'CENPU', 'RAN', 'DUT', 'PA2G4', 'BUB3', 'RAD21', 'SPC25', 'HN1', 'CDCA3', 'H2AFV', 'HNRNPA2B1', 'CCNA2', 'PBK', 'LSM5', 'DNAJC9', 'RPA3', 'TMPO', 'SNRPD1', 'CENPA', 'KIF20B', 'USP1', 'H2AFX', 'PPM1G', 'NUF2', 'SNRPG', 'KIF22', 'KIAA0101', 'DEPDC1', 'RNASEH2A', 'MT2A', 'STRA13', 'ANLN', 'CACYBP', 'NCL', 'NUDT1', 'ECT2', 'LSM4', 'ASF1B', 'CENPN', 'TMEM106C', 'CCT5', 'HSPA8', 'HMMR', 'SRSF3', 'AURKB', 'GGH', 'AURKA', 'TRIP13', 'CDCA8', 'HMGB3', 'HNRNPAB', 'FAM83D', 'CDC25B', 'GGCT', 'KNSTRN', 'CCT6A', 'PTGES3', 'ANP32E', 'CENPK', 'MCM3', 'DDX21', 'HSPD1', 'SKA2', 'CALM2', 'UHRF1', 'HINT1', 'ORC6', 'MZT1', 'MIS18BP1', 'WDR34', 'NAP1L1', 'TEX30', 'SFN', 'HSPE1', 'CENPM', 'TROAP', 'CDCA5', 'RACGAP1', 'SLC25A5', 'ATAD2', 'DBF4', 'KIF23', 'CEP55', 'SIVA1', 'SAC3D1', 'PSIP1', 'CLSPN', 'CCT2', 'DLGAP5', 'PSMA4', 'SMC2', 'AP2S1', 'RAD51AP1', 'MND1', 'ILF2', 'DNMT1', 'NUCKS1', 'LMNB1', 'RFC4', 'EIF5A', 'NPM3', 'ARL6IP1', 'ASPM', 'GTSE1', 'TOMM40', 'HNRNPA1', 'GMNN', 'FEN1', 'CDCA7', 'SLBP', 'TNFRSF12A', 'TM4SF1', 'CKAP2', 'CENPE', 'SRP9', 'DDX39A', 'COMMD4', 'RBM8A', 'CALM3', 'RRM1', 'ENO1', 'ANP32B', 'SRSF7', 'FAM96A', 'TPRKB', 'FABP5', 'PPIF', 'SERPINE1', 'TACC3', 'RBBP7', 'NEK2', 'CALM1', 'GMPS', 'EMP2', 'HMG20B', 'SMC3', 'HSPA9', 'NAA20', 'NUDC', 'RPL39L', 'PRKDC', 'CDCA4', 'HIST1H1A', 'HES6', 'SUPT16H', 'PTMS', 'VDAC3', 'PSMC3', 'ATP5G1', 'PSMA3', 'PGP', 'KIF2C', 'CARHSP1')
+
+gene_module[["gene_module_5"]]<-c('GJA1', 'SCGB2A2', 'ARMT1', 'MAGED2', 'PIP', 'SCGB1D2', 'CLTC', 'MYBPC1', 'PDZK1', 'MGP', 'SLC39A6', 'CCND1', 'SLC9A3R1', 'NAT1', 'SUB1', 'CYP4X1', 'STC2', 'CROT', 'CTSD', 'FASN', 'PBX1', 'SLC4A7', 'FOXA1', 'MCCC2', 'IDH1', 'H2AFJ', 'CYP4Z1', 'IFI27', 'TBC1D9', 'ANPEP', 'DHRS2', 'TFF3', 'LGALS3BP', 'GATA3', 'LTF', 'IFITM2', 'IFITM1', 'AHNAK', 'SEPP1', 'ACADSB', 'PDCD4', 'MUCL1', 'CERS6', 'LRRC26', 'ASS1', 'SEMA3C', 'APLP2', 'AMFR', 'CDV3', 'VTCN1', 'PREX1', 'TP53INP1', 'LRIG1', 'ANK3', 'ACLY', 'CLSTN1', 'GNB1', 'C1orf64', 'STARD10', 'CA12', 'SCGB2A1', 'MGST1', 'PSAP', 'GNAS', 'MRPS30', 'MSMB', 'DDIT4', 'TTC36', 'S100A1', 'FAM208B', 'STT3B', 'SLC38A1', 'DMKN', 'SEC14L2', 'FMO5', 'DCAF10', 'WFDC2', 'GFRA1', 'LDLRAD4', 'TXNIP', 'SCGB3A1', 'APOD', 'N4BP2L2', 'TNC', 'ADIRF', 'NPY1R', 'NBPF1', 'TMEM176A', 'GLUL', 'BMP2K', 'SLC44A1', 'GFPT1', 'PSD3', 'CCNG2', 'CGNL1', 'TMED7', 'NOVA1', 'ARCN1', 'NEK10', 'GPC6', 'SCGB1B2P', 'IGHG4', 'SYT1', 'SYNGR2', 'HSPA1A', 'ATP6AP1', 'TSPAN13', 'MT-ND2', 'NIFK', 'MT-ATP8', 'MT-ATP6', 'MT-CO3', 'EVL', 'GRN', 'ERH', 'CD81', 'NUPR1', 'SELENBP1', 'C1orf56', 'LMO3', 'PLK2', 'HACD3', 'RBBP8', 'CANX', 'ENAH', 'SCD', 'CREB3L2', 'SYNCRIP', 'TBL1XR1', 'DDR1', 'ERBB3', 'CHPT1', 'BANF1', 'UGDH', 'SCUBE2', 'UQCR10', 'COX6C', 'ATP5G1', 'PRSS23', 'MYEOV2', 'PITX1', 'MT-ND4L', 'TPM1', 'HMGCS2', 'ADIPOR2', 'UGCG', 'FAM129B', 'TNIP1', 'IFI6', 'CA2', 'ESR1', 'TMBIM4', 'NFIX', 'PDCD6IP', 'CRIM1', 'ARHGEF12', 'ENTPD5', 'PATZ1', 'ZBTB41', 'UCP1', 'ANO1', 'RP11-356O9.1', 'MYB', 'ZBTB44', 'SCPEP1', 'HIPK2', 'CDK2AP1', 'CYHR1', 'SPINK8', 'FKBP10', 'ISOC1', 'CD59', 'RAMP1', 'AFF3', 'MT-CYB', 'PPP1CB', 'PKM', 'ALDH2', 'PRSS8', 'NPW', 'SPR', 'PRDX3', 'SCOC', 'TMED10', 'KIAA0196', 'NDP', 'ZSWIM7', 'AP2A1', 'PLAT', 'SUSD3', 'CRABP2', 'DNAJC12', 'DHCR24', 'PPT1', 'FAM234B', 'DDX17', 'LRP2', 'ABCD3', 'CDH1', 'NFIA') 
+
+gene_module[["gene_module_6"]]<-c('AGR2', 'TFF3', 'SELM', 'CD63', 'CTSD', 'MDK', 'CD74', 'S100A13', 'IFITM3', 'HLA-B', 'AZGP1', 'FXYD3', 'IFITM2', 'RABAC1', 'S100A14', 'CRABP2', 'LTF', 'RARRES1', 'HLA-A', 'PPIB', 'HLA-C', 'S100A10', 'S100A9', 'TIMP1', 'DDIT4', 'S100A16', 'LGALS1', 'LAPTM4A', 'SSR4', 'S100A6', 'CD59', 'BST2', 'PDIA3', 'KRT19', 'CD9', 'FXYD5', 'SCGB2A2', 'NUCB2', 'TMED3', 'LY6E', 'CFD', 'ITM2B', 'PDZK1IP1', 'LGALS3', 'NUPR1', 'SLPI', 'CLU', 'TMED9', 'HLA-DRA', 'SPTSSB', 'TMEM59', 'KRT8', 'CALR', 'HLA-DRB1', 'IFI6', 'NNMT', 'CALML5', 'S100P', 'TFF1', 'ATP1B1', 'SPINT2', 'PDIA6', 'S100A8', 'HSP90B1', 'LMAN1', 'RARRES3', 'SELENBP1', 'CEACAM6', 'TMEM176A', 'EPCAM', 'MAGED2', 'SNCG', 'DUSP4', 'CD24', 'PERP', 'WFDC2', 'HM13', 'TMBIM6', 'C12orf57', 'DKK1', 'MAGED1', 'PYCARD', 'RAMP1', 'C11orf31', 'STOM', 'TNFSF10', 'BSG', 'TMED10', 'ASS1', 'PDLIM1', 'CST3', 'PDIA4', 'NDUFA4', 'GSTP1', 'TYMP', 'SH3BGRL3', 'PRSS23', 'P4HA1', 'MUC5B', 'S100A1', 'PSAP', 'TAGLN2', 'MGST3', 'PRDX5', 'SMIM22', 'NPC2', 'MESP1', 'MYDGF', 'ASAH1', 'APP', 'NGFRAP1', 'TMEM176B', 'C8orf4', 'KRT81', 'VIMP', 'CXCL17', 'MUC1', 'COMMD6', 'TSPAN13', 'TFPI', 'C15orf48', 'CD151', 'TACSTD2', 'PSME2', 'CLDN7', 'ATP6AP2', 'CUTA', 'MT2A', 'CYB5A', 'CD164', 'TM4SF1', 'SCGB1D2', 'GSTM3', 'EGLN3', 'LMAN2', 'IFI27', 'PPP1R1B', 'B2M', 'ANXA2', 'SARAF', 'MUCL1', 'CSRP1', 'NPW', 'SLC3A2', 'PYDC1', 'QSOX1', 'TSPAN1', 'GPX1', 'TMSB4X', 'FGG', 'GUK1', 'IL32', 'ATP6V0E1', 'BCAP31', 'CHCHD10', 'TSPO', 'TNFRSF12A', 'MT1X', 'PDE4B', 'HSPA5', 'SCD', 'SERINC2', 'PSCA', 'VAMP8', 'ELF3', 'TSC22D3', 'S100A7', 'GLUL', 'ZG16B', 'TMEM45A', 'APMAP', 'RPS26', 'CALU', 'OSTC', 'NCCRP1', 'SQLE', 'RPS28', 'SSR2', 'SOX4', 'CLEC3A', 'TMEM9', 'RPL10', 'MUC5AC', 'HLA-DPA1', 'ZNHIT1', 'AQP5', 'CAPG', 'SPINT1', 'NDFIP1', 'FKBP2', 'C1S', 'LDHA', 'NEAT1', 'RPL36A', 'S100A11', 'LCN2', 'TUBA1A', 'GSTK1', 'SEPW1', 'P4HB') 
+
+gene_module[["gene_module_7"]]<-c('KCNQ1OT1', 'AKAP9', 'RHOB', 'SOX4', 'VEGFA', 'CCNL1', 'RSRP1', 'RRBP1', 'ELF3', 'H1FX', 'FUS', 'NEAT1', 'N4BP2L2', 'SLC38A2', 'BRD2', 'PNISR', 'CLDN4', 'MALAT1', 'SOX9', 'DDIT3', 'TAF1D', 'FOSB', 'ZNF83', 'ARGLU1', 'DSC2', 'MACF1', 'GTF2I', 'SEPP1', 'ANKRD30A', 'PRLR', 'MAFB', 'NFIA', 'ZFAS1', 'MTRNR2L12', 'RNMT', 'NUPR1', 'MT-ND6', 'RBM39', 'HSPA1A', 'HSPA1B', 'RGS16', 'SUCO', 'XIST', 'PDIA6', 'VMP1', 'SUGP2', 'LPIN1', 'NDRG1', 'PRRC2C', 'CELF1', 'HSP90B1', 'JUND', 'ACADVL', 'PTPRF', 'LMAN1', 'HEBP2', 'ATF3', 'BTG1', 'GNAS', 'TSPYL2', 'ZFP36L2', 'RHOBTB3', 'TFAP2A', 'RAB6A', 'KMT2C', 'POLR2J3', 'CTNND1', 'PRRC2B', 'RNF43', 'CAV1', 'RSPO3', 'IMPA2', 'FAM84A', 'FOS', 'IGFBP5', 'NCOA3', 'WSB1', 'MBNL2', 'MMP24-AS1', 'DDX5', 'AP000769.1', 'MIA3', 'ID2', 'HNRNPH1', 'FKBP2', 'SEL1L', 'PSAT1', 'ASNS', 'SLC3A2', 'EIF4EBP1', 'HSPH1', 'SNHG19', 'RNF19A', 'GRHL1', 'WBP1', 'SRRM2', 'RUNX1', 'ASH1L', 'HIST1H4C', 'RBM25', 'ZNF292', 'RNF213', 'PRPF38B', 'DSP', 'EPC1', 'FNBP4', 'ETV6', 'SPAG9', 'SIAH2', 'RBM33', 'CAND1', 'CEBPB', 'CD44', 'NOC2L', 'LY6E', 'ANGPTL4', 'GABPB1-AS1', 'MTSS1', 'DDX42', 'PIK3C2G', 'IAH1', 'ATL2', 'ADAM17', 'PHIP', 'MPZ', 'CYP27A1', 'IER2', 'ACTR3B', 'PDCD4', 'COLCA1', 'KIAA1324', 'TFAP2C', 'CTSC', 'MYC', 'MT1X', 'VIMP', 'SERHL2', 'YPEL3', 'MKNK2', 'ZNF552', 'CDH1', 'LUC7L3', 'DDIT4', 'HNRNPR', 'IFRD1', 'RASSF7', 'SNHG8', 'EPB41L4A-AS1', 'ZC3H11A', 'SNHG15', 'CREB3L2', 'ERBB3', 'THUMPD3-AS1', 'RBBP6', 'GPBP1', 'NARF', 'SNRNP70', 'RP11-290D2.6', 'SAT1', 'GRB7', 'H1F0', 'EDEM3', 'KIAA0907', 'ATF4', 'DNAJC3', 'DKK1', 'SF1', 'NAMPT', 'SETD5', 'DYNC1H1', 'GOLGB1', 'C4orf48', 'CLIC3', 'TECR', 'HOOK3', 'WDR60', 'TMEM101', 'SYCP2', 'C6orf62', 'METTL12', 'HIST1H2BG', 'PCMTD1', 'PWWP2A', 'HIST1H3H', 'NCK1', 'CRACR2B', 'NPW', 'RAB3GAP1', 'TMEM63A', 'MGP', 'ANKRD17', 'CALD1', 'PRKAR1A', 'PBX1', 'ATXN2L', 'FAM120A', 'SAT2', 'TAF10', 'SFRP1', 'CITED2') 
+
+#maybe add Ecotypes as well, no given gene lists from the publication??
+
+
 
 single_sample_cell_signature_transfer<-function(x){
   if(x %in% 1:12){
@@ -1220,12 +1250,30 @@ single_sample_cell_signature_transfer<-function(x){
     file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
     dat<-readRDS(file_in)
   }
+  dat_sub<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial"))
+
+  #embo lineage
   dat<-AddModuleScore(dat,features=lineage_in,names=names(lineage_in),assay="SoupXRNA",seed=123,search=TRUE)
   colnames(dat@meta.data)[startsWith(prefix="Cluster",colnames(dat@meta.data))]<-c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str") #Rename them
+
+  #Immune cell features and PAM50 canonical short list of genes
   for(i in 1:length(features_in)){
     features_in[[i]]<-features_in[[i]][features_in[[i]] %in% row.names(dat[["SoupXRNA"]])] #make sure gene names match
-    dat<-MetaFeature(dat,features=c(features_in[[i]]),meta.name=names(features_in)[i],assay="SoupXRNA")
-  }
+    dat<-MetaFeature(dat,features=c(features_in[[i]]),meta.name=names(features_in)[i],assay="SoupXRNA")}
+
+  #SCSubype List of genes
+  #run only on epithelial cells
+  module_scores<-AddModuleScore(dat_sub,features=module_feats,assay="SoupXRNA",search=TRUE,name=names(module_feats)) #use add module function to add cell scores
+  module_scores<-module_scores@meta.data[seq(ncol(module_scores@meta.data)-(length(module_feats)-1),ncol(module_scores@meta.data))]
+  colnames(module_scores)<-names(module_feats) #it adds a number at the end to each name by default, which I don't like
+  dat<-AddMetaData(dat,metadata=module_scores)
+
+  #Swarbrick Gene Modules
+  #run only on epithelial cells
+  gene_module_out<-AddModuleScore(dat_sub,features=gene_module,assay="SoupXRNA",search=TRUE,name=names(gene_module)) #use add module function to add cell scores
+  gene_module_out<-gene_module_out@meta.data[seq(ncol(gene_module_out@meta.data)-(length(gene_module)-1),ncol(gene_module_out@meta.data))]#get the 7 added gene modules
+  colnames(gene_module_out)<-names(gene_module) 
+  dat<-AddMetaData(dat,metadata=gene_module_out)
   saveRDS(dat,file=file_in)
 }
 
@@ -1286,15 +1334,16 @@ single_sample_PAM50_assignment<-function(x){
   }
   met<-dat@meta.data
   met<-met[met$predicted.id %in% c("Cancer Epithelial","Normal Epithelial"),]
-  pam_list<-  c("PAM50_Basal","PAM50_Her2","PAM50_LumA","PAM50_LumB","PAM50_Normal")
+  pam_list<-  c("Basal_SC","Her2E_SC","LumA_SC","LumB_SC")
   max_pam<-lapply(1:nrow(met),function(i) pam_list[which(met[i,pam_list]==max(met[i,pam_list],na.rm=T))])
   max_pam<-unlist(lapply(1:length(max_pam),function(i) do.call("paste",as.list(max_pam[[i]]))))
-  max_pam<-unlist(lapply(max_pam,function(i) gsub("PAM50_","",i)))
   names(max_pam)<-row.names(met)
-  dat<-AddMetaData(dat,max_pam,col.name="PAM50_designation")
+  dat<-AddMetaData(dat,max_pam,col.name="SCSubtype_designation")
   print(paste("Saving",outname))
   saveRDS(dat,file=file_in)
 }
+
+
 
 lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_PAM50_assignment)
 lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_EMBO_assignment)
@@ -1618,10 +1667,61 @@ casper_per_sample<-function(x){
 
 }
 
-lapply(c(12),function(x) casper_per_sample(x))
+lapply(c(16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12),function(x) casper_per_sample(x))
 
 #1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10
 
+```
+
+## Run CopyKat
+https://github.com/navinlabcode/copykat
+```R
+#library(devtools)
+#install_github("navinlabcode/copykat")
+
+library(Signac)
+library(Seurat)
+library(copykat)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+
+copykat_per_sample<-function(x){
+  if(x %in% 1:12){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    sample_name<-x
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  obj_name=basename(file_in)
+  dir_in=dirname(file_in)
+  system(paste0("mkdir ",dir_in,"/copykat"))
+  exp.rawdata <- as.matrix(dat@assays$RNA@counts)
+
+
+  DefaultAssay(dat)<-"RNA"
+  dat$cnv_ref<-"FALSE"
+  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+  cnv_ref<-row.names(dat@meta.data[dat@meta.data$cnv_ref=="TRUE",])
+  copykat_out <- copykat(rawmat=exp.rawdata, id.type="S", ngene.chr=5, win.size=25, KS.cut=0.1, sam.name=sample_name, distance="euclidean", norm.cell.names=cnv_ref,output.seg="FALSE", plot.genes="TRUE", genome="hg20",n.cores=5)
+  saveRDS(copykat_out,paste0(dir_in,"/copykat/",sample_name,".copykat.RDS"))
+}
+
+lapply(c(10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x) copykat_per_sample(x))
+
+#done 1,3,4,5,6,7,8,9,
 ```
 
 ### Plotting of InferCNV and CaSpER Output
@@ -1692,7 +1792,7 @@ infercnv_per_sample_plot<-function(x){
   cnv<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="FALSE",]),]
   col_fun = colorRamp2(c(min(unlist(cnv)), median(unlist(cnv)), max(unlist(cnv))), c("blue", "white", "red"))
 
-  dist_method="euclidean"
+  dist_method="manhattan"
   dist_x<-philentropy::distance(cnv,method=dist_method,as.dist.obj=T,use.row.names=T)
   dend <- dist_x %>%  hclust(method="ward.D2") %>% as.dendrogram(edge.root=F,h=2) 
   k_search<-find_k(dend,krange=2:10) #search for optimal K from 2-10
@@ -1860,41 +1960,157 @@ casper_per_sample_plot<-function(x){
 
 
 lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) infercnv_per_sample_plot(x))
-lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) casper_per_sample_plot(x))
+lapply(c(16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) casper_per_sample_plot(x))
+#15
+#Done: 1,3,5,6,7,8,9,
 lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) compare_RNA_cnv_results(x))
 
 
 ```
 
-Compare CASPER and InferCNV Results
+## Run IntClust on Samples
+Using iC10 CRAN Package https://cran.r-project.org/web/packages/iC10/iC10.pdf
 
+```R
+#install.packages("iC10")
+library(iC10)
+library(Seurat)
+library(Signac)
+#CN = ID (Sample Name) \t chromosome_name (Chr) \t loc.start (start) loc.end (end) seg.mean (log2ratio of segment)
+#OR
+#CN = Row (hgnc gene names) X Column (Sample)
+#Exp =  Row (hgnc gene names) X Column (Sample)
+
+#using InferCNV(gene level CNV calling) as CN matrix, and RNA data as Exp Matrix
+
+iC10_per_sample<-function(x){
+  #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
+  #dat is full path to seurat object
+  if(x %in% 1:12){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    sample_name<-x
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  obj_name=basename(file_in)
+  dir_in=dirname(file_in)
+  Idents(dat)<-dat$predicted.id
+  dat_ep<-subset(dat, cells = row.names(dat@meta.data[dat@meta.data$predicted.id%in% c("Normal Epithelial", "Cancer Epithelial"),]))
+  infercnv_obj<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
+  cnv<-log2(infercnv_obj@expr.data)
+  cnv<-cnv[,colnames(cnv) %in% colnames(dat_ep)]
+  exp<-dat_ep[["RNA"]]@counts
+
+  out<-matchFeatures(CN=cnv,Exp=exp,
+    CN.by.feat="gene",
+    Exp.by.feat="gene",
+    ref=NULL)
+  out<-normalizeFeatures(out, method="scale")
+  out<-iC10(out)
+  saveRDS(out,paste0(wd,"/",outname,"_iC10.Rds"))
+  dat<-AddMetaData(dat,out$class,col.name="ic10_class")
+  table(dat$ic10_class)
+  saveRDS(dat,file=file_in) #overwrite old file
+  print(paste("Finished Sample:",sample_name))
+}
+
+lapply(c(1,3,5,6,7,8,9,16,19,20,"RM_1","RM_2","RM_3",11,4,10,12), function(x) iC10_per_sample(x))
+#done 
+#15,"RM_4" not done
+```
+
+## Epithelial Subtyping Per Sample
 ```R
 library(Seurat)
 library(Signac)
-library(Signac)
-library(Seurat)
-library(EnsDb.Hsapiens.v86)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(GenomeInfoDb)
-set.seed(1234)
-library(stringr)
 library(ggplot2)
-library(infercnv)
-library(ComplexHeatmap)
-library(circlize)
-library(patchwork)
-library(reshape2)
-library(philentropy)
-library(dendextend)
-library(CaSpER)
+library(dplyr)
 
-cnv_comparisons<-function(x){
- 
+  #set up colors for samples
+  ###########Color Schema#################
+  type_cols<-c(
+  #epithelial
+  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+  "B-cells" ="#089099", "T-cells" ="#003147", #other
+  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
+  diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
+  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
+  ########################################
+  alpha_val=0.33
+
+epithelial_class_persample<-function(x){
+  if(x %in% 1:12){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+  }
+  dat<-readRDS(file=file_in)
+  atac_sub<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial"))
+  if(!("ic10_class" %in% colnames(atac_sub@meta.data))){
+    atac_sub$ic10_class<-"NA"
+  }
+  plt_cell_count<-atac_sub@meta.data[,c("sample","predicted.id","diagnosis","molecular_type","PAM50_designation","EMBO_designation","ic10_class")]
+  print(outname)
+  return(plt_cell_count)
 }
 
-lapply(c("RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) cnv_comparisons(x))
-#to run 15, 16, 19, 20
-#ran 1,3,5,6,7,8,9
+
+#grab all epithelial classifications
+cell_count<-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x)epithelial_class_persample(x))
+
+saveRDS(cell_count,"sample_epithelial_designations.rds") #save nested list of cell type assignment
+
+#plot output of celltype count per sample
+out<-readRDS("sample_epithelial_designations.rds")
+out<-do.call("rbind",out)
+colnames(out)<-c("sample","predicted.id","diagnosis","molecular_type","SCSubtype_designation","EMBO_designation","ic10_class") #rename just for simplicity
+#clean up for samples with equal values
+out[!(out$SCSubtype_designation %in% c("Basal","Her2","LumA","LumB","Normal")),]$SCSubtype_designation<-NA
+  #set up colors for samples
+  ###########Color Schema#################
+  type_cols<-c(
+  #epithelial
+  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+  "B-cells" ="#089099", "T-cells" ="#003147", #other
+  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
+  diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
+  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
+  ########################################
+plt1<-ggplot(out,aes(x=sample,fill=SCSubtype_designation))+geom_bar(position="fill")+theme_minimal()+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
+plt2<-ggplot(out,aes(x=sample,fill=EMBO_designation))+geom_bar(position="fill")+theme_minimal()+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
+plt3<-ggplot(out,aes(x=sample,fill=ic10_class))+geom_bar(position="fill")+theme_minimal()+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
+plt<-plt1/plt2/plt3
+ggsave(plt,file="sample_epithelial_type_assignment.pdf")
+system("slack -F sample_epithelial_type_assignment.pdf ryan_todo")
+
+library(dplyr)
+write.table(out,file="sample_epithelial_type_assignment.tsv",col.names=T,row.names=F,sep="\t",quote=F)
+system("slack -F sample_epithelial_type_assignment.tsv ryan_todo") #note this was calculated per sample as well as in the merged data set,  the assumption is that they will be the same
+
+
 ```
 
 ### ATAC CNV Calling with copyscAT
@@ -1932,7 +2148,7 @@ initialiseEnvironment(genomeFile="/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_
                       cytobandFile="/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_1e+06_cytoband_densities_granges.tsv",
                       cpgFile="/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_1e+06_cpg_densities.tsv",
                       binSize=1e6,
-                      minFrags=1e4,
+                      minFrags=500,
                       cellSuffix=c("-1","-2"),
                       lowerTrim=0.5,
                       upperTrim=0.8)
@@ -1973,13 +2189,11 @@ copyscAT_per_sample<-function(x){
   #PART 1: INITIAL DATA NORMALIZATION
   scData<-readInputTable(paste0(dir_in,"/copyscat/copyscat.1mb.tsv"))
   scData_k_norm <- normalizeMatrixN(scData,
-    logNorm = FALSE,
-    maxZero=2000,
     imputeZeros = FALSE,
-    blacklistProp = 0.8,
-    blacklistCutoff=125,
     dividingFactor=1,
-    upperFilterQuantile = 0.95)
+    blacklistProp = 0.8,
+    blacklistCutoff=50,
+    upperFilterQuantile = 1)
   #collapse into chromosome arm level
   summaryFunction<-cutAverage
   scData_collapse<-collapseChrom3N(scData_k_norm,
@@ -1991,8 +2205,6 @@ copyscAT_per_sample<-function(x){
     logBase=2,
     minCPG=300,
     powVal=0.73) 
-  #apply additional filters
-  #scData_collapse<-filterCells(scData_collapse,minimumSegments = 40,minDensity = 0.1)
   #show unscaled chromosome list
   graphCNVDistribution(scData_collapse,outputSuffix = "test_violinsn2")
   #PART 2: ASSESSMENT OF CHROMOSOME-LEVEL CNVs 
@@ -2006,13 +2218,13 @@ copyscAT_per_sample<-function(x){
   median_iqr <- computeCenters(scData_collapse %>% select(chrom,control),summaryFunction=summaryFunction)
   #setting medianQuantileCutoff to -1 and feeding non-neoplastic barcodes in as normalCells can improve accuracy of CNV calls
   candidate_cnvs<-identifyCNVClusters(scData_collapse,median_iqr,
-    useDummyCells = TRUE,
+    useDummyCells = FALSE,
     propDummy=0.25,
     minMix=0.01,
     deltaMean = 0.03,
     deltaBIC2 = 0.25,
     bicMinimum = 0.1,
-    subsetSize=800,
+    subsetSize=50,
     fakeCellSD = 0.09,
     uncertaintyCutoff = 0.65,
     summaryFunction=summaryFunction,
@@ -2022,17 +2234,19 @@ copyscAT_per_sample<-function(x){
     medianQuantileCutoff = -1,
     normalCells=control) 
   candidate_cnvs_clean<-clusterCNV(initialResultList = candidate_cnvs,medianIQR = candidate_cnvs[[3]],minDiff=1.0) #= 1.5)
-  #to save this data you can use annotateCNV4 as per usual
-  final_cnv_list<-annotateCNV4(candidate_cnvs_clean, saveOutput=TRUE,outputSuffix = "clean_cnv",sdCNV = 0.6,filterResults=TRUE,filterRange=0.4)
+  #to save this data you can use annotateCNV4 as per usual, using normal barcodes
+  final_cnv_list<-annotateCNV4B(candidate_cnvs_clean, expectedNormals=control, saveOutput=TRUE,
+    outputSuffix = "clean_cnv_b2",sdCNV = 0.6,filterResults=FALSE,filterRange=0.4,minAlteredCellProp = 0.5)
   saveRDS(final_cnv_list,file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs.rds"))
   print(paste("Finished sample",sample_name))
 }
-lapply(c(1,3,5,6,8,19,"RM_1","RM_2", "RM_3","RM_4",4,10,12),copyscAT_per_sample)
 
-#Done: 
-#Not done: 7,9,11,15,16,20,
+lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2", "RM_3","RM_4",4,10,12),copyscAT_per_sample)
+#Done
 
 ```
+
+
 # Comparison of Clones determined by CNV Callers
 
 ```R
@@ -2069,7 +2283,7 @@ setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
   embo_colors<-c("Basal"="green","LP"="blue","ML"="orange","Str"="red","NA"="black")
   ########################################
 
-compare_RNA_cnv_results<-function(x){
+plotting_copyscat_persample<-function(x){
   if(x %in% 1:12){
     sample_name<-paste0("sample_",x)
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
@@ -2092,71 +2306,93 @@ compare_RNA_cnv_results<-function(x){
   obj_name=basename(file_in)
   dir_in=dirname(file_in)
 
-  infercnv_dend<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.dend.Rds"))
-  casper_dend<-readRDS(paste0(dir_in,"_casper/",sample_name,".casper.dend.Rds")) 
+  copyscat_out<-readRDS(paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs.rds"))
+  cnv_dat<-(copyscat_out[[3]])
+  row.names(cnv_dat)<-cnv_dat[,1]
+  cnv_dat<-cnv_dat[,2:ncol(cnv_dat)]
+  cnv_dat<-cnv_dat[,colnames(cnv_dat) %in% c('chr1p', 'chr1q', 'chr2p', 'chr2q', 'chr3p', 'chr3q', 'chr4p', 'chr5q', 'chr6p', 'chr6q', 'chr7p', 'chr7q', 'chr8p', 'chr8q', 'chr9p', 'chr9q', 'chr10p', 'chr10q', 'chr11p', 'chr11q', 'chr12p', 'chr12q', 'chr13p', 'chr13q', 'chr14p', 'chr14q', 'chr15p', 'chr15q', 'chr16p', 'chr16q', 'chr17p', 'chr17q', 'chr18p', 'chr18q', 'chr19p', 'chr19q', 'chr20p', 'chr20q', 'chr21p', 'chr21q', 'chr22p', 'chr22q')] 
 
-  #use Bkplot to define cluster count to use
-  dl<-dendlist(intersect_trees(infercnv_dend,casper_dend))
-  pdf(paste0(dir_in,"/",sample_name,".RNA.CNVs.Bkplot.pdf"),width=20)
-  Bk_plot(dl[[1]],dl[[2]],p.adjust.method="bonferroni",k=2:25,xlim=c(0,25))
-  dev.off()
-  system(paste0("slack -F ",paste0(dir_in,"/",sample_name,".RNA.CNVs.Bkplot.pdf")," ryan_todo"))
+  cnv_dat<-as.data.frame(cnv_dat)
+  dat$cnv_ref<-"FALSE"
+  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+  DefaultAssay(dat)<-"RNA"
 
-  k_search<-find_k(infercnv_dend,krange=2:10) #search for optimal K from 2-10
-  infer_cnv_k_clus_number<-k_search$nc
-  print(paste("Determined ",infer_cnv_k_clus_number," of clusters for InferCNV."))
-  k_search<-find_k(casper_dend,krange=2:10) #search for optimal K from 2-10
-  casper_k_clus_number<-k_search$nc
-  print(paste("Determined ",casper_k_clus_number," of clusters for Casper."))
+  cnv_ref<-cnv_dat[row.names(cnv_dat) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="TRUE",]),]
+  cnv<-cnv_dat[row.names(cnv_dat) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="FALSE",]),]
+
+  col_fun = colorRamp2(c(0,2,4),c("blue","white","red"))
+  print("Performing distance calculation.")
+
+  dist_method="manhattan"
+  dist_x<-philentropy::distance(cnv,method=dist_method,as.dist.obj=T,use.row.names=T)
+  dend <- dist_x %>%  hclust(method="ward.D2") %>% as.dendrogram(edge.root=F,h=2) 
+  k_search<-find_k(dend,krange=2:10) #search for optimal K from 2-10
+  k_clus_number<-k_search$nc
+  print(paste("Determined ",k_clus_number," of clusters."))
+  k_clus_id<-k_search$pamobject$clustering
+  dend <- color_branches(dend, k = k_clus_number)    #split breakpoint object by clusters
+  saveRDS(dend,paste0(dir_in,"/copyscat/",sample_name,"copyscat_dend.rds"))
+
+  print("Generating heatmap of CNVs.")
   
-  k_clus_number<-max(c(infer_cnv_k_clus_number,casper_k_clus_number)) #use max number of clusters
-  print(paste("Using ",k_clus_number," of clusters for both."))
+  #set up heatmap annotation
+  met<-as.data.frame(dat@meta.data)
+  met_ref<-met[row.names(met) %in% row.names(cnv_ref),]
+  met<-met[row.names(met) %in% row.names(cnv),]
+  if(any(!(unique(met$PAM50_designation) %in% names(pam50_colors)))){
+  met[met$PAM50_designation %in% unique(met$PAM50_designation)[!(unique(met$PAM50_designation) %in% names(pam50_colors))],]$PAM50_designation<-"NA"}
+  if(any(!(unique(met$EMBO_designation) %in% names(embo_colors)))){
+  met[met$EMBO_designation %in% unique(met$EMBO_designation)[!(unique(met$EMBO_designation) %in% names(embo_colors))],]$EMBO_designation<-"NA"}
 
-  dat<-AddMetaData(dat,cutree(infercnv_dend,k=k_clus_number),col.name="InferCNV_clusters")
-  dat<-AddMetaData(dat,cutree(casper_dend,k=k_clus_number),col.name="CaSpER_clusters")
-  saveRDS(dat,file_in)
+  read_count_col<-colorRamp2(c(min(met$gex_exonic_umis+met$gex_intronic_umis),
+    max(met$gex_exonic_umis+met$gex_intronic_umis)), 
+    c("white","black"))
 
-  metadata<-dat@meta.data
-  metadata<-metadata[metadata$predicted.id %in% c("Cancer Epithelial","Normal Epithelial" ),]
-  metadata<-metadata[!is.na(metadata$InferCNV_clusters) & !is.na(metadata$CaSpER_clusters),]
-  metadata$InferCNV_clusters<-as.character(metadata$InferCNV_clusters)
-  metadata$CaSpER_clusters<-as.character(metadata$CaSpER_clusters)
+  ha = HeatmapAnnotation(which="row",
+    cell_type=met$predicted.id,
+    #cnv_ref=met$cnv_ref,
+    read_count= met$gex_exonic_umis+met$gex_intronic_umis,
+    pam_50=met$PAM50_designation,
+    embo=met$EMBO_designation,
+          col = list(cell_type = type_cols,
+            #cnv_ref=ref_cols,
+            read_count=read_count_col,
+            embo=embo_colors,
+            pam_50=pam50_colors))
 
-  plt<-ggplot(metadata,
-       aes(y =   match(row.names(metadata),labels(infercnv_dend)[order.dendrogram(infercnv_dend)]),
-        axis1 = InferCNV_clusters,
-        axis2 = CaSpER_clusters)) +
-  geom_alluvium(aes(fill = predicted.id), width = 1/12) +
-  geom_stratum(width = 1/12, fill = "black", color = "grey") +
-  geom_label(stat = "stratum", aes(label = after_stat(stratum))) +
-  scale_x_discrete(limits = c("InferCNV_clusters", "CaSpER_clusters"), expand = c(.05, .05)) +
-  scale_fill_brewer(type = "qual", palette = "Set1") +
-  ggtitle("Copy Number Lineages")
-  ggsave(plt,file=paste0(dir_in,"/",sample_name,".RNA.CNVs.alluvial.pdf"))
-  system(paste0("slack -F ",paste0(dir_in,"/",sample_name,".RNA.CNVs.alluvial.pdf")," ryan_todo"))
-
-  if(nrow(metadata)<500){
-  infercnv_dend <- color_branches(infercnv_dend, k = k_clus_number)    #split breakpoint object by clusters
-  casper_dend <- color_branches(casper_dend, k = k_clus_number)    #split breakpoint object by clusters
-  dl<-dendlist(intersect_trees(infercnv_dend,casper_dend))
-  pdf(paste0(dir_in,"/",sample_name,".RNA.CNVs.tanglegram.pdf"),width=20)
-  tanglegram(dl, 
-    main_left="InferCNV",
-    main_right="CaSpER",
-    main="Tangled",
-    sub=paste("entanglement =", round(entanglement(dl), 2)))
-  dl_sorted<-untangle(dl, method = "step2side")
-  tanglegram(dl_sorted,    
-    main_left="InferCNV",
-    main_right="CaSpER",
-    main="Untangled",
-    sub=paste("entanglement =", round(entanglement(dl_sorted), 2)))
-  dev.off()
-  system(paste0("slack -F ",paste0(dir_in,"/",sample_name,".RNA.CNVs.tanglegram.pdf")," ryan_todo"))
-  cor_cophenetic(dl[[1]],dl[[2]])
-  cor_bakers_gamma(dl[[1]],dl[[2]])
-  }
+  plt1<-Heatmap(cnv,
+      show_row_names=F,
+      show_column_names=F,
+      column_order=1:ncol(cnv),
+      col=col_fun,
+      cluster_rows=dend,
+      left_annotation=ha#,
+      #column_split=factor(substr(colnames(cnv),1,nchar(colnames(cnv))-1),levels=unique(substr(colnames(cnv),1,nchar(colnames(cnv))-1)))
+      )
+  ha_ref = HeatmapAnnotation(which="row",
+    cell_type=met_ref$predicted.id,
+    #cnv_ref=met$cnv_ref,
+    read_count= met_ref$gex_exonic_umis+met_ref$gex_intronic_umis,
+          col = list(cell_type = type_cols,
+            #cnv_ref=ref_cols,
+            read_count=read_count_col))
+  plt1_ref<-Heatmap(cnv_ref,
+      show_row_names=F,
+      show_column_names=F,
+      column_order=1:ncol(cnv_ref),
+      col=col_fun,
+      left_annotation=ha_ref#,
+      #column_split=factor(substr(colnames(cnv),1,nchar(colnames(cnv))-1),levels=unique(substr(colnames(cnv),1,nchar(colnames(cnv))-1)))
+      )
+    pdf(paste0(dir_in,"/copyscat",sample_name,".copyscat.heatmap.pdf"),width=20)
+    print(plt1_ref)
+    print(plt1)
+    dev.off()
+    system(paste0("slack -F ",paste0(dir_in,"/copyscat",sample_name,".copyscat.heatmap.pdf")," ryan_todo"))
 }
+
+lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2", "RM_3","RM_4",4,10,12),plotting_copyscat_persample)
+#1,3,5,8
 
 ```
 ### Files for Travis
@@ -2611,7 +2847,7 @@ o = seriate(swarbrick_out[,3:ncol(swarbrick_out)], method = "BEA_TSP")
 swarbrick<-Heatmap(swarbrick_out[,3:ncol(swarbrick_out)],
   left_annotation=side_ha,
   row_order = get_order(o, 1), column_order = get_order(o, 2),
-  col=colorRamp2(c(0, max(swarbrick_out[,3:ncol(swarbrick_out)])), c("white", "blue")),
+  col=colorRamp2(c(0, max(swarbrick_out[,3:ncol(swarbrick_out)])), c("white", "red")),
   show_row_names=T)
 
 EMBO<-Heatmap(EMBO_out[,3:ncol(EMBO_out)],
@@ -2639,6 +2875,7 @@ table(dat[dat$predicted.id%in%c("Cancer Epithelial","Normal Epithelial"),]$sampl
 #      704       356      1648       284      4466      2768       792       448
 # sample_7  sample_8  sample_9
 #     1860       415      1096
+
 
 
 #########THIS PORTION TO BE FIXED#######################
@@ -2766,39 +3003,6 @@ saveRDS(dat,file="phase2.QC.SeuratObject.rds")
 
 ```
 
-
-## Add per cell subtyping to epithelial cells
-This is from SC subtyping (the method from the Swarbrick paper). Supplemental Table 4. 
-```R
-library(Signac)
-library(Seurat)
-library(ggplot2)
-set.seed(1234)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-dat<-readRDS("phase2.QC.SeuratObject.rds")
-
-#Features determined by EMBO manuscript
-module_feats<-list()
-module_feats[["Basal_SC"]]=c('EMP1', 'TAGLN', 'TTYH1', 'RTN4', 'TK1', 'BUB3', 'IGLV3.25', 'FAM3C', 'TMEM123', 'KDM5B', 'KRT14', 'ALG3', 'KLK6', 'EEF2', 'NSMCE4A', 'LYST', 'DEDD', 'HLA.DRA', 'PAPOLA', 'SOX4', 'ACTR3B', 'EIF3D', 'CACYBP', 'RARRES1', 'STRA13', 'MFGE8', 'FRZB', 'SDHD', 'UCHL1', 'TMEM176A', 'CAV2', 'MARCO', 'P4HB', 'CHI3L2', 'APOE', 'ATP1B1', 'C6orf15', 'KRT6B', 'TAF1D', 'ACTA2', 'LY6D', 'SAA2', 'CYP27A1', 'DLK1', 'IGKV1.5', 'CENPW', 'RAB18', 'TNFRSF11B', 'VPS28', 'HULC', 'KRT16', 'CDKN2A', 'AHNAK2', 'SEC22B', 'CDC42EP1', 'HMGA1', 'CAV1', 'BAMBI', 'TOMM22', 'ATP6V0E2', 'MTCH2', 'PRSS21', 'HDAC2', 'ZG16B', 'GAL', 'SCGB1D2', 'S100A2', 'GSPT1', 'ARPC1B', 'NIT1', 'NEAT1', 'DSC2', 'RP1.60O19.1', 'MAL2', 'TMEM176B', 'CYP1B1', 'EIF3L', 'FKBP4', 'WFDC2', 'SAA1', 'CXCL17', 'PFDN2', 'UCP2', 'RAB11B', 'FDCSP', 'HLA.DPB1', 'PCSK1N', 'C4orf48', 'CTSC')
-module_feats[["Her2E_SC"]]=c('PSMA2', 'PPP1R1B', 'SYNGR2', 'CNPY2', 'LGALS7B', 'CYBA', 'FTH1', 'MSL1', 'IGKV3.15', 'STARD3', 'HPD', 'HMGCS2', 'ID3', 'NDUFB8', 'COTL1', 'AIM1', 'MED24', 'CEACAM6', 'FABP7', 'CRABP2', 'NR4A2', 'COX14', 'ACADM', 'PKM', 'ECH1', 'C17orf89', 'NGRN', 'ATG5', 'SNHG25', 'ETFB', 'EGLN3', 'CSNK2B', 'RHOC', 'PSENEN', 'CDK12', 'ATP5I', 'ENTHD2', 'QRSL1', 'S100A7', 'TPM1', 'ATP5C1', 'HIST1H1E', 'LGALS1', 'GRB7', 'AQP3', 'ALDH2', 'EIF3E', 'ERBB2', 'LCN2', 'SLC38A10', 'TXN', 'DBI', 'RP11.206M11.7', 'TUBB', 'CRYAB', 'CD9', 'PDSS2', 'XIST', 'MED1', 'C6orf203', 'PSMD3', 'TMC5', 'UQCRQ', 'EFHD1', 'BCAM', 'GPX1', 'EPHX1', 'AREG', 'CDK2AP2', 'SPINK8', 'PGAP3', 'NFIC', 'THRSP', 'LDHB', 'MT1X', 'HIST1H4C', 'LRRC26', 'SLC16A3', 'BACE2', 'MIEN1', 'AR', 'CRIP2', 'NME1', 'DEGS2', 'CASC3', 'FOLR1', 'SIVA1', 'SLC25A39', 'IGHG1', 'ORMDL3', 'KRT81', 'SCGB2B2', 'LINC01285', 'CXCL8', 'KRT15', 'RSU1', 'ZFP36L2', 'DKK1', 'TMED10', 'IRX3', 'S100A9', 'YWHAZ')
-module_feats[["LumA_SC"]]=c('SH3BGRL', 'HSPB1', 'PHGR1', 'SOX9', 'CEBPD', 'CITED2', 'TM4SF1', 'S100P', 'KCNK6', 'AGR3', 'MPC2', 'CXCL13', 'RNASET2', 'DDIT4', 'SCUBE2', 'KRT8', 'MZT2B', 'IFI6', 'RPS26', 'TAGLN2', 'SPTSSA', 'ZFP36L1', 'MGP', 'KDELR2', 'PPDPF', 'AZGP1', 'AP000769.1', 'MYBPC1', 'S100A1', 'TFPI2', 'JUN', 'SLC25A6', 'HSP90AB1', 'ARF5', 'PMAIP1', 'TNFRSF12A', 'FXYD3', 'RASD1', 'PYCARD', 'PYDC1', 'PHLDA2', 'BZW2', 'HOXA9', 'XBP1', 'AGR2', 'HSP90AA1') 
-module_feats[["LumB_SC"]]=c('UGCG', 'ARMT1', 'ISOC1', 'GDF15', 'ZFP36', 'PSMC5', 'DDX5', 'TMEM150C', 'NBEAL1', 'CLEC3A', 'GADD45G', 'MARCKS', 'FHL2', 'CCDC117', 'LY6E', 'GJA1', 'PSAP', 'TAF7', 'PIP', 'HSPA2', 'DSCAM.AS1', 'PSMB7', 'STARD10', 'ATF3', 'WBP11', 'MALAT1', 'C6orf48', 'HLA.DRB1', 'HIST1H2BD', 'CCND1', 'STC2', 'NR4A1', 'NPY1R', 'FOS', 'ZFAND2A', 'CFL1', 'RHOB', 'LMNA', 'SLC40A1', 'CYB5A', 'SRSF5', 'SEC61G', 'CTSD', 'DNAJC12', 'IFITM1', 'MAGED2', 'RBP1', 'TFF1', 'APLP2', 'TFF3', 'TRH', 'NUPR1', 'EMC3', 'TXNIP', 'ARPC4', 'KCNE4', 'ANPEP', 'MGST1', 'TOB1', 'ADIRF', 'TUBA1B', 'MYEOV2', 'MLLT4', 'DHRS2', 'IFITM2')
-module_feats[["proliferation_score"]]<-c("BIRC5", "CCNB1", "CDC20", "NUF2", "CEP55", "NDC80", "MKI67", "PTTG1", "RRM2", "TYMS","UBE2C")
-
-
-dat_sub<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial"))
-module_scores<-AddModuleScore(dat_sub,features=module_feats,assay="RNA",search=TRUE,name=names(module_feats)) #use add module function to add cell scores
-module_scores<-module_scores@meta.data[seq(ncol(module_scores@meta.data)-4,ncol(module_scores@meta.data))]
-colnames(module_scores)<-names(module_feats) #it adds a number at the end to each name by default, which I don't like
-
-dat<-AddMetaData(dat,metadata=module_scores)
-saveRDS(dat,file="phase2.QC.SeuratObject.rds")
-
-
-```
-
-
 ## Pseudobulk Clustering of Stroma, Immune and Epithelial Cells
 
 ### Epithelial Clustering
@@ -2887,7 +3091,6 @@ celltype_cistopic_generation(celltype_list=c("Cancer Epithelial","Normal Epithel
 celltype_cistopic_generation(celltype_list=c("B-cells","T-cells","Myeloid","Plasmablasts"),outname="immune")
 celltype_cistopic_generation(celltype_list=c("CAFs","Endothelial","PVL"),outname="stromal")
 
-
 #Rerun other clustering now that data is subset
 celltype_clustering<-function(x,outname){
   dat<-readRDS(x)
@@ -2971,6 +3174,348 @@ type_cols<-c(
 "B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
 "CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
 
+diag_cols<-c("IDC"="red", "DCIS"="grey","NAT"="lightblue","ILC"="green")
+
+molecular_type_cols<-c("DCIS"="grey", "ER+/PR-/HER2-"="#EBC258", "ER+/PR-/HER2+"="#F7B7BB","ER+/PR+/HER2-"="#ff6699","NA"="lightblue")
+########################################
+
+
+harmony_sample_integration<-function(x,outname){
+  dat<-readRDS(x)
+  dat<-RunHarmony(dat,group.by.vars="sample",reduction.save="harmony_atac",assay.use="ATAC",reduction="cistopic",project.dim=F)
+  dat<-RunHarmony(dat,group.by.vars="sample",reduction.save="harmony_rna",assay.use="RNA",reduction="pca",project.dim=F)
+
+  dat<-RunUMAP(dat,reduction.name="harmonyumap_rna",reduction = "harmony_rna",dims=1:dim(dat@reductions$harmony_rna)[2]) 
+  dat<-RunUMAP(dat,reduction.name="harmonyumap_atac",reduction = "harmony_atac",dims=1:dim(dat@reductions$harmony_atac)[2]) 
+
+  # build a joint neighbor graph using both assays
+  dat <- FindMultiModalNeighbors(
+    object = dat,
+    reduction.list = list("harmony_rna", "harmony_atac"), 
+    dims.list = list(1:dim(dat@reductions$harmony_rna)[2], 1:dim(dat@reductions$harmony_atac)[2]), 
+    modality.weight.name = "multimodal.weight",
+    weighted.nn.name="multimodal_harmony.nn",
+    verbose = TRUE
+  )
+  # build a joint UMAP Harmony visualization
+  dat <- RunUMAP(object = dat, nn.name = "multimodal_harmony.nn",reduction.name="multimodal_harmony_umap", assay = "SoupXRNA", verbose = TRUE ) 
+
+  i="predicted.id"
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i,cols=type_cols)
+  ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
+
+  i="diagnosis"
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i,cols=diag_cols)
+  ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
+
+  i="sample"
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i)
+  ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
+
+  saveRDS(dat,file=x)
+}
+
+harmony_sample_integration(x="stromal.SeuratObject.rds",outname="stromal")
+harmony_sample_integration(x="immune.SeuratObject.rds",outname="immune")
+harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial")
+harmony_sample_integration(x="phase2.QC.SeuratObject.rds",outname="all_cells")
+
+```
+
+## Transcription Factor Expression Markers
+
+Based on seurat tutorial https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html#wnn-analysis-of-10x-multiome-rna-atac-1
+
+
+```R
+library(Signac)
+library(Seurat)
+library(tidyverse)
+library(ComplexHeatmap)
+library(seriation)
+library(viridis)
+library(circlize)
+library(chromVAR)
+library(JASPAR2020)
+library(TFBSTools)
+library(motifmatchr)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+
+
+###########Color Schema#################
+type_cols<-c(
+#epithelial
+"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+"B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
+"CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
+
+diag_cols<-c("IDC"="red", "DCIS"="grey","NAT"="lightblue","ILC"="green")
+
+molecular_type_cols<-c("DCIS"="grey", "ER+/PR-/HER2-"="#EBC258", "ER+/PR-/HER2+"="#F7B7BB","ER+/PR+/HER2-"="#ff6699","NA"="lightblue")
+########################################
+
+
+# a simple function to implement the procedure above
+topTFs <- function(markers_list,celltype, padj.cutoff = 1e-2,rna=NA,ga=NA,motifs=NA) {
+  ctmarkers_rna <- dplyr::filter(
+    rna, RNA.group == celltype) %>% 
+    arrange(-RNA.auc)
+
+    if(is.data.frame(motifs)) {
+    ctmarkers_motif <- dplyr::filter(
+      motifs, chromvar.group == celltype) %>% 
+      arrange(-chromvar.auc)
+    }
+
+    if(is.data.frame(ga)) {
+    ctmarkers_ga<- dplyr::filter(
+      ga, GeneActivity.group == celltype) %>% 
+      arrange(-GeneActivity.auc)
+    }
+
+    if(is.data.frame(motifs) && is.data.frame(ga)){    
+      top_tfs <- inner_join(
+        x = ctmarkers_rna[, c(2, 11, 6, 7)], 
+        y = ctmarkers_motif[, c(2, 1, 11, 6, 7)], by = "gene"
+      )
+      top_tfs <- inner_join(
+        x = top_tfs ,
+        y = ctmarkers_ga [,c(2, 11, 6, 7)], by = "gene"
+      )
+    }else if(is.data.frame(motifs)) {
+      top_tfs <- inner_join(
+        x = ctmarkers_rna[, c(2, 11, 6, 7)], 
+        y = ctmarkers_motif[, c(2, 1, 11, 6, 7)], by = "gene"
+      )
+    } else if (is.data.frame(ga)) {
+      top_tfs <- inner_join(
+        x = ctmarkers_rna[, c(2, 11, 6, 7)], 
+        y = ctmarkers_ga[,c(2, 11, 6, 7)], by = "gene"
+      )
+    } 
+  auc_colnames<-grep(".auc$",colnames(top_tfs))
+  top_tfs$avg_auc <-  rowMeans(top_tfs[auc_colnames])
+  top_tfs <- arrange(top_tfs, -avg_auc)
+  top_tfs$celltype<-celltype
+  return(top_tfs)
+}
+
+Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA"){
+    markers <- presto:::wilcoxauc.Seurat(X = x, group_by = group_by., assay = 'data', seurat_assay = assay.)
+    colnames(markers) <- paste(assay., colnames(markers),sep=".")
+    if (assay. == "chromvar") {
+      motif.names <- markers[,paste0(assay.,".feature")]
+      markers$gene <- ConvertMotifID(x, id = motif.names,assay="ATAC")
+    } else {
+    markers$gene <- markers[,paste0(assay.,".feature")]
+    }
+    return(markers) 
+}
+
+
+average_features<-function(x=hg38_atac,features=da_tf_markers$motif.feature,assay="chromvar",group_by.="predicted.id"){
+    #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+    dat_motif<-x[[assay]]@data[features,]
+    dat_motif<-as.data.frame(t(as.data.frame(dat_motif)))
+    sum_motif<-split(dat_motif,x@meta.data[,group_by.]) #group by rows to seurat clusters
+    sum_motif<-lapply(sum_motif,function(x) apply(x,2,mean,na.rm=T)) #take average across group
+    sum_motif<-do.call("rbind",sum_motif) #condense to smaller data frame
+
+    sum_motif<-t(scale(sum_motif))
+    sum_motif<-sum_motif[row.names(sum_motif)%in%features,]
+    sum_motif<-sum_motif[complete.cases(sum_motif),]
+    return(sum_motif)
+}
+
+plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group_by.="predicted.id",CHROMVAR=TRUE,GA=TRUE){
+    tf_rna<-average_features(x=x,features=da_tf_markers$gene,assay="RNA",group_by.=group_by.)
+    tf_rna<-tf_rna[row.names(tf_rna) %in% da_tf_markers$gene,]
+
+  if(CHROMVAR){
+    tf_motif<-average_features(x=x,features=da_tf_markers$chromvar.feature,assay="chromvar",group_by.=group_by.)
+    tf_motif<-tf_motif[row.names(tf_motif) %in% da_tf_markers$chromvar.feature,]
+    row.names(tf_motif)<-da_tf_markers[da_tf_markers$chromvar.feature %in% row.names(tf_motif),]$gene
+    markers_list<-Reduce(intersect, list(row.names(tf_rna),row.names(tf_motif)))
+    tf_rna<-tf_rna[markers_list,]
+    tf_motif<-tf_motif[markers_list,]
+  }
+
+  if(GA){
+    tf_ga<-average_features(x=x,features=da_tf_markers$gene,assay="GeneActivity",group_by.=group_by.)
+    tf_ga<-tf_ga[row.names(tf_ga) %in% da_tf_markers$gene,]
+    markers_list<-Reduce(intersect, list(row.names(tf_rna),row.names(tf_ga)))
+    tf_rna<-tf_rna[markers_list,]
+    tf_ga<-tf_ga[markers_list,]
+
+  }
+  if(GA&&CHROMVAR){
+    markers_list<-Reduce(intersect, list(row.names(tf_rna),row.names(tf_motif),row.names(tf_ga)))
+    tf_rna<-tf_rna[markers_list,]
+    tf_motif<-tf_motif[markers_list,]
+    tf_ga<-tf_ga[markers_list,]
+  }
+
+    #set up heatmap seriation and order by RNA
+    o = seriate(max(tf_rna) - tf_rna, method = "BEA_TSP")
+    saveRDS(o,file=paste0(prefix,".geneactivity.dend.rds")) 
+    side_ha_rna<-data.frame(ga_motif=da_tf_markers[get_order(o,1),]$RNA.auc)
+    colfun_rna=colorRamp2(quantile(unlist(tf_rna), probs=c(0.5,0.80,0.95)),plasma(3))
+
+  if(CHROMVAR){
+    side_ha_motif<-data.frame(chromvar_motif=da_tf_markers[get_order(o,1),]$chromvar.auc)
+    colfun_motif=colorRamp2(quantile(unlist(tf_motif), probs=c(0.5,0.80,0.95)),cividis(3))
+    #Plot motifs alongside chromvar plot, to be added to the side with illustrator later
+    motif_list<-da_tf_markers[da_tf_markers$gene %in% row.names(tf_motif),]$chromvar.feature
+    plt<-MotifPlot(object = x,assay="ATAC",motifs = motif_list[get_order(o,1)],ncol=1)+theme_void()+theme(strip.text = element_blank())
+    ggsave(plt,file=paste0(prefix,".tf.heatmap.motif.pdf"),height=100,width=2,limitsize=F)
+
+  }
+  if(GA){
+    side_ha_ga<-data.frame(ga_auc=da_tf_markers[get_order(o,1),]$GeneActivity.auc)
+    colfun_ga=colorRamp2(quantile(unlist(tf_ga), probs=c(0.5,0.80,0.95)),magma(3))
+
+  }
+
+    side_ha_col<-colorRamp2(c(0,1),c("white","black"))
+    gene_ha = rowAnnotation(foo = anno_mark(at = c(1:nrow(tf_rna)), labels =row.names(tf_rna),labels_gp=gpar(fontsize=6)))
+
+
+    rna_auc<-Heatmap(side_ha_rna,
+        row_order = get_order(o,1),
+        col=side_ha_col,
+        show_column_names=FALSE,
+        row_names_gp=gpar(fontsize=7))
+
+    rna_plot<-Heatmap(tf_rna,
+        row_order = get_order(o,1),
+        column_order = get_order(o,2),
+        name="RNA",
+        column_title="RNA",
+        col=colfun_rna,
+        column_names_gp = gpar(fontsize = 8),
+        show_row_names=FALSE,
+        column_names_rot=90)
+
+  if(GA){
+      ga_auc<-Heatmap(side_ha_ga,
+          row_order = get_order(o,1),
+          col=side_ha_col,
+          show_column_names=FALSE,
+          row_names_gp=gpar(fontsize=7))
+
+      ga_plot<-Heatmap(tf_ga,
+          row_order = get_order(o,1),
+          column_order = get_order(o,2),
+          name="Gene Activity",
+          column_title="Gene Activity",
+          col=colfun_ga,
+          column_names_gp = gpar(fontsize = 8),
+          show_row_names=FALSE,
+          column_names_rot=90)
+  }
+  if(CHROMVAR){
+      motif_auc<-Heatmap(side_ha_motif,
+          row_order = get_order(o,1),
+          col=side_ha_col,
+          show_row_names=FALSE,
+          show_column_names=FALSE,
+          row_names_gp=gpar(fontsize=7))
+
+      motif_plot<-Heatmap(tf_motif,
+          row_order = get_order(o,1),
+          column_order = get_order(o,2),
+          name="TF Motif",
+          column_title="TF Motif",
+          col=colfun_motif,
+          #top_annotation=top_ha,
+          column_names_gp = gpar(fontsize = 8),
+          show_row_names=FALSE,
+          column_names_rot=90,
+          right_annotation=gene_ha)
+  }
+
+  if(all(CHROMVAR,GA)){
+      plt1<-draw(ga_auc+ga_plot+rna_auc+rna_plot+motif_auc+motif_plot)
+  } else if(CHROMVAR){
+      plt1<-draw(rna_auc+rna_plot+motif_auc+motif_plot)
+  } else {
+      plt1<-draw(ga_auc+ga_plot+rna_auc+rna_plot)
+  }
+
+
+    pdf(paste0(prefix,".tf.heatmap.pdf"))
+    print(plt1)
+    dev.off()
+
+    system(paste0("slack -F ",prefix,".tf.heatmap.pdf ryan_todo"))
+    system(paste0("slack -F ",prefix,".tf.heatmap.motif.pdf ryan_todo"))
+}
+
+#stromal
+stromal<-readRDS("stromal.SeuratObject.rds")
+  i="predicted.id" #group by factor
+  markers<-lapply(c("RNA","GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=stromal,group_by.="predicted.id",assay.=assay))
+  names(markers)<-c("RNA","GeneActivity","chromvar")
+  markers_out<-do.call("rbind",lapply(unique(stromal@meta.data[,i]),function(x) head(topTFs(markers_list=markers,celltype=x,rna=markers$RNA,ga=markers$GeneActivity,motifs=markers$chromvar),n=10))) #grab top 5 TF markers per celltype
+  dim(markers_out)
+  markers_out<-markers_out[!duplicated(markers_out$gene),]
+  dim(markers_out)
+  saveRDS(markers_out,file="stromal_celltype_TF_markers.RDS")
+  da_tf_markers<-readRDS("stromal_celltype_TF_markers.RDS")
+  plot_top_TFs(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group_by.=i,CHROMVAR=TRUE,GA=TRUE)
+
+
+#immune
+immune<-readRDS("immune.SeuratObject.rds")
+  i="predicted.id" #group by factor
+  markers<-lapply(c("RNA","GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=immune,group_by.="predicted.id",assay.=assay))
+  names(markers)<-c("RNA","GeneActivity","chromvar")
+  markers_out<-do.call("rbind",lapply(unique(immune@meta.data[,i]),function(x) head(topTFs(markers_list=markers,celltype=x,rna=markers$RNA,ga=markers$GeneActivity,motifs=markers$chromvar),n=50))) #grab top 5 TF markers per celltype
+  dim(markers_out)
+  markers_out<-markers_out[!duplicated(markers_out$gene),]
+  dim(markers_out)
+  saveRDS(markers_out,file="immune_celltype_TF_markers.RDS")
+  da_tf_markers<-readRDS("immune_celltype_TF_markers.RDS")
+  plot_top_TFs(x=immune,tf_markers=da_tf_markers,prefix="immune",group_by.=i,CHROMVAR=TRUE,GA=TRUE)
+
+
+#all cells
+dat<-readRDS("phase2.QC.SeuratObject.rds")
+  i="predicted.id" #group by factor
+  markers<-lapply(c("RNA","GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=dat,group_by.="predicted.id",assay.=assay))
+  names(markers)<-c("RNA","GeneActivity","chromvar")
+  markers_out<-do.call("rbind",lapply(unique(dat@meta.data[,i]),function(x) head(topTFs(markers_list=markers,celltype=x,rna=markers$RNA,ga=markers$GeneActivity,motifs=markers$chromvar),n=10))) #grab top 50 TF markers per celltype (most will be filtered due to low overlap)
+  dim(markers_out)
+  markers_out<-markers_out[!duplicated(markers_out$gene),]
+  dim(markers_out)
+  saveRDS(markers_out,file="dat_celltype_TF_markers.RDS")
+  da_tf_markers<-readRDS("dat_celltype_TF_markers.RDS")
+  plot_top_TFs(x=dat,tf_markers=da_tf_markers,prefix="dat",group_by.=i,CHROMVAR=TRUE,GA=TRUE)
+
+
+```
+
+## Bar plots across cells
+
+```R
+library(Signac)
+library(Seurat)
+library(ggplot2)
+library(dplyr) 
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+ 
+
+###########Color Schema#################
+type_cols<-c(
+#epithelial
+"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+"B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
+"CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
+
 diag_cols<-c("IDC"="red", "DCIS"="grey")
 
 molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"="#F7B7BB")
@@ -2978,40 +3523,162 @@ molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"
 
 
 
+dat<-readRDS("phase2.QC.SeuratObject.rds")
 
 
 
-harmony_sample_integration<-function(x,outname){
-dat<-readRDS(x)
-dat<-RunHarmony(dat,group.by.vars="sample",reduction.save="harmony_atac",assay.use="ATAC",reduction="cistopic",project.dim=F)
-dat<-RunHarmony(dat,group.by.vars="sample",reduction.save="harmony_rna",assay.use="RNA",reduction="pca",project.dim=F)
 
-dat<-RunUMAP(dat,reduction.name="harmonyumap_rna",reduction = "harmony_rna",dims=1:dim(dat@reductions$harmony_rna)[2]) 
-dat<-RunUMAP(dat,reduction.name="harmonyumap_atac",reduction = "harmony_atac",dims=1:dim(dat@reductions$harmony_atac)[2]) 
+  # build a joint UMAP visualization
+  dat2 <- RunUMAP(
+    object = dat2,
+    nn.name = "weighted.nn",
+    reduction.name="multimodal_umap",
+    assay = "SoupXRNA",
+    verbose = TRUE
+  )
 
-alpha_val=0.33
 
-plt1<-DimPlot(dat,reduction="harmonyumap_rna",group.by="sample")#+scale_fill_manual(samp_cols)
-plt2<-DimPlot(dat,reduction="harmonyumap_rna",group.by="predicted.id")#,cols=alpha(type_cols,alpha_val))
-plt3<-DimPlot(dat,reduction="harmonyumap_rna",group.by="diagnosis")#,cols=alpha(diag_cols,alpha_val))
-plt4<-DimPlot(dat,reduction="harmonyumap_rna",group.by="molecular_type")#,cols=alpha(molecular_type_cols,alpha_val))
+p1<-DimPlot(dat,reduction="rna_umap",group.by="sample")+ggtitle("RNA UMAP")
+p2<-DimPlot(dat,reduction="atac_umap",group.by="sample")+ggtitle("ATAC UMAP")
+p3<-DimPlot(dat,reduction="multimodal_umap",group.by="sample")+ggtitle("Multimodal UMAP")
 
-plt5<-DimPlot(dat,reduction="harmonyumap_atac",group.by="sample")#+scale_fill_manual(samp_cols)
-plt6<-DimPlot(dat,reduction="harmonyumap_atac",group.by="predicted.id")#,cols=alpha(type_cols,alpha_val))
-plt7<-DimPlot(dat,reduction="harmonyumap_atac",group.by="diagnosis")#,cols=alpha(diag_cols,alpha_val))
-plt8<-DimPlot(dat,reduction="harmonyumap_atac",group.by="molecular_type")#,cols=alpha(molecular_type_cols,alpha_val))
-ggsave((plt1|plt2|plt3|plt4)/(plt5|plt6|plt7|plt8),file=paste0(outname,".Harmonyumap.pdf"),width=20)
-system(paste0("slack -F ",outname,".Harmonyumap.pdf ryan_todo"))
+plt<-(p1|p2)/p3
+ggsave(plt,file="all_samples.umap.pdf")
+system(paste0("slack -F ","all_samples.umap.pdf"," ryan_todo"))
 
-saveRDS(dat,file=x)
+#Finally Plot results
+ggsave(plt,file=paste0(wd,"/",outname,".umap2.pdf"))
+system(paste0("slack -F ",paste0(wd,"/",outname,".umap2.pdf")," ryan_todo"))
+saveRDS(dat,file=paste0(wd,"/",outname,".QC.SeuratObject.rds"))
 }
 
-harmony_sample_integration(x="stromal.SeuratObject.rds",outname="stromal")
-harmony_sample_integration(x="immune.SeuratObject.rds",outname="immune")
-harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial")
+
+#Set up metadata and set up facet labels as factors for ordering
+metadat<-as.data.frame(dat@meta.data)
+metadat$diagnosis = factor(metadat$diagnosis, levels=c("NAT","DCIS","IDC","ILC"), labels=c("NAT","DCIS","IDC","ILC")) 
+metadat$molecular_type = factor(metadat$molecular_type, levels=c("NA","DCIS","ER+/PR+/HER2-","ER+/PR-/HER2-","ER+/PR-/HER2+"), labels=c("NA","DCIS","ER+/PR+/HER2-","ER+/PR-/HER2-","ER+/PR-/HER2+")) 
+
+
+#Cells PF (log10)
+metadat$epi<-"Nonepi"
+metadat[metadat$predicted.id %in% c("Cancer Epithelial","Normal Epithelial"),]$epi<-"Epi"
+DF<-as.data.frame(metadat %>% group_by(diagnosis, molecular_type,sample,epi) %>% tally())
+plt1<-ggplot(DF,aes(x=sample,fill=epi,y=n))+geom_bar(stat="identity")+theme_minimal()+facet_grid(.~diagnosis+molecular_type,scales="free_x",space="free")
+ggsave(plt1,file="barplot_qc_cellcount.pdf")
+system("slack -F barplot_qc_cellcount.pdf ryan_todo")
+
+#Cell types (stacked bar)
+DF<-as.data.frame(metadat %>% group_by(diagnosis, molecular_type,sample,predicted.id) %>% tally())
+plt1<-ggplot(DF,aes(x=sample,fill=predicted.id,y=n))+geom_bar(position="fill",stat="identity")+theme_minimal()+scale_fill_manual(values=type_cols)+facet_wrap(.~diagnosis+molecular_type,nrow=1,scales="free")
+ggsave(plt1,file="barplot_qc_celltype.pdf")
+system("slack -F barplot_qc_celltype.pdf ryan_todo")
+
+
 
 ```
 
+## Plot of Differential Genes across Normal epithelial (NAT) DCIS and IDC
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+library(RColorBrewer)
+library(SeuratWrappers)
+library(cisTopic)
+library(patchwork)
+library(org.Hs.eg.db)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(AUCell)
+library(rtracklayer)
+library(parallel)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+atac_sub<-readRDS("epithelial.SeuratObject.rds")
+Idents(atac_sub)<-atac_sub$diagnosis
+DefaultAssay(atac_sub)<-"SoupXRNA"
+RNA_markers <- FindMarkers(atac_sub, ident.1 = "IDC", ident.2 = c("DCIS","NAT"), min.pct = 0.1)
+RNA_markers$gene_name<-row.names(RNA_markers)
+DefaultAssay(atac_sub)<-"ATAC"
+ATAC_markers <- FindMarkers(atac_sub,ident.1 = "IDC", ident.2 = c("DCIS","NAT"), min.pct = 0.1)
+ATAC_markers$da_region<-row.names(ATAC_markers)
+closest_genes <- ClosestFeature(atac_sub,ATAC_markers$da_region)
+ATAC_markers<-cbind(ATAC_markers,closest_genes)
+
+rna<-RNA_markers[RNA_markers$gene_name %in% ATAC_markers$gene_name,]
+atac<-ATAC_markers[ATAC_markers$gene_name %in% rna$gene_name,]
+
+
+
+cov_plots<-function(dat=atac_sub,gene_name,idents_in){
+  plt_cov <- CoveragePlot(
+    object = atac_sub,
+    region = gene_name,
+    features = gene_name,
+    assay="ATAC",
+    expression.assay = "SoupXRNA",
+    extend.upstream = 5000,
+    extend.downstream = 5000,
+    idents=idents_in)
+  plt_feat <- FeaturePlot(
+    object = atac_sub,
+    features = gene_name,
+    raster=T,
+    reduction="multimodal_umap",
+    order=T)
+  return((plt_feat|plt_cov)+ggtitle(gene_name))
+}
+
+
+DefaultAssay(atac_sub)<-"SoupXRNA"
+for (i in c(rna$gene_name[1:25])){
+  plt<-cov_plots(dat=atac_sub,gene_name=i,idents_in=c("NAT","DCIS","IDC"))
+  ggsave(plt,file=paste0("RM_",i,".featureplots.pdf"),limitsize=F)
+  system(paste0("slack -F ","RM_",i,".featureplots.pdf ryan_todo"))
+}
+
+for (i in c("SOX10","SOX9","SOX4","SOX2","TEAD4","RUNX1")){
+  plt<-cov_plots(dat=atac_sub,gene_name=i,idents_in=c("NAT","DCIS","IDC"))
+  ggsave(plt,file=paste0("RM_",i,".featureplots.pdf"),limitsize=F)
+  system(paste0("slack -F ","RM_",i,".featureplots.pdf ryan_todo"))
+}
+
+
+for (i in c("FOXM1","FOXA1","FOXA3","GRHL2","FOXP1","ATF3")){
+  plt<-cov_plots(dat=atac_sub,gene_name=i,idents_in=c("NAT","DCIS","IDC"))
+  ggsave(plt,file=paste0("RM_",i,".featureplots.pdf"),limitsize=F)
+  system(paste0("slack -F ","RM_",i,".featureplots.pdf ryan_todo"))
+}
+
+
+for (i in c("HOXB13","EN1","DLX4","TBX15","SLC6A12","PAX6","FAM83A","ERICH5")){
+  plt<-cov_plots(dat=atac_sub,gene_name=i,idents_in=c("NAT","DCIS","IDC"))
+  ggsave(plt,file=paste0("RM_",i,".featureplots.pdf"),limitsize=F)
+  system(paste0("slack -F ","RM_",i,".featureplots.pdf ryan_todo"))
+}
+
+
+for (i in c("ESR1")){
+  plt<-cov_plots(dat=atac_sub,gene_name=i,idents_in=c("NAT","DCIS","IDC"))
+  ggsave(plt,file=paste0("RM_",i,".featureplots.pdf"),limitsize=F)
+  system(paste0("slack -F ","RM_",i,".featureplots.pdf ryan_todo"))
+}
+
+#TFS
+#IDC Fox Family (GRHL2) 
+#ILC Sox Family TEAD RUNX EGR1 RPBJ HMGA1
+#DCIS STAT3/BCL9
+#DCIS more likely to be invasice (Methylation IDd) HOXB13 EN1 DLX4 TBX15 SLC6A12 PAX6 
+
+#GENES
+#FAM83A
+#ERICH5
+```
 ## Comparison of cell types across diagnoses and other factors.
 
 ```R
@@ -3036,234 +3703,6 @@ system("slack -F multiome_tumor.tsv ryan_todo")
 
 ```
 
-## 3D Plot in Blender
-
-Open blender, go to python console (Shift+F4) then copy and paste the code below
-
-```python
-#1. import modules
-import bpy
-import math
-import time
-import bmesh
-
-#set up variables
-file_in="//rdsdcw.ohsu.edu/cedarX/Projects/breast_cancer_multiome/Experiment_2_Phase1/multiome_tumor.tsv" 
-file_out="//rdsdcw.ohsu.edu/cedarX/Projects/breast_cancer_multiome/Experiment_2_Phase1/multiome_tumor.blend"
-
-
-#Read in file and store it in memory (this doesn't take up much memory)
-file_xyz=open(file_in,"r") #change path to whatever filepath you want. I got my computer refurbished and it was named Chad. I swear it wasn't me.
-tabraw=file_xyz.readlines()[1:]
-data_count=len(tabraw)
-file_xyz.close()
-
-#initialize an object, a sphere, for our data points.
-bpy.ops.mesh.primitive_uv_sphere_add(radius=0.05,segments=64, ring_count=32) #higher segments and ring_counts will make a smoother sphere, but I dont think its necessary
-obj=bpy.context.active_object #select the sphere we just made
-
-#set up a master shader material
-mat = bpy.data.materials.new(name='mymat')
-mat.use_nodes = True #use node trees, these can be seen by switching a panel to the shader editor if you want. It will look like the above shader, just not nicely placed.
-mat_nodes = mat.node_tree.nodes
-mat_links = mat.node_tree.links
-mat = bpy.data.materials['mymat'] #Get the material you want 
-node_to_delete =  mat.node_tree.nodes['Principled BSDF'] #Get the node in its node tree (replace the name below)
-mat.node_tree.nodes.remove( node_to_delete ) #Remove it
-#add all the nodes, using col_node as variable of each node as it is being made. then using that to modify default value fields
-col_node=mat_nodes.new('ShaderNodeRGB')
-col_node=mat_nodes.new('ShaderNodeFresnel')
-bpy.data.materials["mymat"].node_tree.nodes['Fresnel'].inputs[0].default_value = 1.33
-
-col_node=mat_nodes.new('ShaderNodeHueSaturation')
-bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value"].inputs[0].default_value = 1
-bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value"].inputs[1].default_value = 0.7
-bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value"].inputs[2].default_value = 2
-bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value"].inputs[3].default_value = 0
-
-col_node=mat_nodes.new('ShaderNodeMath')
-bpy.data.materials["mymat"].node_tree.nodes["Math"].operation = 'MULTIPLY'
-
-col_node=mat_nodes.new('ShaderNodeBsdfRefraction')
-bpy.data.materials["mymat"].node_tree.nodes["Refraction BSDF"].inputs[1].default_value = 1
-
-col_node=mat_nodes.new('ShaderNodeBsdfGlossy')
-bpy.data.materials["mymat"].node_tree.nodes["Glossy BSDF"].inputs[1].default_value = 1
-
-col_node=mat_nodes.new('ShaderNodeHueSaturation')
-bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value.001"].inputs[0].default_value = 1
-bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value.001"].inputs[1].default_value = 0.4
-bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value.001"].inputs[2].default_value = 2
-
-col_node=mat_nodes.new('ShaderNodeMixShader')
-col_node=mat_nodes.new('ShaderNodeVolumeAbsorption')
-bpy.data.materials["mymat"].node_tree.nodes["Volume Absorption"].inputs[1].default_value = 0.3
-
-col_node=mat_nodes.new('ShaderNodeBsdfTranslucent')
-col_node=mat_nodes.new('ShaderNodeLightPath')
-col_node=mat_nodes.new('ShaderNodeMixShader')
-
-#build node tree links (going from left most inputs)
-#sorry this is a monstrosity
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes['RGB'].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value"].inputs[4])
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes['RGB'].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value.001"].inputs[4])
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes['RGB'].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Volume Absorption"].inputs[0])
-
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes['Fresnel'].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Math"].inputs[0])
-
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes['Hue Saturation Value'].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Refraction BSDF"].inputs[0])
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes['Hue Saturation Value'].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Glossy BSDF"].inputs[0])
-
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Math"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Mix Shader"].inputs[0])
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Refraction BSDF"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Mix Shader"].inputs[1])
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Glossy BSDF"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Mix Shader"].inputs[2])
-
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Hue Saturation Value.001"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Translucent BSDF"].inputs[0])
-
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Volume Absorption"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Material Output"].inputs[1])
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Translucent BSDF"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Mix Shader.001"].inputs[2])
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Mix Shader"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Mix Shader.001"].inputs[1])
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Light Path"].outputs[1], bpy.data.materials["mymat"].node_tree.nodes["Mix Shader.001"].inputs[0])
-
-mat_links.new(bpy.data.materials["mymat"].node_tree.nodes["Mix Shader.001"].outputs[0], bpy.data.materials["mymat"].node_tree.nodes["Material Output"].inputs[0])
-
-
-#set up render engine and scene
-bpy.context.scene.render.engine="CYCLES" #set render engine to CYCLES
-bpy.data.scenes["Scene"].cycles.denoiser="NLM" #set denoiser for render
-bpy.data.scenes["Scene"].cycles.samples=512 #this is a whole lotta sampling
-bpy.context.scene.render.image_settings.color_depth = '16' #more color channels!
-bpy.context.scene.render.resolution_x = 3840 #up the resolution
-bpy.context.scene.render.resolution_y = 2160
-bpy.data.objects["Sphere"].hide_render = True # hide sphere in render
-bpy.data.objects["Sphere"].hide_viewport=True
-bpy.data.lights["Light"].energy = 100000 # increase light wattage
-bpy.data.lights["Light"].shadow_soft_size= 1
-bpy.data.objects["Light"].location=(5,-5,10) #location and rotation i deteremined manually and just set up here for convenience
-
-#set up stage by cutting up the default cube vertices and smoothing it
-obj_cube=bpy.data.objects["Cube"]
-obj_cube.scale=(30,30,30) #scale up the cube
-#this is to cut out a vertex to make an open box
-bpy.context.view_layer.objects.active = obj_cube
-bpy.ops.object.mode_set(mode='EDIT')
-bpy.ops.mesh.select_mode(type="VERT")  # Switch to edge select mode
-bm = bmesh.from_edit_mesh(obj_cube.data)  # Create bmesh object for easy mesh evaluation
-bm.verts.ensure_lookup_table()
-bm.verts.remove(bm.verts[2]) # Write the mesh back
-bmesh.update_edit_mesh(obj_cube.data)  # Update the mesh in edit mode
-bpy.ops.object.mode_set(mode='OBJECT') #switch back to object mode when done
-bpy.ops.object.modifier_add(type='SUBSURF') #make it smooth
-bpy.data.objects["Cube"].modifiers["Subdivision"].render_levels=6
-bpy.data.objects["Cube"].location=(-4,4.3,17.725) #change the location for more dramatic shadows
-
-#move the camera and rotate
-bpy.data.objects["Camera"].location=(34.61997604370117, -40.53969955444336, 25.66326904296875)
-bpy.data.objects["Camera"].rotation_euler=(1.1093189716339111, 0.0, 0.8149281740188599)
-
-#finally ready to start reading in our data
-scene=bpy.context.scene
-
-#set up a material per hex color, name as annotation
-#this is looping through the file, grabbing the unique clusters and there color codes, then making a dictionary for look up later
-start = time.time()
-annot={}
-for line in tabraw[1:]:
-  line=line.replace('\n','')
-  l=line.split('\t')
-  if l[0] not in annot:
-    hexcode=l[5].lstrip("#")
-    rgb=[int(hexcode[i:i+2], 16) for i in (0, 2, 4)]
-    r=float(rgb[0])/255 #color of spheres, blender uses 0-1 scale
-    g=float(rgb[1])/255
-    b=float(rgb[2])/255
-    clust=str(l[0])
-    annot[clust]=[r,g,b]
-
-end = time.time()
-print(end - start)
-
-#make a custom material shader for each annotation (just changing color)
-#this copies the material shader we set up earlier, and then changes the input color
-master_mat=source_mat = bpy.data.materials["mymat"]
-for i in annot.keys():
-  copied_mat = master_mat.copy()
-  copied_mat.name=i
-  bpy.data.materials[i].node_tree.nodes["RGB"].outputs[0].default_value[0]=annot[i][0]
-  bpy.data.materials[i].node_tree.nodes["RGB"].outputs[0].default_value[1]=annot[i][1]
-  bpy.data.materials[i].node_tree.nodes["RGB"].outputs[0].default_value[2]=annot[i][2]
-
-
-#make a custom collection for each annotation. this makes a "master sphere" to link for each cluster also
-for i in annot.keys():
-  collection = bpy.data.collections.new(i) #make new collection
-  bpy.context.scene.collection.children.link(collection) #link new collection
-  mat = bpy.data.materials.get(i) #set material properties of collection
-  name=str(i)+"_master" #make name of master sphere
-  new_obj = bpy.data.objects.new(name, scene.objects.get("Sphere").data) #make a new copy
-  new_obj.data = scene.objects.get("Sphere").data.copy()
-  bpy.data.collections[i].objects.link(new_obj) #link new object to collection
-  new_obj.data.materials.append(mat) #add material
-  bpy.data.objects[name].hide_render = True # hide masters
-  bpy.data.objects[name].hide_viewport=True
-
-#make a dictionary look up for copying master spheres
-master_sphere={}
-for i in annot.keys():
-  master_sphere[i]=scene.objects.get(i+"_master").data
-
-#define a nice function to copy data points and link them to the master spheres. also places the copies into nice cluster named collections for easier navigation.
-def add_data_point(input_dat):
-    line=input_dat
-    line=line.replace('\n','')
-    l=line.split('\t')
-    #print(line)
-    x=float(l[2]) #location of spheres
-    y=float(l[3])
-    z=float(l[4])
-    name=str(l[1])
-    clust=str(l[0])
-    my_new_obj = bpy.data.objects.new(name,master_sphere[clust])
-    my_new_obj.location = (x,y,z)       
-    my_new_obj.hide_viewport=False
-    my_new_obj.hide_render=False
-    bpy.data.collections[clust].objects.link(my_new_obj)
-
-n=1000
-in_list = [tabraw[i * n:(i + 1) * n] for i in range((len(tabraw) + n + 1) // n )] 
-for in_dat_list in in_list:
-  start = time.time()
-  out=[add_data_point(in_dat) for in_dat in in_dat_list] 
-  end = time.time()
-  print(end - start)
-
-
-#some last minute tweaks, here are some convenience functions if you want to change things. I also encourage you to play around with lighting and camera positioning to get some interesting views of your data.
-#to adjust size of points
-for clust in annot.keys():
-  for i in bpy.data.collections[clust].objects:
-    i.scale=(0.8,0.8,0.8)
-
-
-#to adjust alpha value and translucence of material properties
-for clust in annot.keys():
-  bpy.data.materials[clust].node_tree.nodes["RGB"].outputs[0].default_value[3] = 0.3
-  bpy.data.materials[clust].node_tree.nodes["Volume Absorption"].inputs[1].default_value = 0.1
-
-
-bpy.ops.wm.save_as_mainfile(filepath=file_out) #save blender file
-
-bpy.context.scene.render.filepath = 'cortex.test.png'
-bpy.ops.render.render(write_still=True) #render and save file
-
-```
-
-Load final blend file onto exacloud and render
-
-```bash
-#run on exacloud
-blender -b 3dplot_multiome.blend -o //render_test/ -E CYCLES -s 20 -e 1000 -t 40 -a -x 1 -F PNG &
-```
 
 
 #ER binding poor and good outcome from patients, overlap with ATAC data
