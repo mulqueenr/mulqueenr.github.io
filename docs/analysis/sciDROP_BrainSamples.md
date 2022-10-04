@@ -2059,8 +2059,29 @@ dev.off()
 system("slack -F hg38.geneactivity.heatmap.pdf ryan_todo")
 
 saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds")
+```
+## Plotting heatmap using brainspan given markers
+```R
+library(JASPAR2020)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(Signac)
+library(Seurat)
+library(ggplot2)
+library(ComplexHeatmap)
+library(ggdendro)
+library(dendextend)
+library(parallel)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(RColorBrewer)
+library(viridis)
+library(circlize)
+library(TFBSTools)
 
-###########Plotting heatmap using brainspan given markers#############################
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
 
 #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
 sum_da_dend<-readRDS(file="hg38.geneactivity.dend.rds")
@@ -2092,12 +2113,15 @@ markers_limited<-   as.data.frame(rbind(
     c("Mark","L1-6","Astrocyte","AQP4"),
     c("Mark","L1-6","Astrocyte","ALDH1L1"),
     c("Mark","L1-6","Astrocyte","GFAP"),
+    c("Mark","L1-6","Astrocyte","MFGE8"), #CAT
     c("Mark","L1-6","OPC","PDGFRA"),
     c("Mark","L1-6","OPC","CSPG4"),
     c("Mark","L1-6","Oligodendrocyte","OPALIN"),
     c("Mark","L1-6","Oligodendrocyte","PROX1"),
     c("Mark","L1-6","Oligodendrocyte","OLIG1"),
     c("Mark","L1-6","Oligodendrocyte","MOBP"),
+    c("Mark","L1-6","Oligodendrocyte","ENPP4"), #CAT
+    c("Mark","L1-6","Oligodendrocyte","LDLRAP1"), #CAT
     c("Mark","L1-6","Microglia","FYB"),
     c("Mark","L1-6","Microglia","C1QA"),
     c("Mark","L1-6","Microglia","C1QC"),
@@ -2128,7 +2152,7 @@ top_ha<-columnAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$s
                     show_legend = c(TRUE, TRUE, FALSE))
 
 
-colfun=colorRamp2(quantile(unlist(sum_ga_plot), probs=c(0.5,0.90,0.95)),magma(3))
+colfun=colorRamp2(quantile(unlist(sum_ga_sub), probs=c(0.5,0.90,0.95)),magma(3))
 
 plt1<-Heatmap(sum_ga_sub,
     clustering_distance_columns="euclidean",
@@ -2523,6 +2547,7 @@ sum_da_dend<-readRDS(file="mm10.geneactivity.dend.rds")
 
 sum_tf<-sum_tf[row.names(sum_tf) %in% unique(da_tf[da_tf$label!="",]$da_region),]
 row.names(sum_tf)<-da_tf[match(row.names(sum_tf),da_tf$da_region,nomatch=0),]$tf_name
+
 annot<-mm10_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
 annot<-annot[!(annot$subcluster_col=="NA"),]
 annot<-annot[!duplicated(annot$cluster_ID),]
@@ -2773,26 +2798,27 @@ library(TFBSTools)
 library(motifmatchr)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
-# a simple function to implement the procedure above
-topTFs <- function(markers_list,celltype, padj.cutoff = 5e-2,rna=NA,ga=NA,motifs=NA) {
-    if(is.data.frame(motifs)) {
-    ctmarkers_motif <- dplyr::filter(
-      motifs, chromvar.group == celltype, chromvar.padj < padj.cutoff, chromvar.logFC > 0) %>% 
-      arrange(-chromvar.auc)
-    }
 
-    if(is.data.frame(ga)) {
+#Grab top overlapping TFs
+topTFs <- function(markers_list,celltype, padj.cutoff = 1e-2,ga=NA,motifs=NA) {
     ctmarkers_ga<- dplyr::filter(
-      ga, GeneActivity.group == celltype, GeneActivity.padj < padj.cutoff, GeneActivity.logFC > 0) %>% 
+      ga, GeneActivity.group == celltype) %>% 
       arrange(-GeneActivity.auc)
-    }
+    ctmarkers_ga$gene<-toupper(ctmarkers_ga$gene)
+
+    if(is.data.frame(motifs)){
+        ctmarkers_motif <- dplyr::filter(
+      motifs, chromvar.group == celltype) %>% 
+      arrange(-chromvar.auc)}
 
     if(is.data.frame(motifs) && is.data.frame(ga)){    
       top_tfs <- inner_join(
-        x = ctmarkers_motif[, c(2, 1, 11, 6, 7)],
-        y = ctmarkers_ga [,c(2, 11, 6, 7)], by = "gene"
-      )
-    }
+        x = ctmarkers_ga [,c(2, 11, 6, 7)], 
+        y = ctmarkers_motif[, c(2, 1, 11, 6, 7)], by = "gene"
+      )} else {
+        top_tfs<-ctmarkers_ga [,c(2, 11, 6, 7)]
+      }
+
   auc_colnames<-grep(".auc$",colnames(top_tfs))
   top_tfs$avg_auc <-  rowMeans(top_tfs[auc_colnames])
   top_tfs <- arrange(top_tfs, -avg_auc)
@@ -2800,80 +2826,92 @@ topTFs <- function(markers_list,celltype, padj.cutoff = 5e-2,rna=NA,ga=NA,motifs
   return(top_tfs)
 }
 
+#Identify top markers
 Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA"){
     markers <- presto:::wilcoxauc.Seurat(X = x, group_by = group_by., assay = 'data', seurat_assay = assay.)
     colnames(markers) <- paste(assay., colnames(markers),sep=".")
     if (assay. == "chromvar") {
       motif.names <- markers[,paste0(assay.,".feature")]
-      markers$gene <- ConvertMotifID(x, id = motif.names,assay="ATAC")
+      markers$gene <- ConvertMotifID(x, id = motif.names,assay="peaks")
     } else {
     markers$gene <- markers[,paste0(assay.,".feature")]
     }
     return(markers) 
 }
 
-
+#Average markers across groups
 average_features<-function(x=hg38_atac,features=da_tf_markers$motif.feature,assay="chromvar",group_by.="predicted.id"){
     #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
-    dat_motif<-as.data.frame(t(as.data.frame(x[[assay]]@data)))
+    dat_motif<-x[[assay]]@data[features %in% row.names(x[[assay]]@data),]
+    dat_motif<-as.data.frame(t(as.data.frame(dat_motif)))
     sum_motif<-split(dat_motif,x@meta.data[,group_by.]) #group by rows to seurat clusters
-    sum_motif<-lapply(sum_motif,function(x) apply(x,2,mean)) #take average across group
+    sum_motif<-lapply(sum_motif,function(x) apply(x,2,mean,na.rm=T)) #take average across group
     sum_motif<-do.call("rbind",sum_motif) #condense to smaller data frame
-
+    clusters<-unique(x@meta.data[,i])[which(!endsWith(unique(x@meta.data[,i]),"NA"))] 
+    sum_motif<-sum_motif[row.names(sum_motif) %in% clusters,]
     sum_motif<-t(scale(sum_motif))
-    sum_motif<-sum_motif[,!endsWith(colnames(sum_motif),"NA")] #remove NA (doublet cells)
     sum_motif<-sum_motif[row.names(sum_motif)%in%features,]
+    sum_motif<-sum_motif[complete.cases(sum_motif),]
     return(sum_motif)
 }
 
-plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group_by.="predicted.id",CHROMVAR=TRUE,GA=TRUE){
-    tf_rna<-average_features(x=x,features=da_tf_markers$gene,assay="RNA",group_by.=group_by.)
-    tf_rna<-tf_rna[da_tf_markers$gene,]
-    #set up heatmap seriation by RNA
-    o = seriate(max(tf_rna) - tf_rna, method = "BEA_TSP")
-    saveRDS(o,file=paste0(prefix,".geneactivity.dend.rds")) 
-    side_ha_rna<-data.frame(ga_motif=da_tf_markers[get_order(o,1),]$RNA.auc)
-    colfun_rna=colorRamp2(quantile(unlist(tf_rna), probs=c(0.5,0.80,0.95)),plasma(3))
-
-  if(CHROMVAR){
+#Make a heatmap of aligned multiple modalities
+plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group_by.="cluster_ID",CHROMVAR=TRUE,GA=TRUE){
+    if(CHROMVAR){
     tf_motif<-average_features(x=x,features=da_tf_markers$chromvar.feature,assay="chromvar",group_by.=group_by.)
-    tf_motif<-tf_motif[da_tf_markers$chromvar.feature,]
+    tf_motif<-tf_motif[row.names(tf_motif) %in% da_tf_markers$chromvar.feature,]
+    row.names(tf_motif)<-da_tf_markers[da_tf_markers$chromvar.feature %in% row.names(tf_motif),]$gene
+    }
+    if(GA){
+    row.names(x[["GeneActivity"]]@data)<-toupper(row.names(x[["GeneActivity"]]@data))#change geneactivity names to upper
+    tf_ga<-average_features(x=x,features=da_tf_markers$gene,assay="GeneActivity",group_by.=group_by.)
+    tf_ga<-tf_ga[row.names(tf_ga) %in% da_tf_markers$gene,]
+    }
+    if(GA && CHROMVAR){
+    markers_list<-Reduce(intersect, list(row.names(tf_motif),row.names(tf_ga)))
+    tf_motif<-tf_motif[markers_list,]
+    tf_ga<-tf_ga[markers_list,]
+    }
+
+    #dend <- t(sum_ga) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 8)
+
+    #set up heatmap seriation and order by RNA
+    o = seriate(max(tf_ga) - tf_ga, method = "BEA_TSP")
+    saveRDS(o,file=paste0(prefix,".geneactivity.dend.rds")) 
+    side_ha_rna<-data.frame(ga_motif=da_tf_markers[get_order(o,1),]$GeneActivity.auc)
+
+    if(CHROMVAR){
     side_ha_motif<-data.frame(chromvar_motif=da_tf_markers[get_order(o,1),]$chromvar.auc)
     colfun_motif=colorRamp2(quantile(unlist(tf_motif), probs=c(0.5,0.80,0.95)),cividis(3))
     #Plot motifs alongside chromvar plot, to be added to the side with illustrator later
-    plt<-MotifPlot(object = x,assay="ATAC",motifs = row.names(tf_motif[get_order(o,1),]),ncol=1)+theme_void()+theme(strip.text = element_blank())
+    motif_list<-da_tf_markers[da_tf_markers$gene %in% row.names(tf_motif),]$chromvar.feature
+    plt<-MotifPlot(object = x,assay="peaks",motifs = motif_list[get_order(o,1)],ncol=1)+theme_void()+theme(strip.text = element_blank())
     ggsave(plt,file=paste0(prefix,".tf.heatmap.motif.pdf"),height=100,width=2,limitsize=F)
 
-  }
-  if(GA){
-    tf_ga<-average_features(x=x,features=da_tf_markers$gene,assay="GeneActivity",group_by.=group_by.)
-    tf_ga<-tf_ga[da_tf_markers$gene,]
+    }
+    if(GA){
     side_ha_ga<-data.frame(ga_auc=da_tf_markers[get_order(o,1),]$GeneActivity.auc)
     colfun_ga=colorRamp2(quantile(unlist(tf_ga), probs=c(0.5,0.80,0.95)),magma(3))
-
-  }
+    }
 
     side_ha_col<-colorRamp2(c(0,1),c("white","black"))
-    gene_ha = rowAnnotation(foo = anno_mark(at = c(1:nrow(tf_rna)), labels =row.names(tf_rna)))
+    gene_ha = rowAnnotation(foo = anno_mark(at = c(1:nrow(tf_ga)), labels =row.names(tf_ga),labels_gp=gpar(fontsize=6)))
 
+    annot<-x@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+    annot<-annot[!(annot$subcluster_col=="NA"),]
+    annot<-annot[!duplicated(annot$cluster_ID),]
+    annot<-annot[annot$cluster_ID %in% colnames(tf_ga),]
+    annot<-annot[match(colnames(tf_ga),annot$cluster_ID),]
+    annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
 
-    rna_auc<-Heatmap(side_ha_rna,
-        row_order = get_order(o,1),
-        col=side_ha_col,
-        show_column_names=FALSE,
-        row_names_gp=gpar(fontsize=7))
+    col_ha<-columnAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+                    col=list(
+                        celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
+                        cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
+                        subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                            ))
 
-    rna_plot<-Heatmap(tf_rna,
-        row_order = get_order(o,1),
-        column_order = get_order(o,2),
-        name="RNA",
-        column_title="RNA",
-        col=colfun_rna,
-        column_names_gp = gpar(fontsize = 8),
-        show_row_names=FALSE,
-        column_names_rot=90)
-
-  if(GA){
+  if(GA==TRUE ){
       ga_auc<-Heatmap(side_ha_ga,
           row_order = get_order(o,1),
           col=side_ha_col,
@@ -2886,11 +2924,12 @@ plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group
           name="Gene Activity",
           column_title="Gene Activity",
           col=colfun_ga,
+          top_annotation=col_ha,
           column_names_gp = gpar(fontsize = 8),
           show_row_names=FALSE,
           column_names_rot=90)
   }
-  if(CHROMVAR){
+  if(CHROMVAR==TRUE ){
       motif_auc<-Heatmap(side_ha_motif,
           row_order = get_order(o,1),
           col=side_ha_col,
@@ -2904,19 +2943,33 @@ plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group
           name="TF Motif",
           column_title="TF Motif",
           col=colfun_motif,
-          #top_annotation=top_ha,
+          top_annotation=col_ha,
           column_names_gp = gpar(fontsize = 8),
           show_row_names=FALSE,
           column_names_rot=90,
           right_annotation=gene_ha)
   }
+  if(GA==TRUE &&(CHROMVAR==FALSE)){
+          ga_plot<-Heatmap(tf_ga,
+          row_order = get_order(o,1),
+          column_order = get_order(o,2),
+          name="Gene Activity",
+          column_title="Gene Activity",
+          col=colfun_ga,
+          top_annotation=col_ha,
+          column_names_gp = gpar(fontsize = 8),
+          show_row_names=FALSE,
+          column_names_rot=90,
+        right_annotation=gene_ha)
+
+  }
 
   if(all(CHROMVAR,GA)){
-      plt1<-draw(ga_auc+ga_plot+rna_auc+rna_plot+motif_auc+motif_plot)
+      plt1<-draw(ga_auc+ga_plot+motif_auc+motif_plot)
   } else if(CHROMVAR){
-      plt1<-draw(rna_auc+rna_plot+motif_auc+motif_plot)
+      plt1<-draw(motif_auc+motif_plot)
   } else {
-      plt1<-draw(ga_auc+ga_plot+rna_auc+rna_plot)
+      plt1<-draw(ga_auc+ga_plot)
   }
 
 
@@ -2925,47 +2978,74 @@ plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group
     dev.off()
 
     system(paste0("slack -F ",prefix,".tf.heatmap.pdf ryan_todo"))
+    if(CHROMVAR){
     system(paste0("slack -F ",prefix,".tf.heatmap.motif.pdf ryan_todo"))
+    }
 }
 
-#hg38
+#Final wrapper function
+run_top_TFs<-function(obj=hg38_atac,prefix="hg38_atac",i="cluster_ID",marker_number=3,CHROMVAR.=TRUE){
+    if(CHROMVAR.==TRUE){
+        markers<-lapply(c("GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=obj,group_by.=i,assay.=assay))
+        names(markers)<-c("GeneActivity","chromvar")
+        clusters<-unique(obj@meta.data[,i])[which(!endsWith(unique(obj@meta.data[,i]),"NA"))] 
+        markers_out<-do.call("rbind",lapply(clusters, function(j) head(topTFs(markers_list=markers,celltype=j,ga=markers$GeneActivity,motifs=markers$chromvar),n=marker_number))) #grab top 5 TF markers per celltype
+    } else {
+        markers<-lapply(c("GeneActivity"),function(assay) Identify_Marker_TFs(x=obj,group_by.=i,assay.=assay))
+        names(markers)<-c("GeneActivity")
+        clusters<-unique(obj@meta.data[,i])[which(!endsWith(unique(obj@meta.data[,i]),"NA"))] 
+        markers_out<-do.call("rbind",lapply(clusters, function(j) head(topTFs(markers_list=markers,celltype=j,ga=markers$GeneActivity),n=marker_number))) #grab top 5 TF markers per celltype
+    }
+    dim(markers_out)
+    markers_out<-markers_out[!duplicated(markers_out$gene),]
+    dim(markers_out)
+    saveRDS(markers_out,file=paste0(prefix,"_celltype_TF_markers.RDS"))
+    da_tf_markers<-readRDS(paste0(prefix,"_celltype_TF_markers.RDS"))
+    plot_top_TFs(x=obj,tf_markers=da_tf_markers,prefix=prefix,group_by.=i,CHROMVAR=CHROMVAR.,GA=TRUE)
+}
 
+
+#hg38 TF markers
 hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
-  i="predicted.id" #group by factor
-  markers<-lapply(c("RNA","GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=stromal,group_by.="predicted.id",assay.=assay))
-  names(markers)<-c("RNA","GeneActivity","chromvar")
-  markers_out<-do.call("rbind",lapply(unique(stromal@meta.data[,i]),function(x) head(topTFs(markers_list=markers,celltype=x,rna=markers$RNA,ga=markers$GeneActivity,motifs=markers$chromvar),n=50))) #grab top 5 TF markers per celltype
-  dim(markers_out)
-  markers_out<-markers_out[!duplicated(markers_out$gene),]
-  dim(markers_out)
-  saveRDS(markers_out,file="stromal_celltype_TF_markers.RDS")
-  da_tf_markers<-readRDS("stromal_celltype_TF_markers.RDS")
-  plot_top_TFs(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group_by.=i,CHROMVAR=TRUE,GA=TRUE)
+run_top_TFs(obj=hg38_atac,prefix="hg38_TF",i="cluster_ID")
 
+#TF markers per celltype
+for(j in unique(hg38_atac$celltype)){
+    hg38_sub<-subset(hg38_atac,celltype==j)
+    if(length(unique(hg38_sub$cluster_ID))>1){
+    run_top_TFs(obj=hg38_sub,prefix=paste0("hg38_TF_",j),i="cluster_ID",marker_number=5)
+    }
+}
 
-#mm10 
-mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
-
-#hg38 markers
-markers<-Identify_Marker_TFs(x=hg38_atac)
-markers_out<-do.call("rbind",lapply(unique(hg38_atac$cluster_ID),function(x) head(topTFs(markers_list=markers,celltype=x),n=10))) #grab top 5 TF markers per celltype
-dim(markers_out)
-markers_out<-markers_out[!duplicated(markers_out$gene),]
-dim(markers_out)
-saveRDS(markers_out,file="hg38_TF_markers.RDS")
-da_tf_markers<-readRDS("hg38_TF_markers.RDS")
-plot_top_TFs(x=hg38_atac,tf_markers=da_tf_markers,prefix="hg38")
+#Marker Genes per celltype
+for(j in unique(hg38_atac$celltype)){
+    hg38_sub<-subset(hg38_atac,celltype==j)
+    if(length(unique(hg38_sub$cluster_ID))>1){
+    run_top_TFs(obj=hg38_sub,prefix=paste0("hg38_markergenes_",j),i="cluster_ID",marker_number=10,CHROMVAR.=FALSE)
+}
+}
 
 
 #mm10 markers
-markers<-Identify_Marker_TFs(x=mm10_atac)
-markers_out<-do.call("rbind",lapply(unique(mm10_atac$cluster_ID),function(x) head(topTFs(markers_list=markers,celltype=x),n=10))) #grab top 5 TF markers per celltype
-dim(markers_out)
-markers_out<-markers_out[!duplicated(markers_out$gene),]
-dim(markers_out)
-saveRDS(markers_out,file="mm10_TF_markers.RDS")
-da_tf_markers<-readRDS("mm10_TF_markers.RDS")
-plot_top_TFs(x=mm10_atac,tf_markers=da_tf_markers,prefix="mm10")
+mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
+run_top_TFs(obj=mm10_atac,prefix="mm10",i="cluster_ID")
+
+#TF markers per celltype
+for(j in unique(mm10_atac$celltype)){
+    mm10_sub<-subset(mm10_atac,celltype==j)
+    if(length(unique(mm10_sub$cluster_ID))>1){
+    run_top_TFs(obj=mm10_sub,prefix=paste0("mm10_TF_",j),i="cluster_ID",marker_number=5)
+}
+}
+
+#Marker Genes per celltype
+for(j in unique(mm10_atac$celltype)){
+    mm10_sub<-subset(mm10_atac,celltype==j)
+    if(length(unique(mm10_sub$cluster_ID))>1){
+    run_top_TFs(obj=mm10_sub,prefix=paste0("mm10_markergenes_",j),i="cluster_ID",marker_number=10,CHROMVAR.=FALSE)
+}
+}
+
 
 ```
 

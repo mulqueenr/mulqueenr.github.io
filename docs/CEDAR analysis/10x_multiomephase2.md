@@ -17,6 +17,8 @@ sftp mulqueen@nix.ohsu.edu
 get -r /data/EXP220628HM
 get -r /data/EXP220629HM
 
+#and download WGS data
+get -r /data/EXP220921HM
 ```
 
 
@@ -3228,7 +3230,7 @@ harmony_sample_integration(x="phase2.QC.SeuratObject.rds",outname="all_cells")
 ## Transcription Factor Expression Markers
 
 Based on seurat tutorial https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html#wnn-analysis-of-10x-multiome-rna-atac-1
-
+Using average AUC to define markers that work across modalities (RNA, Gene Activity, and TF motifs). Doing this across cell types, and then within cell types across diagnoses.
 
 ```R
 library(Signac)
@@ -3259,7 +3261,7 @@ molecular_type_cols<-c("DCIS"="grey", "ER+/PR-/HER2-"="#EBC258", "ER+/PR-/HER2+"
 ########################################
 
 
-# a simple function to implement the procedure above
+#Grab top overlapping TFs
 topTFs <- function(markers_list,celltype, padj.cutoff = 1e-2,rna=NA,ga=NA,motifs=NA) {
   ctmarkers_rna <- dplyr::filter(
     rna, RNA.group == celltype) %>% 
@@ -3304,6 +3306,7 @@ topTFs <- function(markers_list,celltype, padj.cutoff = 1e-2,rna=NA,ga=NA,motifs
   return(top_tfs)
 }
 
+#Identify top markers
 Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA"){
     markers <- presto:::wilcoxauc.Seurat(X = x, group_by = group_by., assay = 'data', seurat_assay = assay.)
     colnames(markers) <- paste(assay., colnames(markers),sep=".")
@@ -3316,7 +3319,7 @@ Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA"){
     return(markers) 
 }
 
-
+#Average markers across groups
 average_features<-function(x=hg38_atac,features=da_tf_markers$motif.feature,assay="chromvar",group_by.="predicted.id"){
     #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
     dat_motif<-x[[assay]]@data[features,]
@@ -3331,6 +3334,7 @@ average_features<-function(x=hg38_atac,features=da_tf_markers$motif.feature,assa
     return(sum_motif)
 }
 
+#Make a heatmap of aligned multiple modalities
 plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group_by.="predicted.id",CHROMVAR=TRUE,GA=TRUE){
     tf_rna<-average_features(x=x,features=da_tf_markers$gene,assay="RNA",group_by.=group_by.)
     tf_rna<-tf_rna[row.names(tf_rna) %in% da_tf_markers$gene,]
@@ -3455,46 +3459,42 @@ plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group
     system(paste0("slack -F ",prefix,".tf.heatmap.motif.pdf ryan_todo"))
 }
 
-#stromal
+#Final wrapper function
+run_top_TFs<-function(obj=stromal,prefix="stromal",i="predicted.id"){
+  markers<-lapply(c("RNA","GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=obj,group_by.=i,assay.=assay))
+  names(markers)<-c("RNA","GeneActivity","chromvar")
+  markers_out<-do.call("rbind",lapply(unique(obj@meta.data[,i]),function(x) head(topTFs(markers_list=markers,celltype=x,rna=markers$RNA,ga=markers$GeneActivity,motifs=markers$chromvar),n=10))) #grab top 5 TF markers per celltype
+  dim(markers_out)
+  markers_out<-markers_out[!duplicated(markers_out$gene),]
+  dim(markers_out)
+  saveRDS(markers_out,file=paste0(prefix,"_celltype_TF_markers.RDS"))
+  da_tf_markers<-readRDS(paste0(prefix,"_celltype_TF_markers.RDS"))
+  plot_top_TFs(x=obj,tf_markers=da_tf_markers,prefix=prefix,group_by.=i,CHROMVAR=TRUE,GA=TRUE)
+}
+
+#stromal celltypes
 stromal<-readRDS("stromal.SeuratObject.rds")
-  i="predicted.id" #group by factor
-  markers<-lapply(c("RNA","GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=stromal,group_by.="predicted.id",assay.=assay))
-  names(markers)<-c("RNA","GeneActivity","chromvar")
-  markers_out<-do.call("rbind",lapply(unique(stromal@meta.data[,i]),function(x) head(topTFs(markers_list=markers,celltype=x,rna=markers$RNA,ga=markers$GeneActivity,motifs=markers$chromvar),n=10))) #grab top 5 TF markers per celltype
-  dim(markers_out)
-  markers_out<-markers_out[!duplicated(markers_out$gene),]
-  dim(markers_out)
-  saveRDS(markers_out,file="stromal_celltype_TF_markers.RDS")
-  da_tf_markers<-readRDS("stromal_celltype_TF_markers.RDS")
-  plot_top_TFs(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group_by.=i,CHROMVAR=TRUE,GA=TRUE)
+run_top_TFs(obj=stromal,prefix="stromal",i="predicted.id")
 
-
-#immune
+#immune celltypes
 immune<-readRDS("immune.SeuratObject.rds")
-  i="predicted.id" #group by factor
-  markers<-lapply(c("RNA","GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=immune,group_by.="predicted.id",assay.=assay))
-  names(markers)<-c("RNA","GeneActivity","chromvar")
-  markers_out<-do.call("rbind",lapply(unique(immune@meta.data[,i]),function(x) head(topTFs(markers_list=markers,celltype=x,rna=markers$RNA,ga=markers$GeneActivity,motifs=markers$chromvar),n=50))) #grab top 5 TF markers per celltype
-  dim(markers_out)
-  markers_out<-markers_out[!duplicated(markers_out$gene),]
-  dim(markers_out)
-  saveRDS(markers_out,file="immune_celltype_TF_markers.RDS")
-  da_tf_markers<-readRDS("immune_celltype_TF_markers.RDS")
-  plot_top_TFs(x=immune,tf_markers=da_tf_markers,prefix="immune",group_by.=i,CHROMVAR=TRUE,GA=TRUE)
+run_top_TFs(obj=immune,prefix="immune",i="predicted.id")
 
 
-#all cells
+#all cells celltypes
 dat<-readRDS("phase2.QC.SeuratObject.rds")
-  i="predicted.id" #group by factor
-  markers<-lapply(c("RNA","GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=dat,group_by.="predicted.id",assay.=assay))
-  names(markers)<-c("RNA","GeneActivity","chromvar")
-  markers_out<-do.call("rbind",lapply(unique(dat@meta.data[,i]),function(x) head(topTFs(markers_list=markers,celltype=x,rna=markers$RNA,ga=markers$GeneActivity,motifs=markers$chromvar),n=10))) #grab top 50 TF markers per celltype (most will be filtered due to low overlap)
-  dim(markers_out)
-  markers_out<-markers_out[!duplicated(markers_out$gene),]
-  dim(markers_out)
-  saveRDS(markers_out,file="dat_celltype_TF_markers.RDS")
-  da_tf_markers<-readRDS("dat_celltype_TF_markers.RDS")
-  plot_top_TFs(x=dat,tf_markers=da_tf_markers,prefix="dat",group_by.=i,CHROMVAR=TRUE,GA=TRUE)
+run_top_TFs(obj=dat,prefix="dat",i="predicted.id")
+
+#Per cell type, run diagnosis differences
+#Removing ILC cells first just because we don't have enough samples for comparison
+dat<-subset(dat,diagnosis!="ILC")
+
+for(k in unique(dat$predicted.id)){
+  dat_sub<-subset(dat,predicted.id==k)
+  run_top_TFs(obj=dat_sub,prefix=paste0(k,"_diagnosis"),i="diagnosis")
+  print(paste("Done with",k))
+}
+
 
 
 ```
@@ -3701,6 +3701,147 @@ dat_out<-merge(out_3d_dat,col_dat,by="predicted.id")
 write.table(dat_out,file="multiome_tumor.tsv",sep="\t",quote=F,col.names=F,row.names=F)
 system("slack -F multiome_tumor.tsv ryan_todo")
 
+```
+
+
+
+
+
+# Low Pass Whole Genome Sequencing Data
+
+## Align to hg38 with bwa-mem
+
+```bash
+cd /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2
+cat readme.txt 
+#Run     Lane    Sample  I7 Index ID     Index1  I5 Index ID     Index2
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_A1-12        D712    AGCGATAG        D501    AGGCTATA
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_B1-12        D712    AGCGATAG        D502    GCCTCTAT
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_C1-12        D712    AGCGATAG        D503    AGGATAGG
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_D1-12        D712    AGCGATAG        D504    TCAGAGCC
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_E1-12        D712    AGCGATAG        D505    CTTCGCCT
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_F1-12        D712    AGCGATAG        D506    TAAGATTA
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_G1-12        D712    AGCGATAG        D507    ACGTCCTG
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_H1-12        D712    AGCGATAG        D508    GTCAGTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG01   N701    TAAGGCGA        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG03   N702    CGTACTAG        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG04   N703    AGGCAGAA        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG05   N704    TCCTGAGC        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG06   N705    GGACTCCT        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG07   N706    TAGGCATG        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG08   N707    CTCTCTAC        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG09   N710    CGAGGCTG        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG10   N701    TAAGGCGA        S506    TATGCAGT
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG11   N702    CGTACTAG        S506    TATGCAGT
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG12   N703    AGGCAGAA        S506    TATGCAGT
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG15   N704    TCCTGAGC        S506    TATGCAGT
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG16   N705    GGACTCCT        S506    TATGCAGT
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG19   N706    TAGGCATG        S506    TATGCAGT
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG20   N707    CTCTCTAC        S506    TATGCAGT
+
+#I'm taking the BCMM samples as the low pass whole genome
+
+cd /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM
+
+
+
+
+```
+
+## Batch script for Alignment
+Using the bwa mem for alignment.
+
+wgs_alignment.sbatch
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=1-15
+#SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=30 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=5gb ## request gigabyte per cpu
+#SBATCH --time=5:00:00 ## ask for 3 hour on the node
+#SBATCH --
+
+fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
+ref="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.fa"
+file_in=`ls $fastq_dir/*WG*R1*.fastq.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}' `
+
+#Align and output as bam file
+R1=$file_in
+R2=`echo $bam_in | awk '{ gsub("_R1_", "_R2_"); print $0}' `
+output_name=${R1::-9}".batch.bam"
+bwa mem -t 10 $ref $R1 $R2 | samtools sort -T . -@5 - | samtools view -b -@5 - > $output_name
+
+```
+
+```bash
+sbatch wgs_alignment.sbatch
+```
+
+## Batch script for deduplication via Picard
+wgs_dedup.sbatch
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=1-15
+#SBATCH --tasks-per-node=15 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
+#SBATCH --time=3:00:00 ## ask for 3 hour on the node
+#SBATCH --
+
+picard_dir="/home/groups/CEDAR/tools/picard-tools-1.119/"
+fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
+list_files=`ls $fastq_dir/*WG*R1*.bam`
+bam_in=`ls $fastq_dir/*WG*R1*.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+i=$bam_in
+output_name=${i::-4}".dedup.bam"
+output_metrics=${i::-4}".dedup.metrics.txt"
+
+#picard mark duplicates
+java -jar ${picard_dir}/MarkDuplicates.jar \
+        I=$i \
+        O=$output_name \
+        M=$output_metrics
+```
+
+```bash
+sbatch wgs_dedup.sbatch
+```
+
+## Install GATK4
+```bash
+cd /home/groups/CEDAR/mulqueen/src/gatk
+conda install -c gatk4
+
+```
+
+
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=1-15
+#SBATCH --tasks-per-node=15 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
+#SBATCH --time=3:00:00 ## ask for 3 hour on the node
+#SBATCH --
+
+gatk="/home/groups/CEDAR/mulqueen/src/gatk/gatk-4.2.0.0/gatk"
+ref="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.fa"
+fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
+list_files=`ls $fastq_dir/*WG*R1*.dedup.bam`
+bam_in=`ls $fastq_dir/*WG*R1*.dedup.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+i=$bam_in
+output_name=${i::-10}
+
+
+
+$gatk PreprocessIntervals \
+    -R $ref \
+    --bin-length 1000 \
+    --interval-merging-rule OVERLAPPING_ONLY \
+    -O preprocessed.1000.interval_list
 ```
 
 
