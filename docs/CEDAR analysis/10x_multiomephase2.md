@@ -6,7 +6,8 @@ permalink: /10xmultiome_phase2/
 category: CEDAR
 ---
 
-Multiome processing for 10X multiome data on Primary Tumors (Phase 1)
+Multiome processing for 10X multiome data on Primary Tumors (Phase 1+2 and preliminary experiment combined)
+*This code is a WIP and will be cleaned prior to manuscript finalization.*
 
 ## File Location
 ```bash
@@ -3203,17 +3204,17 @@ harmony_sample_integration<-function(x,outname){
   dat <- RunUMAP(object = dat, nn.name = "multimodal_harmony.nn",reduction.name="multimodal_harmony_umap", assay = "SoupXRNA", verbose = TRUE ) 
 
   i="predicted.id"
-  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i,cols=type_cols)
+  plt1<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=type_cols)
   ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
   system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
 
   i="diagnosis"
-  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i,cols=diag_cols)
+  plt1<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=diag_cols)
   ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
   system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
 
   i="sample"
-  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i)
+  plt1<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i)
   ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
   system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
 
@@ -3336,21 +3337,21 @@ average_features<-function(x=hg38_atac,features=da_tf_markers$motif.feature,assa
 
 #Make a heatmap of aligned multiple modalities
 plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group_by.="predicted.id",CHROMVAR=TRUE,GA=TRUE){
-    tf_rna<-average_features(x=x,features=da_tf_markers$gene,assay="RNA",group_by.=group_by.)
-    tf_rna<-tf_rna[row.names(tf_rna) %in% da_tf_markers$gene,]
+    tf_rna<-average_features(x=x,features=tf_markers$gene,assay="RNA",group_by.=group_by.)
+    tf_rna<-tf_rna[row.names(tf_rna) %in% tf_markers$gene,]
 
   if(CHROMVAR){
-    tf_motif<-average_features(x=x,features=da_tf_markers$chromvar.feature,assay="chromvar",group_by.=group_by.)
-    tf_motif<-tf_motif[row.names(tf_motif) %in% da_tf_markers$chromvar.feature,]
-    row.names(tf_motif)<-da_tf_markers[da_tf_markers$chromvar.feature %in% row.names(tf_motif),]$gene
+    tf_motif<-average_features(x=x,features=tf_markers$chromvar.feature,assay="chromvar",group_by.=group_by.)
+    tf_motif<-tf_motif[row.names(tf_motif) %in% tf_markers$chromvar.feature,]
+    row.names(tf_motif)<-tf_markers[tf_markers$chromvar.feature %in% row.names(tf_motif),]$gene
     markers_list<-Reduce(intersect, list(row.names(tf_rna),row.names(tf_motif)))
     tf_rna<-tf_rna[markers_list,]
     tf_motif<-tf_motif[markers_list,]
   }
 
   if(GA){
-    tf_ga<-average_features(x=x,features=da_tf_markers$gene,assay="GeneActivity",group_by.=group_by.)
-    tf_ga<-tf_ga[row.names(tf_ga) %in% da_tf_markers$gene,]
+    tf_ga<-average_features(x=x,features=tf_markers$gene,assay="GeneActivity",group_by.=group_by.)
+    tf_ga<-tf_ga[row.names(tf_ga) %in% tf_markers$gene,]
     markers_list<-Reduce(intersect, list(row.names(tf_rna),row.names(tf_ga)))
     tf_rna<-tf_rna[markers_list,]
     tf_ga<-tf_ga[markers_list,]
@@ -3366,20 +3367,20 @@ plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group
     #set up heatmap seriation and order by RNA
     o = seriate(max(tf_rna) - tf_rna, method = "BEA_TSP")
     saveRDS(o,file=paste0(prefix,".geneactivity.dend.rds")) 
-    side_ha_rna<-data.frame(ga_motif=da_tf_markers[get_order(o,1),]$RNA.auc)
+    side_ha_rna<-data.frame(ga_motif=tf_markers[get_order(o,1),]$RNA.auc)
     colfun_rna=colorRamp2(quantile(unlist(tf_rna), probs=c(0.5,0.80,0.95)),plasma(3))
 
   if(CHROMVAR){
-    side_ha_motif<-data.frame(chromvar_motif=da_tf_markers[get_order(o,1),]$chromvar.auc)
+    side_ha_motif<-data.frame(chromvar_motif=tf_markers[get_order(o,1),]$chromvar.auc)
     colfun_motif=colorRamp2(quantile(unlist(tf_motif), probs=c(0.5,0.80,0.95)),cividis(3))
     #Plot motifs alongside chromvar plot, to be added to the side with illustrator later
-    motif_list<-da_tf_markers[da_tf_markers$gene %in% row.names(tf_motif),]$chromvar.feature
+    motif_list<-tf_markers[tf_markers$gene %in% row.names(tf_motif),]$chromvar.feature
     plt<-MotifPlot(object = x,assay="ATAC",motifs = motif_list[get_order(o,1)],ncol=1)+theme_void()+theme(strip.text = element_blank())
     ggsave(plt,file=paste0(prefix,".tf.heatmap.motif.pdf"),height=100,width=2,limitsize=F)
 
   }
   if(GA){
-    side_ha_ga<-data.frame(ga_auc=da_tf_markers[get_order(o,1),]$GeneActivity.auc)
+    side_ha_ga<-data.frame(ga_auc=tf_markers[get_order(o,1),]$GeneActivity.auc)
     colfun_ga=colorRamp2(quantile(unlist(tf_ga), probs=c(0.5,0.80,0.95)),magma(3))
 
   }
@@ -3810,6 +3811,8 @@ sbatch wgs_dedup.sbatch
 ```
 
 ## Install GATK4
+Following https://gatk.broadinstitute.org/hc/en-us/articles/360035531152--How-to-Call-common-and-rare-germline-copy-number-variants
+
 ```bash
 cd /home/groups/CEDAR/mulqueen/src/gatk
 conda install -c gatk4
