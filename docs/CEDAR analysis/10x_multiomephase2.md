@@ -3740,7 +3740,7 @@ cat readme.txt
 #220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG19   N706    TAGGCATG        S506    TATGCAGT
 #220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG20   N707    CTCTCTAC        S506    TATGCAGT
 
-#I'm taking the BCMM samples as the low pass whole genome
+#I'm taking the BCMM samples as the low pass whole genome for this project
 
 cd /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM
 
@@ -3763,7 +3763,7 @@ wgs_alignment.sbatch
 #SBATCH --time=5:00:00 ## ask for 3 hour on the node
 #SBATCH --
 
-fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
+fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
 ref="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.fa"
 file_in=`ls $fastq_dir/*WG*R1*.fastq.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}' `
 
@@ -3792,7 +3792,7 @@ wgs_dedup.sbatch
 #SBATCH --
 
 picard_dir="/home/groups/CEDAR/tools/picard-tools-1.119/"
-fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
+fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
 list_files=`ls $fastq_dir/*WG*R1*.bam`
 bam_in=`ls $fastq_dir/*WG*R1*.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
 i=$bam_in
@@ -3810,41 +3810,132 @@ java -jar ${picard_dir}/MarkDuplicates.jar \
 sbatch wgs_dedup.sbatch
 ```
 
-## Install GATK4
+## Runing GATK4
 Following https://gatk.broadinstitute.org/hc/en-us/articles/360035531152--How-to-Call-common-and-rare-germline-copy-number-variants
 
+Download and set up a conda environment
+Following 
 ```bash
-cd /home/groups/CEDAR/mulqueen/src/gatk
-conda install -c gatk4
+wget https://github.com/broadinstitute/gatk/archive/refs/tags/4.2.6.1.tar.gz
+tar -xvf 4.2.6.1.tar.gz
+cp gatkcondaenv.yml.template gatkcondaenv.yml
+conda env create -n gatk -f gatkcondaenv.yml
 
+source activate gatk
 ```
+### Process bam files into counts data
 
+Using 10Kbp windows and the cellranger genome for consistency.
 
 ```bash
-#!/bin/bash
-#SBATCH --nodes=1 #request 1 node
-#SBATCH --array=1-15
-#SBATCH --tasks-per-node=15 ##we want our node to do N tasks at the same time
-#SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
-#SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
-#SBATCH --time=3:00:00 ## ask for 3 hour on the node
-#SBATCH --
-
-gatk="/home/groups/CEDAR/mulqueen/src/gatk/gatk-4.2.0.0/gatk"
+source activate gatk
+gatk="/home/groups/oroaklab/src/GATK/gatk-4.1.2.0/gatk"
+ref_dir="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/"
 ref="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.fa"
-fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
-list_files=`ls $fastq_dir/*WG*R1*.dedup.bam`
-bam_in=`ls $fastq_dir/*WG*R1*.dedup.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
-i=$bam_in
-output_name=${i::-10}
+fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
+picard_dir="/home/groups/CEDAR/tools/picard-tools-1.119/"
+
+#download mappability information
+cd $ref_dir
+wget https://bismap.hoffmanlab.org/raw/hg38.umap.tar.gz
+tar -xvf hg38.umap.tar.gz
+gzip -d hg38/k50.umap.bed.gz
+hg38_map="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/hg38/k50.umap.bed"
 
 
+$gatk IndexFeatureFile \
+        -L preprocessed.10000.interval_list \
+        -R $ref \
+        --mappability-track $hg38_map \
+        -imr OVERLAPPING_ONLY \
+        -O preprocessed.10000.annot.tsv
 
+#Prepare reference file
+  #idx
+  cd $ref_dir
+  samtools faidx genome.fa
+
+  #dict
+  cd $fastq_dir
+  $gatk CreateSequenceDictionary -R $ref
+
+#Prepare intervals
 $gatk PreprocessIntervals \
     -R $ref \
-    --bin-length 1000 \
+    --bin-length 10000 \
+    --padding 0 \
     --interval-merging-rule OVERLAPPING_ONLY \
-    -O preprocessed.1000.interval_list
+    -O preprocessed.10000.interval_list
+
+#Annotate for downstream filtering
+$gatk AnnotateIntervals \
+        -L preprocessed.10000.interval_list \
+        -R $ref \
+        -imr OVERLAPPING_ONLY \
+        --mappability-track $hg38_map \
+        -O preprocessed.10000.annot.tsv
+
+
+#Add read group for processing
+for i in ${fastq_dir}/*WG*R1*.dedup.bam; do
+  output_name=${i::-4}".RG.bam"
+  RG_out=`basename $i | awk '{split($0,a,"_"); print a[4]}'`
+  java -jar ${picard_dir}/AddOrReplaceReadGroups.jar \
+        I=$i \
+        O=$output_name\
+        RGID=1 \
+        RGLB=$RG_out \
+        RGPL=illumina \
+        RGPU=unit1 \
+        RGSM=$RG_out &
+  done &
+
+#index bam files then perform bin counting
+for i in ${fastq_dir}/*WG*R1*.dedup.RG.bam; do
+  samtools index $i & done &
+
+#note this can also be fed a bed file of intervals to perfectly match the single cell calling if needed
+for i in ${fastq_dir}/*WG*R1*.dedup.RG.bam; do
+  output_name=${i::-10}
+   $gatk CollectReadCounts \
+        -L preprocessed.10000.interval_list \
+        -R $ref \
+        -imr OVERLAPPING_ONLY \
+        -I $i \
+        -O ${output_name}.hdf5
+    done &
+
+#Filter intervals
+$gatk FilterIntervals \
+        -L preprocessed.10000.interval_list \
+        --annotated-intervals preprocessed.10000.annot.tsv \
+        -I EXP220921HM_BCMM_WG01_S9_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG06_S13_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG10_S17_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG16_S21_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG03_S10_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG07_S14_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG11_S18_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG19_S22_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG04_S11_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG08_S15_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG12_S19_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG20_S23_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG05_S12_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG09_S16_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG15_S20_L002_R1_001.batch.de.hdf5 \
+        -imr OVERLAPPING_ONLY \
+        -O preprocessed.10000.filtered.interval_list
+
+#DetermineGermlineContigPloidy
+$gatk DetermineGermlineContigPloidy \
+        -L preprocessed.10000.interval_list \
+        --interval-merging-rule OVERLAPPING_ONLY \
+        -I EXP220921HM_BCMM_WG01_S9_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG06_S13_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG10_S17_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG16_S21_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG03_S10_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG07_S14_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG11_S18_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG19_S22_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG04_S11_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG08_S15_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG12_S19_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG20_S23_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG05_S12_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG09_S16_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG15_S20_L002_R1_001.batch.de.hdf5 \
+        #change this prior --contig-ploidy-priors chr20XY_contig_ploidy_priors.tsv \
+        --output . \
+        --output-prefix ploidy \
+        --verbosity DEBUG
 ```
 
 
