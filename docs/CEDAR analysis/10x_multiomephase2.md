@@ -9,7 +9,9 @@ category: CEDAR
 Multiome processing for 10X multiome data on Primary Tumors (Phase 1+2 and preliminary experiment combined)
 *This code is a WIP and will be cleaned prior to manuscript finalization.*
 
-## File Location
+## Initial Processing and QC
+
+### File Location
 ```bash
 mkdir /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2
 cd /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2
@@ -23,7 +25,7 @@ get -r /data/EXP220921HM
 ```
 
 
-## Reference data
+### Reference data
 Using chipseq bed files held on cistrome for accessibility analysis.
 
 ```bash
@@ -31,8 +33,8 @@ Using chipseq bed files held on cistrome for accessibility analysis.
 /home/groups/CEDAR/mulqueen/ref/cistrome/human_factor_full_QC.txt #has information on each download peaks files
 /home/groups/CEDAR/mulqueen/ref/cistrome/human_factor #has individual peak files
 ```
-## Run cellranger-mkfastq
 
+### Run cellranger-mkfastq
 Set up indexes used for mkfastq
 
 ```bash
@@ -119,7 +121,7 @@ cellranger-arc mkfastq --id=phase_2_atac \
 #                     --lanes=1 \
 #                     --localmem=80
 ```
-## Specify File Location
+### Specify File Location
 Generate libraries csv file specifying fastq locations for cellranger-arc.
 
 ### RM Libraries
@@ -131,16 +133,11 @@ echo """fastqs,sample,library_type
 /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/phase_2_rna/HCVLCDRX2/phase2,sample_"""${i}""",Gene Expression""" > sample_${i}.csv ; done
 ```
 
-## Run CellRanger-ARC
+### Run CellRanger-ARC
 ```bash
 cd /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2 #using this as analysis directory
 ```
-### Slurm commands
-Test run
 
-```bash
- cellranger-arc testrun --id=tiny2
-```
 Run Cellranger per sample
 
 ```bash          
@@ -159,9 +156,9 @@ for i in 1 3 4 5 6 7 8 9 10 11 12; do
   slack -F ./sample_$i/outs/$i.web_summary.html ryan_todo; done 
 ```
 
-# Initial QC
+## Initial QC
 
-## Perform Scrublet on Data to Ensure Single-cells
+### Perform Scrublet on Data to Ensure Single-cells
 
 Code from tutorial here.[https://github.com/AllonKleinLab/scrublet/blob/master/examples/scrublet_basics.ipynb]
 
@@ -237,7 +234,7 @@ for i in 1 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 RM_1 RM_2 RM_3 RM_4;
   done
 ```
 
-## Use SoupX to remove ambient RNA
+### Use SoupX to remove ambient RNA
 
 ```R
 install.packages('SoupX')
@@ -282,7 +279,7 @@ print(paste("Finished:",outname))
 
 ```
 
-# Seurat Generation and Processing
+## Seurat Generation and Processing
 
 ### Seurat Object Generation for Samples
 Performing seurat analysis following https://satijalab.org/signac/articles/pbmc_multiomic.html
@@ -471,7 +468,7 @@ dat[["peaks"]] <- CreateChromatinAssay(
 saveRDS(dat,file="phase2.SeuratObject.rds")
 ```
 
-## Run Dim Reduction Per Sample
+### Run Dim Reduction Per Sample
 ```R
 library(Signac)
 library(Seurat)
@@ -682,7 +679,7 @@ lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),singl
 ```
 
 
-## Run cisTopic for ATAC Dimensionality Reduction
+### Run cisTopic for ATAC Dimensionality Reduction
 
 Cistopic Per sample (Updated to include other directory folders)
 
@@ -776,8 +773,8 @@ single_sample_cistopic_generation(x=args[1])
 
 ```
 
-# Public Datasets for Comparison 
-## Using Transfer Anchors for Cell identification.
+## Public Datasets for Comparison 
+### Using Transfer Anchors for Cell identification.
 
 Using Swarbrick paper labels for transfer. https://pubmed.ncbi.nlm.nih.gov/34493872/
 
@@ -817,8 +814,8 @@ wget https://figshare.com/ndownloader/articles/17058077/versions/1
 unzip 1
 ```
 
-# Swarbrick Paper Label Transfer
-## Transfer Swarbrick cell types
+## Swarbrick Paper Label Transfer
+### Transfer Swarbrick cell types
 
 ```R
 library(Signac)
@@ -1105,7 +1102,7 @@ system("slack -F sample_swarbrick_celltype_assignment.tsv ryan_todo") #note this
 
 ```
 
-### EMBO Cell Signature Transfer
+## EMBO Cell Signature Transfer
 
 Make Seurat Object with Metadata
 
@@ -1180,7 +1177,7 @@ cd /home/groups/CEDAR/mulqueen/ref/embo
 ```
 
 
-## Use EMBO and Swarbrick Paper Cell Types to Define Signatures
+### Use EMBO and Swarbrick Paper Cell Types to Define Signatures
 ```R
 library(Signac)
 library(Seurat)
@@ -1397,7 +1394,7 @@ lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),singl
 
 # Determine Tumor Cells and Clones via CNV Callers
 
-### InferCNV on RNA Profiles
+## InferCNV on RNA Profiles
 
 Immune and stromal cells were used to 
 define the reference cell-inferred copy number profiles. Similar to analysis done in https://www.nature.com/articles/s41588-021-00911-1
@@ -1744,7 +1741,7 @@ copykat_per_sample(x=as.character(args[1]))
 
 ```
 
-### ATAC CNV Calling with copyscAT
+## CopyscAT for ATAC CNV Calling 
 Using scATAC calling algorithm copyscAT from git repo https://github.com/spcdot/CopyscAT/
 Installation...
 ```R
@@ -1759,7 +1756,7 @@ Modifies the copyscAT python script (https://github.com/spcdot/CopyscAT/blob/mas
 mkdir /home/groups/CEDAR/mulqueen/ref/copyscat
 ```
 
-Now Running samples
+### Now Running samples
 
 Code from https://github.com/spcdot/CopyscAT/blob/master/copyscat_tutorial.R
 
