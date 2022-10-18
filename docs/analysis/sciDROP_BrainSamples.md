@@ -967,10 +967,9 @@ library(JASPAR2020)
 library(TFBSTools)
 library(BSgenome.Hsapiens.UCSC.hg38)
 library(patchwork)
-set.seed(1234)
 library(dplyr)
 library(ggrepel)
-
+library(clustree)
 
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/subcluster")
 
@@ -1006,17 +1005,30 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
     object_input@reductions$cistopic<-cistopic_obj
     n_topics<-ncol(Embeddings(object_input,reduction="cistopic"))
+    object_input@assays$peaks@key<-"peaks_"
     object_input<-RunUMAP(object_input,reduction="cistopic",dims=1:n_topics)    #finally recluster
     #Clustering with multiple resolutions to account for different celltype complexities
     object_input <- FindNeighbors(object = object_input, reduction = 'cistopic', dims = 1:n_topics)
+    object_input <- FindClusters(object = object_input,resolution=0.01)
+    object_input <- FindClusters(object = object_input,resolution=0.025)
+    object_input <- FindClusters(object = object_input,resolution=0.05)
     object_input <- FindClusters(object = object_input,resolution=0.1)
-    object_input <- FindClusters(object = object_input,verbose = TRUE,resolution=0.2)
-    object_input <- FindClusters(object = object_input,verbose = TRUE,resolution=0.5)
-    object_input <- FindClusters(object = object_input,verbose = TRUE,resolution=0.9)
+    object_input <- FindClusters(object = object_input,resolution=0.2)
+    object_input <- FindClusters(object = object_input,resolution=0.5)
+    object_input <- FindClusters(object = object_input,resolution=0.9)
     
     saveRDS(object_input,paste0(outname,".75k.subset.SeuratObject.Rds"))
-    plt<-DimPlot(object_input,group.by=c('peaks_snn_res.0.1','peaks_snn_res.0.2','peaks_snn_res.0.5','peaks_snn_res.0.9'))
+    plt<-DimPlot(object_input,group.by=c('peaks_snn_res.0.01','peaks_snn_res.0.025','peaks_snn_res.0.05','peaks_snn_res.0.1','peaks_snn_res.0.2','peaks_snn_res.0.5','peaks_snn_res.0.9'))
     ggsave(plt,file=paste(outname,"clustering.pdf",sep="."))
+    system(paste0("slack -F ",paste(outname,"clustering.pdf",sep=".")," ryan_todo"))
+    plt<-clustree(object_input, prefix = "peaks_snn_res.")
+    ggsave(plt,file=paste(outname,"clustree.pdf",sep="."))
+    system(paste0("slack -F ",paste(outname,"clustree.pdf",sep=".")," ryan_todo"))
+    object_input<-AddMetaData(object_input,object_input@reductions$umap@cell.embeddings,col.name=c("UMAP_1","UMAP_2"))
+    plt<-clustree_overlay(object_input, prefix = "peaks_snn_res.", x_value = "UMAP_1", y_value = "UMAP_2",red_dim="umap")
+    ggsave(plt,file=paste(outname,"clustree.overlay.pdf",sep="."))
+    system(paste0("slack -F ",paste(outname,"clustree.overlay.pdf",sep=".")," ryan_todo"))
+
 }
 
 ####################################
@@ -1050,20 +1062,29 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     celltype_list<-list.files(path="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/subcluster",pattern="clustering.pdf")
     hg38_celltype_list<-celltype_list[startsWith(prefix="hg38",celltype_list)]
 
-    hg38_resolution_list<-setNames(c("peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.1",
-        "peaks_snn_res.0.5","peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.2"),hg38_celltype_list)
+    hg38_resolution_list<-setNames(c("peaks_snn_res.0.05","peaks_snn_res.0.1","peaks_snn_res.0.05","peaks_snn_res.0.025",
+        "peaks_snn_res.0.05","peaks_snn_res.0.01","peaks_snn_res.0.01","peaks_snn_res.0.025"),hg38_celltype_list)
     cell_order<-row.names(hg38_atac@meta.data)
 
-    for(celltype.x in hg38_celltype_list){
+    metadat_embedding<-lapply(hg38_celltype_list, function(celltype.x){
         outname<-strsplit(celltype.x,split="[.]")[[1]][1]
         atac_sub<-readRDS(paste0("./subcluster/",outname,".75k.subset.SeuratObject.Rds"))
-        embedding_order<-row.names(atac_sub@reductions$umap@cell.embeddings)
-        row_order<-match(cell_order,embedding_order,nomatch=0)
-        hg38_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(hg38_atac@meta.data),nomatch=0),]$seurat_subcluster<-as.character(unlist(atac_sub@meta.data[which(colnames(atac_sub@meta.data)==hg38_resolution_list[celltype.x])]))
-        hg38_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(hg38_atac@meta.data),nomatch=0),]$subcluster_x<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,1])
-        hg38_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(hg38_atac@meta.data),nomatch=0),]$subcluster_y<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,2])
-    }
+        embedding<-as.data.frame(atac_sub@reductions$umap@cell.embeddings)
+        return(embedding)
+        })
 
+    metadat_subcluster<-lapply(hg38_celltype_list, function(celltype.x){
+        outname<-strsplit(celltype.x,split="[.]")[[1]][1]
+        atac_sub<-readRDS(paste0("./subcluster/",outname,".75k.subset.SeuratObject.Rds"))
+        seurat_subcluster<-data.frame(row.names=row.names(atac_sub@meta.data),seruat_subcluster=atac_sub@meta.data[,hg38_resolution_list[celltype.x]])
+        return(seurat_subcluster)
+        })
+
+    embedding<-do.call("rbind",metadat_embedding)
+    seurat_subcluster<-do.call("rbind",metadat_subcluster)
+    hg38_atac<-AddMetaData(hg38_atac,embedding,col.name=c("subcluster_x","subcluster_y"))
+    hg38_atac<-AddMetaData(hg38_atac,seurat_subcluster,col.name=c("seurat_subcluster"))
+    hg38_atac$cluster_ID<-paste(hg38_atac$seurat_clusters,hg38_atac$seurat_subcluster,sep="_")
     as.data.frame(hg38_atac@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
     #na values are doublets or excluded indexes
     saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
@@ -1081,27 +1102,36 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     celltype_list<-list.files(path="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/subcluster",pattern="clustering.pdf")
     mm10_celltype_list<-celltype_list[startsWith(prefix="mm10",celltype_list)]
 
-    mm10_resolution_list<-setNames(c("peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.1",
-        "peaks_snn_res.0.2","peaks_snn_res.0.2","peaks_snn_res.0.1","peaks_snn_res.0.1","peaks_snn_res.0.1"),mm10_celltype_list)
-    cell_order<-row.names(mm10_atac@meta.data)
+    mm10_resolution_list<-setNames(c("peaks_snn_res.0.05","peaks_snn_res.0.05","peaks_snn_res.0.01","peaks_snn_res.0.025",
+        "peaks_snn_res.0.01","peaks_snn_res.0.025","peaks_snn_res.0.01","peaks_snn_res.0.01","peaks_snn_res.0.01"),mm10_celltype_list)
 
-    for(celltype.x in mm10_celltype_list){
+    metadat_embedding<-lapply(mm10_celltype_list, function(celltype.x){
         outname<-strsplit(celltype.x,split="[.]")[[1]][1]
         atac_sub<-readRDS(paste0("./subcluster/",outname,".75k.subset.SeuratObject.Rds"))
-        embedding_order<-row.names(atac_sub@reductions$umap@cell.embeddings)
-        row_order<-match(cell_order,embedding_order,nomatch=0)
-        mm10_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(mm10_atac@meta.data),nomatch=0),]$seurat_subcluster<-as.character(unlist(atac_sub@meta.data[which(colnames(atac_sub@meta.data)==mm10_resolution_list[celltype.x])]))
-        mm10_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(mm10_atac@meta.data),nomatch=0),]$subcluster_x<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,1])
-        mm10_atac@meta.data[match(row.names(atac_sub@meta.data),row.names(mm10_atac@meta.data),nomatch=0),]$subcluster_y<-as.numeric(atac_sub@reductions$umap@cell.embeddings[row_order,2])
-    }
+        embedding<-as.data.frame(atac_sub@reductions$umap@cell.embeddings)
+        return(embedding)
+        })
 
+    metadat_subcluster<-lapply(mm10_celltype_list, function(celltype.x){
+        outname<-strsplit(celltype.x,split="[.]")[[1]][1]
+        atac_sub<-readRDS(paste0("./subcluster/",outname,".75k.subset.SeuratObject.Rds"))
+        seurat_subcluster<-data.frame(row.names=row.names(atac_sub@meta.data),seruat_subcluster=atac_sub@meta.data[,mm10_resolution_list[celltype.x]])
+        return(seurat_subcluster)
+        })
+
+    embedding<-do.call("rbind",metadat_embedding)
+    seurat_subcluster<-do.call("rbind",metadat_subcluster)
+    mm10_atac<-AddMetaData(mm10_atac,embedding,col.name=c("subcluster_x","subcluster_y"))
+    mm10_atac<-AddMetaData(mm10_atac,seurat_subcluster,col.name=c("seurat_subcluster"))
+    mm10_atac$cluster_ID<-paste(mm10_atac$seurat_clusters,mm10_atac$seurat_subcluster,sep="_")
     as.data.frame(mm10_atac@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
     #na values are doublets or excluded indexes
     saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
-
 ```
 
-### Recoloring subclusters
+### Recoloring subclusters and plotting
+
+Human
 
 ```R
     library(Signac)
@@ -1117,86 +1147,51 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     library(dplyr)
     library(ggrepel)
     library(RColorBrewer)
+    library(palettetown)
     setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
     #Read in data and modify to monocle CDS file
     #read in RDS file.
     hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
-    hg38_atac$cluster_ID<-paste(hg38_atac$seurat_clusters,hg38_atac$seurat_subcluster,sep="_")
+
+    #set main umap coordinates
+    embedding<-as.data.frame(hg38_atac@reductions$umap@cell.embeddings)
+    hg38_atac<-AddMetaData(hg38_atac,embedding,col.name=c("umap_x","umap_y"))
 
     #########Coloring and plotting human data#####################
     dat<-as.data.frame(hg38_atac@meta.data)
-    cell_order<-row.names(dat)
-    embedding_order<-row.names(hg38_atac@reductions$umap@cell.embeddings)
-    row_order<-match(cell_order,embedding_order)
-    dat$umap_x<-as.numeric(hg38_atac@reductions$umap@cell.embeddings[row_order,1])
-    dat$umap_y<-as.numeric(hg38_atac@reductions$umap@cell.embeddings[row_order,2])
     dat<-dat[!endsWith(dat$cluster_ID,"NA"),]
-    dat$seurat_clusters<-as.character(dat$seurat_clusters)
-   
+
+    #Seurat Clusters are Spectral
+    clus_col<-setNames(sample(brewer.pal(n = 11, name = "Spectral"),length(unique(dat$seurat_clusters))),nm=sort(unique(dat$seurat_clusters)))
+    #clus_col<-setNames("starmie" %>% ichooseyou(length(unique(dat$seurat_clusters))),nm=sort(unique(dat$seurat_clusters))) #maybe porygon?
     dat$cluster_col<-"NULL"
-    dat[dat$seurat_clusters=="0",]$cluster_col<-"#1f78b4"
-    dat[dat$seurat_clusters=="1",]$cluster_col<-"#b2df8a"
-    dat[dat$seurat_clusters=="2",]$cluster_col<-"#FDE725"
-    dat[dat$seurat_clusters=="3",]$cluster_col<-"#E31A1C"
-    dat[dat$seurat_clusters=="4",]$cluster_col<-"#6a3d9a"
-    dat[dat$seurat_clusters=="5",]$cluster_col<-"#B15928"
-    dat[dat$seurat_clusters=="6",]$cluster_col<-"#ff7f00"
-    dat[dat$seurat_clusters=="7",]$cluster_col<-"#228b22"
+    dat$cluster_col<-clus_col[dat$seurat_clusters]
 
-    seurat_clus_col<-setNames(unique(dat$cluster_col),unique(dat$seurat_clusters))
+
     sort(unique(dat$cluster_ID))
-    # [1] "0_0"  "0_1"  "0_2"  "0_3"  "0_4"  "0_5"  "0_6"  "0_7"  "0_8"  "0_NA"
-    #[11] "1_0"  "1_1"  "1_2"  "1_3"  "1_NA" "2_0"  "2_1"  "2_2"  "3_0"  "3_1"
-    #[21] "3_2"  "3_3"  "3_4"  "3_5"  "3_6"  "3_7"  "3_NA" "4_0"  "4_1"  "4_2"
-    #[31] "4_3"  "4_NA" "5_0"  "5_1"  "5_2"  "5_3"  "5_4"  "5_NA" "6_0"  "6_NA"
+     #[1] "0_0" "0_1" "0_2" "0_3" "0_4" "0_5" "1_0" "1_1" "2_0" "2_1" "2_2" "3_0"
+    #[13] "3_1" "4_0" "4_1" "4_2" "4_3" "5_0" "5_1" "6_0" "7_0" "7_1" "7_2"
+
+    set_colors<-function(obj,i,pallet_list){
+        x<-palette_list[i]
+        palette<-names(palette_list)[i]
+        subclus<-unique(obj@meta.data[obj@meta.data$seurat_clusters==x,]$cluster_ID)
+        subclus<-subclus[!endsWith(subclus,"NA")]
+        subclus_col<-setNames(palette %>% ichooseyou(length(subclus)),nm=unique(subclus)) #I love it.
+        return(subclus_col)
+    }
+
+    palette_list<-c(charizard=0, pidgeot=1, weezing=2, rattata=3, noctowl=4, metapod=5, bulbasaur=6, blastoise=7) #these are from palettetown
+    subclus_col<-unlist(lapply(1:length(palette_list),function(j) set_colors(obj=hg38_atac,i=j,pallet_list=pallet_list)))
     dat$subcluster_col<-"NULL"
-    dat[dat$cluster_ID=="0_0",]$subcluster_col<-"#820933"
-    dat[dat$cluster_ID=="0_1",]$subcluster_col<-"#D84797"
-    dat[dat$cluster_ID=="0_2",]$subcluster_col<-"#D2FDFF"
-    dat[dat$cluster_ID=="0_3",]$subcluster_col<-"#26FFE6"
-    dat[dat$cluster_ID=="0_4",]$subcluster_col<-"#001427"
-    dat[dat$cluster_ID=="0_5",]$subcluster_col<-"#F4D58D"
-    dat[dat$cluster_ID=="0_6",]$subcluster_col<-"#C68866"
-    dat[dat$cluster_ID=="0_7",]$subcluster_col<-"#CCC9E7"
-    dat[dat$cluster_ID=="0_8",]$subcluster_col<-"#138A87"
+    dat$subcluster_col<-subclus_col[dat$cluster_ID]
+    dat<-dat[,c("subcluster_x","subcluster_y","cluster_col","subcluster_col")]
+    hg38_atac<-AddMetaData(hg38_atac,dat,col.name=c("subcluster_x","subcluster_y","cluster_col","subcluster_col"))
+    saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
 
-    dat[dat$cluster_ID=="1_0",]$subcluster_col<-"#A9F5A4"
-    dat[dat$cluster_ID=="1_1",]$subcluster_col<-"#0DA802"
-    dat[dat$cluster_ID=="1_2",]$subcluster_col<-"#1C3B1A"
-
-    dat[dat$cluster_ID=="2_0",]$subcluster_col<-"#B38A1B"
-    dat[dat$cluster_ID=="2_1",]$subcluster_col<-"#6B0E44"
-    dat[dat$cluster_ID=="2_2",]$subcluster_col<-"#E0BB55"
-
-    dat[dat$cluster_ID=="3_0",]$subcluster_col<-"#DBAD6A"
-    dat[dat$cluster_ID=="3_1",]$subcluster_col<-"#007EA7"
-    dat[dat$cluster_ID=="3_2",]$subcluster_col<-"#C191A1"
-    dat[dat$cluster_ID=="3_3",]$subcluster_col<-"#1818b2"
-
-    dat[dat$cluster_ID=="4_0",]$subcluster_col<-"#FAA916"
-    dat[dat$cluster_ID=="4_1",]$subcluster_col<-"#5E503F"
-    dat[dat$cluster_ID=="4_2",]$subcluster_col<-"#EDFFAB"
-    dat[dat$cluster_ID=="4_3",]$subcluster_col<-"#FFE1EA"
-    dat[dat$cluster_ID=="4_4",]$subcluster_col<-"#E952DE"
-    dat[dat$cluster_ID=="4_5",]$subcluster_col<-"#848FA5"
-    dat[dat$cluster_ID=="4_6",]$subcluster_col<-"#832161"
-    dat[dat$cluster_ID=="4_7",]$subcluster_col<-"#B0A3D4"
-    dat[dat$cluster_ID=="4_8",]$subcluster_col<-"#7fff00"
-
-    dat[dat$cluster_ID=="5_0",]$subcluster_col<-"#230903"
-    dat[dat$cluster_ID=="5_1",]$subcluster_col<-"#FFBFB7"
-    dat[dat$cluster_ID=="5_2",]$subcluster_col<-"#FFD447"
-
-    dat[dat$cluster_ID=="6_0",]$subcluster_col<-"#80552B"
-
-    dat[dat$cluster_ID=="7_0",]$subcluster_col<-"#355d39"
-    dat[dat$cluster_ID=="7_1",]$subcluster_col<-"#95b391"
-    dat[dat$cluster_ID=="7_2",]$subcluster_col<-"#f7f2f2"
-
-
-    seurat_subclus_col<-setNames(unique(dat$subcluster_col),unique(dat$cluster_ID))
-
+    #Perform Plotting
+    dat<-as.data.frame(hg38_atac@meta.data)
     dat$subcluster_x<-as.numeric(dat$subcluster_x)
     dat$subcluster_y<-as.numeric(dat$subcluster_y)
 
@@ -1207,7 +1202,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
 
     plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
     geom_point(alpha=0.1,size=0.5,shape=16)+
-    theme_bw()+scale_color_manual(values=seurat_clus_col)+
+    theme_bw()+scale_color_manual(values=clus_col)+
     ggtitle("hg38")+ ggrepel::geom_label_repel(data = label.df_2, aes(label = label),fontface='bold') +
     theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
 
@@ -1221,7 +1216,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     plt_list<-ggplot(dat,aes(x=subcluster_x,y=subcluster_y,color=cluster_ID))+
     geom_point(alpha=0.05,size=0.5,shape=16)+ theme_bw()+ 
     ggrepel::geom_label_repel(data = label.df_3, aes(x=subcluster_x,y=subcluster_y,label = label), max.iter=10000,direction="both",size=2,force=5, fontface='bold') + 
-    scale_color_manual(values=subcluster_col) +
+    scale_color_manual(values=subclus_col) +
     theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none",strip.background = element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank())+
     facet_wrap(facets=vars(seurat_clusters),ncol=2) + coord_cartesian(clip = "off") 
 
@@ -1229,112 +1224,69 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     ggsave(plt,file="hg38_umap.subclus.pdf")
     system("slack -F hg38_umap.subclus.pdf ryan_todo")
 
-    hg38_atac@meta.data$cluster_col<-"NA"
-    hg38_atac@meta.data[match(dat$cellid,row.names(hg38_atac@meta.data),nomatch=0),]$cluster_col<-dat$cluster_col
-    hg38_atac@meta.data$subcluster_col<-"NA"
-    hg38_atac@meta.data[match(dat$cellid,row.names(hg38_atac@meta.data),nomatch=0),]$subcluster_col<-dat$subcluster_col
-    saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
+```
+Mouse 
+```R
+    library(Signac)
+    library(Seurat)
+    library(SeuratWrappers)
+    library(ggplot2)
+    library(patchwork)
+    library(cicero)
+    library(cisTopic)
+    library(GenomeInfoDb)
+    set.seed(1234)
+    library(Matrix)
+    library(dplyr)
+    library(ggrepel)
+    library(RColorBrewer)
+    library(palettetown)
+    setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
-    #########Coloring and plotting mouse data#####################
-
+    #Read in data and modify to monocle CDS file
+    #read in RDS file.
     mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
-    mm10_atac$cluster_ID<-paste(mm10_atac$seurat_clusters,mm10_atac$seurat_subcluster,sep="_")
 
+    #set main umap coordinates
+    embedding<-as.data.frame(mm10_atac@reductions$umap@cell.embeddings)
+    mm10_atac<-AddMetaData(mm10_atac,embedding,col.name=c("umap_x","umap_y"))
+
+    #########Coloring and plotting human data#####################
     dat<-as.data.frame(mm10_atac@meta.data)
-    cell_order<-row.names(dat)
-    embedding_order<-row.names(mm10_atac@reductions$umap@cell.embeddings)
-    row_order<-match(cell_order,embedding_order)
-    dat$umap_x<-as.numeric(mm10_atac@reductions$umap@cell.embeddings[row_order,1])
-    dat$umap_y<-as.numeric(mm10_atac@reductions$umap@cell.embeddings[row_order,2])
     dat<-dat[!endsWith(dat$cluster_ID,"NA"),]
-    dat$seurat_clusters<-as.character(dat$seurat_clusters)
 
-    dat$cluster_col<-"NA"
-    dat[dat$seurat_clusters=="0",]$cluster_col<-"#A7ACD9" 
-    dat[dat$seurat_clusters=="1",]$cluster_col<-"#2CA58D" 
-    dat[dat$seurat_clusters=="2",]$cluster_col<-"#BA3B46" 
-    dat[dat$seurat_clusters=="3",]$cluster_col<-"#76B041" 
-    dat[dat$seurat_clusters=="4",]$cluster_col<-"#639cd9" 
-    dat[dat$seurat_clusters=="5",]$cluster_col<-"#FCDC4D" 
-    dat[dat$seurat_clusters=="6",]$cluster_col<-"#EB5A0C" 
-    dat[dat$seurat_clusters=="7",]$cluster_col<-"#A7754D" 
+    #Seurat Clusters are Spectral
+    #clus_col<-setNames((brewer.pal(n = length(unique(dat$seurat_clusters)), name = "RdYlBu")),nm=sort(unique(dat$seurat_clusters)))
+    clus_col<-setNames(sample(brewer.pal(n = 11, name = "Spectral"),length(unique(dat$seurat_clusters))),nm=sort(unique(dat$seurat_clusters)))
+    dat$cluster_col<-"NULL"
+    dat$cluster_col<-clus_col[dat$seurat_clusters]
 
-    seurat_clus_col<-setNames(unique(dat$cluster_col),unique(dat$seurat_clusters))
+
     sort(unique(dat$cluster_ID))
-#[1] "0_0"  "0_1"  "0_2"  "0_3"  "1_0"  "1_1"  "1_10" "1_11" "1_12" "1_13"
-#[11] "1_14" "1_2"  "1_3"  "1_4"  "1_5"  "1_6"  "1_7"  "1_8"  "1_9"  "2_0"
-#[21] "2_1"  "2_2"  "2_3"  "2_4"  "2_5"  "2_6"  "2_7"  "3_0"  "3_1"  "3_2"
-#[31] "3_3"  "3_4"  "3_5"  "4_0"  "4_1"  "4_2"  "4_3"  "5_0"  "5_1"  "5_2"
-#[41] "5_3"  "5_4"  "5_5"  "6_0"  "6_1"  "7_0"  "7_1"  "7_2"  "7_3"  "7_4"
+     #[1] "0_0" "0_1" "0_2" "0_3" "0_4" "0_5" "1_0" "1_1" "2_0" "2_1" "2_2" "3_0"
+    #[13] "3_1" "4_0" "4_1" "4_2" "4_3" "5_0" "5_1" "6_0" "7_0" "7_1" "7_2"
 
+    set_colors<-function(obj,i,pallet_list){
+        x<-palette_list[i]
+        palette<-names(palette_list)[i]
+        subclus<-unique(obj@meta.data[obj@meta.data$seurat_clusters==x,]$cluster_ID)
+        subclus<-subclus[!endsWith(subclus,"NA")]
+        subclus_col<-setNames(palette %>% ichooseyou(length(subclus)),nm=unique(subclus)) #I love it.
+        return(subclus_col)
+    }
 
-    dat$subcluster_col<-"NA"
-    dat[dat$cluster_ID=="0_0",]$subcluster_col<-"#5EC6F2"
-    dat[dat$cluster_ID=="0_1",]$subcluster_col<-"#F2BC5E"
-    dat[dat$cluster_ID=="0_2",]$subcluster_col<-"#5EF28B"
-    dat[dat$cluster_ID=="0_3",]$subcluster_col<-"#217A3C"
+    palette_list<-c(charizard=0, pidgeot=1, weezing=2, rattata=3, noctowl=4, metapod=5, bulbasaur=6, blastoise=7) #these are from palettetown
+    subclus_col<-unlist(lapply(1:length(palette_list),function(j) set_colors(obj=mm10_atac,i=j,pallet_list=pallet_list)))
+    dat$subcluster_col<-"NULL"
+    dat$subcluster_col<-subclus_col[dat$cluster_ID]
+    dat<-dat[,c("subcluster_x","subcluster_y","cluster_col","subcluster_col")]
+    mm10_atac<-AddMetaData(mm10_atac,dat,col.name=c("subcluster_x","subcluster_y","cluster_col","subcluster_col"))
+    saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
-    dat[dat$cluster_ID=="1_0",]$subcluster_col<-"#D46F63"
-    dat[dat$cluster_ID=="1_1",]$subcluster_col<-"#68A882"
-    dat[dat$cluster_ID=="1_2",]$subcluster_col<-"#496E51"
-    dat[dat$cluster_ID=="1_3",]$subcluster_col<-"#CF5A52"
-    dat[dat$cluster_ID=="1_4",]$subcluster_col<-"#F5CCE8"
-    dat[dat$cluster_ID=="1_5",]$subcluster_col<-"#EC9DED"
-    dat[dat$cluster_ID=="1_6",]$subcluster_col<-"#12355B"
-    dat[dat$cluster_ID=="1_7",]$subcluster_col<-"#420039"
-    dat[dat$cluster_ID=="1_8",]$subcluster_col<-"#FF6B61"
-    dat[dat$cluster_ID=="1_9",]$subcluster_col<-"#6A35F0"
-    dat[dat$cluster_ID=="1_10",]$subcluster_col<-"#F05135"
-    dat[dat$cluster_ID=="1_11",]$subcluster_col<-"#D4F035"
-    dat[dat$cluster_ID=="1_12",]$subcluster_col<-"#35F06A"
-    dat[dat$cluster_ID=="1_13",]$subcluster_col<-"#D5C4FF"
-    dat[dat$cluster_ID=="1_13",]$subcluster_col<-"#077827"
-    dat[dat$cluster_ID=="1_14",]$subcluster_col<-"#F502B8"
-
-    dat[dat$cluster_ID=="2_0",]$subcluster_col<-"#A9A587"
-    dat[dat$cluster_ID=="2_1",]$subcluster_col<-"#6E171E"
-    dat[dat$cluster_ID=="2_2",]$subcluster_col<-"#7871AA"
-    dat[dat$cluster_ID=="2_3",]$subcluster_col<-"#533B4D"
-    dat[dat$cluster_ID=="2_4",]$subcluster_col<-"#F63E02"
-    dat[dat$cluster_ID=="2_5",]$subcluster_col<-"#92BFB1"
-    dat[dat$cluster_ID=="2_6",]$subcluster_col<-"#F5E102"
-    dat[dat$cluster_ID=="2_7",]$subcluster_col<-"#7A005C"
-
-    dat[dat$cluster_ID=="3_0",]$subcluster_col<-"#47624F"
-    dat[dat$cluster_ID=="3_1",]$subcluster_col<-"#A67C72"
-    dat[dat$cluster_ID=="3_2",]$subcluster_col<-"#76D91A"
-    dat[dat$cluster_ID=="3_3",]$subcluster_col<-"#55251D"
-    dat[dat$cluster_ID=="3_4",]$subcluster_col<-"#A17C37"
-    dat[dat$cluster_ID=="3_5",]$subcluster_col<-"#74AB3A"
-
-    dat[dat$cluster_ID=="4_0",]$subcluster_col<-"#0975E8"
-    dat[dat$cluster_ID=="4_1",]$subcluster_col<-"#535D69"
-    dat[dat$cluster_ID=="4_2",]$subcluster_col<-"#80DED9"
-    dat[dat$cluster_ID=="4_3",]$subcluster_col<-"#C6B9CD"
-
-    dat[dat$cluster_ID=="5_0",]$subcluster_col<-"#857A4D"
-    dat[dat$cluster_ID=="5_1",]$subcluster_col<-"#E8DFB5"
-    dat[dat$cluster_ID=="5_2",]$subcluster_col<-"#B39615"
-    dat[dat$cluster_ID=="5_3",]$subcluster_col<-"#E55812"
-    dat[dat$cluster_ID=="5_4",]$subcluster_col<-"#93032E"
-    dat[dat$cluster_ID=="5_5",]$subcluster_col<-"#FF5E5B"
-
-    dat[dat$cluster_ID=="6_0",]$subcluster_col<-"#F57631"
-    dat[dat$cluster_ID=="6_1",]$subcluster_col<-"#CF8259"
-
-    dat[dat$cluster_ID=="7_0",]$subcluster_col<-"#9C8938"
-    dat[dat$cluster_ID=="7_1",]$subcluster_col<-"#D4CB22"
-    dat[dat$cluster_ID=="7_2",]$subcluster_col<-"#9E6D18"
-    dat[dat$cluster_ID=="7_3",]$subcluster_col<-"#5C6F9E"
-    dat[dat$cluster_ID=="7_4",]$subcluster_col<-"#B22CF5"
-
-  
-
-    dat<-dat[!endsWith(dat$cluster_ID,"NA"),]
-
+    #Perform Plotting
+    dat<-as.data.frame(mm10_atac@meta.data)
     dat$subcluster_x<-as.numeric(dat$subcluster_x)
     dat$subcluster_y<-as.numeric(dat$subcluster_y)
-    subcluster_col<-setNames(unique(dat$subcluster_col),unique(dat$cluster_ID))
 
     label.df <- data.frame(seurat_clusters=unique(dat$seurat_clusters),label=unique(dat$seurat_clusters))
     label.df_2 <- dat %>% 
@@ -1343,7 +1295,7 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
 
     plt1<-ggplot(dat,aes(x=umap_x,y=umap_y,color=seurat_clusters))+
     geom_point(alpha=0.1,size=0.5,shape=16)+
-    theme_bw()+scale_color_manual(values=seurat_clus_col)+
+    theme_bw()+scale_color_manual(values=clus_col)+
     ggtitle("mm10")+ ggrepel::geom_label_repel(data = label.df_2, aes(label = label),fontface='bold') +
     theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank(),axis.ticks = element_blank(),legend.position = "bottom")
 
@@ -1356,8 +1308,8 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
 
     plt_list<-ggplot(dat,aes(x=subcluster_x,y=subcluster_y,color=cluster_ID))+
     geom_point(alpha=0.05,size=0.5,shape=16)+ theme_bw()+ 
-    ggrepel::geom_label_repel(data = label.df_3, aes(x=subcluster_x,y=subcluster_y,label = label), max.iter=10000,direction="both",size=2,force=5, fontface='bold')+
-    scale_color_manual(values=subcluster_col) +
+    ggrepel::geom_label_repel(data = label.df_3, aes(x=subcluster_x,y=subcluster_y,label = label), max.iter=10000,direction="both",size=2,force=5, fontface='bold') + 
+    scale_color_manual(values=subclus_col) +
     theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.ticks = element_blank(),legend.position = "none",strip.background = element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank())+
     facet_wrap(facets=vars(seurat_clusters),ncol=2) + coord_cartesian(clip = "off") 
 
@@ -1365,16 +1317,11 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
     ggsave(plt,file="mm10_umap.subclus.pdf")
     system("slack -F mm10_umap.subclus.pdf ryan_todo")
 
-    mm10_atac@meta.data$cluster_col<-"NA"
-    mm10_atac@meta.data[match(dat$cellid,row.names(mm10_atac@meta.data),nomatch=0),]$cluster_col<-dat$cluster_col
-    mm10_atac@meta.data$subcluster_col<-"NA"
-    mm10_atac@meta.data[match(dat$cellid,row.names(mm10_atac@meta.data),nomatch=0),]$subcluster_col<-dat$subcluster_col
-    saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
-
 ```
 
-## Cicero for Coaccessible Networks
 
+## Cicero for Coaccessible Networks
+<!--
 ```R
   library(Signac)
   library(Seurat)
@@ -1387,48 +1334,86 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
   library(EnsDb.Mmusculus.v79)
   setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
-  #Cicero processing function
-  cicero_processing<-function(object_input=hg38_atac,prefix="hg38"){
 
-      #Generate CDS format from Seurat object
-      atac.cds <- as.cell_data_set(object_input,group_by="cluster_ID")
+hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+gene_activity<-GeneActivity(hg38_atac,process_n=10000)
+saveRDS(gene_activity,"hg38_genebody.GA.Rds")
+gene_activity<-readRDS("hg38_genebody.GA.Rds")
 
-      # convert to CellDataSet format and make the cicero object
-      print("Making Cicero format CDS file")
-      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
-      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
-      atac.cicero<-readRDS(paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+hg38_atac[["GeneActivity"]]<-CreateAssayObject(counts=gene_activity)
+hg38_atac<- NormalizeData(
+  object = hg38_atac,
+  assay = "GeneActivity",
+  normalization.method = 'LogNormalize',
+  scale.factor = median(hg38_atac$nCount_GeneActivity)
+)
+saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds")
 
-      genome <- seqlengths(object_input) # get the chromosome sizes from the Seurat object
-      genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
-      
-      print("Running Cicero to generate connections.")
-      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
-      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
-      
-      print("Generating CCANs")
-      ccans <- generate_ccans(conns) # generate ccans
-      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
-      
-      print("Adding CCAN links into Seurat Object and Returning.")
-      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
-      Links(object_input) <- links
-      return(object_input)
-  }
 
-  hg38_atac<-readRDS("hg38_SeuratObject.Rds")
-  hg38_atac<-cicero_processing(object_input=hg38_atac,prefix="hg38")
-  saveRDS(hg38_atac,"hg38_SeuratObject.GA.Rds")
-  hg38_atac<-readRDS("hg38_SeuratObject.GA.Rds")
+
+#Mouse
+
+mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+gene_activity<-GeneActivity(mm10_atac,process_n=100000)
+saveRDS(gene_activity,"mm10_genebody.GA.Rds")
 
   mm10_atac<-readRDS("mm10_SeuratObject.Rds")
   mm10_atac<-cicero_processing(object_input=mm10_atac,prefix="mm10")
   saveRDS(mm10_atac,"mm10_SeuratObject.GA.Rds")
   mm10_atac<-readRDS("mm10_SeuratObject.GA.Rds")
   
-  # generate unnormalized gene activity matrix
-  # gene annotation sample
-  annotation_generation<-function(ensdb_obj){
+```
+-->
+
+Full Cicero Processing. Using CCANs to generate Gene Activity
+
+```R
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(patchwork)
+library(monocle3)
+library(cicero)
+library(EnsDb.Hsapiens.v86)
+library(EnsDb.Mmusculus.v79)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+
+#Cicero processing function
+cicero_processing<-function(object_input=hg38_atac,prefix="hg38"){
+
+      #Generate CDS format from Seurat object
+      #atac.cds <- as.cell_data_set(object_input,group_by="cluster_ID")
+
+      # convert to CellDataSet format and make the cicero object
+      print("Making Cicero format CDS file")
+      #atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
+      #saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+      atac.cicero<-readRDS(paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+
+      genome <- seqlengths(object_input) # get the chromosome sizes from the Seurat object
+      genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
+      
+      print("Running Cicero to generate connections.")
+      #conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
+      #saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+      conns<-readRDS(paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+
+      print("Generating CCANs")
+      #ccans <- generate_ccans(conns) # generate ccans
+      #saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+      ccans<-readRDS(paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+
+      print("Adding CCAN links into Seurat Object and Returning.")
+      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
+      Links(object_input) <- links
+      return(object_input)
+}
+
+# generate unnormalized gene activity matrix
+# gene annotation sample
+annotation_generation<-function(ensdb_obj){
       annotations <- GetGRangesFromEnsDb(ensdb = ensdb_obj)
       pos <-as.data.frame(annotations,row.names=NULL)
       pos$chromosome<-paste0("chr",pos$seqnames)
@@ -1448,38 +1433,42 @@ clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_lis
       gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
       names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
       return(gene_annotation)
-    }
+}
 
-    hg38_annotation<-annotation_generation(ensdb_obj=EnsDb.Hsapiens.v86)
-    mm10_annotation<-annotation_generation(ensdb_obj=EnsDb.Mmusculus.v79)
 
-  geneactivity_processing<-function(cds_input,conns_input,prefix,gene_annotation){
+geneactivity_processing<-function(cds_input,conns_input,prefix,gene_annotation){
       atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
       unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
       saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
-  }
+}
 
-  #hg38
-  conns<-as.data.frame(readRDS("hg38_atac_cicero_conns.Rds"))
-  geneactivity_processing(cds_input=as.cell_data_set(hg38_atac,group_by="seurat_clusters"),conns_input=conns,prefix="hg38",gene_annotation=hg38_annotation)
-  cicero_gene_activities<-readRDS("hg38.unnorm_GA.Rds")  #Read in unnormalized GA
-  hg38_atac<-subset(hg38_atac,cells=which(colnames(hg38_atac) %in% colnames(cicero_gene_activities)))
-  hg38_atac[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
-  hg38_atac <- NormalizeData(object = hg38_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(hg38_atac$nCount_GeneActivity))  # normalize
-  saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds") #this is limited to just cells passing filters (those with cluster IDs)
 
-  #mm10
-  conns<-as.data.frame(readRDS("mm10_atac_cicero_conns.Rds"))
-  geneactivity_processing(cds_input=as.cell_data_set(mm10_atac,group_by="seurat_clusters"),conns_input=conns,prefix="mm10",gene_annotation=mm10_annotation)
-  cicero_gene_activities<-readRDS("mm10.unnorm_GA.Rds")  #Read in unnormalized GA
-  mm10_atac<-subset(mm10_atac,cells=which(colnames(mm10_atac) %in% colnames(cicero_gene_activities)))
-  cicero_gene_activities<-cicero_gene_activities[2:nrow(cicero_gene_activities),] #first feature is empy
-  mm10_atac[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
-  mm10_atac <- NormalizeData(object = mm10_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(mm10_atac$nCount_GeneActivity))  # normalize
-  saveRDS(mm10_atac,"mm10_SeuratObject.PF.Rds")
+#hg38
+hg38_annotation<-annotation_generation(ensdb_obj=EnsDb.Hsapiens.v86)
+hg38_atac<-readRDS("hg38_SeuratObject.Rds")
+conns<-as.data.frame(readRDS("hg38_atac_cicero_conns.Rds"))
+#geneactivity_processing(cds_input=as.cell_data_set(hg38_atac,group_by="seurat_clusters"),conns_input=conns,prefix="hg38",gene_annotation=hg38_annotation)
+cicero_gene_activities<-readRDS("hg38.unnorm_GA.Rds")  #Read in unnormalized GA
+hg38_atac<-subset(hg38_atac,cells=which(colnames(hg38_atac) %in% colnames(cicero_gene_activities)))
+hg38_atac[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
+hg38_atac <- NormalizeData(object = hg38_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(hg38_atac$nCount_GeneActivity))  # normalize
+saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds") #this is limited to just cells passing filters (those with cluster IDs)
+
+#mm10
+mm10_annotation<-annotation_generation(ensdb_obj=EnsDb.Mmusculus.v79)
+mm10_atac<-readRDS("mm10_SeuratObject.Rds")
+conns<-as.data.frame(readRDS("mm10_atac_cicero_conns.Rds"))
+#geneactivity_processing(cds_input=as.cell_data_set(mm10_atac,group_by="seurat_clusters"),conns_input=conns,prefix="mm10",gene_annotation=mm10_annotation)
+cicero_gene_activities<-readRDS("mm10.unnorm_GA.Rds")  #Read in unnormalized GA
+mm10_atac<-subset(mm10_atac,cells=which(colnames(mm10_atac) %in% colnames(cicero_gene_activities)))
+cicero_gene_activities<-cicero_gene_activities[2:nrow(cicero_gene_activities),] #first feature is empy
+mm10_atac[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
+mm10_atac <- NormalizeData(object = mm10_atac,assay = 'GeneActivity',normalization.method = 'LogNormalize',scale.factor = median(mm10_atac$nCount_GeneActivity))  # normalize
+saveRDS(mm10_atac,"mm10_SeuratObject.PF.Rds")
 
 
 ```
+
 
 ## Plotting with Marker Genes
 
@@ -1629,6 +1618,7 @@ saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
 
 Retry mouse cluster id just straight up following https://satijalab.org/signac/articles/mouse_brain_vignette.html?
 
+Human
 ```R
 library(Seurat)
 library(Signac)
@@ -1672,7 +1662,61 @@ predict_celltype<-function(object,brainspan,prefix){
 
 }
 
+hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
+brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
+hg38_atac<-predict_celltype(object=hg38_atac,brainspan=brainspan.,prefix="hg38")
+#update assay names for readability
+hg38_atac<-RenameAssays(hg38_atac,
+    predicted_class_label="allenbrainmap_class_prediction_values",
+    predicted_subclass_label="allenbrainmap_subclass_preduction_values",
+    predicted_cluster_label="allenbrainmap_cluserprediction_values")
+saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds")
 
+```
+
+Mouse
+```R
+library(Seurat)
+library(Signac)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+
+prediction_transfer<-function(x,brainspan,feat_name,feat_col,obj){
+    metadata_feat_name<-paste0("brainspan.predicted.",feat_name)
+    metadata_col_name<-paste0("brainspan.predicted.",feat_col)
+    Assay_Name<-paste0("predicted_",feat_name)
+    named_vec<-setNames(x$predicted.id,nm=row.names(x)) #set features
+    feat_assay<-CreateAssayObject(data = t(x[,2:ncol(x)])) #remove predicted id text
+    col_df<-brainspan@meta.data[c(feat_name,feat_col)]
+    col_df<-col_df[!duplicated(col_df),]
+    cols<-setNames(col_df[,feat_col],nm=col_df[,feat_name])
+    named_vec_color<-setNames(cols[named_vec],nm=names(named_vec)) #set named color vector
+    obj <- AddMetaData(object=obj, metadata=named_vec,col.name=metadata_feat_name)
+    obj <- AddMetaData(object=obj, metadata=named_vec_color,col.name=metadata_col_name)
+    obj[[Assay_Name]]<-feat_assay
+    return(obj)
+}
+
+
+predict_celltype<-function(object,brainspan,prefix){
+    DefaultAssay(object)<-"GeneActivity"
+    object<-ScaleData(object,features = row.names(object))
+    transfer.anchors <- FindTransferAnchors(reference = brainspan,query = object,query.assay="GeneActivity",reduction = 'cca',features=VariableFeatures(object=brainspan))
+    saveRDS(transfer.anchors,file=paste0(prefix,".transferanchors.rds"))
+    transfer.anchors<-readRDS(file=paste0(prefix,".transferanchors.rds"))
+    #predict labels for class and subclass
+    predicted.labels.cluster <- TransferData(anchorset = transfer.anchors,refdata = brainspan$cluster_label,weight.reduction = object[["cistopic"]],dims = 1:dim(object[["cistopic"]])[2])
+    object<-prediction_transfer(x=predicted.labels.cluster,brainspan=brainspan,feat_name="cluster_label",feat_col="cluster_color",obj=object)
+    predicted.labels.class <- TransferData(anchorset = transfer.anchors,refdata = brainspan$class_label,weight.reduction = "cca",dims = 1:dim(object[["cistopic"]])[2])
+    object<-prediction_transfer(x=predicted.labels.class,brainspan=brainspan,feat_name="class_label",feat_col="class_color",obj=object)
+    predicted.labels.subclass <- TransferData(anchorset = transfer.anchors,refdata = brainspan$subclass_label,weight.reduction = "cca", dims = 1:dim(object[["cistopic"]])[2])
+    object<-prediction_transfer(x=predicted.labels.subclass,brainspan=brainspan,feat_name="subclass_label",feat_col="subclass_color",obj=object)
+    #remove any metadata columns labelled "prediction"
+    object@meta.data<-object@meta.data[!startsWith(colnames(object@meta.data),prefix="prediction.")]
+    saveRDS(object,file=paste0(prefix,"_SeuratObject.PF.Rds"))
+    return(object)
+
+}
 
 prediction_transfer_cerebellar<-function(x,ref,feat_name,obj){
     metadata_feat_name<-paste0("ref.predicted.",feat_name)
@@ -1702,18 +1746,6 @@ predict_celltype_cerebellar<-function(object=mm10,ref=cerebellar,prefix="mm10"){
 }
 
 
-
-hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
-brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
-hg38_atac<-predict_celltype(object=hg38_atac,brainspan=brainspan.,prefix="hg38")
-#update assay names for readability
-hg38_atac<-RenameAssays(hg38_atac,
-    predicted_class_label="allenbrainmap_class_prediction_values",
-    predicted_subclass_label="allenbrainmap_subclass_preduction_values",
-    predicted_cluster_label="allenbrainmap_cluserprediction_values")
-saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds")
-
-
 #Mouse using smaller data set that is whole brain
     mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
     brainspan. <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse/allen_brainspan_mouse.rds")
@@ -1721,7 +1753,7 @@ saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds")
     mm10_atac<-predict_celltype(object=mm10_atac,brainspan=brainspan.,prefix="mm10") #save RDS contained within function
 
 #for mouse (whole brain) also going to integrate with cerebellar data set
-    mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
+    #mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
     cerebellar <- readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_mouse/cerebellum/SCP795/other/cb_annotated_object.RDS")
     cerebellar<-UpdateSeuratObject(cerebellar) #update object
     cerebellar<-subset(cerebellar, downsample=2000) #downsample object so max number per cluster is 2000 cells
@@ -1742,6 +1774,7 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.PF.Rds")
 ```
 
 ### Confusion Matrices for Cell Type Identification
+Human
 ```R
 library(Seurat)
 library(Signac)
@@ -1756,7 +1789,6 @@ library(circlize)
 
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
-mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
 
 build_confusion_matrix<-function(obj,feat="brainspan.predicted.class_label"){
     confusion_matrix<-as.data.frame(table(obj$seurat_clusters,obj@meta.data[,which(colnames(obj@meta.data)==feat)]))
@@ -1783,6 +1815,25 @@ print(plt1)
 dev.off()
 system(paste0("slack -F ",paste0("hg38.",x,"confusion_mat.heatmap.pdf")," ryan_todo"))
 }
+
+
+```
+
+Mouse
+```R
+library(Seurat)
+library(Signac)
+library(ggplot2)
+library(ComplexHeatmap)
+library(ggdendro)
+library(dendextend)
+library(viridis)
+library(RColorBrewer)
+library(reshape2)
+library(circlize)
+
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
 
 #mm10
 for (x in c("brainspan.predicted.class_label","brainspan.predicted.subclass_label","brainspan.predicted.cluster_label","cerebellum.predicted.cluster","cerebellum.predicted.subcluster")){
@@ -1823,83 +1874,112 @@ system(paste0("slack -F ",paste0("mm10_mergeddataset_confusion_mat.heatmap.pdf")
 
 ### ChromVar for Transcription Factor Motifs
 
-
+Human
 ```R
-  library(Signac)
-  library(Seurat)
-  library(JASPAR2020)
-  library(TFBSTools)
-  library(BSgenome.Hsapiens.UCSC.hg38)
-  library(BSgenome.Mmusculus.UCSC.mm10)
-  library(patchwork)
-  set.seed(1234)
+library(Signac)
+library(Seurat)
+library(JASPAR2020)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(BSgenome.Mmusculus.UCSC.mm10)
+library(patchwork)
+set.seed(1234)
 
-  #lowerign cores to be used by chromvar to 10
-  library(BiocParallel)
-  register(MulticoreParam(10))
+#lowerign cores to be used by chromvar to 10
+library(BiocParallel)
+register(MulticoreParam(3))
 
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
-mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
-
+DefaultAssay(hg38_atac)<-"peaks"
   #Read in data and modify to monocle CDS file
   #read in RDS file.
 
-  # Get a list of motif position frequency matrices from the JASPAR database
-  pfm <- getMatrixSet(
-    x = JASPAR2020,
-    opts = list(species =9606, all_versions = FALSE))
+# Get a list of motif position frequency matrices from the JASPAR database
+pfm <- getMatrixSet(
+x = JASPAR2020,
+opts = list(species =9606, all_versions = FALSE))
 
-  # Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
-  motif.matrix.hg38 <- CreateMotifMatrix(
-    features = granges(hg38_atac[["peaks"]]),
-    pwm = pfm,
-    genome = 'hg38',
-    use.counts = FALSE)
+# Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
+motif.matrix.hg38 <- CreateMotifMatrix(
+features = granges(hg38_atac[["peaks"]]),
+pwm = pfm,
+genome = 'hg38',
+use.counts = FALSE)
 
-  motif.matrix.mm10 <- CreateMotifMatrix(
-    features = granges(mm10_atac[["peaks"]]),
-    pwm = pfm,
-    genome = 'mm10',
-    use.counts = FALSE)
+# Create a new Mofif object to store the results
+motif.hg38 <- CreateMotifObject(
+data = motif.matrix.hg38,
+pwm = pfm)
+# Add the Motif object to the assays and run ChromVar
 
-  # Create a new Mofif object to store the results
-  motif.hg38 <- CreateMotifObject(
-    data = motif.matrix.hg38,
-    pwm = pfm)
+#for human
+hg38_atac <- SetAssayData(
+object = hg38_atac,
+assay = 'peaks',
+slot = 'motifs',
+new.data = motif.hg38)
 
-  motif.mm10 <- CreateMotifObject(
-    data = motif.matrix.mm10,
-    pwm = pfm)
-  # Add the Motif object to the assays and run ChromVar
+hg38_atac <- RegionStats(object = hg38_atac, genome = BSgenome.Hsapiens.UCSC.hg38)
+hg38_atac <- RunChromVAR( object = hg38_atac,genome = BSgenome.Hsapiens.UCSC.hg38)
+saveRDS(hg38_atac,file="hg38_SeuratObject.PF.Rds")
 
-  #for human
-   hg38_atac <- SetAssayData(
-    object = hg38_atac,
-    assay = 'peaks',
-    slot = 'motifs',
-    new.data = motif.hg38)
-
-  hg38_atac <- RegionStats(object = hg38_atac, genome = BSgenome.Hsapiens.UCSC.hg38)
-  hg38_atac <- RunChromVAR( object = hg38_atac,genome = BSgenome.Hsapiens.UCSC.hg38)
-  saveRDS(hg38_atac,file="hg38_SeuratObject.PF.Rds")
-
-  #mouse
-   mm10_atac <- SetAssayData(
-    object = mm10_atac,
-    assay = 'peaks',
-    slot = 'motifs',
-    new.data = motif.mm10)
-
-  mm10_atac <- RegionStats(object = mm10_atac, genome = BSgenome.Mmusculus.UCSC.mm10)
-  mm10_atac <- RunChromVAR( object = mm10_atac,genome = BSgenome.Mmusculus.UCSC.mm10)
-  saveRDS(mm10_atac,file="mm10_SeuratObject.PF.Rds")
 
 ```
 
-### Differential Gene Activity through Subclusters
+Mouse
+```R
+library(Signac)
+library(Seurat)
+library(JASPAR2020)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(BSgenome.Mmusculus.UCSC.mm10)
+library(patchwork)
+set.seed(1234)
 
+#lowerign cores to be used by chromvar to 10
+library(BiocParallel)
+register(MulticoreParam(2))
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
+
+DefaultAssay(mm10_atac)<-"peaks"
+
+# Get a list of motif position frequency matrices from the JASPAR database
+pfm <- getMatrixSet(
+x = JASPAR2020,
+opts = list(species =9606, all_versions = FALSE))
+
+# Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
+
+motif.matrix.mm10 <- CreateMotifMatrix(
+features = granges(mm10_atac[["peaks"]]),
+pwm = pfm,
+genome = 'mm10',
+use.counts = FALSE)
+
+
+motif.mm10 <- CreateMotifObject(
+data = motif.matrix.mm10,
+pwm = pfm)
+# Add the Motif object to the assays and run ChromVar
+
+
+#mouse
+mm10_atac <- SetAssayData(
+object = mm10_atac,
+assay = 'peaks',
+slot = 'motifs',
+new.data = motif.mm10)
+
+mm10_atac <- RegionStats(object = mm10_atac, genome = BSgenome.Mmusculus.UCSC.mm10)
+mm10_atac <- RunChromVAR( object = mm10_atac,genome = BSgenome.Mmusculus.UCSC.mm10)
+saveRDS(mm10_atac,file="mm10_SeuratObject.PF.Rds")
+```
+
+### Differential Gene Activity through Subclusters
 
 ```R
 library(JASPAR2020)
@@ -1944,8 +2024,9 @@ hg38_atac@meta.data[hg38_atac@meta.data$celltype=="NonN",]$celltype_col<-"#80808
 saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds")
 
 
-#Clusters to test
 hg38_atac<-subset(hg38_atac,cells=which(!endsWith(hg38_atac@meta.data$cluster_ID,"NA")))
+
+#set clusters to test
 cluster_to_test<-unique(hg38_atac$cluster_ID)
 #define DA functions for parallelization
 #Use LR test for atac data
@@ -1965,8 +2046,8 @@ da_one_v_rest<-function(i,obj,group,assay.="GeneActivity",latent.vars.="nCount_G
     return(da_ga_tmp)
   }
 
+#Gene Activity
 da_ga<-list() #set up an empty list for looping through
-
 n.cores=10 #Perform parallel application of DA test
 da_ga<-mclapply(
     cluster_to_test,
@@ -1975,12 +2056,11 @@ da_ga<-mclapply(
     group="cluster_ID",
     assay.="GeneActivity",
     mc.cores=n.cores)
-
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
 write.table(da_ga_df,file="hg38.onevrest.da_ga.txt",sep="\t",col.names=T,row.names=T,quote=F)
 
+#Chromvar TFs
 da_ga<-list() #set up an empty list for looping through
-
 n.cores=10 #Perform parallel application of DA test
 da_ga<-mclapply(
     cluster_to_test,
@@ -1989,12 +2069,10 @@ da_ga<-mclapply(
     group="cluster_ID",
     assay.="chromvar", latent.vars.="nCount_peaks",
     mc.cores=n.cores)
-
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
 #To convert JASPAR ID TO TF NAME
 da_ga_df$tf_name <- unlist(lapply(unlist(lapply(da_ga_df$da_region, function(x) getMatrixByID(JASPAR2020,ID=x))),function(y) name(y)))
 write.table(da_ga_df,file="hg38.onevrest.da_chromvar.txt",sep="\t",col.names=T,row.names=T,quote=F)
-
 
 #Plot out top ga for each cluster
 da_ga<-read.csv(file="hg38.onevrest.da_ga.txt",head=T,sep="\t",row.names=NULL)
@@ -2058,9 +2136,11 @@ plt1
 dev.off()
 system("slack -F hg38.geneactivity.heatmap.pdf ryan_todo")
 
-saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds")
 ```
+
+
 ## Plotting heatmap using brainspan given markers
+
 ```R
 library(JASPAR2020)
 library(BSgenome.Hsapiens.UCSC.hg38)
@@ -2796,6 +2876,8 @@ library(chromVAR)
 library(JASPAR2020)
 library(TFBSTools)
 library(motifmatchr)
+library(ggdendro)
+library(dendextend)
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 
 
@@ -2827,7 +2909,7 @@ topTFs <- function(markers_list,celltype, padj.cutoff = 1e-2,ga=NA,motifs=NA) {
 }
 
 #Identify top markers
-Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA"){
+Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA",prefix){
     markers <- presto:::wilcoxauc.Seurat(X = x, group_by = group_by., assay = 'data', seurat_assay = assay.)
     colnames(markers) <- paste(assay., colnames(markers),sep=".")
     if (assay. == "chromvar") {
@@ -2842,13 +2924,12 @@ Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA"){
 #Average markers across groups
 average_features<-function(x=hg38_atac,features=da_tf_markers$motif.feature,assay="chromvar",group_by.="predicted.id"){
     #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
-    dat_motif<-x[[assay]]@data[features %in% row.names(x[[assay]]@data),]
+    dat_motif<-x[[assay]]@data[features,]
     dat_motif<-as.data.frame(t(as.data.frame(dat_motif)))
     sum_motif<-split(dat_motif,x@meta.data[,group_by.]) #group by rows to seurat clusters
     sum_motif<-lapply(sum_motif,function(x) apply(x,2,mean,na.rm=T)) #take average across group
     sum_motif<-do.call("rbind",sum_motif) #condense to smaller data frame
-    clusters<-unique(x@meta.data[,i])[which(!endsWith(unique(x@meta.data[,i]),"NA"))] 
-    sum_motif<-sum_motif[row.names(sum_motif) %in% clusters,]
+
     sum_motif<-t(scale(sum_motif))
     sum_motif<-sum_motif[row.names(sum_motif)%in%features,]
     sum_motif<-sum_motif[complete.cases(sum_motif),]
@@ -2858,14 +2939,14 @@ average_features<-function(x=hg38_atac,features=da_tf_markers$motif.feature,assa
 #Make a heatmap of aligned multiple modalities
 plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group_by.="cluster_ID",CHROMVAR=TRUE,GA=TRUE){
     if(CHROMVAR){
-    tf_motif<-average_features(x=x,features=da_tf_markers$chromvar.feature,assay="chromvar",group_by.=group_by.)
-    tf_motif<-tf_motif[row.names(tf_motif) %in% da_tf_markers$chromvar.feature,]
-    row.names(tf_motif)<-da_tf_markers[da_tf_markers$chromvar.feature %in% row.names(tf_motif),]$gene
+    tf_motif<-average_features(x=x,features=tf_markers$chromvar.feature,assay="chromvar",group_by.=group_by.)
+    tf_motif<-tf_motif[row.names(tf_motif) %in% tf_markers$chromvar.feature,]
+    row.names(tf_motif)<-tf_markers[tf_markers$chromvar.feature %in% row.names(tf_motif),]$gene
     }
     if(GA){
     row.names(x[["GeneActivity"]]@data)<-toupper(row.names(x[["GeneActivity"]]@data))#change geneactivity names to upper
-    tf_ga<-average_features(x=x,features=da_tf_markers$gene,assay="GeneActivity",group_by.=group_by.)
-    tf_ga<-tf_ga[row.names(tf_ga) %in% da_tf_markers$gene,]
+    tf_ga<-average_features(x=x,features=tf_markers$gene,assay="GeneActivity",group_by.=group_by.)
+    tf_ga<-tf_ga[row.names(tf_ga) %in% tf_markers$gene,]
     }
     if(GA && CHROMVAR){
     markers_list<-Reduce(intersect, list(row.names(tf_motif),row.names(tf_ga)))
@@ -2873,24 +2954,25 @@ plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group
     tf_ga<-tf_ga[markers_list,]
     }
 
-    #dend <- t(sum_ga) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 8)
+    #dend_col <- t(tf_ga) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  
 
     #set up heatmap seriation and order by RNA
-    o = seriate(max(tf_ga) - tf_ga, method = "BEA_TSP")
+    #o = seriate(max(tf_ga) - tf_ga, method = "BEA_TSP")
+    o = seriate(tf_ga, method = "Heatmap")
     saveRDS(o,file=paste0(prefix,".geneactivity.dend.rds")) 
-    side_ha_rna<-data.frame(ga_motif=da_tf_markers[get_order(o,1),]$GeneActivity.auc)
+    side_ha_rna<-data.frame(ga_motif=tf_markers[get_order(o,1),]$GeneActivity.auc)
 
     if(CHROMVAR){
-    side_ha_motif<-data.frame(chromvar_motif=da_tf_markers[get_order(o,1),]$chromvar.auc)
+    side_ha_motif<-data.frame(chromvar_motif=tf_markers[get_order(o,1),]$chromvar.auc)
     colfun_motif=colorRamp2(quantile(unlist(tf_motif), probs=c(0.5,0.80,0.95)),cividis(3))
     #Plot motifs alongside chromvar plot, to be added to the side with illustrator later
-    motif_list<-da_tf_markers[da_tf_markers$gene %in% row.names(tf_motif),]$chromvar.feature
+    motif_list<-tf_markers[tf_markers$gene %in% row.names(tf_motif),]$chromvar.feature
     plt<-MotifPlot(object = x,assay="peaks",motifs = motif_list[get_order(o,1)],ncol=1)+theme_void()+theme(strip.text = element_blank())
     ggsave(plt,file=paste0(prefix,".tf.heatmap.motif.pdf"),height=100,width=2,limitsize=F)
 
     }
     if(GA){
-    side_ha_ga<-data.frame(ga_auc=da_tf_markers[get_order(o,1),]$GeneActivity.auc)
+    side_ha_ga<-data.frame(ga_auc=tf_markers[get_order(o,1),]$GeneActivity.auc)
     colfun_ga=colorRamp2(quantile(unlist(tf_ga), probs=c(0.5,0.80,0.95)),magma(3))
     }
 
@@ -2973,7 +3055,7 @@ plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group
   }
 
 
-    pdf(paste0(prefix,".tf.heatmap.pdf"))
+    pdf(paste0(prefix,".tf.heatmap.pdf"),height=20)
     print(plt1)
     dev.off()
 
@@ -3007,7 +3089,8 @@ run_top_TFs<-function(obj=hg38_atac,prefix="hg38_atac",i="cluster_ID",marker_num
 
 #hg38 TF markers
 hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
-run_top_TFs(obj=hg38_atac,prefix="hg38_TF",i="cluster_ID")
+hg38_atac<-subset(hg38_atac,subcluster_x!="NA")
+run_top_TFs(obj=hg38_atac,prefix="hg38_TF",i="cluster_ID",marker_number=5)
 
 #TF markers per celltype
 for(j in unique(hg38_atac$celltype)){
@@ -3018,17 +3101,14 @@ for(j in unique(hg38_atac$celltype)){
 }
 
 #Marker Genes per celltype
-for(j in unique(hg38_atac$celltype)){
-    hg38_sub<-subset(hg38_atac,celltype==j)
-    if(length(unique(hg38_sub$cluster_ID))>1){
-    run_top_TFs(obj=hg38_sub,prefix=paste0("hg38_markergenes_",j),i="cluster_ID",marker_number=10,CHROMVAR.=FALSE)
-}
-}
+run_top_TFs(obj=hg38_atac,prefix="hg38_markergenes",i="cluster_ID",marker_number=10,CHROMVAR.=FALSE)
 
+markers<-readRDS("hg38_markergenes_celltype_TF_markers.RDS")
 
 #mm10 markers
 mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
-run_top_TFs(obj=mm10_atac,prefix="mm10",i="cluster_ID")
+mm10_atac<-subset(mm10_atac,subcluster_x!="NA")
+run_top_TFs(obj=mm10_atac,prefix="mm10_TF",i="cluster_ID",marker_number=5)
 
 #TF markers per celltype
 for(j in unique(mm10_atac$celltype)){
