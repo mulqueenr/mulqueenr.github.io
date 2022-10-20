@@ -6,7 +6,11 @@ permalink: /10xmultiome_phase2/
 category: CEDAR
 ---
 
-Multiome processing for 10X multiome data on Primary Tumors (Phase 1+2 and preliminary experiment combined)
+Multiome processing for 10X multiome data on Primary Tumors (Phase 1+2 and preliminary experiment combined).
+Analysis was performed on Exacloud, OHSU's HPC which uses slurm as a job scheduler. So many parallelized analyses utilize slurm batch processing.
+
+I also set up my environment to automatically paste figures to a slack channel, so you may notice many system calls like "slack -F [file] slack-channel", these are just a convience function for myself. 
+
 *This code is a WIP and will be cleaned prior to manuscript finalization.*
 
 ## Initial Processing and QC
@@ -1480,7 +1484,7 @@ infercnv_per_sample<-function(x){
                                HMM_report_by="cell",
                                resume_mode=F,
                                HMM_type='i3',
-                               num_threads=20)
+                               num_threads=10)
   saveRDS(infercnv_obj,paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.png"," -T ","\"",outname,"\"" ," ryan_todo") )
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.19_HMM_predHMMi3.hmm_mode-samples.Pnorm_0.5.repr_intensities.png"," -T ","\"",outname,"\"" ," ryan_todo") )
@@ -1489,7 +1493,7 @@ infercnv_per_sample<-function(x){
 
 infercnv_per_sample(x=as.character(args[1]))
 
-#lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",4,10,12),infercnv_per_sample)
+#lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),infercnv_per_sample)
 
 #3 state model is here (gene by cell name data is in i3_hmm@expr.data)
 #i3_hmm<-readRDS(paste0(wd,"/",outname,"_inferCNV","/19_HMM_pred.repr_intensitiesHMMi3.hmm_mode-samples.Pnorm_0.5.infercnv_obj"))?
@@ -1504,14 +1508,14 @@ infercnv_slurm.sh
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
-#SBATCH --array=1-19
+#SBATCH --array=0-18
 #SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
-#SBATCH --cpus-per-task=20 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --cpus-per-task=15 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
-#SBATCH --time=5:00:00 ## ask for 1 hour on the node
+#SBATCH --time=24:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-array_in=("1" "3" "5" "6" "7" "8" "9" "11" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4" "4" "10" "12")
+array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4")
 sample_in=${array_in[$SLURM_ARRAY_TASK_ID]}
 multiome_dir="/home/groups/CEDAR/mulqueen/projects/multiome"
 
@@ -1609,14 +1613,7 @@ casper_per_sample<-function(x){
     cytoband=cytoband)
 
   saveRDS(object,paste0(dir_in,"/casper/",sample_name,".initialobj.rds"))
-
-  pdf(paste0(dir_in,"/casper/",sample_name,".Distrubution.pdf"))
-  plot(density(as.vector(object@control.normalized[[3]])))
-  plot(density(log2(object@control.normalized.noiseRemoved[[3]]+1)))
-  dev.off()
-  system(paste0("slack -F ",paste0(dir_in,"/casper/",sample_name,".Distrubution.pdf"), " ryan_todo"))
-
-  object<-readRDS(paste0(dir_in,"/casper/",sample_name,".initialobj.rds"))
+  #object<-readRDS(paste0(dir_in,"/casper/",sample_name,".initialobj.rds"))
   ## runCaSpER
   final.objects <- runCaSpER(object, removeCentromere=T, cytoband=cytoband, method="iterative")
 
@@ -1625,7 +1622,7 @@ casper_per_sample<-function(x){
   final.obj <- final.objects[[9]]
   saveRDS(final.obj,paste0(dir_in,"/casper/",sample_name,".finalobj.rds"))
   saveRDS(finalChrMat,paste0(dir_in,"/casper/",sample_name,".finalchrmat.rds"))
-  final.obj<-readRDS(paste0(dir_in,"/casper/",sample_name,".finalobj.rds"))
+  #final.obj<-readRDS(paste0(dir_in,"/casper/",sample_name,".finalobj.rds"))
 
   #Segmentations
   gamma <- 6
@@ -1641,22 +1638,24 @@ casper_per_sample<-function(x){
   #summerize segmentation across genes
   all.summary<- rbind(loss.final, gain.final)
   colnames(all.summary) [2:4] <- c("Chromosome", "Start",   "End")
-  rna <-  GRanges(seqnames = Rle(gsub("q", "", gsub("p", "", all.summary$Chromosome))), 
-      IRanges(all.summary$Start, all.summary$End))   
+  rna <-  GRanges(seqnames = Rle(gsub("q", "", gsub("p", "", all.summary$Chromosome))), IRanges(all.summary$Start, all.summary$End))   
   ann.gr <- makeGRangesFromDataFrame(final.objects[[1]]@annotation.filt, keep.extra.columns = TRUE, seqnames.field="Chr")
-  hits <- findOverlaps(geno.rna, ann.gr)
-  genes <- splitByOverlap(ann.gr, geno.rna, "GeneSymbol")
+  hits <- findOverlaps(rna, ann.gr)
+  genes <- splitByOverlap(ann.gr, rna, "GeneSymbol")
   genes.ann <- lapply(genes, function(x) x[!(x=="")])
   all.genes <- unique(final.objects[[1]]@annotation.filt[,2])
   all.samples <- unique(as.character(final.objects[[1]]@segments$ID))
-  rna.matrix <- gene.matrix(seg=all.summary, all.genes=all.genes, all.samples=all.samples, genes.ann=genes.ann)
+  rna.matrix <- gene.matrix(seg=all.summary, all.genes=all.genes, all.samples=all.samples, genes.ann=genes.ann) #just need to fix genes.ann
   saveRDS(rna.matrix, paste0(dir_in,"/casper/",sample_name,".finalgenemat.rds"))
 
 }
 
 casper_per_sample(x=as.character(args[1]))
 
-#lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",4,10,12), function(x) casper_per_sample(x))
+#lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"), function(x) casper_per_sample(x))
+
+#casper discretized matrix:
+#readRDS(paste0(dir_in,"/casper/",sample_name,".finalgenemat.rds"))
 
 ```
 
@@ -1668,14 +1667,14 @@ casper_slurm.sh
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
-#SBATCH --array=1-19
-#SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
-#SBATCH --cpus-per-task=20 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --array=0-18
+#SBATCH --tasks-per-node=5 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=5 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
-#SBATCH --time=5:00:00 ## ask for 1 hour on the node
+#SBATCH --time=24:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-array_in=("1" "3" "5" "6" "7" "8" "9" "11" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4" "4" "10" "12")
+array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4")
 sample_in=${array_in[$SLURM_ARRAY_TASK_ID]}
 multiome_dir="/home/groups/CEDAR/mulqueen/projects/multiome"
 
@@ -1700,6 +1699,7 @@ library(Signac)
 library(Seurat)
 library(copykat)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+args = commandArgs(trailingOnly=TRUE)
 
 copykat_per_sample<-function(x){
   if(x %in% 1:12){
@@ -1729,21 +1729,23 @@ copykat_per_sample<-function(x){
 
   DefaultAssay(dat)<-"RNA"
   dat$cnv_ref<-"FALSE"
-  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells","CAFs"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+  dat<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial","Endothelial","T-cells","B-cells","Myeloid","Plasmablasts","PVL","CAFs")) 
   cnv_ref<-row.names(dat@meta.data[dat@meta.data$cnv_ref=="TRUE",])
-  copykat_out <- copykat(rawmat=exp.rawdata, KS.cut=0.15,LOW.DR=0.05,UP.DR=0.2,id.type="S", ngene.chr=5, win.size=25, sam.name=sample_name, distance="euclidean", norm.cell.names=cnv_ref,output.seg="FALSE", plot.genes="FALSE", genome="hg20",n.cores=5)
+  copykat_out <- copykat(rawmat=exp.rawdata, KS.cut=0.15,LOW.DR=0.05,UP.DR=0.2,id.type="S", ngene.chr=5, win.size=25, sam.name=sample_name, distance="euclidean", norm.cell.names=cnv_ref,output.seg="FALSE", plot.genes="FALSE", genome="hg20",n.cores=10)
   saveRDS(copykat_out,paste0(dir_in,"/copykat/",sample_name,".copykat.RDS"))
 }
 
 copykat_per_sample(x=as.character(args[1]))
 
 #lapply(c(12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x) copykat_per_sample(x))
-
+#to set CNV discrete changes, as per correspondence suggetions with Ruli Gao, 1.5x SD threshold, 1.5 absolute distance, or use +/-0.25 as cutoff
 ```
 
 ## CopyscAT for ATAC CNV Calling 
 Using scATAC calling algorithm copyscAT from git repo https://github.com/spcdot/CopyscAT/
-Installation...
+
+### Installation...
 ```R
 library(devtools)
 Sys.setenv("R_REMOTES_NO_ERRORS_FROM_WARNINGS" = "true")
@@ -1759,6 +1761,7 @@ mkdir /home/groups/CEDAR/mulqueen/ref/copyscat
 ### Now Running samples
 
 Code from https://github.com/spcdot/CopyscAT/blob/master/copyscat_tutorial.R
+Initialize reference genome information for CopyscAT.
 
 ```R
 library(Seurat)
@@ -1771,6 +1774,18 @@ setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 generateReferences(BSgenome.Hsapiens.UCSC.hg38,genomeText = "hg38",tileWidth = 1e6,outputDir = "/home/groups/CEDAR/mulqueen/ref/copyscat")
 
 ##### REGULAR WORKFLOW #####
+
+```
+
+copyscat_per_sample.R
+```R
+library(Seurat)
+library(Signac)
+library(CopyscAT)
+library(BSgenome.Hsapiens.UCSC.hg38)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+args = commandArgs(trailingOnly=TRUE)
+
 #initialize the environment
 initialiseEnvironment(genomeFile="/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_chrom_sizes.tsv",
                       cytobandFile="/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_1e+06_cytoband_densities_granges.tsv",
@@ -1807,7 +1822,7 @@ copyscAT_per_sample<-function(x){
   system(paste0("mkdir ",dir_in,"/copyscat"))
   #do python script preprocessing (basically just count fragments per window per cell)
   system(paste0("python /home/groups/CEDAR/mulqueen/ref/copyscat/process_fragment_file.py ",
-  "-i ",dir_in,"/atac_fragments.tsv.gz",
+  " -i ",dir_in,"/atac_fragments.tsv.gz",
   " -o ",dir_in,"/copyscat/copyscat.1mb.tsv",
   " -b ","1000000",
   " -f ","500",
@@ -1816,30 +1831,16 @@ copyscAT_per_sample<-function(x){
   setOutputFile(paste0(dir_in,"/copyscat"),"copyscat_out")
   #PART 1: INITIAL DATA NORMALIZATION
   scData<-readInputTable(paste0(dir_in,"/copyscat/copyscat.1mb.tsv"))
-  scData_k_norm <- normalizeMatrixN(scData,
-    imputeZeros = FALSE,
-    dividingFactor=1,
-    blacklistProp = 0.8,
-    blacklistCutoff=50,
-    upperFilterQuantile = 1)
   #collapse into chromosome arm level
   summaryFunction<-cutAverage
-  scData_collapse<-collapseChrom3N(scData_k_norm,
-    summaryFunction=summaryFunction,
-    binExpand = 1,
-    minimumChromValue = 100,
-    logTrans = FALSE,
-    tssEnrich = 1,
-    logBase=2,
-    minCPG=300,
-    powVal=0.73) 
-  #show unscaled chromosome list
-  graphCNVDistribution(scData_collapse,outputSuffix = "test_violinsn2")
+  scData_k_norm <- normalizeMatrixN(scData,logNorm = FALSE,maxZero=2000,imputeZeros = FALSE,blacklistProp = 0.8,blacklistCutoff=125,dividingFactor=1,upperFilterQuantile = 0.95)
+  scData_collapse<-collapseChrom3N(scData_k_norm,summaryFunction=summaryFunction,binExpand = 1,minimumChromValue = 100,logTrans = FALSE,tssEnrich = 1,logBase=2,minCPG=300,powVal=0.73) 
+
   #PART 2: ASSESSMENT OF CHROMOSOME-LEVEL CNVs 
   #ALTERNATE METHOD FOR CNV CALLING (with normal cells as background)
   #Using same normal cell selection as used for CASPER and InferCNV
   dat$cnv_ref<-"FALSE"
-  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells","CAFs"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
   control<-names(dat$cnv_ref == "TRUE") #pulling this from the inferCNV function
   #compute central tendencies based on normal cells only
   control <- control[control %in% colnames(scData_collapse)] #filter control list to control cells that survived filter
@@ -1862,6 +1863,8 @@ copyscAT_per_sample<-function(x){
     medianQuantileCutoff = -1,
     normalCells=control) 
   candidate_cnvs_clean<-clusterCNV(initialResultList = candidate_cnvs,medianIQR = candidate_cnvs[[3]],minDiff=1.0) #= 1.5)
+  saveRDS(candidate_cnvs_clean,file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs_matrix.rds"))
+
   #to save this data you can use annotateCNV4 as per usual, using normal barcodes
   final_cnv_list<-annotateCNV4B(candidate_cnvs_clean, expectedNormals=control, saveOutput=TRUE,
     outputSuffix = "clean_cnv_b2",sdCNV = 0.6,filterResults=FALSE,filterRange=0.4,minAlteredCellProp = 0.5)
@@ -1869,9 +1872,40 @@ copyscAT_per_sample<-function(x){
   print(paste("Finished sample",sample_name))
 }
 
-lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2", "RM_3","RM_4",4,10,12),copyscAT_per_sample)
+copyscAT_per_sample(x=as.character(args[1]))
+
+#lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2", "RM_3","RM_4",4,10,12),copyscAT_per_sample)
 #Done
 
+#copyscat_dat<-readRDS(file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs_matrix.rds"))
+
+```
+
+### Batch script for copyscAT Per Sample Processing
+Calling copyscat_per_sample.R script written above
+
+copyscat_slurm.sh
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=0-18
+#SBATCH --tasks-per-node=5 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=5 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
+#SBATCH --time=24:00:00 ## ask for 1 hour on the node
+#SBATCH --
+
+array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4")
+sample_in=${array_in[$SLURM_ARRAY_TASK_ID]}
+multiome_dir="/home/groups/CEDAR/mulqueen/projects/multiome"
+
+srun Rscript ${multiome_dir}/copscat_per_sample.R $sample_in
+
+```
+
+### Job submit all copyscAT processing runs.
+```bash
+sbatch copyscat_slurm.sh
 ```
 
 ## Run IntClust on Samples
@@ -3712,6 +3746,7 @@ ref="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapien
 hmm_utils="/home/groups/CEDAR/mulqueen/src/hmmcopy_utils"
 bowtie-build $ref ${ref::-3} #build bowtie reference index
 ${hmm_utils}/util/mappability/generateMap.pl -o ${ref::-3}.map.bw -i ${ref::-3} $ref #make mappability
+#10kb windows
 ${hmm_utils}/bin/mapCounter -w 10000 ${ref::-3}.map.bw > ${ref::-3}.10000.map.wig #make windows
 ${hmm_utils}/bin/gcCounter -w 10000 ${ref} > ${ref::-3}.10000.gc.wig #make gc measure per window
 
@@ -3887,55 +3922,6 @@ hmmcopy_sample<-function(x){
 hmm_y<-lapply(1:length(bamFile),function(x) hmmcopy_sample(x))
 
 
-
-```
-
-Using windows defined by cnv callers for direct comparison to sc Data
-```R
-####Run InferCNV
-library(Signac)
-library(Seurat)
-library(EnsDb.Hsapiens.v86)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(GenomeInfoDb)
-set.seed(1234)
-library(stringr)
-library(ggplot2)
-library(infercnv)
-library(ComplexHeatmap)
-library(circlize)
-library(patchwork)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-HMMcopy_comparison(x){
- if(x %in% 1:12){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-
-  dir_in<-dirname(file_in)
-  sample_name<-basename(file_in)
-  infercnv_obj<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
-  casper_obj<-readRDS(paste0(dir_in,"/casper/",sample_name,".finalobj.rds"))
-  copykat_obj<-readRDS(paste0(dir_in,"/copykat/",sample_name,".copykat.RDS"))
-  copyscat_obj<-readRDS(file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs.rds"))
-
-}
 
 ```
 
