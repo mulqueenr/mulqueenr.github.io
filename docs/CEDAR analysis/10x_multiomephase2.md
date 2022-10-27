@@ -1484,7 +1484,7 @@ infercnv_per_sample<-function(x){
                                HMM_report_by="cell",
                                resume_mode=F,
                                HMM_type='i3',
-                               num_threads=10)
+                               num_threads=40)
   saveRDS(infercnv_obj,paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.png"," -T ","\"",outname,"\"" ," ryan_todo") )
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.19_HMM_predHMMi3.hmm_mode-samples.Pnorm_0.5.repr_intensities.png"," -T ","\"",outname,"\"" ," ryan_todo") )
@@ -1508,18 +1508,21 @@ infercnv_slurm.sh
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
-#SBATCH --array=0-18
+#SBATCH --array=0-5
 #SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
-#SBATCH --cpus-per-task=15 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --cpus-per-task=25 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
-#SBATCH --time=24:00:00 ## ask for 1 hour on the node
+#SBATCH --time=36:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4")
+array_in=("3" "4" "7" "11" "12" "RM_4" )
+#--array=0-18
+#array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4")
 sample_in=${array_in[$SLURM_ARRAY_TASK_ID]}
 multiome_dir="/home/groups/CEDAR/mulqueen/projects/multiome"
 
 srun Rscript ${multiome_dir}/infercnv_per_sample.R $sample_in
+
 
 ```
 
@@ -1616,6 +1619,7 @@ casper_per_sample<-function(x){
   #object<-readRDS(paste0(dir_in,"/casper/",sample_name,".initialobj.rds"))
   ## runCaSpER
   final.objects <- runCaSpER(object, removeCentromere=T, cytoband=cytoband, method="iterative")
+  saveRDS(final.objects,paste0(dir_in,"/casper/",sample_name,".finalobj.rds"))
 
   ## summarize large scale events 
   finalChrMat <- extractLargeScaleEvents(final.objects, thr=0.75)
@@ -1635,7 +1639,7 @@ casper_per_sample<-function(x){
   gain.final <- gain[gain$count>gamma, ]
   loh.final <- loh[loh$count>gamma, ]
 
-  #summerize segmentation across genes
+  #summrize segmentation across genes
   all.summary<- rbind(loss.final, gain.final)
   colnames(all.summary) [2:4] <- c("Chromosome", "Start",   "End")
   rna <-  GRanges(seqnames = Rle(gsub("q", "", gsub("p", "", all.summary$Chromosome))), IRanges(all.summary$Start, all.summary$End))   
@@ -1876,7 +1880,7 @@ copyscAT_per_sample(x=as.character(args[1]))
 
 #lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2", "RM_3","RM_4",4,10,12),copyscAT_per_sample)
 #Done
-
+copyscAT_per_sample(x=20)
 #copyscat_dat<-readRDS(file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs_matrix.rds"))
 
 ```
@@ -1899,7 +1903,8 @@ array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "15" "16" "19" "20" "RM
 sample_in=${array_in[$SLURM_ARRAY_TASK_ID]}
 multiome_dir="/home/groups/CEDAR/mulqueen/projects/multiome"
 
-srun Rscript ${multiome_dir}/copscat_per_sample.R $sample_in
+
+srun Rscript ${multiome_dir}/copyscat_per_sample.R $sample_in
 
 ```
 
@@ -4232,6 +4237,8 @@ HMMcopy_comparison<-function(x){
   #InferCNV
     #Rerun with HMM i3 instead of 6?
     assay="InferCNV"
+    #3 state model is here (gene by cell name data is in i3_hmm@expr.data)
+    #i3_hmm<-readRDS(paste0(wd,"/",outname,"_inferCNV","/19_HMM_pred.repr_intensitiesHMMi3.hmm_mode-samples.Pnorm_0.5.infercnv_obj"))?
     print(paste(outname,"InferCNV windows"))
     infercnv_obj<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
     #Format Data
@@ -4260,6 +4267,8 @@ HMMcopy_comparison<-function(x){
      write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_infercnv_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 
   #CASPER 
+    #casper discretized matrix:
+    #readRDS(paste0(dir_in,"/casper/",sample_name,".finalgenemat.rds"))
     #Run different segmentation scales? https://rpubs.com/akdes/673120 (section 3)
     assay="CASPER"
     print(paste(outname,"CASPER windows"))
@@ -4298,6 +4307,7 @@ HMMcopy_comparison<-function(x){
   #CopyKAT 
 
     assay="CopyKAT"
+    #to set CNV discrete changes, as per correspondence suggetions with Ruli Gao, 1.5x SD threshold, 1.5 absolute distance, or use +/-0.25 as cutoff
     print(paste(outname,"CopyKat windows"))
     copykat_obj<-readRDS(paste0(dir_in,"/copykat/",outname,".copykat.RDS"))
     #Format Data
@@ -4338,6 +4348,7 @@ HMMcopy_comparison<-function(x){
 
   #COPYSCAT
     assay="copyscat"
+    #copyscat_dat<-readRDS(file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs_matrix.rds"))
     print(paste(outname,"Copyscat windows"))
     copyscat_obj<-readRDS(file=paste0(dir_in,"/copyscat/",outname,"copyscat_cnvs.rds"))
     #Format Data
@@ -4431,6 +4442,23 @@ lapply(c(11,12,15,16,19,20),HMMcopy_comparison)
 #Set states to match CNV Callers by mode of called states per window
 
 ```
+
+### Looking for subclonality in bulk WGS libraries
+
+Install Battenberg
+https://github.com/Wedge-lab/battenberg
+Reference files downloaded from https://ora.ox.ac.uk/objects/uuid:08e24957-7e76-438a-bd38-66c48008cf52
+
+```bash
+R -q -e 'BiocManager::install(c("igordot/copynumber"))'
+R -q -e 'devtools::install_github("Crick-CancerGenomics/ascat/ASCAT")'
+R -q -e 'devtools::install_github("Wedge-Oxford/battenberg")'
+mkdir /home/groups/CEDAR/mulqueen/ref/battenberg
+cd /home/groups/CEDAR/mulqueen/ref/battenberg
+
+#placed reference files here after direct download with SFTP
+```
+
 
 #ER binding poor and good outcome from patients, overlap with ATAC data
 http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Poor%20outcome%20ER%20regions.bed.gz

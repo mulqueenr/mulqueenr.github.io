@@ -1,23 +1,6 @@
 <nav class="section-nav">
     <ul id="sidebar">
-        <!-- Find the h1 supergroup, h2 group and any h3 subgroups -->
-        <!--new block-->
-        {% assign supergroups = content | split:'<h1 id="' %}
-        {% for supergroup in supergroups offset:1 %}
-          {% assign dividedSuperGroup = supergroup | split:'<' %}
-          {% if dividedSuperGroup[1] contains 'a href="' %}
-            {% assign supergroupToProcess = dividedSuperGroup[1] %}
-            {% assign anchorTag = supergroupToProcess | split:'">' %}
-            {% assign supergroupTitle = anchorTag[1] %}
-            {% assign anchorToProcess = anchorTag[0] | split:'="' %}
-            {% assign linkToProcess = anchorToProcess[1] | split:'guides/'%}
-            {% assign anchorTag = linkToProcess[1] %}
-            <li>
-              <a href="#{{anchorTag}}">{{ supergroupTitle | truncate: 10 }}</a>
-            </li>
-              {% if supergroup contains '<h2 id="' %}
-        <!--end new block-->
-
+        <!-- Find h2 group and any h3 subgroups -->
         {% assign groups = content | split:'<h2 id="' %}
         {% for group in groups offset:2 %}
           {% assign dividedGroup = group | split:'<' %}

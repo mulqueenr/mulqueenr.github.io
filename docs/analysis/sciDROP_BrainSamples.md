@@ -1718,6 +1718,7 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.PF.Rds")
 ```
 
 ### Confusion Matrices for Cell Type Identification
+
 Human
 ```R
 library(Seurat)
@@ -1733,6 +1734,7 @@ library(circlize)
 
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
+hg38_atac<-subset(hg38_atac,cells=row.names(hg38_atac@meta.data[!endsWith(hg38_atac@meta.data$cluster_ID,suffix="NA"),]))
 
 build_confusion_matrix<-function(obj,feat="brainspan.predicted.class_label"){
     #seurat_clusters
@@ -1772,12 +1774,50 @@ build_confusion_matrix<-function(obj,feat="brainspan.predicted.class_label"){
     print(plt1)
     dev.off()
     system(paste0("slack -F ",paste0("hg38.",x,"confusion_mat.clusterID.heatmap.pdf")," ryan_todo"))
+    return(confusion_matrix)
 }
 
 #hg38
 for (x in c("brainspan.predicted.class_label","brainspan.predicted.subclass_label","brainspan.predicted.cluster_label")){
 build_confusion_matrix(obj=hg38_atac,feat=x)
 }
+
+confusion_matrix<-build_confusion_matrix(obj=hg38_atac,feat="brainspan.predicted.cluster_label")
+confusion_matrix<-t(confusion_matrix)
+
+#cluster by all marker genes
+sum_da_dend <- t(confusion_matrix) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 8)
+saveRDS(sum_da_dend,file="hg38.confusion.dend.rds") 
+
+annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+annot<-annot[!(annot$subcluster_col=="NA"),]
+annot<-annot[!duplicated(annot$cluster_ID),]
+annot<-annot[annot$cluster_ID %in% colnames(confusion_matrix),]
+annot<-annot[match(colnames(confusion_matrix),annot$cluster_ID),]
+annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+col_fun = colorRamp2(c(0, 1), c("white", "red"))
+
+top_ha<-columnAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+                col=list(
+                    celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
+                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
+                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                        ),
+                    show_legend = c(TRUE, TRUE, FALSE))
+
+
+plt1<-Heatmap(confusion_matrix,
+    column_names_gp = gpar(fontsize = 8),
+    row_names_gp=gpar(fontsize=7),
+    column_names_rot=90,
+    top_annotation=top_ha,
+    cluster_columns=sum_da_dend,
+    col=col_fun
+)
+pdf(paste0("hg38_mergeddataset_confusion_mat.heatmap.pdf"),height=20,width=20)
+print(plt1)
+dev.off()
+system(paste0("slack -F ",paste0("hg38_mergeddataset_confusion_mat.heatmap.pdf")," ryan_todo"))
 
 
 ```
@@ -1794,10 +1834,12 @@ library(viridis)
 library(RColorBrewer)
 library(reshape2)
 library(circlize)
+library(ggdendro)
+library(dendextend)
 
 setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
 mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
-
+mm10_atac<-subset(mm10_atac,cells=row.names(mm10_atac@meta.data[!endsWith(mm10_atac@meta.data$cluster_ID,suffix="NA"),]))
 
 build_confusion_matrix<-function(obj,feat="brainspan.predicted.class_label"){
     #seurat_clusters
@@ -1847,20 +1889,42 @@ build_confusion_matrix(obj=mm10_atac,feat=x)
 #Merge prediction matrices across data sets and select top cells
 dat<-rbind(mm10_atac[["allenbrainmap_subclass_preduction_values"]]@data,mm10_atac[["cerebellum_cluster_prediction_values"]]@data)
 dat<-data.frame(cellID=colnames(dat),celltype=row.names(dat)[apply(dat,2,which.max)])
-dat$cluster<-mm10_atac$ cluster_ID[names(mm10_atac$ cluster_ID) %in% dat$cellID]
+dat$cluster<-mm10_atac$cluster_ID[names(mm10_atac$cluster_ID) %in% dat$cellID]
 dat<-as.data.frame(table(dat$cluster,dat$celltype))
 dat$Var2<-sub("prediction.score.","",dat$Var2)
 confusion_matrix<-reshape2::dcast(Var1~Var2,value.var="Freq",data=dat,fill=0,fun.aggregate=sum)
 row.names(confusion_matrix)<-confusion_matrix[,1]
 confusion_matrix<-confusion_matrix[,2:ncol(confusion_matrix)]
 confusion_matrix<-t(apply(confusion_matrix, 1, function(x) x/sum(x)))
+confusion_matrix<-t(confusion_matrix)
 col_fun = colorRamp2(c(0, 1), c("white", "red"))
-confusion_matrix<-confusion_matrix[c()]
+
+#cluster by all marker genes
+sum_da_dend <- t(confusion_matrix) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 8)
+saveRDS(sum_da_dend,file="mm10.confusion.dend.rds") 
+
+annot<-mm10_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+annot<-annot[!(annot$subcluster_col=="NA"),]
+annot<-annot[!duplicated(annot$cluster_ID),]
+annot<-annot[annot$cluster_ID %in% colnames(confusion_matrix),]
+annot<-annot[match(colnames(confusion_matrix),annot$cluster_ID),]
+annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+
+top_ha<-columnAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+                col=list(
+                    celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
+                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
+                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                        ),
+                    show_legend = c(TRUE, TRUE, FALSE))
+
 
 plt1<-Heatmap(confusion_matrix,
     column_names_gp = gpar(fontsize = 8),
     row_names_gp=gpar(fontsize=7),
     column_names_rot=90,
+    top_annotation=top_ha,
+    cluster_columns=sum_da_dend,
     col=col_fun
 )
 pdf(paste0("mm10_mergeddataset_confusion_mat.heatmap.pdf"),height=20,width=20)
@@ -3168,7 +3232,45 @@ gene_list<-gene_list[unlist(lapply(gene_list,function(x) x %in% row.names(mm10_a
 lapply(gene_list,function(x) plot_markers(gene_name=x))
 
 hg38_atac<-readRDS(file="hg38_SeuratObject.PF.Rds")
-gene_list<-c("GAD1","LHX6","ADARB2","LAMP5","VIP","PVALB","SST","SLC17A7","CUX2","RORB","THEMIS","FEZF2","CTGF","AQP4","PDGFRA","OPALIN","FYB") #https://celltypes.brain-map.org/rnaseq/human_m1_10x?selectedVisualization=Heatmap&colorByFeature=Gene+Expression&colorByFeatureValue=GAD1
+gene_list<-c('RORB',
+'LINC00507',
+'GLRA3',
+'PTPN3',
+'CCDC68',
+'LINC01202',
+'OTOGL',
+'TNNT2',
+'LNX2',
+'THEMIS',
+'TNFAIP6',
+'FEZF2',
+'KLK7',
+'OPALIN',
+'FTH1P3',
+'FGFR3',
+'AQP1',
+'LAMP5',
+'PAX6',
+'PVALB',
+'SST',
+'GGTLC3',
+'COL15A1',
+'VIP',
+'EXPH5',
+'SMOC1',
+'IGDCC3',
+'BMP2',
+'CRABP1',
+'AARD',
+'TYROBP',
+'CD74',
+'PDGFRA',
+'COL20A1',
+'NES',
+'FREM2',
+'PDGFRA')
+
+#https://celltypes.brain-map.org/rnaseq/human_m1_10x?selectedVisualization=Heatmap&colorByFeature=Gene+Expression&colorByFeatureValue=GAD1
 gene_list<-gene_list[unlist(lapply(gene_list,function(x) x %in% row.names(hg38_atac[["GeneActivity"]]@data)))]
 lapply(gene_list,function(x) plot_markers(obj=hg38_atac,gene_name=x))
 ```
@@ -3416,6 +3518,134 @@ cbBuild -o mm10_cellbrowser -p 8888
 
 ```
 
+## Single Cell ATAC Comparison Across Adult Mouse Brains
+
+### Set up SRA-toolkit
+https://github.com/ncbi/sra-tools/wiki/02.-Installing-SRA-Toolkit
+
+```bash
+cd /home/groups/CEDAR/mulqueen/src
+wget --output-document sratoolkit.tar.gz https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current/sratoolkit.current-centos_linux64.tar.gz
+tar -vxzf sratoolkit.tar.gz
+export PATH=$PATH:$PWD/sratoolkit.3.0.0-mac64/bin
+vdb-config --prefetch-to-cwd
+```
+
+### Downloading Raw scATAC data Comparisons using SRA-toolkit
+
+sciATAC Mouse Brain
+https://www.ncbi.nlm.nih.gov/sra?term=SRX9850743
+Downloading the files which contains a standard genomic Read 1 and Read 2. Read 3 (technical read) has the read assigned cellID barcode.
+Going to add read 3 into the fastq read name, and then make an unaligned bam. Then I'll add cellID to proper bam fields. Finally, I will paired-end align the bam and feed it through cellranger.
+
+Note R3 is properly assigned, corrected cellIDs, so no fuzzy matching is necessary.
+
+```bash
+sra="SRR13437232"
+ref_dir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
+mkdir ${ref_dir}/sciATAC
+prefetch $sra --type fastq -O ${ref_dir}/sciATAC/${sra}
+fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_dir}/sciATAC/${sra} ${sra}
+gzip ${ref_dir}/${sra}/*fastq &
+zcat SRR13437232_3.fastq.gz | awk '{getline;print;getline;getline}' | uniq -c | sort -k1,1n | head #to convince ourselves of barcodes
+```
+
+sciMAP Mouse Brain
+https://www.ncbi.nlm.nih.gov/sra?term=SRX9850744
+```bash
+sra="SRR13437233"
+ref_dir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
+mkdir ${ref_dir}/sciMAP
+prefetch $sra --type fastq -O ${ref_dir}/sciMAP/${sra}
+fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_dir}/sciMAP/${sra} ${sra}
+gzip ${ref_dir}/${sra}/*fastq &
+````
+
+Generating a script for bam setup and output.
+Easiest way to do it, since they are common by line, is make all into unaligned bams. Then add R3 field to R1 and R2 bams.
+```bash
+picard="/home/groups/oroaklab/src/picard/picard-tools-2.26.2/build/libs/picard.jar"
+wd="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232"
+# transform FASTQs to unaligned single-read BAMS
+
+cd $wd
+fq_list=`ls *fastq.gz`
+for i in $fq_list;
+    do FASTQ_FILE=$i;
+    BAM_OUT=${i::-9}.bam;
+    java -jar $picard FastqToSam F1=$FASTQ_FILE OUTPUT=$BAM_OUT SM=$FASTQ_FILE;
+done
+
+```
+
+10x ATAC v1 Chemistry
+https://www.10xgenomics.com/resources/datasets/fresh-cortex-from-adult-mouse-brain-p-50-1-standard-1-2-0
+For 10x libraries I will use standard cellranger analysis pipeline.
+
+```bash
+mkdir 10x_atac_v1
+cd 10x_atac_v1
+
+# Input Files
+wget https://s3-us-west-2.amazonaws.com/10x.files/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_fastqs.tar
+
+# Output Files
+wget https://s3-us-west-2.amazonaws.com/10x.files/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_possorted_bam.bam
+wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_possorted_bam.bam.bai
+wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_singlecell.csv
+wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_summary.csv
+
+tar -xvf atac_v1_adult_brain_fresh_5k_fastqs.tar
+```
+
+10x ATAC v2 Chemistry
+https://www.10xgenomics.com/resources/datasets/8k-adult-mouse-cortex-cells-atac-v2-chromium-x-2-standard
+```bash
+mkdir 10x_atac_v2
+cd 10x_atac_v2
+
+# Input Files
+wget https://s3-us-west-2.amazonaws.com/10x.files/samples/cell-atac/2.1.0/8k_mouse_cortex_ATACv2_nextgem_Chromium_X/8k_mouse_cortex_ATACv2_nextgem_Chromium_X_fastqs.tar
+# Output Files
+wget https://cf.10xgenomics.com/samples/cell-atac/2.1.0/8k_mouse_cortex_ATACv2_nextgem_Chromium_X/8k_mouse_cortex_ATACv2_nextgem_Chromium_X_analysis.tar.gz
+wget https://s3-us-west-2.amazonaws.com/10x.files/samples/cell-atac/2.1.0/8k_mouse_cortex_ATACv2_nextgem_Chromium_X/8k_mouse_cortex_ATACv2_nextgem_Chromium_X_possorted_bam.bam
+wget https://cf.10xgenomics.com/samples/cell-atac/2.1.0/8k_mouse_cortex_ATACv2_nextgem_Chromium_X/8k_mouse_cortex_ATACv2_nextgem_Chromium_X_possorted_bam.bam.bai
+wget https://cf.10xgenomics.com/samples/cell-atac/2.1.0/8k_mouse_cortex_ATACv2_nextgem_Chromium_X/8k_mouse_cortex_ATACv2_nextgem_Chromium_X_singlecell.csv
+wget https://cf.10xgenomics.com/samples/cell-atac/2.1.0/8k_mouse_cortex_ATACv2_nextgem_Chromium_X/8k_mouse_cortex_ATACv2_nextgem_Chromium_X_summary.csv
+
+tar -xvf 8k_mouse_cortex_ATACv2_nextgem_Chromium_X_fastqs.tar
+```
+
+ddscATAC
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE123581
+Use this to parse reads? https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/tag_validation/parse_oligos.py
+
+```bash
+mkdir ddscATAC
+ref_dir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
+mkdir ${ref_dir}/ddscATAC
+for sra in SRR8310661 SRR8310662 SRR8310663 SRR8310664 SRR8310665 SRR8310666 SRR8310667 SRR8310668; do
+prefetch $sra --type fastq -X 50G -O ${ref_dir}/ddscATAC/${sra} &
+done &
+
+for sra in SRR8310661 SRR8310662 SRR8310663 SRR8310664 SRR8310665 SRR8310666 SRR8310667 SRR8310668; do
+fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_dir}/ddscATAC/${sra}/${sra} ${ref_dir}/ddscATAC/${sra}/${sra}.sra &
+done &
+
+gzip -r ${ref_dir}/*/*/*fastq
+```
+
+
+snATAC 
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM2668124
+```bash
+sra="SRR6768122"
+ref_dir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
+mkdir ${ref_dir}/snATAC
+prefetch $sra --type fastq -X 50G -O ${ref_dir}/snATAC/${sra}
+fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_dir}/snATAC/${sra}/${sra} ${ref_dir}/snATAC/${sra}/${sra}.sra
+gzip ${ref_dir}/${sra}/*fastq &
+```
 
 <!---
 
