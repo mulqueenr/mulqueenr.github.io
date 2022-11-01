@@ -818,6 +818,59 @@ wget https://figshare.com/ndownloader/articles/17058077/versions/1
 unzip 1
 ```
 
+Set up cell types by seurat cluster ID based on main figures.
+
+```R
+library(Seurat)
+library(ggplot2)
+setwd("/home/groups/CEDAR/mulqueen/ref/embo")
+#match suerat clusters to assigned cell types in Fig 7C
+##ER+ nonepi celltypes##
+dat<-readRDS("SeuratObject_ERTotalSub.rds") #ER+ tumor non-epithelial cells
+er_nonepi<-setNames(
+  seq(0,max(as.numeric(unique(dat$seurat_clusters))))
+  ,nm=c("T cells","TAMs","CAFs","Pericytes","NA","Endothelial","TAMs_2","B cells","Myeloid","CAFs","Plasma cells","NA","NA"))
+er_nonepi_cells<-setNames(names(er_nonepi[dat$seurat_clusters]),nm=names(dat$seurat_clusters))
+dat<-AddMetaData(dat,er_nonepi_cells,col.name="celltype")
+plt<-DimPlot(dat,group.by="celltype")
+ggsave(plt,file="ERTotalSub.umap.pdf")
+system("slack -F ERTotalSub.umap.pdf ryan_todo")
+saveRDS(dat,file="SeuratObject_ERTotalSub.rds") #overwrite with cell types added to metadata
+
+#match suerat clusters to assigned cell types in Fig EV4
+dat<-readRDS("SeuratObject_ERTotalTC.rds") #ER+ tumor T-cells
+er_nonepi_tcells<-setNames(
+  seq(0,max(as.numeric(unique(dat$seurat_clusters))))
+  ,nm=c("CD8+ effector","naive/resting","Treg","plasma","NK","NA"))
+er_nonepi_tcells_cells<-setNames(names(er_nonepi_tcells[dat$seurat_clusters]),nm=names(dat$seurat_clusters))
+dat<-AddMetaData(dat,er_nonepi_tcells_cells,col.name="celltype")
+plt<-DimPlot(dat,group.by="celltype")
+ggsave(plt,file="ERTotalTC.umap.pdf")
+system("slack -F ERTotalTC.umap.pdf ryan_todo")
+saveRDS(dat,file="SeuratObject_ERTotalTC.rds") #overwrite with cell types added to metadata
+
+
+#match suerat clusters to assigned cell types in Fig 6E
+dat<-readRDS("SeuratObject_ERTotalTum.rds") #ER+ tumor epithelial
+er_epi<-setNames(
+  seq(0,max(as.numeric(unique(dat$seurat_clusters))))
+  ,nm=c("epithelial","cycling epithelial","epithelial"))
+er_epi_cells<-setNames(names(er_epi[dat$seurat_clusters]),nm=names(dat$seurat_clusters))
+dat<-AddMetaData(dat,er_epi_cells,col.name="celltype")
+plt<-DimPlot(dat,group.by="celltype")
+ggsave(plt,file="ERTotalTum.umap.pdf")
+system("slack -F ERTotalTum.umap.pdf ryan_todo")
+saveRDS(dat,"SeuratObject_ERTotalTum.rds")
+
+#ER+ All Cells
+dat1<-readRDS("SeuratObject_ERTotalSub.rds") #ER+ tumor non-epithelial cells
+dat2<-readRDS("SeuratObject_ERTotalTum.rds") #ER+ tumor epithelial
+dat_tc<-readRDS("SeuratObject_ERTotalTC.rds") #ER+ tumor T-cells
+dat<-merge(dat1,dat2)
+dat<-AddMetaData(dat,dat_tc$celltype,col.name="TCell_Subtype")
+saveRDS(dat,"SeuratObject_ERProcessed.rds")
+```
+
 ## Swarbrick Paper Label Transfer
 ### Transfer Swarbrick cell types
 
@@ -898,6 +951,96 @@ single_sample_label_transfer<-function(x){
 lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_label_transfer)
 #
 ```
+
+### Transfer EMBO Cell Types Per Sample
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+#Using Label transfer to label cell types by Embo Paper
+#seurat object made by AD
+embo_er<-readRDS("/home/groups/CEDAR/mulqueen/ref/embo/SeuratObject_ERProcessed.rds")
+DefaultAssay(embo_er)<-"RNA"
+embo_er<-NormalizeData(embo_er)
+embo_er<-FindVariableFeatures(embo_er)
+embo_er<-ScaleData(embo_er)
+
+##########Apply to single samples as well##################
+
+single_sample_label_transfer<-function(x){
+  if(x %in% 1:12){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+    dat$sample<-paste0("sample_",x)
+  }else if(x %in% 13:20){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+    dat$sample<-paste0("sample_",x)
+  }else{
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+    dat@assays$peaks<-dat@assays$ATAC
+    dat$sample<-paste0(x)
+  }
+  DefaultAssay(dat)<-"SoupXRNA"
+
+  transfer.anchors <- FindTransferAnchors(
+    reference = embo_er,
+    reference.assay="RNA",
+    query = dat,
+    query.assay="SoupXRNA",
+    verbose=T
+  )
+
+  predictions<- TransferData(
+    anchorset = transfer.anchors,
+    refdata = embo_er$celltype,
+  )
+  colnames(predictions)<-paste0("EMBO_",colnames(predictions))
+
+  dat<-AddMetaData(dat,metadata=predictions)
+  saveRDS(dat,file=file_in)
+  plt1<-FeaturePlot(dat,features=c(                     
+  "EMBO_prediction.score.Endothelial",       
+  "EMBO_prediction.score.TAMs",              
+  "EMBO_prediction.score.Pericytes",         
+  "EMBO_prediction.score.CAFs",              
+  "EMBO_prediction.score.T.cells",           
+  "EMBO_prediction.score.Plasma.cells",      
+  "EMBO_prediction.score.TAMs_2",            
+  "EMBO_prediction.score.B.cells",           
+  "EMBO_prediction.score.Myeloid",           
+  "EMBO_prediction.score.epithelial",        
+"EMBO_prediction.score.cycling.epithelial"),pt.size=0.1,order=T,col=c("white","red"))
+  plt2<-DimPlot(dat,group.by='EMBO_predicted.id',pt.size=0.5)
+  plt3<-DimPlot(dat,group.by='sample',pt.size=0.5)
+
+  plt<-(plt2|plt3)/plt1
+  ggsave(plt,file=out_plot,width=20,height=30,limitsize=F)
+  system(paste0("slack -F ",out_plot," ryan_todo"))
+  }
+
+lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_label_transfer)
+#
+```
+
 
 ### Add sample metadata
 
@@ -1482,9 +1625,9 @@ infercnv_per_sample<-function(x){
                                denoise=TRUE,
                                HMM=TRUE,
                                HMM_report_by="cell",
-                               resume_mode=F,
+                               resume_mode=T,
                                HMM_type='i3',
-                               num_threads=40)
+                               num_threads=20)
   saveRDS(infercnv_obj,paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.png"," -T ","\"",outname,"\"" ," ryan_todo") )
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.19_HMM_predHMMi3.hmm_mode-samples.Pnorm_0.5.repr_intensities.png"," -T ","\"",outname,"\"" ," ryan_todo") )
@@ -1510,9 +1653,10 @@ infercnv_slurm.sh
 #SBATCH --nodes=1 #request 1 node
 #SBATCH --array=0-5
 #SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
-#SBATCH --cpus-per-task=25 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --cpus-per-task=40 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
-#SBATCH --time=36:00:00 ## ask for 1 hour on the node
+#SBATCH --qos=long_jobs
+#SBATCH --time=96:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
 array_in=("3" "4" "7" "11" "12" "RM_4" )
@@ -2389,6 +2533,50 @@ dat <- merge(out[[1]], y = as.list(out[2:length(out)]), add.cell.ids = c(paste0(
 saveRDS(dat,file="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/phase2.QC.SeuratObject.rds")
 ```
 
+### Add EMBO cell predictions to merged seurat object
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+dat_merged<-readRDS(file="phase2.QC.SeuratObject.rds")
+
+# set up sample loop to load the RNA and ATAC data, save to seurat object
+embo_metaextractor<-function(x){
+  #function to handle different sample directories##################
+  if(x %in% 1:12){
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+  outname<-paste0("sample_",x)
+  }else if(x %in% 13:20){
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+  outname<-paste0("sample_",x)
+  }else{
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+  outname<-x
+  }
+  ####################################################################
+  #read in data
+  dat<-readRDS(paste0(wd,"/",outname,".QC.SeuratObject.rds"))
+  dat_met<-dat@meta.data[startsWith(prefix="EMBO_prediction.",colnames(dat@meta.data))]
+  row.names(dat_met)<-paste(outname,row.names(dat_met),sep="_")#set up sample metadata
+  return(dat_met)}
+
+out_met<-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),embo_metaextractor)
+
+met<-do.call("rbind",out_met)
+
+dat_merged<-AddMetaData(dat_merged,met)
+saveRDS(dat_merged,file="phase2.QC.SeuratObject.rds")
+```
+
 ### Perform Merged Object Clustering
 
 ```R
@@ -2577,26 +2765,31 @@ dat<-dat_in@meta.data
 
 
 swarbrick_out<-as.data.frame(dat %>% group_by(sample,predicted.id) %>% summarize(
+  swarbrick_B.cells=median(prediction.score.B.cells,na.rm=T),
+  swarbrick_Myeloid=median(prediction.score.Myeloid,na.rm=T),
+  swarbrick_Plasmablasts=median(prediction.score.Plasmablasts,na.rm=T),
+  swarbrick_T.cells=median(prediction.score.T.cells,na.rm=T),
   swarbrick_Normal.Epithelial=median(prediction.score.Normal.Epithelial,na.rm=T),
   swarbrick_Cancer.Epithelial=median(prediction.score.Cancer.Epithelial,na.rm=T),
-  swarbrick_Endothelial=median(prediction.score.Endothelial,na.rm=T),
   swarbrick_CAFs=median(prediction.score.CAFs,na.rm=T),
-  swarbrick_B.cells=median(prediction.score.B.cells,na.rm=T),
-  swarbrick_T.cells=median(prediction.score.T.cells,na.rm=T),
   swarbrick_PVL=median(prediction.score.PVL,na.rm=T),
-  swarbrick_Myeloid=median(prediction.score.Myeloid,na.rm=T),
-  swarbrick_Plasmablasts=median(prediction.score.Plasmablasts,na.rm=T)))
+  swarbrick_Endothelial=median(prediction.score.Endothelial,na.rm=T)
+))
 
-EMBO_out<-as.data.frame(dat %>% group_by(sample,predicted.id) %>% summarize(
-  EMBO_BCell=median(EMBO_BCell,na.rm=T),
-  EMBO_DC=median(EMBO_DC,na.rm=T),
-  EMBO_Endo=median(EMBO_Endo,na.rm=T),
-  EMBO_Fibro=median(EMBO_Fibro,na.rm=T),
-  EMBO_Macro=median(EMBO_Macro,na.rm=T),
-  #EMBO_Mega=median(EMBO_Mega,na.rm=T), all NA values
-  EMBO_NK=median(EMBO_NK,na.rm=T),
-  EMBO_TCell=median(EMBO_TCell,na.rm=T),
-  EMBO_TCells=median(EMBO_TCell2,na.rm=T)))
+embo_out<-as.data.frame(dat %>% group_by(sample,predicted.id) %>% summarize(
+  EMBO_B.cells=median(EMBO_prediction.score.B.cells,na.rm=T), 
+  EMBO_TAMs=median(EMBO_prediction.score.TAMs,na.rm=T),                            
+  EMBO_TAMs_2=median(EMBO_prediction.score.TAMs_2,na.rm=T),            
+  EMBO_Myeloid=median(EMBO_prediction.score.Myeloid,na.rm=T),           
+  EMBO_Plasma.cells=median(EMBO_prediction.score.Plasma.cells,na.rm=T),
+  EMBO_T.cells=median(EMBO_prediction.score.T.cells,na.rm=T),          
+  EMBO_Epithelial=median(EMBO_prediction.score.epithelial,na.rm=T), 
+  EMBO_cycling.epithelial=median(EMBO_prediction.score.cycling.epithelial,na.rm=T),       
+  EMBO_CAFs=median(EMBO_prediction.score.CAFs,na.rm=T),   
+  EMBO_Pericytes=median(EMBO_prediction.score.Pericytes,na.rm=T),                    
+  EMBO_Endothelial=median(EMBO_prediction.score.Endothelial,na.rm=T),
+))     
+
 
 row.names(swarbrick_out)<-paste(swarbrick_out$sample,swarbrick_out$predicted.id)
 type_cols<-c(
@@ -2617,12 +2810,13 @@ o = seriate(swarbrick_out[,3:ncol(swarbrick_out)], method = "BEA_TSP")
 
 swarbrick<-Heatmap(swarbrick_out[,3:ncol(swarbrick_out)],
   left_annotation=side_ha,
-  row_order = get_order(o, 1), column_order = get_order(o, 2),
-  col=colorRamp2(c(0, max(swarbrick_out[,3:ncol(swarbrick_out)])), c("white", "red")),
+  row_order = get_order(o, 1), column_order=1:ncol(swarbrick),
+  col=colorRamp2(c(0, max(swarbrick_out[,3:ncol(swarbrick_out)])), c("white", "blue")),
   show_row_names=T)
 
-EMBO<-Heatmap(EMBO_out[,3:ncol(EMBO_out)],
-  col=colorRamp2(c(0, max(EMBO_out[,3:ncol(EMBO_out)],na.rm=T)), c("white", "red")),
+EMBO<-Heatmap(embo_out[,3:ncol(embo_out)],
+  column_order = 1:ncol(EMBO),
+  col=colorRamp2(c(0, max(embo_out[,3:ncol(embo_out)],na.rm=T)), c("white", "red")),
   row_order=get_order(o,1))
 
 pdf("predictions.heatmap.pdf",width=30)
@@ -2774,6 +2968,75 @@ saveRDS(dat,file="phase2.QC.SeuratObject.rds")
 
 ```
 
+## Genome tracks of celltype markers
+
+```R
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(SeuratObjects)
+library(EnsDb.Hsapiens.v86)
+library(cowplot)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+dat<-readRDS("phase2.QC.SeuratObject.rds")
+
+x<-"ESR1"
+annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+Idents(dat)<-dat$predicted.id 
+
+cov_plots<-function(dat=dat,gene_name="ESR1",outname="test",extend=2000){
+  
+  #get chromvar motif name
+  gene_TF <- ConvertMotifID(dat, name = gene_name,assay="ATAC")
+
+  # get gene location
+  gene_loc<-annotation[annotation$gene_name==gene_name,]
+  gene_loc<-as.data.frame(gene_loc,row.names=NULL)
+  gene_loc<-head(gene_loc[which(max(gene_loc$end-gene_loc$start)==c(gene_loc$end-gene_loc$start)),],n=1)
+  if(gene_loc$start<gene_loc$end){
+  gene_range<-paste0("chr",as.character(gene_loc$seqnames),"-",gene_loc$start-extend,"-",gene_loc$end+extend)
+  }else{
+  gene_range<-paste0("chr",as.character(gene_loc$seqnames),"-",gene_loc$start+extend,"-",gene_loc$end-extend)
+  }
+  annot_plot<-AnnotationPlot(object=dat, region=gene_range)
+  peak_plot<-PeakPlot(object=dat,region=gene_range)
+
+  cov_plot <- CoveragePlot(object = dat, region = gene_range, assay="peaks", annotation=FALSE,peaks=FALSE,links=FALSE) 
+  plt_rna<-VlnPlot(dat,features=gene_name,assay="RNA",slot="counts",flip=TRUE,pt.size=0)+coord_flip()+scale_x_discrete(limits = rev(levels(Idents(dat))))
+  plt_tf<-VlnPlot(dat,features=gene_TF,assay="chromvar",flip=TRUE,pt.size=0)+coord_flip()+scale_x_discrete(limits = rev(levels(Idents(dat))))
+
+  layout<-"
+  AAAAAA##
+  EEEEEE##
+  BBBBBBCD
+  BBBBBBCD
+  BBBBBBCD
+  "
+
+  plt<-wrap_plots(
+    A=annot_plot,
+    B=cov_plot,
+    C=plt_rna,
+    D=plt_tf,
+    E=peak_plot,
+    design=layout,heights = c(1,3,1,2,3,1,2),guides="collect")+ggtitle(outname)
+  return(plt)
+}
+
+
+#Markers with high cell type AUC determined in section Transcription Factor Expression Markers
+  prefix="dat"
+  da_tf_markers<-readRDS(paste0(prefix,"_celltype_TF_markers.RDS"))
+  da_tf_markers$gene
+
+lapply(c(da_tf_markers$gene),function(y){
+  plot<-cov_plots(dat=dat,gene_name=y,outname=y)
+  ggsave(plot,file=paste0("merged_coverageplt_",y,"celltype.pdf"),width=15,height=10)
+  system(paste0("slack -F ",paste0("merged_coverageplt_",y,"celltype.pdf")," ryan_todo"))
+  })
+```
 ## Pseudobulk Clustering of Stroma, Immune and Epithelial Cells
 
 ### Epithelial Clustering
@@ -4470,250 +4733,3 @@ http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Good%20outco
 #use HMMcopy to test ATAC changes
 #plot cell prediction specificity (predicted ID values density plot colored by predicted ID cell types)
 
-<!--
-
-### Plotting of InferCNV and CaSpER Output
-```R
-library(Signac)
-library(Seurat)
-library(EnsDb.Hsapiens.v86)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(GenomeInfoDb)
-set.seed(1234)
-library(stringr)
-library(ggplot2)
-library(infercnv)
-library(ComplexHeatmap)
-library(circlize)
-library(patchwork)
-library(reshape2)
-library(philentropy)
-library(CaSpER)
-library(dendextend)
-library(ggalluvial)
-
-
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-  ###########Color Schema#################
-  type_cols<-c(
-  #epithelial
-  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-  "B-cells" ="#089099", "T-cells" ="#003147", #other
-  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
-  diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
-  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
-  pam50_colors<-c("Basal"="red","Her2"="pink","LumA"="blue","LumB"="cyan","Normal"="grey","NA"="black")
-  embo_colors<-c("Basal"="green","LP"="blue","ML"="orange","Str"="red","NA"="black")
-  ########################################
-
-
-####RUNNING INFERCNV PLOTTING#####
-infercnv_per_sample_plot<-function(x){
-  if(x %in% 1:12){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-    #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
-  #dat is full path to seurat object
-  dat_file_path=file_in
-  dat$cnv_ref<-"FALSE"
-  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #this is same as initial run of inferCNV, just didn't save seurat object
-  infercnv_obj<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
-  cnv<-t(infercnv_obj@expr.data)
-  cnv_ref<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="TRUE",]),]
-  cnv<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="FALSE",]),]
-  col_fun = colorRamp2(c(min(unlist(cnv)), median(unlist(cnv)), max(unlist(cnv))), c("blue", "white", "red"))
-
-  dist_method="manhattan"
-  dist_x<-philentropy::distance(cnv,method=dist_method,as.dist.obj=T,use.row.names=T)
-  dend <- dist_x %>%  hclust(method="ward.D2") %>% as.dendrogram(edge.root=F,h=2) 
-  k_search<-find_k(dend,krange=2:10) #search for optimal K from 2-10
-  k_clus_number<-k_search$nc
-  k_clus_id<-k_search$pamobject$clustering
-  dend <- color_branches(dend, k = k_clus_number)    #split breakpoint object by clusters
-  saveRDS(dend,file=paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.dend.Rds")) #save dendrogram
-
-  #set up heatmap annotation
-  met<-as.data.frame(dat@meta.data)
-  met_ref<-met[row.names(met) %in% row.names(cnv_ref),]
-  met<-met[row.names(met) %in% row.names(cnv),]
-  if(any(!(unique(met$PAM50_designation) %in% names(pam50_colors)))){
-    met[met$PAM50_designation %in% unique(met$PAM50_designation)[!(unique(met$PAM50_designation) %in% names(pam50_colors))],]$PAM50_designation<-"NA"}
-  if(any(!(unique(met$EMBO_designation) %in% names(embo_colors)))){
-    met[met$EMBO_designation %in% unique(met$EMBO_designation)[!(unique(met$EMBO_designation) %in% names(embo_colors))],]$EMBO_designation<-"NA"}
-
-  read_count_col<-colorRamp2(c(min(met$gex_exonic_umis+met$gex_intronic_umis),
-    max(met$gex_exonic_umis+met$gex_intronic_umis)), 
-    c("white","black"))
-
-  ha = HeatmapAnnotation(which="row",
-    cell_type=met$predicted.id,
-    #cnv_ref=met$cnv_ref,
-    read_count= met$gex_exonic_umis+met$gex_intronic_umis,
-    pam_50=met$PAM50_designation,
-    embo=met$EMBO_designation,
-          col = list(cell_type = type_cols,
-            #cnv_ref=ref_cols,
-            read_count=read_count_col,
-            embo=embo_colors,
-            pam_50=pam50_colors))
-  plt1<-Heatmap(cnv,
-      show_row_names=F,
-      show_column_names=F,
-      column_order=1:ncol(cnv),
-      col=col_fun,
-      cluster_rows=dend,
-      left_annotation=ha,
-      column_split=infercnv_obj@gene_order$chr)
-  ha_ref = HeatmapAnnotation(which="row",
-    cell_type=met_ref$predicted.id,
-    #cnv_ref=met$cnv_ref,
-    read_count= met_ref$gex_exonic_umis+met_ref$gex_intronic_umis,
-          col = list(cell_type = type_cols,
-            #cnv_ref=ref_cols,
-            read_count=read_count_col))
-  plt1_ref<-Heatmap(cnv_ref,
-      show_row_names=F,
-      show_column_names=F,
-      column_order=1:ncol(cnv),
-      col=col_fun,
-      left_annotation=ha_ref,
-      column_split=infercnv_obj@gene_order$chr)
-    pdf(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.heatmap.pdf"),width=20)
-    print(plt1_ref)
-    print(plt1)
-    dev.off()
-    system(paste0("slack -F ",paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.heatmap.pdf")," ryan_todo"))
-}
-
-####RUNNING CASPER PLOT#####
-casper_per_sample_plot<-function(x){
-  #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
-  #dat is full path to seurat object
-  if(x %in% 1:12){
-    sample_name<-paste0("sample_",x)
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    sample_name<-paste0("sample_",x)
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    sample_name<-x
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-  obj_name=basename(file_in)
-  dir_in=dirname(file_in)
-  dat$cnv_ref<-"FALSE"
-  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
-  DefaultAssay(dat)<-"RNA"
-  print(paste("Reading in:",paste0(dir_in,"_casper/",sample_name,".finalobj.rds")))
-  final.obj<-readRDS(paste0(dir_in,"_casper/",sample_name,".finalobj.rds"))
-  finalChrMat<-readRDS(paste0(dir_in,"/casper/",sample_name,".finalchrmat.rds"))
-  cnv_ref<-finalChrMat[row.names(finalChrMat) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="TRUE",]),]
-  cnv<-finalChrMat[row.names(finalChrMat) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="FALSE",]),]
-  col_fun = setNames(c("blue","white","red"),seq(-1, 1, by = 1))
-  print("Performing distance calculation.")
-  dist_method="euclidean"
-  dist_x<-philentropy::distance(cnv,method=dist_method,as.dist.obj=T,use.row.names=T)
-  dend <- dist_x %>%  hclust(method="ward.D2") %>% as.dendrogram(edge.root=F,h=2) 
-  k_search<-find_k(dend,krange=2:10) #search for optimal K from 2-10
-  k_clus_number<-k_search$nc
-  print(paste("Determined ",k_clus_number," of clusters."))
-  k_clus_id<-k_search$pamobject$clustering
-  dend <- color_branches(dend, k = k_clus_number)    #split breakpoint object by clusters
-  saveRDS(dend,file=paste0(dir_in,"_casper/",sample_name,".casper.dend.Rds")) #save dendrogram
-
-  print("Generating heatmap of CNVs.")
-  
-  #set up heatmap annotation
-  met<-as.data.frame(dat@meta.data)
-  met_ref<-met[row.names(met) %in% row.names(cnv_ref),]
-  met<-met[row.names(met) %in% row.names(cnv),]
-  if(any(!(unique(met$PAM50_designation) %in% names(pam50_colors)))){
-  met[met$PAM50_designation %in% unique(met$PAM50_designation)[!(unique(met$PAM50_designation) %in% names(pam50_colors))],]$PAM50_designation<-"NA"}
-  if(any(!(unique(met$EMBO_designation) %in% names(embo_colors)))){
-  met[met$EMBO_designation %in% unique(met$EMBO_designation)[!(unique(met$EMBO_designation) %in% names(embo_colors))],]$EMBO_designation<-"NA"}
-
-  read_count_col<-colorRamp2(c(min(met$gex_exonic_umis+met$gex_intronic_umis),
-    max(met$gex_exonic_umis+met$gex_intronic_umis)), 
-    c("white","black"))
-
-  ha = HeatmapAnnotation(which="row",
-    cell_type=met$predicted.id,
-    #cnv_ref=met$cnv_ref,
-    read_count= met$gex_exonic_umis+met$gex_intronic_umis,
-    pam_50=met$PAM50_designation,
-    embo=met$EMBO_designation,
-          col = list(cell_type = type_cols,
-            #cnv_ref=ref_cols,
-            read_count=read_count_col,
-            embo=embo_colors,
-            pam_50=pam50_colors))
-
-  plt1<-Heatmap(cnv,
-      show_row_names=F,
-      show_column_names=F,
-      column_order=1:ncol(cnv),
-      col=col_fun,
-      cluster_rows=dend,
-      left_annotation=ha,
-      column_split=factor(substr(colnames(cnv),1,nchar(colnames(cnv))-1),levels=unique(substr(colnames(cnv),1,nchar(colnames(cnv))-1)))
-      )
-  ha_ref = HeatmapAnnotation(which="row",
-    cell_type=met_ref$predicted.id,
-    #cnv_ref=met$cnv_ref,
-    read_count= met_ref$gex_exonic_umis+met_ref$gex_intronic_umis,
-          col = list(cell_type = type_cols,
-            #cnv_ref=ref_cols,
-            read_count=read_count_col))
-  plt1_ref<-Heatmap(cnv_ref,
-      show_row_names=F,
-      show_column_names=F,
-      column_order=1:ncol(cnv_ref),
-      col=col_fun,
-      left_annotation=ha_ref,
-      column_split=factor(substr(colnames(cnv),1,nchar(colnames(cnv))-1),levels=unique(substr(colnames(cnv),1,nchar(colnames(cnv))-1)))
-      )
-    pdf(paste0(dir_in,"_casper/",sample_name,".casper.heatmap.pdf"),width=20)
-    print(plt1_ref)
-    print(plt1)
-    dev.off()
-    system(paste0("slack -F ",paste0(dir_in,"_casper/",sample_name,".casper.heatmap.pdf")," ryan_todo"))
-}
-
-
-
-lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) infercnv_per_sample_plot(x))
-lapply(c(16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) casper_per_sample_plot(x))
-#15
-#Done: 1,3,5,6,7,8,9,
-lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12), function(x) compare_RNA_cnv_results(x))
-
-
-```
-
--->

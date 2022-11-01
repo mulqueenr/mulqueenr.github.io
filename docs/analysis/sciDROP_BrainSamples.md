@@ -3536,9 +3536,9 @@ vdb-config --prefetch-to-cwd
 sciATAC Mouse Brain
 https://www.ncbi.nlm.nih.gov/sra?term=SRX9850743
 Downloading the files which contains a standard genomic Read 1 and Read 2. Read 3 (technical read) has the read assigned cellID barcode.
-Going to add read 3 into the fastq read name, and then make an unaligned bam. Then I'll add cellID to proper bam fields. Finally, I will paired-end align the bam and feed it through cellranger.
+Going to add read 3 into the fastq read name and pipe these through out standard scitools processing.
 
-Note R3 is properly assigned, corrected cellIDs, so no fuzzy matching is necessary.
+Note R3 is properly assigned, corrected cellIDs, so no fuzzy matching, or white-listed barcode concatenation is necessary.
 
 ```bash
 sra="SRR13437232"
@@ -3547,9 +3547,84 @@ mkdir ${ref_dir}/sciATAC
 prefetch $sra --type fastq -O ${ref_dir}/sciATAC/${sra}
 fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_dir}/sciATAC/${sra} ${sra}
 gzip ${ref_dir}/${sra}/*fastq &
-zcat SRR13437232_3.fastq.gz | awk '{getline;print;getline;getline}' | uniq -c | sort -k1,1n | head #to convince ourselves of barcodes
+
 ```
 
+Generating a script for bam setup and output. Note that this does hold all the barcode sequences in memory, which isn't ideal. 
+barcode_sciatac.py
+```python
+import gzip
+from Bio import SeqIO
+import sys
+
+def change_id(x):
+    global i
+    x.id=barc[i]+"."+str(i)
+    i+=1
+    return(x)
+
+cwd="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232"
+fq1=sys.argv[1] #read argument
+fq3=sys.argv[2] #index argument
+barc=[str(record.seq) for record in SeqIO.parse(gzip.open(fq3,"rt"), "fastq")] #make list of barcodes
+i=0
+SeqIO.write((change_id(x=record) for record in SeqIO.parse(gzip.open(fq1,"rt"), 'fastq')), sys.stdout, "fastq")
+```
+
+Running the python script. Then compressing files, then performing alignment on the bam files.
+
+```bash
+python ./barcode_sciatac.py SRR13437232_1.fastq.gz SRR13437232_3.fastq.gz > SRR13437232_1.barc.fastq &
+python ./barcode_sciatac.py SRR13437232_2.fastq.gz SRR13437232_3.fastq.gz > SRR13437232_2.barc.fastq &
+```
+
+Once all fastq files have their cell-barcode identifier within their read name, use scitools for fastq alignments and processing.
+
+```bash
+scitools="/home/groups/oroaklab/src/scitools/scitools-dev/scitools"
+
+#sciatac alignment
+sciatac_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232"
+$scitools fastq-align -m 5G -n -t 20 -r 20 mm10 \
+$sciatac_outdir/sciATAC_mus \
+$sciatac_outdir/SRR13437232_1.barc.fastq.gz \
+$sciatac_outdir/SRR13437232_2.barc.fastq.gz &
+
+#scimap alignment
+scimap_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233"
+$scitools fastq-align -m 5G -n -t 20 -r 20 mm10 \
+$scimap_outdir/sciMAP_mus \
+$scimap_outdir/SRR13437233_1.barc.fastq.gz \
+$scimap_outdir/SRR13437233_2.barc.fastq.gz &
+
+#snATAC alignment
+snatac_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/snATAC/SRR6768122/SRR6768122"
+$scitools fastq-align -m 5G -n -t 20 -r 20 mm10 \
+$snatac_outdir/snATAC_mus \
+$snatac_outdir/SRR6768122.sra_1.barc.fastq.gz \
+$snatac_outdir/SRR6768122.sra_2.barc.fastq.gz &
+
+#Remove duplicates based on cellID, chromosome and start sites per read
+#using the name sorted (-n) barcode based removal of duplicates
+$scitools bam-rmdup -n -t 12 ${sciatac_outdir}/sciATAC_mus.nsrt.bam 
+$scitools bam-rmdup -n -t 12 ${scimap_outdir}/sciMAP_mus.nsrt.bam 
+$scitools bam-rmdup -n -t 12 ${snatac_outdir}/snATAC_mus.nsrt.bam 
+
+#Call peaks by read pileups
+$scitools callpeaks sciATAC_mus.bbrd.q10.bam &
+
+#Make counts matrix
+scitools atac-counts -O sciATAC_mus sciATAC_mus.nsrt.bbrd.q10.bam  \
+sciATAC_mus.bbrd.q10.500.bed &
+
+#scitools wrapper for samtools isize
+scitools isize hg38.merged.bbrd.q10.bam &
+scitools isize mm10.merged.bbrd.q10.bam &
+
+#scitools wrapper for tss enrichment
+scitools bam-tssenrich mm10.merged.bbrd.q10.bam mm10 &
+scitools bam-tssenrich hg38.merged.bbrd.q10.bam hg38 &
+```
 sciMAP Mouse Brain
 https://www.ncbi.nlm.nih.gov/sra?term=SRX9850744
 ```bash
@@ -3561,21 +3636,70 @@ fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_di
 gzip ${ref_dir}/${sra}/*fastq &
 ````
 
-Generating a script for bam setup and output.
-Easiest way to do it, since they are common by line, is make all into unaligned bams. Then add R3 field to R1 and R2 bams.
+Generating a script for bam setup and output, just as above.
+barcode_scimap.py
+```python
+import gzip
+from Bio import SeqIO
+import sys
+
+def change_id(x):
+    global i
+    x.id=barc[i]+"."+str(i)
+    i+=1
+    return(x)
+
+fq1=sys.argv[1] #read argument
+fq3=sys.argv[2] #index argument
+barc=[str(record.seq) for record in SeqIO.parse(gzip.open(fq3,"rt"), "fastq")] #make list of barcodes
+i=0
+SeqIO.write((change_id(x=record) for record in SeqIO.parse(gzip.open(fq1,"rt"), 'fastq')), sys.stdout, "fastq")
+```
+
+Now running this python script for both fastq 1 and fastq 2.
+
 ```bash
-picard="/home/groups/oroaklab/src/picard/picard-tools-2.26.2/build/libs/picard.jar"
-wd="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232"
-# transform FASTQs to unaligned single-read BAMS
+python ./barcode_scimap.py SRR13437233_1.fastq.gz SRR13437233_3.fastq.gz > SRR13437233_1.barc.fastq &
+python ./barcode_scimap.py SRR13437233_2.fastq.gz SRR13437233_3.fastq.gz > SRR13437233_2.barc.fastq &
+```
 
-cd $wd
-fq_list=`ls *fastq.gz`
-for i in $fq_list;
-    do FASTQ_FILE=$i;
-    BAM_OUT=${i::-9}.bam;
-    java -jar $picard FastqToSam F1=$FASTQ_FILE OUTPUT=$BAM_OUT SM=$FASTQ_FILE;
-done
+snATAC 
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM2668124
+```bash
+sra="SRR6768122"
+ref_dir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
+mkdir ${ref_dir}/snATAC
+prefetch $sra --type fastq -X 50G -O ${ref_dir}/snATAC/${sra}
+fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_dir}/snATAC/${sra}/${sra} ${ref_dir}/snATAC/${sra}/${sra}.sra
+gzip ${ref_dir}/${sra}/*fastq &
+```
 
+Adjusting fastq readname format to jive with scitools.
+
+Note the script changes relative to sci-platform. Indexes are already in the fastq file, just need to rearrange format. "PLease note that the barcode information was integrated into the read name."
+barcode_snatac.py
+```python
+import gzip
+from Bio import SeqIO
+import sys
+
+def change_id(x):
+    barc=x.description.split(" ")[1].split(":")[0]
+    number_out=x.description.split(" ")[0].split(".")[2]
+    x.id=barc+"."+number_out
+    return(x)
+
+cwd="/home/groups/CEDAR/mulqueen/mouse_brain_ref/snATAC/SRR6768122/SRR6768122"
+fq1=sys.argv[1] #read argument
+#fq1="SRR6768122.sra_1.fastq.gz"
+SeqIO.write((change_id(x=record) for record in SeqIO.parse(gzip.open(fq1,"rt"), 'fastq')), sys.stdout, "fastq")
+```
+
+Now running this python script for both fastq 1 and fastq 2.
+
+```bash
+python ./barcode_snatac.py SRR6768122.sra_1.fastq.gz > SRR6768122.sra_1.barc.fastq &
+python ./barcode_snatac.py SRR6768122.sra_2.fastq.gz > SRR6768122.sra_2.barc.fastq &
 ```
 
 10x ATAC v1 Chemistry
@@ -3596,7 +3720,34 @@ wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fres
 wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_summary.csv
 
 tar -xvf atac_v1_adult_brain_fresh_5k_fastqs.tar
+
+cd /home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1/atac_v1_adult_brain_fresh_5k_fastqs
+
 ```
+
+Run Cellranger per sample
+Download cellranger-atac and get mm10 cell ranger arc reference
+
+```bash
+#Download links for cellranger-atac package are temporary. So just make an account and download from https://support.10xgenomics.com/single-cell-atac/software/pipelines/latest/installation
+
+export PATH=/home/groups/CEDAR/mulqueen/ref/cellranger-atac-2.1.0:$PATH
+
+#Download mm10 reference
+wget https://cf.10xgenomics.com/supp/cell-arc/refdata-cellranger-arc-mm10-2020-A-2.0.0.tar.gz
+```
+
+Run Cellranger ATAC
+```bash          
+i="10x_atac_v1.csv"
+outname=${i::-4};
+cellranger-atac count --id=${outname} \
+--reference=/home/groups/CEDAR/mulqueen/ref/refdata-cellranger-arc-mm10-2020-A-2.0.0 \
+--fastqs=/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1/atac_v1_adult_brain_fresh_5k_fastqs/ \
+--localcores=30 \
+--localmem=90 
+```
+
 
 10x ATAC v2 Chemistry
 https://www.10xgenomics.com/resources/datasets/8k-adult-mouse-cortex-cells-atac-v2-chromium-x-2-standard
@@ -3614,6 +3765,19 @@ wget https://cf.10xgenomics.com/samples/cell-atac/2.1.0/8k_mouse_cortex_ATACv2_n
 wget https://cf.10xgenomics.com/samples/cell-atac/2.1.0/8k_mouse_cortex_ATACv2_nextgem_Chromium_X/8k_mouse_cortex_ATACv2_nextgem_Chromium_X_summary.csv
 
 tar -xvf 8k_mouse_cortex_ATACv2_nextgem_Chromium_X_fastqs.tar
+```
+
+Run Cellranger ATAC
+
+```bash
+i="10x_atac_v2.csv"
+outname=${i::-4};
+export PATH=/home/groups/CEDAR/mulqueen/ref/cellranger-atac-2.1.0:$PATH
+cellranger-atac count --id=${outname} \
+--reference=/home/groups/CEDAR/mulqueen/ref/refdata-cellranger-arc-mm10-2020-A-2.0.0 \
+--fastqs=/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2/8k_mouse_cortex_ATACv2_nextgem_Chromium_X_fastqs \
+--localcores=30 \
+--localmem=90 
 ```
 
 ddscATAC
@@ -3635,18 +3799,77 @@ done &
 gzip -r ${ref_dir}/*/*/*fastq
 ```
 
+Using a custom script to parse through the oligoes. Following the barcode dscATAC_dsciATAC_bed_structures.xlsx logic file provided.
 
-snATAC 
-https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM2668124
-```bash
-sra="SRR6768122"
-ref_dir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
-mkdir ${ref_dir}/snATAC
-prefetch $sra --type fastq -X 50G -O ${ref_dir}/snATAC/${sra}
-fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_dir}/snATAC/${sra}/${sra} ${ref_dir}/snATAC/${sra}/${sra}.sra
-gzip ${ref_dir}/${sra}/*fastq &
+```python
+import gzip
+from Bio import SeqIO
+import sys
+import re
+
+idx_list=[]
+
+me_seq="TCGTCGGCAGCGTCAGATGTGTATAAGAGACAG"
+idx_list=['AACCACA' 'AACGGTG' 'AACGTAA' 'AACTCTT' 'AAGCAGC' 'AAGGTTC' 'AAGTGCG'
+ 'AAGTTAT' 'AATGATT' 'AATGGCC' 'AATTCCA' 'AATTGGT' 'ACACGCG' 'ACAGCTT'
+ 'ACAGTAC' 'ACCATGC' 'ACCGGCT' 'ACCTACC' 'ACGAGAA' 'ACGTATT' 'ACGTTGG'
+ 'ACTACGA' 'ACTCAAT' 'AGACCAT' 'AGACTTC' 'AGAGACC' 'AGATAGG' 'AGCAACG'
+ 'AGCCGCC' 'AGCGAAT' 'AGCTGAG' 'AGGACGT' 'AGGATAC' 'AGGCATG' 'AGTAAGC'
+ 'AGTTTCT' 'ATAGGCA' 'ATAGTTG' 'ATATAAC' 'ATGAATA' 'ATGAGCT' 'ATGGTGT'
+ 'ATGTTCC' 'ATTATTC' 'ATTCACG' 'ATTCGTT' 'ATTGCCT' 'CACATGA' 'CACGCCA'
+ 'CACGGAC' 'CACTTCT' 'CAGAATT' 'CAGAGAG' 'CAGGCGG' 'CATACGC' 'CATCAGT'
+ 'CATCTTA' 'CATGTAT' 'CCAAGCT' 'CCACTTG' 'CCAGTCA' 'CCATAAT' 'CCGAACC'
+ 'CCGCGAT' 'CCGGTTT' 'CCTATGT' 'CCTCCTT' 'CCTTAGG' 'CGACACT' 'CGAGGTC'
+ 'CGAGTGG' 'CGATGCA' 'CGATTAC' 'CGCAATC' 'CGCCTAA' 'CGCGCTT' 'CGCGGCG'
+ 'CGGAGGA' 'CGGATCT' 'CGGCCAG' 'CGGCTGC' 'CGGTACG' 'CGTACAA' 'CGTAGCC'
+ 'CGTGATA' 'CGTTTGA' 'CTAACTC' 'CTAAGAA' 'CTAGAGC' 'CTATTCG' 'CTCATTT'
+ 'CTCTTGC' 'CTGCGCC' 'CTGGCAT' 'CTTACCG' 'CTTCATC' 'CTTGCGA' 'CTTGTCC'
+ 'GAACCGT' 'GAATATG' 'GAATCAA' 'GACAATA' 'GAGAGGT' 'GAGCGTG' 'GAGCTAA'
+ 'GAGGACA' 'GAGTTGC' 'GATAGAC' 'GATCACC' 'GCACAGC' 'GCAGTGT' 'GCCTCGT'
+ 'GCCTTTG' 'GCGACTC' 'GCGCACG' 'GCGTAGA' 'GCTAATT' 'GCTCCAA' 'GCTTTAT'
+ 'GGAAGTT' 'GGACGAC' 'GGAGCCT' 'GGCAGGC' 'GGCGGAA' 'GGCGTCC' 'GGTAACA'
+ 'GGTCGTA' 'GGTGTTT' 'GGTTAGT' 'GGTTCAC' 'GTAATAC' 'GTCCTTC' 'GTCGGTT'
+ 'GTGCATT' 'GTGGCGC' 'GTGGTAG' 'GTGTCCA' 'GTGTGTC' 'GTTAGGA' 'GTTGATG'
+ 'TAACGCC' 'TAAGAGG' 'TAAGGTA' 'TACCGAA' 'TACGCAT' 'TACTTTC' 'TAGTACC'
+ 'TAGTGTT' 'TATACTT' 'TATGTGC' 'TCAAGAC' 'TCAGCAA' 'TCATACA' 'TCCAGTT'
+ 'TCCGCTC' 'TCCTGGC' 'TCCTTAA' 'TCGACAG' 'TCGCGCA' 'TCGGATG' 'TCGGCGT'
+ 'TCGTTCT' 'TCTGAAC' 'TCTTGTA' 'TGAATCC' 'TGACCGC' 'TGAGATT' 'TGAGGAG'
+ 'TGATTGT' 'TGCGAGC' 'TGCGTTG' 'TGCTACT' 'TGGAAGG' 'TGGACCA' 'TGGCAAC'
+ 'TGGCCTT' 'TGGTGAA' 'TGTAGTG' 'TGTCGCT' 'TGTTTAG' 'TTAAGCG' 'TTACAGA'
+ 'TTATCAT' 'TTCCTCT' 'TTCGTAC' 'TTCTGCA' 'TTGAGGC' 'TTGGACT' 'TTGGTTA'
+ 'TTGTAAG' 'TTTCCTA' 'TTTGGTC']
+constant_1="TATGCATGAC"
+constant_2="AGTCACTGAG" #i think this is actually reversed in the sequence
+constant_2_rec="GAGTCACTGA"
+def change_id(x):
+global i
+tn5_adapt_loc=re.search(me_seq,str(x.seq)).span()[0]
+out_seq=x.seq[tn5_adapt_loc:] #get output sequence and qual scores
+out_qual=x.qual[tn5_adapt_loc:]
+idx=str(x.seq[:tn5_adapt_loc])
+bc3=idx[len(idx)-8:len(idx)] #get 8bp bc3
+bc2=idx[len(idx)-len(constant_2)-len(bc3)-8:len(idx)-len(constant_2)-len(bc3)]
+
+number_out=x.description.split(" ")[0].split(".")[2] #to be used for index pulling of fq2
+x.id=barc+"."+number_out
+i+=1
+idx_list.append(number_out)
+x.sequence=out_seq
+return(x)
+
+cwd="/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/SRR8310661/SRR8310661"
+fq1=sys.argv[1] #read argument fq1="SRR8310661.sra_1.fastq.gz"
+fq2=sys.argv[2] #read argument
+
+#fq1="SRR6768122.sra_1.fastq.gz"
+SeqIO.write((change_id(x=record) for record in SeqIO.parse(gzip.open(fq1,"rt"), 'fastq')), sys.stdout, "fastq")
+
 ```
+```bash
+for i in "SRR8310661 SRR8310662 SRR8310663 SRR8310664 SRR8310665 SRR8310666 SRR8310667 SRR8310668"; do
 
+python /home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/parse_oligoes.py /home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/${i}/${i}/${i}.sra_1.fastq.gz /home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/${i}.1.barc.fastq.gz
+```
 <!---
 
 ## Cortex Layering 
