@@ -3578,53 +3578,6 @@ python ./barcode_sciatac.py SRR13437232_1.fastq.gz SRR13437232_3.fastq.gz > SRR1
 python ./barcode_sciatac.py SRR13437232_2.fastq.gz SRR13437232_3.fastq.gz > SRR13437232_2.barc.fastq &
 ```
 
-Once all fastq files have their cell-barcode identifier within their read name, use scitools for fastq alignments and processing.
-
-```bash
-scitools="/home/groups/oroaklab/src/scitools/scitools-dev/scitools"
-
-#sciatac alignment
-sciatac_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232"
-$scitools fastq-align -m 5G -n -t 20 -r 20 mm10 \
-$sciatac_outdir/sciATAC_mus \
-$sciatac_outdir/SRR13437232_1.barc.fastq.gz \
-$sciatac_outdir/SRR13437232_2.barc.fastq.gz &
-
-#scimap alignment
-scimap_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233"
-$scitools fastq-align -m 5G -n -t 20 -r 20 mm10 \
-$scimap_outdir/sciMAP_mus \
-$scimap_outdir/SRR13437233_1.barc.fastq.gz \
-$scimap_outdir/SRR13437233_2.barc.fastq.gz &
-
-#snATAC alignment
-snatac_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/snATAC/SRR6768122/SRR6768122"
-$scitools fastq-align -m 5G -n -t 20 -r 20 mm10 \
-$snatac_outdir/snATAC_mus \
-$snatac_outdir/SRR6768122.sra_1.barc.fastq.gz \
-$snatac_outdir/SRR6768122.sra_2.barc.fastq.gz &
-
-#Remove duplicates based on cellID, chromosome and start sites per read
-#using the name sorted (-n) barcode based removal of duplicates
-$scitools bam-rmdup -n -t 12 ${sciatac_outdir}/sciATAC_mus.nsrt.bam 
-$scitools bam-rmdup -n -t 12 ${scimap_outdir}/sciMAP_mus.nsrt.bam 
-$scitools bam-rmdup -n -t 12 ${snatac_outdir}/snATAC_mus.nsrt.bam 
-
-#Call peaks by read pileups
-$scitools callpeaks sciATAC_mus.bbrd.q10.bam &
-
-#Make counts matrix
-scitools atac-counts -O sciATAC_mus sciATAC_mus.nsrt.bbrd.q10.bam  \
-sciATAC_mus.bbrd.q10.500.bed &
-
-#scitools wrapper for samtools isize
-scitools isize hg38.merged.bbrd.q10.bam &
-scitools isize mm10.merged.bbrd.q10.bam &
-
-#scitools wrapper for tss enrichment
-scitools bam-tssenrich mm10.merged.bbrd.q10.bam mm10 &
-scitools bam-tssenrich hg38.merged.bbrd.q10.bam hg38 &
-```
 sciMAP Mouse Brain
 https://www.ncbi.nlm.nih.gov/sra?term=SRX9850744
 ```bash
@@ -3702,6 +3655,152 @@ python ./barcode_snatac.py SRR6768122.sra_1.fastq.gz > SRR6768122.sra_1.barc.fas
 python ./barcode_snatac.py SRR6768122.sra_2.fastq.gz > SRR6768122.sra_2.barc.fastq &
 ```
 
+
+ddscATAC
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE123581
+Use this to parse reads? https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/tag_validation/parse_oligos.py
+
+```bash
+mkdir ddscATAC
+ref_dir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
+mkdir ${ref_dir}/ddscATAC
+for sra in SRR8310661 SRR8310662 SRR8310663 SRR8310664 SRR8310665 SRR8310666 SRR8310667 SRR8310668; do
+prefetch $sra --type fastq -X 50G -O ${ref_dir}/ddscATAC/${sra} &
+done &
+
+for sra in SRR8310661 SRR8310662 SRR8310663 SRR8310664 SRR8310665 SRR8310666 SRR8310667 SRR8310668; do
+fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_dir}/ddscATAC/${sra}/${sra} ${ref_dir}/ddscATAC/${sra}/${sra}.sra &
+done &
+
+gzip -r ${ref_dir}/ddscATAC/*/*/*fastq
+```
+
+Using a custom script to parse through the oligoes. Following the barcode dscATAC_dsciATAC_bed_structures.xlsx logic file provided. Fastqs are already split by PCR barcode, so going to read into memory for speed.
+barcode_dscatac.py
+```python
+import gzip
+from Bio import SeqIO
+import sys
+from fuzzysearch import find_near_matches
+from Bio.SeqIO.QualityIO import FastqGeneralIterator
+
+idx_list=[]
+
+me_seq="TCGTCGGCAGCGTCAGATGTGTATAAGAGACAG"
+idx_list=['AACCACA','AACGGTG','AACGTAA','AACTCTT','AAGCAGC','AAGGTTC','AAGTGCG','AAGTTAT','AATGATT','AATGGCC','AATTCCA','AATTGGT','ACACGCG','ACAGCTT','ACAGTAC','ACCATGC','ACCGGCT','ACCTACC','ACGAGAA','ACGTATT','ACGTTGG','ACTACGA','ACTCAAT','AGACCAT','AGACTTC','AGAGACC','AGATAGG','AGCAACG','AGCCGCC','AGCGAAT','AGCTGAG','AGGACGT','AGGATAC','AGGCATG','AGTAAGC','AGTTTCT','ATAGGCA','ATAGTTG','ATATAAC','ATGAATA','ATGAGCT','ATGGTGT','ATGTTCC','ATTATTC','ATTCACG','ATTCGTT','ATTGCCT','CACATGA','CACGCCA','CACGGAC','CACTTCT','CAGAATT','CAGAGAG','CAGGCGG','CATACGC','CATCAGT','CATCTTA','CATGTAT','CCAAGCT','CCACTTG','CCAGTCA','CCATAAT','CCGAACC','CCGCGAT','CCGGTTT','CCTATGT','CCTCCTT','CCTTAGG','CGACACT','CGAGGTC','CGAGTGG','CGATGCA','CGATTAC','CGCAATC','CGCCTAA','CGCGCTT','CGCGGCG','CGGAGGA','CGGATCT','CGGCCAG','CGGCTGC','CGGTACG','CGTACAA','CGTAGCC','CGTGATA','CGTTTGA','CTAACTC','CTAAGAA','CTAGAGC','CTATTCG','CTCATTT','CTCTTGC','CTGCGCC','CTGGCAT','CTTACCG','CTTCATC','CTTGCGA','CTTGTCC','GAACCGT','GAATATG','GAATCAA','GACAATA','GAGAGGT','GAGCGTG','GAGCTAA','GAGGACA','GAGTTGC','GATAGAC','GATCACC','GCACAGC','GCAGTGT','GCCTCGT','GCCTTTG','GCGACTC','GCGCACG','GCGTAGA','GCTAATT','GCTCCAA','GCTTTAT','GGAAGTT','GGACGAC','GGAGCCT','GGCAGGC','GGCGGAA','GGCGTCC','GGTAACA','GGTCGTA','GGTGTTT','GGTTAGT','GGTTCAC','GTAATAC','GTCCTTC','GTCGGTT','GTGCATT','GTGGCGC','GTGGTAG','GTGTCCA','GTGTGTC','GTTAGGA','GTTGATG','TAACGCC','TAAGAGG','TAAGGTA','TACCGAA','TACGCAT','TACTTTC','TAGTACC','TAGTGTT','TATACTT','TATGTGC','TCAAGAC','TCAGCAA','TCATACA','TCCAGTT','TCCGCTC','TCCTGGC','TCCTTAA','TCGACAG','TCGCGCA','TCGGATG','TCGGCGT','TCGTTCT','TCTGAAC','TCTTGTA','TGAATCC','TGACCGC','TGAGATT','TGAGGAG','TGATTGT','TGCGAGC','TGCGTTG','TGCTACT','TGGAAGG','TGGACCA','TGGCAAC','TGGCCTT','TGGTGAA','TGTAGTG','TGTCGCT','TGTTTAG','TTAAGCG','TTACAGA','TTATCAT','TTCCTCT','TTCGTAC','TTCTGCA','TTGAGGC','TTGGACT','TTGGTTA','TTGTAAG','TTTCCTA','TTTGGTC'] 
+
+constant_1="TATGCATGAC"
+constant_2="AGTCACTGAG" #i think this is actually reversed in the sequence
+linker1 = "CCTAGTCGCGTAGAC" #this is from the parse_oligoes.py, not sure if it is in this sequence though
+index_accepted=[]
+
+#Function to find a single mismatch against list of given indexes
+def one_mismatch_find(bc):
+    matched=False
+    matched_idx=[find_near_matches(bc, l, max_deletions=0, max_insertions=0, max_substitutions=1) for l in idx_list]
+    idx_match_list=[idx for idx, x in enumerate(matched_idx) if len(x)>0]
+    if len(idx_match_list)>0:
+        matched_idx=idx_list[idx_match_list[0]]
+        bc=matched_idx
+        matched=True
+    return([bc,matched])
+
+#Function to see if read fits expected format, and change the read id to include the barcode
+def change_id(title1,seq1,qual1):
+    bc1_matched=False
+    bc2_matched=False
+    bc3_matched=False
+    tn5_adapt_cut=find_near_matches(me_seq, seq1, max_deletions=0, max_insertions=0, max_substitutions=1)
+    if len(tn5_adapt_cut)>0:
+        if (len(str(seq1))-tn5_adapt_cut[0].end >= 14) and (tn5_adapt_cut[0].start >= (7*3)+len(constant_1)+len(constant_2)):
+            out_seq=seq1[tn5_adapt_cut[0].start+len(me_seq):] #get output sequence and qual scores
+            idx=str(seq1[:tn5_adapt_cut[0].start]) #pull out index as string
+            bc3=idx[len(idx)-7:len(idx)+1] #get 7bp bc3
+            idx=idx[:len(idx)-len(bc3)-len(constant_2)] #trim
+            bc2=idx[len(idx)-7:len(idx)+1] #get 7bp bc2
+            bc1=idx[:7] #pull bc1 from the front since there is variable phasing bases between
+            if bc1 in idx_list:
+                bc1_matched=True
+            else:
+                bc=one_mismatch_find(bc1)
+                bc1_matched=bc[1]
+                bc1=bc[0]
+            if bc2 in idx_list:
+                bc2_matched=True
+            else:
+                bc=one_mismatch_find(bc2)
+                bc2_matched=bc[1]
+                bc2=bc[0]
+            if bc3 in idx_list:
+                bc3_matched=True
+            else:
+                bc=one_mismatch_find(bc3)
+                bc3_matched=bc[1]
+                bc3=bc[0]
+            if bc1_matched and bc2_matched and bc3_matched:
+                number_out=title1.split(" ")[0].split(".")[2]
+                barc=bc1+bc2+bc3
+                index_accepted.append(number_out)
+                seq1=seq1[tn5_adapt_cut[0].end:]
+                qual1=qual1[tn5_adapt_cut[0].end:]
+                title1=barc+"."+number_out
+            else:
+                pass
+        else:
+            pass
+    else:
+        pass
+    return((title1, seq1, qual1))
+
+#Grab the read name index
+def check_read_index(x):
+    number_out=x.split(" ")[0].split(".")[2]
+    return(number_out)
+
+
+fq1=sys.argv[1] #read argument fq1="SRR8310661.sra_1.fastq.gz"
+fq2=sys.argv[2] #read argument fq2="SRR8310661.sra_2.fastq.gz"
+
+#open fastq files, correct barcode read names based on fuzzy matching (1 substitution allowed per barcode) then out fastq 1 and 2 which pass filter with new read name
+with gzip.open(fq1, "rt") as handle1:
+    with gzip.open(fq2, "rt") as handle2:
+        with open(fq1[:-9]+".barc.fastq", "w") as outfile_fq1:
+            with open(fq2[:-9]+".barc.fastq", "w") as outfile_fq2:
+                for (title1, seq1, qual1), (title2, seq2, qual2) in zip(FastqGeneralIterator(handle1), FastqGeneralIterator(handle2)):
+                    out=change_id(title1, seq1, qual1)
+                    if out[0].startswith("SRR") is False:
+                        outfile_fq1.write("@%s\n%s\n+\n%s\n" % (title1, seq1, qual1))
+                        outfile_fq2.write("@%s\n%s\n+\n%s\n" % (title1, seq2, qual2))
+
+```
+
+
+Running python script as batch script
+ddscatc_barcordes_sbatch.slurm
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=0-7
+#SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=20gb ## request gigabyte per cpu
+#SBATCH --time=24:00:00 ## ask for 1 hour on the node
+#SBATCH --
+array_in=("SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668") 
+i=${array_in[$SLURM_ARRAY_TASK_ID]}
+
+srun python /home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/barcode_ddscatac.py \
+/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/${i}/${i}/${i}.sra_1.fastq.gz \
+/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/${i}/${i}/${i}.sra_2.fastq.gz
+
+```
+
+```bash
+ref_dir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
+gzip -r ${ref_dir}/ddscATAC/*/*/*fastq
+```
+
+
 10x ATAC v1 Chemistry
 https://www.10xgenomics.com/resources/datasets/fresh-cortex-from-adult-mouse-brain-p-50-1-standard-1-2-0
 For 10x libraries I will use standard cellranger analysis pipeline.
@@ -3723,29 +3822,14 @@ tar -xvf atac_v1_adult_brain_fresh_5k_fastqs.tar
 
 cd /home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1/atac_v1_adult_brain_fresh_5k_fastqs
 
-```
+#10x v1 atac chemistry
+tenxatacv1_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1"
+tenx_bam="atac_v1_adult_brain_fresh_5k_possorted_bam.bam"
+((samtools view -H ${tenxatacv1_outdir}/${tenx_bam}) & \
+(samtools view ${tenxatacv1_outdir}/${tenx_bam} | \
+        awk '{OFS = "\t"} {for(i=1;i<=NF;i++)  if ($i ~ /^CB:Z:/) {$1=$i"."NR; gsub("CB:Z:","",$1); print}}')) | samtools view -b - | samtools sort -@5 -n - > tenxv1_mus.bam &
 
-Run Cellranger per sample
-Download cellranger-atac and get mm10 cell ranger arc reference
 
-```bash
-#Download links for cellranger-atac package are temporary. So just make an account and download from https://support.10xgenomics.com/single-cell-atac/software/pipelines/latest/installation
-
-export PATH=/home/groups/CEDAR/mulqueen/ref/cellranger-atac-2.1.0:$PATH
-
-#Download mm10 reference
-wget https://cf.10xgenomics.com/supp/cell-arc/refdata-cellranger-arc-mm10-2020-A-2.0.0.tar.gz
-```
-
-Run Cellranger ATAC
-```bash          
-i="10x_atac_v1.csv"
-outname=${i::-4};
-cellranger-atac count --id=${outname} \
---reference=/home/groups/CEDAR/mulqueen/ref/refdata-cellranger-arc-mm10-2020-A-2.0.0 \
---fastqs=/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1/atac_v1_adult_brain_fresh_5k_fastqs/ \
---localcores=30 \
---localmem=90 
 ```
 
 
@@ -3764,112 +3848,92 @@ wget https://cf.10xgenomics.com/samples/cell-atac/2.1.0/8k_mouse_cortex_ATACv2_n
 wget https://cf.10xgenomics.com/samples/cell-atac/2.1.0/8k_mouse_cortex_ATACv2_nextgem_Chromium_X/8k_mouse_cortex_ATACv2_nextgem_Chromium_X_singlecell.csv
 wget https://cf.10xgenomics.com/samples/cell-atac/2.1.0/8k_mouse_cortex_ATACv2_nextgem_Chromium_X/8k_mouse_cortex_ATACv2_nextgem_Chromium_X_summary.csv
 
-tar -xvf 8k_mouse_cortex_ATACv2_nextgem_Chromium_X_fastqs.tar
+
+#Convert 10x bam files back to fastq then realign to same genome
+##First put cell barcodes into read name just as with the others
+
+#10x v2 atac chemistry
+tenxatacv2_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2"
+tenx_bam="8k_mouse_cortex_ATACv2_nextgem_Chromium_X_possorted_bam.bam"
+((samtools view -H ${tenxatacv2_outdir}/${tenx_bam}) & \
+(samtools view ${tenxatacv2_outdir}/${tenx_bam} | \
+        awk '{OFS = "\t"} {for(i=1;i<=NF;i++)  if ($i ~ /^CB:Z:/) {$1=$i"."NR; gsub("CB:Z:","",$1); print}}')) | samtools view -b - | samtools sort -@5 -n - > tenxv2_mus.bam &
+
 ```
 
-Run Cellranger ATAC
+Once all fastq files have their cell-barcode identifier within their read name, use scitools for fastq alignments and processing.
 
 ```bash
-i="10x_atac_v2.csv"
-outname=${i::-4};
-export PATH=/home/groups/CEDAR/mulqueen/ref/cellranger-atac-2.1.0:$PATH
-cellranger-atac count --id=${outname} \
---reference=/home/groups/CEDAR/mulqueen/ref/refdata-cellranger-arc-mm10-2020-A-2.0.0 \
---fastqs=/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2/8k_mouse_cortex_ATACv2_nextgem_Chromium_X_fastqs \
---localcores=30 \
---localmem=90 
+scitools="/home/groups/oroaklab/src/scitools/scitools-dev/scitools"
+
+#Alignment
+##sciatac alignment
+sciatac_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232"
+$scitools fastq-align -m 5G -n -t 20 -r 20 mm10 \
+$sciatac_outdir/sciATAC_mus \
+$sciatac_outdir/SRR13437232_1.barc.fastq.gz \
+$sciatac_outdir/SRR13437232_2.barc.fastq.gz &
+
+##scimap alignment
+scimap_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233"
+$scitools fastq-align -m 5G -n -t 20 -r 20 mm10 \
+$scimap_outdir/sciMAP_mus \
+$scimap_outdir/SRR13437233_1.barc.fastq.gz \
+$scimap_outdir/SRR13437233_2.barc.fastq.gz &
+
+##snATAC alignment
+snatac_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/snATAC/SRR6768122/SRR6768122"
+$scitools fastq-align -m 5G -n -t 20 -r 20 mm10 \
+$snatac_outdir/snATAC_mus \
+$snatac_outdir/SRR6768122.sra_1.barc.fastq.gz \
+$snatac_outdir/SRR6768122.sra_2.barc.fastq.gz &
+
+##ddscATAC alignment
+ddscATAC_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC"
+for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
+$scitools fastq-align -m 5G -n -t 10 -r 10 mm10 \
+$ddscATAC_outdir/ddscATAC_mus_${i} \
+$ddscATAC_outdir/${i}/${i}/${i}.sra_1.barc.fastq.gz \
+$ddscATAC_outdir/${i}/${i}/${i}.sra_2.barc.fastq.gz ; done &
+
+
+#Remove duplicates based on cellID, chromosome and start sites per read
+##using the name sorted (-n) barcode based removal of duplicates
+$scitools bam-rmdup -n -t 12 ${sciatac_outdir}/sciATAC_mus.nsrt.bam 
+$scitools bam-rmdup -n -t 12 ${scimap_outdir}/sciMAP_mus.nsrt.bam 
+$scitools bam-rmdup -n -t 12 ${snatac_outdir}/snATAC_mus.nsrt.bam 
+ddscATAC_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC"
+for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
+$scitools bam-rmdup -n -t 10 $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.bam & done &
+
+#Merge bam files
+${sciatac_outdir}/sciATAC_mus.nsrt.bam
+${scimap_outdir}/sciMAP_mus.nsrt.bam 
+${snatac_outdir}/snATAC_mus.nsrt.bam 
+${ddscATAC_outdir}/ddscATAC_mus_${i}.nsrt.bam
+${ddscATAC_outdir}/ddscATAC_mus_${i}.nsrt.bam
+${ddscATAC_outdir}/ddscATAC_mus_${i}.nsrt.bam
+${ddscATAC_outdir}/ddscATAC_mus_${i}.nsrt.bam
+${ddscATAC_outdir}/ddscATAC_mus_${i}.nsrt.bam
+${ddscATAC_outdir}/ddscATAC_mus_${i}.nsrt.bam
+
+samtools cat -n -r -h 
+
+#Call peaks by read pileups
+$scitools callpeaks -f mm10 sciATAC_mus.bbrd.q10.bam &
+
+#Make counts matrix
+scitools atac-counts -O sciATAC_mus sciATAC_mus.nsrt.bbrd.q10.bam  \
+sciATAC_mus.bbrd.q10.500.bed &
+
+#scitools wrapper for samtools isize
+scitools isize mm10.merged.bbrd.q10.bam &
+
+#scitools wrapper for tss enrichment
+scitools bam-tssenrich mm10.merged.bbrd.q10.bam mm10 &
 ```
 
-ddscATAC
-https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE123581
-Use this to parse reads? https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/tag_validation/parse_oligos.py
 
-```bash
-mkdir ddscATAC
-ref_dir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
-mkdir ${ref_dir}/ddscATAC
-for sra in SRR8310661 SRR8310662 SRR8310663 SRR8310664 SRR8310665 SRR8310666 SRR8310667 SRR8310668; do
-prefetch $sra --type fastq -X 50G -O ${ref_dir}/ddscATAC/${sra} &
-done &
-
-for sra in SRR8310661 SRR8310662 SRR8310663 SRR8310664 SRR8310665 SRR8310666 SRR8310667 SRR8310668; do
-fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_dir}/ddscATAC/${sra}/${sra} ${ref_dir}/ddscATAC/${sra}/${sra}.sra &
-done &
-
-gzip -r ${ref_dir}/*/*/*fastq
-```
-
-Using a custom script to parse through the oligoes. Following the barcode dscATAC_dsciATAC_bed_structures.xlsx logic file provided.
-
-```python
-import gzip
-from Bio import SeqIO
-import sys
-import re
-
-idx_list=[]
-
-me_seq="TCGTCGGCAGCGTCAGATGTGTATAAGAGACAG"
-idx_list=['AACCACA' 'AACGGTG' 'AACGTAA' 'AACTCTT' 'AAGCAGC' 'AAGGTTC' 'AAGTGCG'
- 'AAGTTAT' 'AATGATT' 'AATGGCC' 'AATTCCA' 'AATTGGT' 'ACACGCG' 'ACAGCTT'
- 'ACAGTAC' 'ACCATGC' 'ACCGGCT' 'ACCTACC' 'ACGAGAA' 'ACGTATT' 'ACGTTGG'
- 'ACTACGA' 'ACTCAAT' 'AGACCAT' 'AGACTTC' 'AGAGACC' 'AGATAGG' 'AGCAACG'
- 'AGCCGCC' 'AGCGAAT' 'AGCTGAG' 'AGGACGT' 'AGGATAC' 'AGGCATG' 'AGTAAGC'
- 'AGTTTCT' 'ATAGGCA' 'ATAGTTG' 'ATATAAC' 'ATGAATA' 'ATGAGCT' 'ATGGTGT'
- 'ATGTTCC' 'ATTATTC' 'ATTCACG' 'ATTCGTT' 'ATTGCCT' 'CACATGA' 'CACGCCA'
- 'CACGGAC' 'CACTTCT' 'CAGAATT' 'CAGAGAG' 'CAGGCGG' 'CATACGC' 'CATCAGT'
- 'CATCTTA' 'CATGTAT' 'CCAAGCT' 'CCACTTG' 'CCAGTCA' 'CCATAAT' 'CCGAACC'
- 'CCGCGAT' 'CCGGTTT' 'CCTATGT' 'CCTCCTT' 'CCTTAGG' 'CGACACT' 'CGAGGTC'
- 'CGAGTGG' 'CGATGCA' 'CGATTAC' 'CGCAATC' 'CGCCTAA' 'CGCGCTT' 'CGCGGCG'
- 'CGGAGGA' 'CGGATCT' 'CGGCCAG' 'CGGCTGC' 'CGGTACG' 'CGTACAA' 'CGTAGCC'
- 'CGTGATA' 'CGTTTGA' 'CTAACTC' 'CTAAGAA' 'CTAGAGC' 'CTATTCG' 'CTCATTT'
- 'CTCTTGC' 'CTGCGCC' 'CTGGCAT' 'CTTACCG' 'CTTCATC' 'CTTGCGA' 'CTTGTCC'
- 'GAACCGT' 'GAATATG' 'GAATCAA' 'GACAATA' 'GAGAGGT' 'GAGCGTG' 'GAGCTAA'
- 'GAGGACA' 'GAGTTGC' 'GATAGAC' 'GATCACC' 'GCACAGC' 'GCAGTGT' 'GCCTCGT'
- 'GCCTTTG' 'GCGACTC' 'GCGCACG' 'GCGTAGA' 'GCTAATT' 'GCTCCAA' 'GCTTTAT'
- 'GGAAGTT' 'GGACGAC' 'GGAGCCT' 'GGCAGGC' 'GGCGGAA' 'GGCGTCC' 'GGTAACA'
- 'GGTCGTA' 'GGTGTTT' 'GGTTAGT' 'GGTTCAC' 'GTAATAC' 'GTCCTTC' 'GTCGGTT'
- 'GTGCATT' 'GTGGCGC' 'GTGGTAG' 'GTGTCCA' 'GTGTGTC' 'GTTAGGA' 'GTTGATG'
- 'TAACGCC' 'TAAGAGG' 'TAAGGTA' 'TACCGAA' 'TACGCAT' 'TACTTTC' 'TAGTACC'
- 'TAGTGTT' 'TATACTT' 'TATGTGC' 'TCAAGAC' 'TCAGCAA' 'TCATACA' 'TCCAGTT'
- 'TCCGCTC' 'TCCTGGC' 'TCCTTAA' 'TCGACAG' 'TCGCGCA' 'TCGGATG' 'TCGGCGT'
- 'TCGTTCT' 'TCTGAAC' 'TCTTGTA' 'TGAATCC' 'TGACCGC' 'TGAGATT' 'TGAGGAG'
- 'TGATTGT' 'TGCGAGC' 'TGCGTTG' 'TGCTACT' 'TGGAAGG' 'TGGACCA' 'TGGCAAC'
- 'TGGCCTT' 'TGGTGAA' 'TGTAGTG' 'TGTCGCT' 'TGTTTAG' 'TTAAGCG' 'TTACAGA'
- 'TTATCAT' 'TTCCTCT' 'TTCGTAC' 'TTCTGCA' 'TTGAGGC' 'TTGGACT' 'TTGGTTA'
- 'TTGTAAG' 'TTTCCTA' 'TTTGGTC']
-constant_1="TATGCATGAC"
-constant_2="AGTCACTGAG" #i think this is actually reversed in the sequence
-constant_2_rec="GAGTCACTGA"
-def change_id(x):
-global i
-tn5_adapt_loc=re.search(me_seq,str(x.seq)).span()[0]
-out_seq=x.seq[tn5_adapt_loc:] #get output sequence and qual scores
-out_qual=x.qual[tn5_adapt_loc:]
-idx=str(x.seq[:tn5_adapt_loc])
-bc3=idx[len(idx)-8:len(idx)] #get 8bp bc3
-bc2=idx[len(idx)-len(constant_2)-len(bc3)-8:len(idx)-len(constant_2)-len(bc3)]
-
-number_out=x.description.split(" ")[0].split(".")[2] #to be used for index pulling of fq2
-x.id=barc+"."+number_out
-i+=1
-idx_list.append(number_out)
-x.sequence=out_seq
-return(x)
-
-cwd="/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/SRR8310661/SRR8310661"
-fq1=sys.argv[1] #read argument fq1="SRR8310661.sra_1.fastq.gz"
-fq2=sys.argv[2] #read argument
-
-#fq1="SRR6768122.sra_1.fastq.gz"
-SeqIO.write((change_id(x=record) for record in SeqIO.parse(gzip.open(fq1,"rt"), 'fastq')), sys.stdout, "fastq")
-
-```
-```bash
-for i in "SRR8310661 SRR8310662 SRR8310663 SRR8310664 SRR8310665 SRR8310666 SRR8310667 SRR8310668"; do
-
-python /home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/parse_oligoes.py /home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/${i}/${i}/${i}.sra_1.fastq.gz /home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/${i}.1.barc.fastq.gz
-```
 <!---
 
 ## Cortex Layering 

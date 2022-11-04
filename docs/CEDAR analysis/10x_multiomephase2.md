@@ -1627,7 +1627,7 @@ infercnv_per_sample<-function(x){
                                HMM_report_by="cell",
                                resume_mode=T,
                                HMM_type='i3',
-                               num_threads=20)
+                               num_threads=10)
   saveRDS(infercnv_obj,paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.png"," -T ","\"",outname,"\"" ," ryan_todo") )
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.19_HMM_predHMMi3.hmm_mode-samples.Pnorm_0.5.repr_intensities.png"," -T ","\"",outname,"\"" ," ryan_todo") )
@@ -1651,15 +1651,15 @@ infercnv_slurm.sh
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
-#SBATCH --array=0-5
+#SBATCH --array=0-3
 #SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
-#SBATCH --cpus-per-task=40 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --cpus-per-task=30 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
 #SBATCH --qos=long_jobs
-#SBATCH --time=96:00:00 ## ask for 1 hour on the node
+#SBATCH --time=120:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-array_in=("3" "4" "7" "11" "12" "RM_4" )
+array_in=("3" "11" "12" "RM_4" )
 #--array=0-18
 #array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4")
 sample_in=${array_in[$SLURM_ARRAY_TASK_ID]}
@@ -4195,8 +4195,10 @@ hmm_y<-lapply(1:length(bamFile),function(x) hmmcopy_sample(x))
 
 HMMcopy comparison across CNV Callers
 
+hmmcopy_comparisons.R
 ```R
-####Run InferCNV
+#before running R increase slave limit 
+#ulimit -s 32000 # enlarge stack limit to 32 megs
 library(Signac)
 library(Seurat)
 library(EnsDb.Hsapiens.v86)
@@ -4220,6 +4222,10 @@ library(RColorBrewer)
 library(philentropy)
 library(dendextend)
 library(ggalluvial)
+args = commandArgs(trailingOnly=TRUE)
+
+x=args[1]
+
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
 ###########Color Schema#################
@@ -4369,7 +4375,7 @@ plot_bulk_genome<-function(count){
 }
 
 
-plot_singlecell_cnvs<-function(dat=dat,cnv=t(infercnv_obj@expr.data),assay="infercnv",outname=outname,wd=wd,bulk_plot=plt_100kb,chr_split=infercnv_obj@gene_order$chr,sum_windows=hmmcopy_infercnv_win,file_in){
+plot_singlecell_cnvs<-function(dat=dat,cnv=t(infercnv_obj@expr.data),assay="infercnv",outname=outname,wd=wd,bulk_plot=plt_100kb,chr_split=infercnv_obj@gene_order$chr,sum_windows=hmmcopy_infercnv_win,file_in,amp_value,del_value){
   #dat is full path to seurat object
   dat_file_path=file_in
   dat$cnv_ref<-"FALSE"
@@ -4378,8 +4384,14 @@ plot_singlecell_cnvs<-function(dat=dat,cnv=t(infercnv_obj@expr.data),assay="infe
   cnv<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="FALSE",]),]
   col_fun = colorRamp2(c(min(unlist(cnv)), median(unlist(cnv)), max(unlist(cnv))), c("blue", "white", "red"))
 
+  #discretized window calls
+  cnv_discrete<-matrix(0,ncol=ncol(cnv),nrow=nrow(cnv))
+  cnv_discrete[which(cnv>=amp_value,arr.ind=T)]<-1
+  cnv_discrete[which(cnv<=del_value,arr.ind=T)]<--1
+  discrete_col<-setNames(c("blue","white","red"),nm=c("-1","0","1"))
+
   dist_method="manhattan"
-  dist_x<-philentropy::distance(cnv,method=dist_method,as.dist.obj=T,use.row.names=T)
+  dist_x<-philentropy::distance(cnv_discrete,method=dist_method,as.dist.obj=T,use.row.names=T)
   dend <- dist_x %>%  hclust(method="ward.D2") %>% as.dendrogram(edge.root=F,h=2) 
   k_search<-find_k(dend,krange=2:10) #search for optimal K from 2-10
   k_clus_number<-k_search$nc
@@ -4443,14 +4455,6 @@ plot_singlecell_cnvs<-function(dat=dat,cnv=t(infercnv_obj@expr.data),assay="infe
       left_annotation=ha_ref,
       column_split=chr_split)
 
-
-  #discretized window calls
-  amp_value<-quantile(unlist(cnv),0.7)
-  del_value<-quantile(unlist(cnv),0.3)
-  cnv_discrete<-matrix(0,ncol=ncol(cnv),nrow=nrow(cnv))
-  cnv_discrete[which(cnv>amp_value,arr.ind=T)]<-1
-  cnv_discrete[which(cnv<del_value,arr.ind=T)]<--1
-  discrete_col<-setNames(c("blue","white","red"),nm=c("-1","0","1"))
   plt2<-Heatmap(cnv_discrete,
       show_row_names=F,
       show_column_names=F,
@@ -4468,7 +4472,7 @@ plot_singlecell_cnvs<-function(dat=dat,cnv=t(infercnv_obj@expr.data),assay="infe
     print(plt2)
     dev.off()
     system(paste0("slack -F ",paste0(wd,"/",outname,".",assay,".heatmap.pdf")," ryan_todo"))
-    return(dend)
+    return(cnv_discrete)
 }
 
 HMMcopy_comparison<-function(x){
@@ -4498,12 +4502,12 @@ HMMcopy_comparison<-function(x){
     plt_100kb<-plot_bulk_genome(counts)+ggtitle(paste(outname,"100kb Bins",mean(counts$start-counts$end)))
 
   #InferCNV
-    #Rerun with HMM i3 instead of 6?
     assay="InferCNV"
     #3 state model is here (gene by cell name data is in i3_hmm@expr.data)
-    #i3_hmm<-readRDS(paste0(wd,"/",outname,"_inferCNV","/19_HMM_pred.repr_intensitiesHMMi3.hmm_mode-samples.Pnorm_0.5.infercnv_obj"))?
+    i3_hmm<-readRDS(paste0(wd,"/",outname,"_inferCNV","/19_HMM_pred.repr_intensitiesHMMi3.hmm_mode-samples.Pnorm_0.5.infercnv_obj"))
     print(paste(outname,"InferCNV windows"))
-    infercnv_obj<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
+    #infercnv_obj<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
+    infercnv_obj<-i3_hmm
     #Format Data
     infercnv_bed<-infercnv_obj@gene_order
     cnv_in<-t(infercnv_obj@expr.data)
@@ -4516,7 +4520,7 @@ HMMcopy_comparison<-function(x){
           mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
       HMMcopy_mode_copystate=unlist(lapply(1:nrow(infercnv_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
     #Cluster and Plot
-    dend_infercnv<-plot_singlecell_cnvs(
+    disc_infercnv<-plot_singlecell_cnvs(
         dat=dat,
         cnv=cnv_in,
         assay=assay,
@@ -4525,13 +4529,16 @@ HMMcopy_comparison<-function(x){
         chr_split=chr_in,
         bulk_plot=plt_100kb,
         sum_windows=hmmcopy_infercnv_win,
-        file_in=file_in)
+        file_in=file_in,
+        amp_value=1.5,
+        del_value=0.5)
     write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+    write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_infercnv,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
      write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_infercnv_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 
   #CASPER 
     #casper discretized matrix:
-    #readRDS(paste0(dir_in,"/casper/",sample_name,".finalgenemat.rds"))
+    casper_cnv<-readRDS(paste0(dir_in,"/casper/",outname,".finalgenemat.rds"))
     #Run different segmentation scales? https://rpubs.com/akdes/673120 (section 3)
     assay="CASPER"
     print(paste(outname,"CASPER windows"))
@@ -4547,14 +4554,14 @@ HMMcopy_comparison<-function(x){
       HMMcopy_mean_copymetric=unlist(lapply(1:nrow(casper_bed),function(x) 
           mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
       HMMcopy_mode_copystate=unlist(lapply(1:nrow(casper_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
-    cnv_in<-t(casper_obj@control.normalized.noiseRemoved[[1]])
+    cnv_in<-t(casper_cnv)
     cnv_in<-cnv_in[,colnames(cnv_in)%in%casper_obj@annotation.filt$Gene]
     chr_in<-casper_obj@annotation.filt[casper_obj@annotation.filt$Gene %in% colnames(cnv_in),]
     chr_in<-paste0("chr",chr_in$Chr)
     chr_in<-factor(chr_in,levels=unique(chr_in))
     hmmcopy_casper_win<-hmmcopy_casper_win[colnames(cnv_in),]
     #Cluster and Plot
-    dend_casper<-plot_singlecell_cnvs(
+    disc_casper<-plot_singlecell_cnvs(
         dat=dat,
         cnv=cnv_in,
         assay="casper",
@@ -4563,8 +4570,11 @@ HMMcopy_comparison<-function(x){
         chr_split=chr_in,
         bulk_plot=plt_100kb,
         sum_windows=hmmcopy_casper_win,
-        file_in=file_in)
+        file_in=file_in,
+        amp_value=1,
+        del_value=-1)
      write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+    write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_casper,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
      write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_casper_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 
   #CopyKAT 
@@ -4595,8 +4605,12 @@ HMMcopy_comparison<-function(x){
     row.names(cnv_in)<-gsub("\\.","-",row.names(cnv_in))
     chr_in<-paste0("chr",copykat_obj$CNAmat[,1])
     chr_in<-factor(chr_in,levels=unique(chr_in))
+    sd_value<-sd(unlist(cnv_in))
+    norm_value<-mean(unlist(cnv_in))
+    amp_value<-norm_value+(sd_value*1.5)
+    del_value<-norm_value-(sd_value*1.5)
     #Cluster and Plot
-    dend_copykat<-plot_singlecell_cnvs(
+    disc_copykat<-plot_singlecell_cnvs(
         dat=dat,
         cnv=cnv_in,
         assay="CopyKAT",
@@ -4605,17 +4619,20 @@ HMMcopy_comparison<-function(x){
         chr_split=chr_in,
         bulk_plot=plt_100kb,
         sum_windows=hmmcopy_copykat_win,
-        file_in=file_in)
+        file_in=file_in,
+        amp_value=amp_value,
+        del_value=del_value)
      write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+      write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copykat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
      write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_copykat_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 
   #COPYSCAT
     assay="copyscat"
-    #copyscat_dat<-readRDS(file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs_matrix.rds"))
+    copyscat_dat<-readRDS(file=paste0(dir_in,"/copyscat/",outname,"copyscat_cnvs_matrix.rds"))
     print(paste(outname,"Copyscat windows"))
     copyscat_obj<-readRDS(file=paste0(dir_in,"/copyscat/",outname,"copyscat_cnvs.rds"))
     #Format Data
-    copyscat_dat<-copyscat_obj[[3]]
+    copyscat_dat<-copyscat_dat[[1]]
     row.names(copyscat_dat)<-copyscat_dat[,1]
     copyscat_dat<-t(copyscat_dat[,2:ncol(copyscat_dat)])
     copyscat_chr<-unique(copyscat_obj[[1]]$Chrom[!(copyscat_obj[[1]]$Chrom %in% row.names(copyscat_dat))])
@@ -4637,19 +4654,23 @@ HMMcopy_comparison<-function(x){
     cnv_in<-t(copyscat_dat)
     chr_in<-substr(colnames(cnv_in),1,nchar(colnames(cnv_in))-1)
     chr_in<-factor(chr_in,levels=unique(chr_in))
+    cnv_in<-cnv_in[1:nrow(cnv_in)-1,]#remove median norm measure
     row.names(hmmcopy_copyscat_win)<-colnames(cnv_in)
     #Cluster and Plot
-    dend_copyscat<-plot_singlecell_cnvs(
+    disc_copyscat<-plot_singlecell_cnvs(
         dat=dat,
         cnv=cnv_in,
-        assay="RobustCNV",
+        assay="CopySCAT",
         outname=outname,
         wd=wd,
         chr_split=chr_in,
         bulk_plot=plt_100kb,
         sum_windows=hmmcopy_copyscat_win,
-        file_in=file_in)
+        file_in=file_in,
+        amp_value=2,
+        del_value=0)
      write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+      write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copyscat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
      write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_copyscat_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 
 
@@ -4670,8 +4691,12 @@ HMMcopy_comparison<-function(x){
     colnames(cnv_in)<-robustcnv_bed$win
     row.names(hmmcopy_robustcnv_win)<-colnames(cnv_in)
     chr_in<-hmmcopy_robustcnv_win$chr
+    sd_value<-sd(unlist(cnv_in))
+    norm_value<-mean(unlist(cnv_in))
+    amp_value<-norm_value+(sd_value*1.5)
+    del_value<-norm_value-(sd_value*1.5)
     #Cluster and Plot
-    dend_copyscat<-plot_singlecell_cnvs(
+    disc_robustcnv<-plot_singlecell_cnvs(
         dat=dat,
         cnv=cnv_in,
         assay="RobustCNV",
@@ -4680,17 +4705,18 @@ HMMcopy_comparison<-function(x){
         chr_split=chr_in,
         bulk_plot=plt_100kb,
         sum_windows=hmmcopy_robustcnv_win,
-        file_in=file_in)
+        file_in=file_in,
+        amp_value=amp_value,
+        del_value=del_value)
     write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+      write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_robustcnv,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
     write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_robustcnv_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
-
-
 }
 
 bamfolder <- "/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
 bamFile <- list.files(bamfolder, pattern = 'dedup.RG.bam$')
 bamdir <- file.path(bamfolder, bamFile)
-sampname_raw <- paste("sample",c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20),sep="_") #bams are ordered by sample number as well
+sampname_raw <- paste("sample",c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20),sep="_") #bams are ordered by sample number as well #3,11,12
 bam_vec<-setNames(bamFile,nm=sampname_raw)
 colnames(cytoband)<-c("chrom","start","end","arm")
 cytoband$chr<-paste0("chr",cytoband$chrom,cytoband$arm)
@@ -4699,12 +4725,45 @@ cols = setNames(brewer.pal(n=6,name="RdBu"), nm = c("6","5","4","3","2","1")) # 
 genome <- BSgenome.Hsapiens.UCSC.hg38
 out_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/cnv_comparison"
 system(paste("mkdir",out_dir))
-lapply(c(11,12,15,16,19,20),HMMcopy_comparison)
+HMMcopy_comparison(x)
+#lapply(c(3,4,5,6,7,8,9,10,11,15,16,19,20),HMMcopy_comparison) #waiting for infercnv for 12 to finish #1,3,
+lapply(c(3,4,7,9,10,11,15,20),HMMcopy_comparison) #waiting for infercnv for 12 to finish #1,3,
 
-#done 1,3,4,5,6,7,8,9,10
+lapply(c(19,15,11,10,9,7),HMMcopy_comparison) 
 #Set states to match CNV Callers by mode of called states per window
 
 ```
+
+```bash
+for i in 4 5 6 7 8;
+do Rscript hmmcopy_comparisons.R $i; done &
+```
+Writing out as a batch script for slurm job submission
+
+compare_hmm_slurm.sh
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=0-13
+#SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=10 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
+#SBATCH --time=24:00:00 ## ask for 1 hour on the node
+#SBATCH --
+
+array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "15" "16" "19" "20") 
+sample_in=${array_in[$SLURM_ARRAY_TASK_ID]}
+multiome_dir="/home/groups/CEDAR/mulqueen/projects/multiome"
+
+srun Rscript ${multiome_dir}/compare_hmm_slurm.sh $sample_in
+
+```
+
+Job submit all HMMcopy jobs for comparison
+```bash
+sbatch compare_hmm_slurm.sh
+```
+
 
 ### Looking for subclonality in bulk WGS libraries
 
@@ -4722,6 +4781,49 @@ cd /home/groups/CEDAR/mulqueen/ref/battenberg
 #placed reference files here after direct download with SFTP
 ```
 
+### Pysam to make pseudobulk bam files
+https://divingintogeneticsandgenomics.rbind.io/post/split-a-10xscatac-bam-file-by-cluster/
+```python
+import pysam
+import csv
+
+cluster_dict = {}
+with open('clusters.csv') as csv_file:
+    csv_reader = csv.reader(csv_file, delimiter=',')
+    #skip header
+    header = next(csv_reader)
+    for row in csv_reader:
+        cluster_dict[row[0]] = row[1]
+
+clusters = set(x for x in cluster_dict.values())
+
+
+fin = pysam.AlignmentFile("atac_v1_pbmc_5k_possorted_bam.bam", "rb")
+
+# open the number of bam files as the same number of clusters, and map the out file handler to the cluster id, write to a bam with wb
+fouts_dict = {}
+for cluster in clusters:
+    fout = pysam.AlignmentFile("cluster" + cluster + ".bam", "wb", template = fin)
+    fouts_dict[cluster] = fout
+
+for read in fin:
+    tags = read.tags
+    CB_list = [ x for x in tags if x[0] == "CB"]
+    if CB_list:
+        cell_barcode = CB_list[0][1]
+    # the bam files may contain reads not in the final clustered barcodes
+    # will be None if the barcode is not in the clusters.csv file
+    else: 
+        continue
+    cluster_id = cluster_dict.get(cell_barcode)
+    if cluster_id:
+        fouts_dict[cluster_id].write(read)
+
+## do not forget to close the files
+fin.close()
+for fout in fouts_dict.values():
+    fout.close()
+```
 
 #ER binding poor and good outcome from patients, overlap with ATAC data
 http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Poor%20outcome%20ER%20regions.bed.gz
