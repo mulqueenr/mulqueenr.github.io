@@ -4174,7 +4174,7 @@ lapply(c(da_tf_markers$gene),function(y){
 ```
 
 ## Subclustering Per Celltype
-<!-- Rerun with EMBO cell types-->
+<!-- Running -->
 
 ### Epithelial Clustering
 ```R
@@ -4212,8 +4212,9 @@ molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"
 alpha_val=0.33
 
 
+#
 celltype_cistopic_generation<-function(celltype_list=c("Cancer Epithelial","Normal Epithelial"),outname="epithelial"){
-  atac_sub<-subset(dat,predicted.id %in% celltype_list)
+  atac_sub<-subset(dat,EMBO_predicted.id %in% celltype_list)
 
   cistopic_counts_frmt<-atac_sub@assays$peaks@counts
   row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
@@ -4300,6 +4301,7 @@ celltype_clustering<-function(x,outname){
   p5<-DimPlot(dat,reduction="cistopic_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Cistopic UMAP")+theme(legend.position="none")
   p6<-DimPlot(dat,reduction="multimodal_umap",group.by="sample")+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
   #Cluster on multimodal graph
+
   dat <- FindClusters(dat, resolution = 0.8, verbose = FALSE,graph="wknn")
 
 
@@ -4309,20 +4311,36 @@ celltype_clustering<-function(x,outname){
   system(paste0("slack -F ",paste0(outname,".umap.pdf")," ryan_todo"))
   saveRDS(dat,file=paste0(outname,"filt.SeuratObject.rds"))
 }
+ 
+#Epithelial Cells
+celltype_cistopic_generation(celltype_list=c("epithelial","cycling.epithelial"),outname="epithelial")
 
+#Myeloid
+celltype_cistopic_generation(celltype_list=c("TAMs","TAMs_2","Myeloid"),outname="myeloid")
 
-for (i in unique(dat$predicted.id)){
-celltype_cistopic_generation(celltype_list=c(i),outname=gsub(" ","_",i))
-}
+#T Cells
+celltype_cistopic_generation(celltype_list=c("T.cells"),outname="tcell")
 
-for (i in unique(dat$predicted.id){
-celltype_clustering(x=paste0(i,".SeuratObject.rds"),outname=gsub(" ","_",i))
-}
+#Plasma cells
+celltype_cistopic_generation(celltype_list=c("Plasma.cells"),outname="plasmacell")
+
+#Fibroblasts
+celltype_cistopic_generation(celltype_list=c("CAFs"),outname="fibroblast")
+
+#B cells
+celltype_cistopic_generation(celltype_list=c("B.cells"),outname="bcell")
+
+#Endothelial
+celltype_cistopic_generation(celltype_list=c("Endothelial"),outname="endothelial")
+
+#Pericytes
+celltype_cistopic_generation(celltype_list=c("Pericytes"),outname="pericyte")
 
 
 ```
 
 ### Integration: Now Clustering together on RNA profiles using harmony to integrate
+<!-- Rerun -->
 
 ```R
 library(harmony)
