@@ -15,6 +15,492 @@ I also set up my environment to automatically paste figures to a slack channel, 
 
 ## Initial Processing and QC
 
+
+## Low Pass Whole Genome Sequencing Data
+<!-- Done -->
+
+## Align to hg38 with bwa-mem
+<!-- Done -->
+
+```bash
+cd /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2
+cat readme.txt 
+#Run     Lane    Sample  I7 Index ID     Index1  I5 Index ID     Index2
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_A1-12        D712    AGCGATAG        D501    AGGCTATA
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_B1-12        D712    AGCGATAG        D502    GCCTCTAT
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_C1-12        D712    AGCGATAG        D503    AGGATAGG
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_D1-12        D712    AGCGATAG        D504    TCAGAGCC
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_E1-12        D712    AGCGATAG        D505    CTTCGCCT
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_F1-12        D712    AGCGATAG        D506    TAAGATTA
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_G1-12        D712    AGCGATAG        D507    ACGTCCTG
+#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_H1-12        D712    AGCGATAG        D508    GTCAGTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG01   N701    TAAGGCGA        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG03   N702    CGTACTAG        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG04   N703    AGGCAGAA        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG05   N704    TCCTGAGC        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG06   N705    GGACTCCT        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG07   N706    TAGGCATG        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG08   N707    CTCTCTAC        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG09   N710    CGAGGCTG        S505    CTCCTTAC
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG10   N701    TAAGGCGA        S506    TATGCAGT
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG11   N702    CGTACTAG        S506    TATGCAGT
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG12   N703    AGGCAGAA        S506    TATGCAGT
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG15   N704    TCCTGAGC        S506    TATGCAGT
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG16   N705    GGACTCCT        S506    TATGCAGT
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG19   N706    TAGGCATG        S506    TATGCAGT
+#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG20   N707    CTCTCTAC        S506    TATGCAGT
+
+#I'm taking the BCMM samples as the low pass whole genome for this project
+
+cd /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM
+
+for i in EXP220921HM_BCMM_WG*R1*fastq.gz; do line_count=`zcat $i | grep "^@" | wc -l`; echo $i $line_count & done & #get read count per samples
+
+
+```
+
+## Batch script for Alignment
+<!-- Done -->
+
+Using the bwa mem for alignment.
+
+wgs_alignment.sbatch
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=1-15
+#SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=30 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=5gb ## request gigabyte per cpu
+#SBATCH --time=5:00:00 ## ask for 3 hour on the node
+#SBATCH --
+
+fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
+ref="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.fa"
+file_in=`ls $fastq_dir/*WG*R1*.fastq.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}' `
+
+#Align and output as bam file
+R1=$file_in
+R2=`echo $bam_in | awk '{ gsub("_R1_", "_R2_"); print $0}' `
+output_name=${R1::-9}".batch.bam"
+bwa mem -t 10 $ref $R1 $R2 | samtools sort -T . -@5 - | samtools view -b -@5 - > $output_name
+
+```
+
+```bash
+sbatch wgs_alignment.sbatch
+```
+
+## Batch script for deduplication via Picard
+<!-- Done -->
+
+wgs_dedup.sbatch
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=1-15
+#SBATCH --tasks-per-node=15 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
+#SBATCH --time=3:00:00 ## ask for 3 hour on the node
+#SBATCH --
+
+picard_dir="/home/groups/CEDAR/tools/picard-tools-1.119/"
+fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
+list_files=`ls $fastq_dir/*WG*R1*.bam`
+bam_in=`ls $fastq_dir/*WG*R1*.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
+i=$bam_in
+output_name=${i::-4}".dedup.bam"
+output_metrics=${i::-4}".dedup.metrics.txt"
+
+#picard mark duplicates
+java -jar ${picard_dir}/MarkDuplicates.jar \
+        I=$i \
+        O=$output_name \
+        M=$output_metrics
+```
+
+```bash
+sbatch wgs_dedup.sbatch
+```
+
+## Runing GATK4
+<!-- Done -->
+
+Following https://gatk.broadinstitute.org/hc/en-us/articles/360035531152--How-to-Call-common-and-rare-germline-copy-number-variants
+
+Download and set up a conda environment
+Following 
+```bash
+#wget https://github.com/broadinstitute/gatk/archive/refs/tags/4.2.6.1.tar.gz
+#tar -xvf 4.2.6.1.tar.gz
+#cp gatkcondaenv.yml.template gatkcondaenv.yml
+#conda env create -n gatk -f gatkcondaenv.yml
+#using previously installed version
+conda install -c bioconda gcnvkernel
+#source activate gatk
+```
+### Process bam files into counts data
+<!-- Done -->
+
+Using 10Kbp windows and the cellranger genome for consistency.
+
+```bash
+source activate gatk
+gatk="/home/groups/CEDAR/nishida/src/gatk-4.1.2.0/gatk"
+ref_dir="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/"
+ref="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.fa"
+fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
+picard_dir="/home/groups/CEDAR/tools/picard-tools-1.119/"
+
+#download mappability information
+cd $ref_dir
+wget https://bismap.hoffmanlab.org/raw/hg38/k50.umap.bed.gz
+gzip -d k50.umap.bed.gz
+#Index file
+$gatk IndexFeatureFile \
+        -F k50.umap.bed
+
+hg38_map="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/k50.umap.bed"
+
+
+$gatk IndexFeatureFile \
+        -L preprocessed.10000.interval_list \
+        -R $ref \
+        --mappability-track $hg38_map \
+        -imr OVERLAPPING_ONLY \
+        -O preprocessed.10000.annot.tsv
+
+#Prepare reference file
+  #idx
+  cd $ref_dir
+  samtools faidx genome.fa
+
+  #dict
+  cd $fastq_dir
+  $gatk CreateSequenceDictionary -R $ref
+
+#Prepare intervals
+$gatk PreprocessIntervals \
+    -R $ref \
+    --bin-length 10000 \
+    --padding 0 \
+    --interval-merging-rule OVERLAPPING_ONLY \
+    -O preprocessed.10000.interval_list
+
+#Annotate for downstream filtering
+$gatk AnnotateIntervals \
+        -L preprocessed.10000.interval_list \
+        -R $ref \
+        -imr OVERLAPPING_ONLY \
+        --mappability-track $hg38_map \
+        -O preprocessed.10000.annot.tsv
+
+
+#Add read group for processing
+for i in ${fastq_dir}/*WG*R1*.dedup.bam; do
+  output_name=${i::-4}".RG.bam"
+  RG_out=`basename $i | awk '{split($0,a,"_"); print a[4]}'`
+  java -jar ${picard_dir}/AddOrReplaceReadGroups.jar \
+        I=$i \
+        O=$output_name\
+        RGID=1 \
+        RGLB=$RG_out \
+        RGPL=illumina \
+        RGPU=unit1 \
+        RGSM=$RG_out &
+  done &
+
+#index bam files then perform bin counting
+for i in ${fastq_dir}/*WG*R1*.dedup.RG.bam; do
+  samtools index $i & done &
+
+#note this can also be fed a bed file of intervals to perfectly match the single cell calling if needed
+for i in ${fastq_dir}/*WG*R1*.dedup.RG.bam; do
+  output_name=${i::-10}
+   $gatk CollectReadCounts \
+        -L preprocessed.10000.interval_list \
+        -R $ref \
+        -imr OVERLAPPING_ONLY \
+        -I $i \
+        -O ${output_name}.hdf5
+    done &
+
+#Filter intervals
+$gatk FilterIntervals \
+        -L preprocessed.10000.interval_list \
+        --annotated-intervals preprocessed.10000.annot.tsv \
+        -I EXP220921HM_BCMM_WG01_S9_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG06_S13_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG10_S17_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG16_S21_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG03_S10_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG07_S14_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG11_S18_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG19_S22_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG04_S11_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG08_S15_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG12_S19_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG20_S23_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG05_S12_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG09_S16_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG15_S20_L002_R1_001.batch.de.hdf5 \
+        -imr OVERLAPPING_ONLY \
+        -O preprocessed.10000.filtered.interval_list
+
+#Set up ploidy prior (check that it is properly tab-separated)
+
+echo """CONTIG_NAME PLOIDY_PRIOR_0  PLOIDY_PRIOR_1  PLOIDY_PRIOR_2  PLOIDY_PRIOR_3  PLOIDY_PRIOR_4  PLOIDY_PRIOR_5
+chr1  0.01  0.01  0.95  0.01  0.01  0.01
+chr2  0.01  0.01  0.95  0.01  0.01  0.01
+chr3  0.01  0.01  0.95  0.01  0.01  0.01
+chr4  0.01  0.01  0.95  0.01  0.01  0.01
+chr5  0.01  0.01  0.95  0.01  0.01  0.01
+chr6  0.01  0.01  0.95  0.01  0.01  0.01
+chr7  0.01  0.01  0.95  0.01  0.01  0.01
+chr8  0.01  0.01  0.95  0.01  0.01  0.01
+chr9  0.01  0.01  0.95  0.01  0.01  0.01
+chr10 0.01  0.01  0.95  0.01  0.01  0.01
+chr11 0.01  0.01  0.95  0.01  0.01  0.01
+chr12 0.01  0.01  0.95  0.01  0.01  0.01
+chr13 0.01  0.01  0.95  0.01  0.01  0.01
+chr14 0.01  0.01  0.95  0.01  0.01  0.01
+chr15 0.01  0.01  0.95  0.01  0.01  0.01
+chr16 0.01  0.01  0.95  0.01  0.01  0.01
+chr17 0.01  0.01  0.95  0.01  0.01  0.01
+chr18 0.01  0.01  0.95  0.01  0.01  0.01
+chr19 0.01  0.01  0.95  0.01  0.01  0.01
+chr20 0.01  0.01  0.95  0.01  0.01  0.01
+chr21 0.01  0.01  0.95  0.01  0.01  0.01
+chr22 0.01  0.01  0.95  0.01  0.01  0.01
+chrX  0.01  0.01  0.95  0.01  0.01  0.01
+chrY  1 0 0 0 0 0""" > ploidy_prior.tsv
+
+#DetermineGermlineContigPloidy
+$gatk DetermineGermlineContigPloidy \
+        -L preprocessed.10000.filtered.interval_list \
+        --interval-merging-rule OVERLAPPING_ONLY \
+        -I EXP220921HM_BCMM_WG01_S9_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG06_S13_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG10_S17_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG16_S21_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG03_S10_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG07_S14_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG11_S18_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG19_S22_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG04_S11_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG08_S15_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG12_S19_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG20_S23_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG05_S12_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG09_S16_L002_R1_001.batch.de.hdf5 \
+        -I EXP220921HM_BCMM_WG15_S20_L002_R1_001.batch.de.hdf5 \
+        --output . \
+        --contig-ploidy-priors ploidy_prior.tsv \
+        --output-prefix ploidy \
+        --verbosity DEBUG
+
+
+```
+
+## Using HMMCopy as well
+<!-- Done -->
+
+
+Install HMMcopy utils
+```bash
+git clone https://github.com/shahcompbio/hmmcopy_utils
+cd /home/groups/CEDAR/mulqueen/src/hmmcopy_utils
+cmake .
+make
+
+ref_dir="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/"
+ref="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.fa"
+hmm_utils="/home/groups/CEDAR/mulqueen/src/hmmcopy_utils"
+bowtie-build $ref ${ref::-3} #build bowtie reference index
+${hmm_utils}/util/mappability/generateMap.pl -o ${ref::-3}.map.bw -i ${ref::-3} $ref #make mappability
+#10kb windows
+${hmm_utils}/bin/mapCounter -w 10000 ${ref::-3}.map.bw > ${ref::-3}.10000.map.wig #make windows
+${hmm_utils}/bin/gcCounter -w 10000 ${ref} > ${ref::-3}.10000.gc.wig #make gc measure per window
+
+```
+Code from SCOPE and HMMCopy. Similar to s3wgs processing. 
+```R
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM")
+
+library(HMMcopy)
+
+rfile <- system.file("/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.gc.wig") 
+gfile <- system.file("/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.gc.wig") #gc content
+mfile <- system.file("/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.map.bw") #mappability
+normal_reads <- wigsToRangedData(rfile, gfile, mfile)
+
+
+```
+
+Using SCOPE WGSmapp and HMMcopy for analysis in R
+
+```R
+library(SCOPE)
+library(WGSmapp)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(doParallel)
+library(ggplot2)
+library(patchwork)
+library(ComplexHeatmap)
+library(reshape2)
+library(circlize)
+library(parallel)
+library(HMMcopy)
+library(RColorBrewer)
+#Initalization
+bamfolder <- "/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
+bamFile <- list.files(bamfolder, pattern = 'dedup.RG.bam$')
+bamdir <- file.path(bamfolder, bamFile)
+sampname_raw <- paste("sample",c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20),sep="_") #bams are ordered by sample number as well
+setwd(bamfolder)
+
+
+set_up_ref<-function(bins){ #modified version of SCOPE's get_bam_bed function
+  genome <- BSgenome.Hsapiens.UCSC.hg38
+  ref <- bins[which(as.character(seqnames(bins)) %in% paste0("chr", c(seq_len(22), "X", "Y")))] #autosomes and X Y
+
+  #Compute mappability for each reference bin.
+  mapp_gref<-mapp_hg38 #this is packaged with SCOPE, mappability across bins
+  mapp <- rep(1, length(ref))
+  #seqlevelsStyle(ref) <- "UCSC"
+  for (chr in as.character(unique(seqnames(ref)))) {
+      message("Getting mappability for ", chr, sep = "")
+      chr.index <- which(as.matrix(seqnames(ref)) == chr)
+      ref.chr <- ref[which(as.character(seqnames(ref)) == chr)]
+      mapp.chr <- rep(1, length(ref.chr))
+      overlap <- as.matrix(findOverlaps(ref.chr, mapp_gref))
+      for (i in unique(overlap[, 1])) {
+          index.temp <- overlap[which(overlap[, 1] == i), 2]
+          overlap.sub <- findOverlaps(ref.chr[i], mapp_gref[index.temp])
+          overlap.intersect <- pintersect(ref.chr[i][queryHits(overlap.sub)],mapp_gref[index.temp][subjectHits(overlap.sub)])
+          mapp.chr[i] <- sum((mapp_gref$score[index.temp]) * (width(overlap.intersect)))/sum(width(overlap.intersect))
+      }
+      mapp[chr.index] <- mapp.chr
+  }
+
+  #Compute GC for each bin, also from SCOPE
+  gc <- rep(NA, length(ref))
+  for (chr in unique(seqnames(ref))) {
+      message("Getting GC content for chr ", chr, sep = "")
+      chr.index <- which(as.matrix(seqnames(ref)) == chr)
+      ref.chr <- IRanges(start = start(ref)[chr.index], end = end(ref)[chr.index])
+      if (chr == "X" | chr == "x" | chr == "chrX" | chr == "chrx") {
+          chrtemp <- "chrX"
+      }
+      else if (chr == "Y" | chr == "y" | chr == "chrY" | chr == "chry") {
+          chrtemp <- "chrY"
+      }
+      else {
+          chrtemp <- as.numeric(mapSeqlevels(as.character(chr), 
+              "NCBI")[1])
+      }
+      if (length(chrtemp) == 0) 
+      message("Chromosome cannot be found in NCBI database. ")
+      chrm <- unmasked(genome[[chrtemp]])
+      seqs <- Views(chrm, ref.chr)
+      af <- alphabetFrequency(seqs, baseOnly = TRUE, as.prob = TRUE)
+      gc[chr.index] <- round((af[, "G"] + af[, "C"]) * 100, 2)
+  }
+
+  ref@elementMetadata$gc<-gc
+  ref@elementMetadata$mapp<-mapp
+  return(ref)
+}
+
+get_sample_coverage<-function(bam_in="EXP220921HM_BCMM_WG01_S9_L002_R1_001.batch.dedup.RG.bam",ref,samp_name="sample_9"){
+  sampname<-samp_name
+    seg.dup <- read.table(system.file("extdata", "GRCh38GenomicSuperDup.tab", package = "WGSmapp"))
+    gaps <- read.table(system.file("extdata", "hg38gaps.txt", package = "WGSmapp"))
+    seg.dup <- seg.dup[!is.na(match(seg.dup[,1], paste('chr', c(seq_len(22), 'X', 'Y'), sep = ''))),]
+    seg.dup <- GRanges(seqnames = seg.dup[,1], ranges = IRanges(start = seg.dup[,2], end = seg.dup[,3]))
+    gaps <- gaps[!is.na(match(gaps[,2], paste('chr', c(seq_len(22), 'X', 'Y'), sep = ''))),]
+    gaps <- GRanges(seqnames = gaps[,2], ranges = IRanges(start = gaps[,3], end = gaps[,4]))
+    mask.ref <- sort(c(seg.dup, gaps))
+
+    Y <- matrix(nrow = length(ref), ncol = length(sampname))
+    rownames(Y) <- paste(seqnames(ref), ":", start(ref), "-", end(ref), sep = "")
+    colnames(Y) <- sampname
+    bamurl <- bam_in
+    what <- c("rname", "pos", "mapq", "qwidth")
+    flag <- scanBamFlag( isDuplicate = FALSE, isUnmappedQuery = FALSE, isNotPassingQualityControls = FALSE) # isFirstMateRead = TRUE #isPaired = TRUE,
+    param <- ScanBamParam(what = what, flag = flag)
+    bam <- scanBam(bamurl, param = param)[[1]]
+    message("Getting coverage for sample ", ": ", sampname, "...", sep = "")
+    
+    bam.ref <- GRanges(seqnames = bam$rname, ranges = IRanges(start = bam[["pos"]], width = bam[["qwidth"]]))
+    bam.ref <- bam.ref[bam$mapq >= 20] #Q20 threshold
+    bam.ref <- suppressWarnings(bam.ref[countOverlaps(bam.ref, mask.ref) == 0])
+    Y[, 1] <- countOverlaps(ref, bam.ref)
+    return(Y)
+}
+
+genome <- BSgenome.Hsapiens.UCSC.hg38
+bins <- tileGenome(seqinfo(genome), tilewidth = 1000 * 1000, cut.last.tile.in.chrom = TRUE) #set bins by other CNV callers
+ref<-set_up_ref(bins=bins) #bins is granges of windows to use
+Y<-lapply(1:length(bamFile),function(x) get_sample_coverage(bam_in=bamFile[x],ref=ref,samp_name=sampname_raw[x]))
+Y<-do.call("cbind",Y)
+
+#HMM Correction
+hmmcopy_sample<-function(x){
+  count<-cbind(as.data.frame(ref),Y[,x])
+  samp<-sampname_raw[x]
+  if(any(endsWith(samp,paste0("_",as.character(1:12))))){
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/",samp,"/outs")
+  } else {
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/",samp,"/outs")
+  }
+  colnames(count)<-c("chr","start","end","width","strand","gc","map","reads")
+  count<-count[c("chr","start","end","reads","gc","map")]
+  count$gc<-count$gc/100
+  count<-data.table(count)
+  count<-correctReadcount(count)
+  count$chr<-as.character(count$chr)
+  count<-count[count$chr!="chrY",]
+  seg<-HMMsegment(count)
+  count$state<-seg$state
+  count$state<-as.character(count$state)
+  count$chr<-factor(count$chr,levels=paste0("chr",c(1:22,"X")))
+  count<-count[order(count$chr,count$start),]
+  count$row_order<-1:nrow(count)
+  cols = setNames(brewer.pal(n=6,name="RdBu"), nm = c("6","5","4","3","2","1")) # black, red, green, blue
+
+  plt<-ggplot(count,aes(x=row_order,y=copy,color=as.character(state)))+
+    scale_color_manual(values=cols)+
+    geom_point(size=2.5,alpha=1)+
+    ylab("")+
+    xlab("")+
+    ylim(-3,3)+
+    facet_grid(~chr,space="free",scales="free_x")+
+    theme_minimal()+
+    theme(axis.text.y = element_text(size=30),
+        axis.text.x = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.spacing.x=unit(0.1,"lines"),
+        strip.background = element_blank(), 
+        legend.position="none",
+        panel.border = element_rect(colour = "black", fill = NA,size=3))
+
+  ggsave(plt,file=paste0(wd,"/",samp,"_HMMcopy.pdf"),width=2000,height=250,units="mm",limitsize=F)
+  system(paste0("slack -F ",paste0(wd,"/",samp,"_HMMcopy.pdf")," ryan_todo"))
+  saveRDS(count,file=paste0(wd,"/",samp,"_bulkWGS_HMMcopy.rds"))
+}
+
+hmm_y<-lapply(1:length(bamFile),function(x) hmmcopy_sample(x))
+
+
+outdir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/cnv_comparison"
+
+#Transfer hmmcopy to data location for travis
+hmmcopy_save_as_tsv<-function(x){
+  samp<-sampname_raw[x]
+  if(any(endsWith(samp,paste0("_",as.character(1:12))))){
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/",samp,"/outs")
+  } else {
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/",samp,"/outs")
+  }
+  count<-readRDS(file=paste0(wd,"/",samp,"_bulkWGS_HMMcopy.rds"))
+  write.table(count,file=paste0(outdir,"/",samp,"_Bulk_HMMcopy.tsv"),sep="\t",quote=F,col.names=T,row.names=F)
+}
+lapply(1:length(bamFile),function(x) hmmcopy_save_as_tsv(x))
+
+
+
+```
+
+
 ### File Location
 ```bash
 mkdir /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2
@@ -39,6 +525,8 @@ Using chipseq bed files held on cistrome for accessibility analysis.
 ```
 
 ### Run cellranger-mkfastq
+<!-- Done -->
+
 Set up indexes used for mkfastq
 
 ```bash
@@ -138,6 +626,8 @@ echo """fastqs,sample,library_type
 ```
 
 ### Run CellRanger-ARC
+<!-- Done -->
+
 ```bash
 cd /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2 #using this as analysis directory
 ```
@@ -161,8 +651,10 @@ for i in 1 3 4 5 6 7 8 9 10 11 12; do
 ```
 
 ## Initial QC
+<!-- Done -->
 
 ### Perform Scrublet on Data to Ensure Single-cells
+<!-- Done -->
 
 Code from tutorial here.[https://github.com/AllonKleinLab/scrublet/blob/master/examples/scrublet_basics.ipynb]
 
@@ -239,6 +731,7 @@ for i in 1 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 RM_1 RM_2 RM_3 RM_4;
 ```
 
 ### Use SoupX to remove ambient RNA
+<!-- Done -->
 
 ```R
 install.packages('SoupX')
@@ -284,6 +777,7 @@ print(paste("Finished:",outname))
 ```
 
 ## Seurat Generation and Processing
+<!-- Done -->
 
 ### Seurat Object Generation for Samples
 Performing seurat analysis following https://satijalab.org/signac/articles/pbmc_multiomic.html
@@ -415,6 +909,7 @@ saveRDS(dat,file="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_
 ```
 
 ### Call Peaks and Dimensionality Reduction
+<!-- Done -->
 
 ```R
 library(Signac)
@@ -473,6 +968,8 @@ saveRDS(dat,file="phase2.SeuratObject.rds")
 ```
 
 ### Run Dim Reduction Per Sample
+<!-- Done -->
+
 ```R
 library(Signac)
 library(Seurat)
@@ -684,6 +1181,7 @@ lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),singl
 
 
 ### Run cisTopic for ATAC Dimensionality Reduction
+<!-- Done -->
 
 Cistopic Per sample (Updated to include other directory folders)
 
@@ -778,7 +1276,10 @@ single_sample_cistopic_generation(x=args[1])
 ```
 
 ## Public Datasets for Comparison 
+<!-- Done -->
+
 ### Using Transfer Anchors for Cell identification.
+<!-- Done -->
 
 Using Swarbrick paper labels for transfer. https://pubmed.ncbi.nlm.nih.gov/34493872/
 
@@ -807,6 +1308,8 @@ saveRDS(swarbrick,"/home/groups/CEDAR/mulqueen/ref/swarbrick/swarbrick.SeuratObj
 ```
 
 ### Using EMBO paper for transfer of signatures as well. 
+<!-- Done -->
+
 https://doi.org/10.15252/embj.2020107333
 Full code here: https://www.nature.com/articles/s41597-022-01236-2 data available here https://doi.org/10.6084/m9.figshare.17058077
 
@@ -872,7 +1375,10 @@ saveRDS(dat,"SeuratObject_ERProcessed.rds")
 ```
 
 ## Swarbrick Paper Label Transfer
+<!-- Done -->
+
 ### Transfer Swarbrick cell types
+<!-- Done -->
 
 ```R
 library(Signac)
@@ -953,6 +1459,8 @@ lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),singl
 ```
 
 ### Transfer EMBO Cell Types Per Sample
+<!-- Done -->
+
 
 ```R
 library(Signac)
@@ -1038,11 +1546,13 @@ single_sample_label_transfer<-function(x){
   }
 
 lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_label_transfer)
-#
+
+
 ```
 
 
 ### Add sample metadata
+<!-- Done -->
 
 ```R
 library(Signac)
@@ -1110,438 +1620,546 @@ lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),funct
 
 ```
 
-### Plot multimodal dimensionality reduction for cistopic embedding
+
+## Create Seurat object with filtered cells
+<!-- Done -->
 
 ```R
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 library(Signac)
 library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+# set up sample loop to load the RNA and ATAC data, save to seurat object
+merge_seurat<-function(x){
+  #function to handle different sample directories##################
+  if(x %in% 1:12){
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+  outname<-paste0("sample_",x)
+  }else if(x %in% 13:20){
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+  outname<-paste0("sample_",x)
+  }else{
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+  outname<-x
+  }
+  ####################################################################
+  #read in data
+  dat<-readRDS(paste0(wd,"/",outname,".QC.SeuratObject.rds"))
+  dat$sample<-outname #set up sample metadata
+  return(dat)}
+
+out<-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),merge_seurat)
+
+
+dat <- merge(out[[1]], y = as.list(out[2:length(out)]), add.cell.ids = c(paste0("sample_",c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20)),"RM_1","RM_2","RM_3","RM_4"), project = "all_data")
+saveRDS(dat,file="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/phase2.QC.SeuratObject.rds")
+```
+
+### Add EMBO cell predictions to merged seurat object
+<!-- Done -->
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+dat_merged<-readRDS(file="phase2.QC.SeuratObject.rds")
+
+# set up sample loop to load the RNA and ATAC data, save to seurat object
+embo_metaextractor<-function(x){
+  #function to handle different sample directories##################
+  if(x %in% 1:12){
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+  outname<-paste0("sample_",x)
+  }else if(x %in% 13:20){
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+  outname<-paste0("sample_",x)
+  }else{
+  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+  outname<-x
+  }
+  ####################################################################
+  #read in data
+  dat<-readRDS(paste0(wd,"/",outname,".QC.SeuratObject.rds"))
+  dat_met<-dat@meta.data[startsWith(prefix="EMBO_prediction.",colnames(dat@meta.data))]
+  row.names(dat_met)<-paste(outname,row.names(dat_met),sep="_")#set up sample metadata
+  return(dat_met)}
+
+out_met<-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),embo_metaextractor)
+
+met<-do.call("rbind",out_met)
+
+dat_merged<-AddMetaData(dat_merged,met)
+saveRDS(dat_merged,file="phase2.QC.SeuratObject.rds")
+```
+
+
+### Cistopic on merged samples
+<!-- Done -->
+
+## Rerun from here with proper filtering
+<!-- Done -->
+
+* scrublet reported predicted_doublets is false
+* at least 500 ATAC fragments, no more than 10k 
+* at least 100 gene expression exonic mapped UMIs, no more than 10k
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+library(RColorBrewer)
 library(SeuratWrappers)
 library(cisTopic)
 library(patchwork)
-set.seed(1234)
 library(org.Hs.eg.db)
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 library(AUCell)
 library(rtracklayer)
 library(parallel)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+#Read in and filter merged seurat object
+atac_sub<-readRDS("phase2.QC.SeuratObject.rds")
+atac_sub<-subset(atac_sub,cells= Reduce(intersect,
+  list(which(atac_sub$predicted_doublets=="False"), 
+  which(atac_sub$atac_fragments>= 250),
+  which(atac_sub$atac_fragments <= 10000),
+  which(atac_sub$gex_exonic_umis>=100),
+  which(atac_sub$gex_exonic_umis <= 10000)))) #QC filters
+saveRDS(atac_sub,file="phase2.QC.filt.SeuratObject.rds")
+wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+outname<-paste0("phase2")
+
+#Perform cistopic
+cistopic_counts_frmt<-atac_sub$peaks@counts
+row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
+sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
+print("made cistopic object")
+sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(10:30),nCores=5,addModels=FALSE)
+saveRDS(sub_cistopic_models,file=paste0(wd,"/",outname,".CisTopicObject.Rds"))
+sub_cistopic_models<-readRDS(file=paste0(wd,"/",outname,".CisTopicObject.Rds"))
+
+#Model selection
+sub_cistopic_models<-addCellMetadata(sub_cistopic_models, cell.data =atac_sub@meta.data)
+pdf(paste0(wd,"/",outname,"_model_selection.pdf"))
+par(mfrow=c(3,3))
+sub_cistopic_models<- selectModel(sub_cistopic_models, type='derivative')
+dev.off()
+system(paste0("slack -F ",paste0(wd,"/",outname,"_model_selection.pdf")," ryan_todo"))
+
+saveRDS(sub_cistopic_models,file=paste0(wd,"/",outname,".CisTopicObject.Rds"))
+sub_cistopic_models<-readRDS(file=paste0(wd,"/",outname,".CisTopicObject.Rds"))
+print("finshed running cistopic")
+
+#Add cell embeddings into seurat
+cell_embeddings<-as.data.frame(sub_cistopic_models@selected.model$document_expects)
+colnames(cell_embeddings)<-sub_cistopic_models@cell.names
+n_topics<-nrow(cell_embeddings)
+row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
+cell_embeddings<-as.data.frame(t(cell_embeddings))
+
+#Add feature loadings into seurat
+feature_loadings<-as.data.frame(sub_cistopic_models@selected.model$topics)
+row.names(feature_loadings)<-paste0("topic_",1:n_topics)
+feature_loadings<-as.data.frame(t(feature_loadings))
+
+#combined cistopic results (cistopic loadings and umap with seurat object)
+cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
+atac_sub@reductions$cistopic<-cistopic_obj
+n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic")) #add scaling for ncount peaks somewhere in here
+atac_sub<-RunUMAP(atac_sub,reduction="cistopic",dims=1:n_topics)
+atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics ) 
+atac_sub <- FindClusters(object = atac_sub, verbose = TRUE, graph.name="peaks_snn", resolution=0.2 ) 
+plt1<-DimPlot(atac_sub,reduction="umap",group.by=c("sample","seurat_clusters"))
+plt2<-FeaturePlot(atac_sub,reduction="umap",features=c("nucleosome_signal","TSS.enrichment","nCount_peaks","nFeature_peaks"))
+pdf(paste0(wd,"/",outname,".umap.pdf"),width=10)
+print(plt1)
+print(plt2)
+dev.off()
+system(paste0("slack -F ",paste0(wd,"/",outname,".umap.pdf")," ryan_todo"))
+saveRDS(atac_sub,"phase2.QC.filt.SeuratObject.rds")
+```
+
+
+### Perform Merged Object Clustering
+<!-- Done -->
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
 library(RColorBrewer)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/")
+
+
+#set up colors for samples
+  ###########Color Schema#################
+  type_cols<-c(
+  #epithelial
+  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+  "B-cells" ="#089099", "T-cells" ="#003147", #other
+  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
+  diag_cols<-c("IDC"="#ed2024", "DCIS"="#bebebe","ILC"="#009444","NAT"="#aed8e6")
+  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
+  sample_cols=c('sample_1'='#c7cfc5', 'sample_3'='#b4b2b2', 'sample_4'='#1e1f1d', 'sample_5'='#84205f', 'sample_6'='#a8d7b2', 'sample_7'='#7ecdc3', 'sample_8'='#242a26', 'sample_9'='#82717c', 'sample_10'='#146674', 'sample_11'='#88c25f', 'sample_12'='#708e3b', 'sample_15'='#2e3b80', 'sample_16'='#111114', 'sample_19'='#49823f', 'sample_20'='#b7dddb', 'RM_1'='#3e59a3', 'RM_2'='#b2433b', 'RM_3'='#12a0d6', 'RM_4'='#465243') 
+  ########################################
+
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+
+#RNA Processing
+DefaultAssay(dat) <- "SoupXRNA"
+dat <- SCTransform(dat)
+dat <- RunPCA(dat)
+dat<- RunUMAP(
+  object = dat,
+  reduction.name="rna_umap",
+  reduction="pca",
+  assay = "SCT",
+  verbose = TRUE,
+  dims=1:50
+)
+
+
+#Try multimodal with cistopic
+# build a joint neighbor graph using both assays
+dat <- FindMultiModalNeighbors(object = dat, 
+  reduction.list = list("pca", "cistopic"), 
+  dims.list = list(1:50, 1:ncol(dat@reductions$cistopic)), 
+  modality.weight.name = "RNA.weight", 
+  verbose = TRUE )
+# build a joint UMAP visualization
+dat <- RunUMAP(object = dat, 
+  nn.name = "weighted.nn", 
+  reduction.name="multimodal_umap", 
+  assay = "SoupXRNA", 
+  verbose = TRUE )
+
+#plot cistopic umap too
+alpha_val=0.33
+
+p1<-DimPlot(dat,
+  reduction="multimodal_umap",
+  group.by="predicted.id",
+  cols=alpha(type_cols,alpha_val))+
+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
+
+p2<-DimPlot(dat,
+  reduction="multimodal_umap",
+  group.by="sample",
+  cols=alpha(sample_cols,alpha_val))+
+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
+
+p3<-DimPlot(dat,
+  reduction="multimodal_umap",
+  group.by="diagnosis",
+  cols=alpha(diag_cols,alpha_val))+
+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
+
+
+#Finally Plot results
+plt<-(p1/p2/p3)
+ggsave(plt,file="phase2_filt.multimodal.umap.pdf",width=10,height=30)
+system("slack -F phase2_filt.multimodal.umap.pdf ryan_todo")
+
+#Also Plot EMBO designation of cell types
+met<-as.data.frame(dat@meta.data)
+embo_list<-  c("EMBO_prediction.score.Endothelial", "EMBO_prediction.score.NA","EMBO_prediction.score.TAMs","EMBO_prediction.score.Pericytes", "EMBO_prediction.score.CAFs","EMBO_prediction.score.T.cells", "EMBO_prediction.score.Plasma.cells","EMBO_prediction.score.TAMs_2","EMBO_prediction.score.B.cells", "EMBO_prediction.score.Myeloid", "EMBO_prediction.score.epithelial","EMBO_prediction.score.cycling.epithelial")
+max_embo<-lapply(1:nrow(met),function(i) embo_list[which(met[i,embo_list]==max(met[i,embo_list],na.rm=T))])
+max_embo<-unlist(lapply(1:length(max_embo),function(i) do.call("paste",as.list(max_embo[[i]]))))
+max_embo<-unlist(lapply(max_embo,function(i) gsub("EMBO_","",i)))
+max_embo<-unlist(lapply(max_embo,function(i) gsub("prediction.score.","",i)))
+names(max_embo)<-row.names(met)
+dat<-AddMetaData(dat,max_embo,col.name="EMBO_predicted.id")
+
+
+p4<-DimPlot(dat,
+  reduction="multimodal_umap",
+  group.by="predicted.id")+
+ggtitle("Swarbrick")
+
+
+p5<-DimPlot(dat,
+  reduction="multimodal_umap",
+  group.by="EMBO_predicted.id")+
+ggtitle("EMBO")
+
+plt<-(p4/p5)
+ggsave(plt,file="celltype_umap.pdf")
+system("slack -F celltype_umap.pdf ryan_todo")
+saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
+
+```
+
+
+## Bar plots across cells
+<!--Rerun-->
+```R
+library(Signac)
+library(Seurat)
 library(ggplot2)
+library(dplyr) 
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+ 
+
+###########Color Schema#################
+type_cols<-c(
+#epithelial
+"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+"B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
+"CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
+
+diag_cols<-c("IDC"="red", "DCIS"="grey")
+
+molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"="#F7B7BB")
+########################################
 
 
 
-plot_reductions_persample<-function(x){
-  if(x %in% 1:12){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-
-  #set up colors for samples
-  ###########Color Schema#################
-  type_cols<-c(
-  #epithelial
-  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-  "B-cells" ="#089099", "T-cells" ="#003147", #other
-  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
-  diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
-  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
-  ########################################
-  alpha_val=0.33
-
-  #add cistopic reduction to umap projections
-  p1<-DimPlot(dat,reduction="rna_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("RNA UMAP")+theme(legend.position="none")
-  p2<-DimPlot(dat,reduction="atac_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("ATAC UMAP")+theme(legend.position="none")
-  p3<-DimPlot(dat,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Multimodal UMAP (LSI)")+theme(legend.position="none")
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
 
 
-  #Try multimodal with cistopic
-  dat <- RunUMAP(
-    object = dat,
-    reduction="cistopic",
-    reduction.name="cistopic_umap",
-    dims=1:ncol(dat@reductions$cistopic),
-    assay = "peaks",
-    verbose = TRUE
-  )
+#Set up metadata and set up facet labels as factors for ordering
+metadat<-as.data.frame(dat@meta.data)
+metadat$diagnosis = factor(metadat$diagnosis, levels=c("NAT","DCIS","IDC","ILC"), labels=c("NAT","DCIS","IDC","ILC")) 
+metadat$molecular_type = factor(metadat$molecular_type, levels=c("NA","DCIS","ER+/PR+/HER2-","ER+/PR-/HER2+","ER+/PR-/HER2-"), labels=c("NA","DCIS","ER+/PR+/HER2-","ER+/PR-/HER2+","ER+/PR-/HER2-")) 
 
 
-  # build a joint neighbor graph using both assays
-  dat2 <- FindMultiModalNeighbors(
-    object = dat,
-    reduction.list = list("pca", "cistopic"), 
-    dims.list = list(1:50, 1:ncol(dat@reductions$cistopic)), 
-    modality.weight.name = "RNA.weight",
-    verbose = TRUE
-  )
+#Cells PF (log10)
+metadat$epi<-"Nonepi"
+metadat[metadat$predicted.id %in% c("Cancer Epithelial","Normal Epithelial"),]$epi<-"Epi"
+DF<-as.data.frame(metadat %>% group_by(diagnosis, molecular_type,sample,epi) %>% tally())
+plt1<-ggplot(DF,aes(x=sample,fill=epi,y=n))+geom_bar(stat="identity")+theme_minimal()+facet_grid(.~diagnosis+molecular_type,scales="free_x",space="free") #+ scale_y_continuous(trans='log10')
+ggsave(plt1,file="barplot_qc_cellcount.pdf")
+system("slack -F barplot_qc_cellcount.pdf ryan_todo")
 
-  # build a joint UMAP visualization
-  dat2 <- RunUMAP(
-    object = dat2,
-    nn.name = "weighted.nn",
-    reduction.name="multimodal_umap",
-    assay = "SoupXRNA",
-    verbose = TRUE
-  )
+#Cell types (stacked bar)
+DF<-as.data.frame(metadat %>% group_by(diagnosis, molecular_type,sample,predicted.id) %>% tally())
+plt1<-ggplot(DF,aes(x=sample,fill=predicted.id,y=n))+geom_bar(position="fill",stat="identity")+theme_minimal()+scale_fill_manual(values=type_cols)+facet_grid(.~diagnosis+molecular_type,scales="free_x",space="free")
+ggsave(plt1,file="barplot_qc_celltype.pdf")
+system("slack -F barplot_qc_celltype.pdf ryan_todo")
 
-  ###########plot cistopic umap too
-  p5<-DimPlot(dat2,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
-  p6<-DimPlot(dat,reduction="cistopic_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Cistopic UMAP")+theme(legend.position="none")
+```
+### Vibe check on cell type prediction
+<!-- Done -->
 
-  #Finally Plot results
-  plt<-(p1 | p2)/(p3)/(p6 | p5)
-  ggsave(plt,file=paste0(wd,"/",outname,".multimodal.umap.pdf"),width=10,height=20)
-  system(paste0("slack -F ",wd,"/",outname,".multimodal.umap.pdf ryan_todo"))
+Plot out a heatmap of cell type scores per sample and prediction. I'm trying to figure out how specific they are and if results are concordant. Also plotting top 10 genes from Swarbrick gross cell type identification as a heatmap
+Genes from Supplementary Table 9 (major classification).
 
-  ggsave(p1,file=paste0(wd,"/",outname,".multimodal.umap.rna.pdf"),width=10,height=10)
-  system(paste0("slack -F ",wd,"/",outname,".multimodal.umap.rna.pdf ryan_todo"))
-
-  ggsave(p2,file=paste0(wd,"/",outname,".multimodal.umap.atac.pdf"),width=10,height=10)
-  system(paste0("slack -F ",wd,"/",outname,".multimodal.umap.atac.pdf ryan_todo"))
-
-  saveRDS(dat,file=file_in)
-
-  plt_cell_count<-dat@meta.data[,c("sample","predicted.id","diagnosis","molecular_type")]
-  return(plt_cell_count)
-}
-
-
-#run umap projections of all dim reductions per sample
-cell_count<-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x) plot_reductions_persample(x))
-
-saveRDS(cell_count,"sample_swarbrick_celltype_assignment.rds") #save nested list of cell type assignment
-
-#plot output of celltype count per sample
-out<-readRDS("sample_swarbrick_celltype_assignment.rds")
-out<-do.call("rbind",out)
-colnames(out)<-c("sample","celltype","diagnosis","molecular_type") #rename just for simplicity
-  #set up colors for samples
-  ###########Color Schema#################
-  type_cols<-c(
-  #epithelial
-  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-  "B-cells" ="#089099", "T-cells" ="#003147", #other
-  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
-  diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
-  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
-  ########################################
-plt1<-ggplot(out,aes(x=sample,fill=celltype))+geom_bar()+theme_minimal()+scale_fill_manual(values=type_cols)+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
-plt2<-ggplot(out,aes(x=sample,fill=celltype))+geom_bar(position="fill")+theme_minimal()+scale_fill_manual(values=type_cols)+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
-plt<-plt1/plt2
-ggsave(plt,file="sample_swarbrick_celltype_assignment.pdf")
-system("slack -F sample_swarbrick_celltype_assignment.pdf ryan_todo")
-
+```R
+library(Signac)
+library(Seurat)
+set.seed(1234)
+library(ggplot2)
+library(ComplexHeatmap)
 library(dplyr)
-out_readable<-out %>% count(sample,celltype)
-write.table(out_readable,file="sample_swarbrick_celltype_assignment.tsv",col.names=T,row.names=F,sep="\t",quote=F)
-system("slack -F sample_swarbrick_celltype_assignment.tsv ryan_todo") #note this was calculated per sample as well as in the merged data set,  the assumption is that they will be the same
+library(circlize)
+library(RColorBrewer)
+library(seriation)
 
-```
-
-## EMBO Cell Signature Transfer
-
-Make Seurat Object with Metadata
-
-```R
-library(Seurat)
-
-setwd("/home/groups/CEDAR/mulqueen/ref/embo")
-
-# set up sample loop to load the RNA and ATAC data, save to seurat object
-files_in<-list.files(pattern="*.rds")
-in_rds<-lapply(files_in,function(x) readRDS(x))
-dat <- merge(in_rds[[1]], y = as.list(unlist(in_rds[2:length(in_rds)])), project = "embo")
-saveRDS(dat,file="/home/groups/CEDAR/mulqueen/ref/embo/embo.rds")
-
-table(dat$group)
-   #      B1_0023         B1_0033         B1_0090         B1_0894         ER_0001
-   #        15736           20063           19347           22287           10764
-   #      ER_0025      ER_0029_7C      ER_0029_9C         ER_0032      ER_0040_LN
-   #        16400            3102            7261            2057            5661
-   #    ER_0040_T         ER_0042      ER_0043_LN       ER_0043_T      ER_0056_LN
-   #        17639            9056             745           12054            6611
-   #    ER_0056_T      ER_0064_LN       ER_0064_T      ER_0114_T3         ER_0125
-   #         2704            2328            3603           13428            8374
-   #      ER_0151         ER_0163      ER_0167_LN       ER_0167_T      ER_0173_LN
-   #         5774           11942            4392           22660            3257
-   #    ER_0173_T         ER_0319         ER_0360       HER2_0031       HER2_0069
-   #         7766            6965            8514            8168             910
-   #    HER2_0161       HER2_0176       HER2_0308       HER2_0337     mER_0068_LN
-   #         9873           21731            8179           17393            4720
-   #   mER_0068_T        mER_0178    N_0019_total    N_0021_total      N_0064_epi
-   #         1604            7274           17177            2346            8078
-   # N_0064_total    N_0092_total      N_0093_epi    N_0093_total      N_0123_epi
-   #         4011           11369           16519           16379            5648
-   # N_0123_total    N_0169_total   N_0230.16_epi N_0230.17_total    N_0233_total
-   #        17162           17348            3616           12873           17502
-   #   N_0275_epi    N_0275_total      N_0280_epi    N_0288_total      N_0342_epi
-   #        12123            2187            2178            3087           14937
-   # N_0342_total      N_0372_epi    N_0372_total      N_0408_epi      N_1105_epi
-   #        14736           22243            6480            5971            9797
-   #   N_1469_epi         TN_0106      TN_0114_T2         TN_0126         TN_0135
-   #         5505            2144            4103            6314           30424
-   #   TN_B1_0131      TN_B1_0177      TN_B1_0554      TN_B1_4031
-   #        17255           73030           26195           15863
-
-  #B1: BRCA1 preneoplastic (4)
-  #ER_*_T: ER+ tumor (16)
-  #ER_*_LN: ER+ lymph node (7)
-  #HER2: HER2+ tumor(6)
-  #mER: male ER+ tumor (2)
-  #N: normal pre or post menopausal (if it ends in epi it is limited to epithelial)
-  #TN_B1: Triple negative BRCA1 tumor
-
-  #Our data set most closely matches:
-  #ER+ tumors (female)
-  #ER_0360 ER_0151 ER_0032 ER_0125 ER_0025 ER_0001 ER_0042 ER_0319 ER_0163 ER_0114_T3 ER_0167_T ER_0040_T ER_0043_T
-  #HER2+ tumors
-  #HER2_0031 HER2_0069 HER2_0161 HER2_0176 HER2_0308 HER2_0337
-  #Normal Total Cells (post and pre menopause, epi is limited to epithelial cells)
-  #N_0019_total    N_0021_total      N_0064_epi N_0064_total    N_0092_total      N_0093_epi    N_0093_total      N_0123_epi  N_0123_total    N_0169_total   N_0230.16_epi N_0230.17_total    N_0233_total N_0275_epi    N_0275_total      N_0280_epi    N_0288_total      N_0342_epi N_0342_total      N_0372_epi    N_0372_total      N_0408_epi      N_1105_epi N_1469_epi     
-```
-
-
-### Additional Cell Signature
-From https://github.com/yunshun/HumanBreast10X/tree/main/Signatures
-
-```bash
-cd /home/groups/CEDAR/mulqueen/ref/embo
-#downloaded files from
-#https://github.com/yunshun/HumanBreast10X/blob/main/Signatures/Human-PosSigGenes.RData
-#https://github.com/yunshun/HumanBreast10X/blob/main/Signatures/ImmuneMarkers2.txt
-#https://github.com/yunshun/HumanBreast10X/blob/main/Signatures/PAM50.txt
-```
-
-
-### Use EMBO and Swarbrick Paper Cell Types to Define Signatures
-```R
-library(Signac)
-library(Seurat)
-set.seed(1234)
-library(ggplot2)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
-#cell lineage
-  load("/home/groups/CEDAR/mulqueen/ref/embo/Human-PosSigGenes.RData")
-  ls()
-  #[1] "Basal" "LP"    "ML"    "Str" #lineage types
-  lineage_in=list(EMBO_Basal=Basal,EMBO_LP=LP,EMBO_ML=ML,EMBO_Str=Str)
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
 
-#Immune markers
-  immune_in<-read.table("/home/groups/CEDAR/mulqueen/ref/embo/ImmuneMarkers2.txt",header=T,sep="\t")
-  immune_in<-lapply(split(immune_in,immune_in$CellType),function(x) x$Signatures)#split up data frame to a named list of genes per cell type
-  names(immune_in)<-paste0("EMBO_",names(immune_in))#rename the list just so we can track the source
-
-#using both the given PAM50 short list and the Swarbrick supplied more extensive gene list below
-  PAM50_in<-read.table("/home/groups/CEDAR/mulqueen/ref/embo/PAM50.txt",header=T,sep="\t")
-  PAM50_in<-lapply(split(PAM50_in,PAM50_in$Subtype),function(x) x$Gene)#split up data frame to a named list of genes per cell type
-  names(PAM50_in)<-paste0("PAM50_",names(PAM50_in))
-  features_in=c(immune_in,PAM50_in)   
-
-#SCSubtype Features determined by Swarbrick manuscript (Supp Table 4)
-  module_feats<-list()
-  module_feats[["Basal_SC"]]=c('EMP1', 'TAGLN', 'TTYH1', 'RTN4', 'TK1', 'BUB3', 'IGLV3.25', 'FAM3C', 'TMEM123', 'KDM5B', 'KRT14', 'ALG3', 'KLK6', 'EEF2', 'NSMCE4A', 'LYST', 'DEDD', 'HLA.DRA', 'PAPOLA', 'SOX4', 'ACTR3B', 'EIF3D', 'CACYBP', 'RARRES1', 'STRA13', 'MFGE8', 'FRZB', 'SDHD', 'UCHL1', 'TMEM176A', 'CAV2', 'MARCO', 'P4HB', 'CHI3L2', 'APOE', 'ATP1B1', 'C6orf15', 'KRT6B', 'TAF1D', 'ACTA2', 'LY6D', 'SAA2', 'CYP27A1', 'DLK1', 'IGKV1.5', 'CENPW', 'RAB18', 'TNFRSF11B', 'VPS28', 'HULC', 'KRT16', 'CDKN2A', 'AHNAK2', 'SEC22B', 'CDC42EP1', 'HMGA1', 'CAV1', 'BAMBI', 'TOMM22', 'ATP6V0E2', 'MTCH2', 'PRSS21', 'HDAC2', 'ZG16B', 'GAL', 'SCGB1D2', 'S100A2', 'GSPT1', 'ARPC1B', 'NIT1', 'NEAT1', 'DSC2', 'RP1.60O19.1', 'MAL2', 'TMEM176B', 'CYP1B1', 'EIF3L', 'FKBP4', 'WFDC2', 'SAA1', 'CXCL17', 'PFDN2', 'UCP2', 'RAB11B', 'FDCSP', 'HLA.DPB1', 'PCSK1N', 'C4orf48', 'CTSC')
-  module_feats[["Her2E_SC"]]=c('PSMA2', 'PPP1R1B', 'SYNGR2', 'CNPY2', 'LGALS7B', 'CYBA', 'FTH1', 'MSL1', 'IGKV3.15', 'STARD3', 'HPD', 'HMGCS2', 'ID3', 'NDUFB8', 'COTL1', 'AIM1', 'MED24', 'CEACAM6', 'FABP7', 'CRABP2', 'NR4A2', 'COX14', 'ACADM', 'PKM', 'ECH1', 'C17orf89', 'NGRN', 'ATG5', 'SNHG25', 'ETFB', 'EGLN3', 'CSNK2B', 'RHOC', 'PSENEN', 'CDK12', 'ATP5I', 'ENTHD2', 'QRSL1', 'S100A7', 'TPM1', 'ATP5C1', 'HIST1H1E', 'LGALS1', 'GRB7', 'AQP3', 'ALDH2', 'EIF3E', 'ERBB2', 'LCN2', 'SLC38A10', 'TXN', 'DBI', 'RP11.206M11.7', 'TUBB', 'CRYAB', 'CD9', 'PDSS2', 'XIST', 'MED1', 'C6orf203', 'PSMD3', 'TMC5', 'UQCRQ', 'EFHD1', 'BCAM', 'GPX1', 'EPHX1', 'AREG', 'CDK2AP2', 'SPINK8', 'PGAP3', 'NFIC', 'THRSP', 'LDHB', 'MT1X', 'HIST1H4C', 'LRRC26', 'SLC16A3', 'BACE2', 'MIEN1', 'AR', 'CRIP2', 'NME1', 'DEGS2', 'CASC3', 'FOLR1', 'SIVA1', 'SLC25A39', 'IGHG1', 'ORMDL3', 'KRT81', 'SCGB2B2', 'LINC01285', 'CXCL8', 'KRT15', 'RSU1', 'ZFP36L2', 'DKK1', 'TMED10', 'IRX3', 'S100A9', 'YWHAZ')
-  module_feats[["LumA_SC"]]=c('SH3BGRL', 'HSPB1', 'PHGR1', 'SOX9', 'CEBPD', 'CITED2', 'TM4SF1', 'S100P', 'KCNK6', 'AGR3', 'MPC2', 'CXCL13', 'RNASET2', 'DDIT4', 'SCUBE2', 'KRT8', 'MZT2B', 'IFI6', 'RPS26', 'TAGLN2', 'SPTSSA', 'ZFP36L1', 'MGP', 'KDELR2', 'PPDPF', 'AZGP1', 'AP000769.1', 'MYBPC1', 'S100A1', 'TFPI2', 'JUN', 'SLC25A6', 'HSP90AB1', 'ARF5', 'PMAIP1', 'TNFRSF12A', 'FXYD3', 'RASD1', 'PYCARD', 'PYDC1', 'PHLDA2', 'BZW2', 'HOXA9', 'XBP1', 'AGR2', 'HSP90AA1') 
-  module_feats[["LumB_SC"]]=c('UGCG', 'ARMT1', 'ISOC1', 'GDF15', 'ZFP36', 'PSMC5', 'DDX5', 'TMEM150C', 'NBEAL1', 'CLEC3A', 'GADD45G', 'MARCKS', 'FHL2', 'CCDC117', 'LY6E', 'GJA1', 'PSAP', 'TAF7', 'PIP', 'HSPA2', 'DSCAM.AS1', 'PSMB7', 'STARD10', 'ATF3', 'WBP11', 'MALAT1', 'C6orf48', 'HLA.DRB1', 'HIST1H2BD', 'CCND1', 'STC2', 'NR4A1', 'NPY1R', 'FOS', 'ZFAND2A', 'CFL1', 'RHOB', 'LMNA', 'SLC40A1', 'CYB5A', 'SRSF5', 'SEC61G', 'CTSD', 'DNAJC12', 'IFITM1', 'MAGED2', 'RBP1', 'TFF1', 'APLP2', 'TFF3', 'TRH', 'NUPR1', 'EMC3', 'TXNIP', 'ARPC4', 'KCNE4', 'ANPEP', 'MGST1', 'TOB1', 'ADIRF', 'TUBA1B', 'MYEOV2', 'MLLT4', 'DHRS2', 'IFITM2')
-  module_feats[["proliferation_score"]]<-c("BIRC5", "CCNB1", "CDC20", "NUF2", "CEP55", "NDC80", "MKI67", "PTTG1", "RRM2", "TYMS","UBE2C")
-
-#Swarbrick Gene Module Classification (Supp Table 5)
-gene_module<-list()
-  gene_module[["gene_module_1"]]<-c('ATF3', 'JUN', 'NR4A1', 'IER2', 'DUSP1', 'ZFP36', 'JUNB', 'FOS', 'FOSB', 'PPP1R15A', 'KLF6', 'DNAJB1', 'EGR1', 'BTG2', 'HSPA1B', 'HSPA1A', 'RHOB', 'CLDN4', 'MAFF', 'GADD45B', 'IRF1', 'EFNA1', 'SERTAD1', 'TSC22D1', 'CEBPD', 'CCNL1', 'TRIB1', 'MYC', 'ELF3', 'LMNA', 'NFKBIA', 'TOB1', 'HSPB1', 'BRD2', 'MCL1', 'PNRC1', 'IER3', 'KLF4', 'ZFP36L2', 'SAT1', 'ZFP36L1', 'DNAJB4', 'PHLDA2', 'NEAT1', 'MAP3K8', 'GPRC5A', 'RASD1', 'NFKBIZ', 'CTD-3252C9.4', 'BAMBI', 'RND1', 'HES1', 'PIM3', 'SQSTM1', 'HSPH1', 'ZFAND5', 'AREG', 'CD55', 'CDKN1A', 'UBC', 'CLDN3', 'DDIT3', 'BHLHE40', 'BTG1', 'ANKRD37', 'SOCS3', 'NAMPT', 'SOX4', 'LDLR', 'TIPARP', 'TM4SF1', 'CSRNP1', 'GDF15', 'ZFAND2A', 'NR4A2', 'ERRFI1', 'RAB11FIP1', 'TRAF4', 'MYADM', 'ZC3H12A', 'HERPUD1', 'CKS2', 'BAG3', 'TGIF1', 'ID3', 'JUND', 'PMAIP1', 'TACSTD2', 'ETS2', 'DNAJA1', 'PDLIM3', 'KLF10', 'CYR61', 'MXD1', 'TNFAIP3', 'NCOA7', 'OVOL1', 'TSC22D3', 'HSP90AA1', 'HSPA6', 'C15orf48', 'RHOV', 'DUSP4', 'B4GALT1', 'SDC4', 'C8orf4', 'DNAJB6', 'ICAM1', 'DNAJA4', 'MRPL18', 'GRB7', 'HNRNPA0', 'BCL3', 'DUSP10', 'EDN1', 'FHL2', 'CXCL2', 'TNFRSF12A', 'S100P', 'HSPB8', 'INSIG1', 'PLK3', 'EZR', 'IGFBP5', 'SLC38A2', 'DNAJB9', 'H3F3B', 'TPM4', 'TNFSF10', 'RSRP1', 'ARL5B', 'ATP1B1', 'HSPA8', 'IER5', 'SCGB2A1', 'YPEL2', 'TMC5', 'FBXO32', 'MAP1LC3B', 'MIDN', 'GADD45G', 'VMP1', 'HSPA5', 'SCGB2A2', 'TUBA1A', 'WEE1', 'PDK4', 'STAT3', 'PERP', 'RBBP6', 'KCNQ1OT1', 'OSER1', 'SERP1', 'UBE2B', 'HSPE1', 'SOX9', 'MLF1', 'UBB', 'MDK', 'YPEL5', 'HMGCS1', 'PTP4A1', 'WSB1', 'CEBPB', 'EIF4A2', 'S100A10', 'ELMSAN1', 'ISG15', 'CCNI', 'CLU', 'TIMP3', 'ARL4A', 'SERPINH1', 'SCGB1D2', 'UGDH', 'FUS', 'BAG1', 'IFRD1', 'TFF1', 'SERTAD3', 'IGFBP4', 'TPM1', 'PKIB', 'MALAT1', 'XBP1', 'HEBP2', 'GEM', 'EGR2', 'ID2', 'EGR3', 'HSPD1', 'GLUL', 'DDIT4', 'CDC42EP1', 'RBM39', 'MT-ND5', 'CSNK1A1', 'SLC25A25', 'PEG10', 'DEDD2')
-
-gene_module[["gene_module_2"]]<-c('AZGP1', 'ATP5C1', 'ATP5F1', 'NHP2', 'MGP', 'RPN2', 'C14orf2', 'NQO1', 'REEP5', 'SSR2', 'NDUFA8', 'ATP5E', 'SH3BGRL', 'PIP', 'PRDX2', 'RAB25', 'EIF3L', 'PRDX1', 'USMG5', 'DAD1', 'SEC61G', 'CCT3', 'NDUFA4', 'APOD', 'CHCHD10', 'DDIT4', 'MRPL24', 'NME1', 'DCXR', 'NDUFAB1', 'ATP5A1', 'ATP5B', 'ATOX1', 'SLC50A1', 'POLR2I', 'TIMM8B', 'VPS29', 'TIMP1', 'AHCY', 'PRDX3', 'RBM3', 'GSTM3', 'ABRACL', 'RBX1', 'PAFAH1B3', 'AP1S1', 'RPL34', 'ATPIF1', 'PGD', 'CANX', 'SELENBP1', 'ATP5J', 'PSME2', 'PSME1', 'SDHC', 'AKR1A1', 'GSTP1', 'RARRES3', 'ISCU', 'NPM1', 'SPDEF', 'BLVRB', 'NDUFB3', 'RPL36A', 'MDH1', 'MYEOV2', 'MAGED2', 'CRIP2', 'SEC11C', 'CD151', 'COPE', 'PFN2', 'ALDH2', 'SNRPD2', 'TSTD1', 'RPL13A', 'HIGD2A', 'NDUFC1', 'PYCARD', 'FIS1', 'ITM2B', 'PSMB3', 'G6PD', 'CST3', 'SH3BGRL3', 'TAGLN2', 'NDUFA1', 'TMEM183A', 'S100A10', 'NGFRAP1', 'DEGS2', 'ARPC5', 'TM7SF2', 'RPS10', 'LAMTOR5', 'TMEM256', 'UQCRB', 'TMEM141', 'KRTCAP2', 'HM13', 'NDUFS6', 'PARK7', 'PSMD4', 'NDUFB11', 'TOMM7', 'EIF6', 'UQCRHL', 'ADI1', 'VDAC1', 'C9orf16', 'ETFA', 'LSM3', 'UQCRH', 'CYB5A', 'SNRPE', 'BSG', 'SSR3', 'DPM3', 'LAMTOR4', 'RPS11', 'FAM195A', 'TMEM261', 'ATP5I', 'EIF5A', 'PIN4', 'ATXN10', 'ATP5G3', 'ARPC3', 'UBA52', 'BEX4', 'ROMO1', 'SLC25A6', 'SDCBP', 'EIF4EBP1', 'PFDN6', 'PSMA3', 'RNF7', 'SPCS2', 'CYSTM1', 'CAPG', 'CD9', 'GRHPR', 'SEPP1', 'ESF1', 'TFF3', 'ARPC1B', 'ANXA5', 'WDR83OS', 'LYPLA1', 'COMT', 'MDH2', 'DNPH1', 'RAB13', 'EIF3K', 'PTGR1', 'LGALS3', 'TPI1', 'COPZ1', 'LDHA', 'PSMD8', 'EIF2S3', 'NME3', 'EIF3E', 'MRPL13', 'ZFAND6', 'FAM162A', 'ATP6V0E1', 'TMED10', 'HNRNPA3', 'PPA1', 'SNX17', 'APOA1BP', 'TUFM', 'ECHS1', 'GLTSCR2', 'RPS27L', 'NDUFB1', 'SSBP1', 'PRDX6', 'ENO1', 'PPP4C', 'COA3', 'TCEAL4', 'MRPL54', 'LAMTOR2', 'PAIP2', 'DAP', 'RPL22L1', 'C6orf203', 'TECR', 'PEBP1', 'TMED9', 'ATP6V1F', 'ESD', 'EIF3I', 'SCO2', 'ATP5D', 'UAP1', 'TMEM258', 'COX17')
-
-gene_module[["gene_module_3"]]<-c('HLA-B', 'HLA-A', 'VIM', 'CD74', 'SRGN', 'HLA-C', 'IFI27', 'HLA-E', 'IFITM1', 'PSMB9', 'RGCC', 'S100A4', 'HLA-DRA', 'ISG15', 'IL32', 'SPARC', 'TAGLN', 'IFITM3', 'IFITM2', 'IGFBP7', 'CALD1', 'HLA-DPB1', 'HLA-DPA1', 'B2M', 'TIMP1', 'RGS1', 'FN1', 'ACTA2', 'HLA-DRB1', 'SERPING1', 'ANXA1', 'TPM2', 'TMSB4X', 'CD69', 'CCL4', 'LAPTM5', 'GSN', 'APOE', 'STAT1', 'SPARCL1', 'IFI6', 'DUSP1', 'CXCR4', 'CCL5', 'UBE2L6', 'MYL9', 'SLC2A3', 'BST2', 'CAV1', 'CD52', 'ZFP36L2', 'HLA-DQB1', 'PDLIM1', 'TNFAIP3', 'CORO1A', 'RARRES3', 'TYMP', 'C1S', 'PTRF', 'PSME2', 'CYTIP', 'COL1A1', 'PSMB8', 'NNMT', 'HLA-DQA1', 'DUSP2', 'COL1A2', 'ARHGDIB', 'COL6A2', 'FOS', 'CCL2', 'BGN', 'ID3', 'TUBA1A', 'RAC2', 'LBH', 'HLA-DRB5', 'FCER1G', 'GBP1', 'C1QA', 'COTL1', 'LUM', 'MYL6', 'GBP2', 'BTG1', 'CD37', 'HCST', 'LIMD2', 'IFIT3', 'IL7R', 'PTPRC', 'NKG7', 'FYB', 'TAP1', 'LTB', 'S100A6', 'COL3A1', 'EMP3', 'A2M', 'JUNB', 'TPM1', 'FABP4', 'TXNIP', 'SAT1', 'FXYD5', 'CD3E', 'HLA-DMA', 'CTSC', 'TSC22D3', 'MYL12A', 'CST3', 'CNN2', 'PHLDA1', 'LYZ', 'IFI44L', 'MARCKS', 'ID1', 'DCN', 'TGFBI', 'BIRC3', 'THY1', 'LGALS1', 'GPX1', 'C1QB', 'CD2', 'CST7', 'COL6A3', 'ACAP1', 'IFI16', 'ITM2B', 'POSTN', 'LDHB', 'FLNA', 'FILIP1L', 'CDKN1A', 'IRF1', 'LGALS3', 'SERPINH1', 'EFEMP1', 'PSME1', 'SH3BGRL3', 'IL2RG', 'CD3D', 'SFRP2', 'TIMP3', 'ALOX5AP', 'GMFG', 'CYBA', 'TAGLN2', 'LAP3', 'RGS2', 'CLEC2B', 'TRBC2', 'NR4A2', 'S100A8', 'PSMB10', 'OPTN', 'CTSB', 'FTL', 'KRT17', 'AREG', 'MYH9', 'MMP7', 'COL6A1', 'GZMA', 'RNASE1', 'PCOLCE', 'PTN', 'PYCARD', 'ARPC2', 'SGK1', 'COL18A1', 'GSTP1', 'NPC2', 'SOD3', 'MFGE8', 'COL4A1', 'ADIRF', 'HLA-F', 'CD7', 'APOC1', 'TYROBP', 'C1QC', 'TAPBP', 'STK4', 'RHOH', 'RNF213', 'SOD2', 'TPM4', 'CALM1', 'CTGF', 'PNRC1', 'CD27', 'CD3G', 'PRKCDBP', 'PARP14', 'IGKC', 'IGFBP5', 'IFIT1', 'LY6E')
-
-gene_module[["gene_module_4"]]<-c('STMN1', 'H2AFZ', 'UBE2C', 'TUBA1B', 'BIRC5', 'HMGB2', 'ZWINT', 'TUBB', 'HMGB1', 'DEK', 'CDK1', 'HMGN2', 'UBE2T', 'TK1', 'RRM2', 'RANBP1', 'TYMS', 'CENPW', 'MAD2L1', 'CKS2', 'CKS1B', 'NUSAP1', 'TUBA1C', 'PTTG1', 'KPNA2', 'PCNA', 'CENPF', 'HIST1H4C', 'CDKN3', 'UBE2S', 'CCNB1', 'HMGA1', 'DTYMK', 'SNRPB', 'CDC20', 'NASP', 'MCM7', 'PLP2', 'TUBB4B', 'PLK1', 'CCNB2', 'MKI67', 'TOP2A', 'TPX2', 'PKMYT1', 'PRC1', 'SMC4', 'CENPU', 'RAN', 'DUT', 'PA2G4', 'BUB3', 'RAD21', 'SPC25', 'HN1', 'CDCA3', 'H2AFV', 'HNRNPA2B1', 'CCNA2', 'PBK', 'LSM5', 'DNAJC9', 'RPA3', 'TMPO', 'SNRPD1', 'CENPA', 'KIF20B', 'USP1', 'H2AFX', 'PPM1G', 'NUF2', 'SNRPG', 'KIF22', 'KIAA0101', 'DEPDC1', 'RNASEH2A', 'MT2A', 'STRA13', 'ANLN', 'CACYBP', 'NCL', 'NUDT1', 'ECT2', 'LSM4', 'ASF1B', 'CENPN', 'TMEM106C', 'CCT5', 'HSPA8', 'HMMR', 'SRSF3', 'AURKB', 'GGH', 'AURKA', 'TRIP13', 'CDCA8', 'HMGB3', 'HNRNPAB', 'FAM83D', 'CDC25B', 'GGCT', 'KNSTRN', 'CCT6A', 'PTGES3', 'ANP32E', 'CENPK', 'MCM3', 'DDX21', 'HSPD1', 'SKA2', 'CALM2', 'UHRF1', 'HINT1', 'ORC6', 'MZT1', 'MIS18BP1', 'WDR34', 'NAP1L1', 'TEX30', 'SFN', 'HSPE1', 'CENPM', 'TROAP', 'CDCA5', 'RACGAP1', 'SLC25A5', 'ATAD2', 'DBF4', 'KIF23', 'CEP55', 'SIVA1', 'SAC3D1', 'PSIP1', 'CLSPN', 'CCT2', 'DLGAP5', 'PSMA4', 'SMC2', 'AP2S1', 'RAD51AP1', 'MND1', 'ILF2', 'DNMT1', 'NUCKS1', 'LMNB1', 'RFC4', 'EIF5A', 'NPM3', 'ARL6IP1', 'ASPM', 'GTSE1', 'TOMM40', 'HNRNPA1', 'GMNN', 'FEN1', 'CDCA7', 'SLBP', 'TNFRSF12A', 'TM4SF1', 'CKAP2', 'CENPE', 'SRP9', 'DDX39A', 'COMMD4', 'RBM8A', 'CALM3', 'RRM1', 'ENO1', 'ANP32B', 'SRSF7', 'FAM96A', 'TPRKB', 'FABP5', 'PPIF', 'SERPINE1', 'TACC3', 'RBBP7', 'NEK2', 'CALM1', 'GMPS', 'EMP2', 'HMG20B', 'SMC3', 'HSPA9', 'NAA20', 'NUDC', 'RPL39L', 'PRKDC', 'CDCA4', 'HIST1H1A', 'HES6', 'SUPT16H', 'PTMS', 'VDAC3', 'PSMC3', 'ATP5G1', 'PSMA3', 'PGP', 'KIF2C', 'CARHSP1')
-
-gene_module[["gene_module_5"]]<-c('GJA1', 'SCGB2A2', 'ARMT1', 'MAGED2', 'PIP', 'SCGB1D2', 'CLTC', 'MYBPC1', 'PDZK1', 'MGP', 'SLC39A6', 'CCND1', 'SLC9A3R1', 'NAT1', 'SUB1', 'CYP4X1', 'STC2', 'CROT', 'CTSD', 'FASN', 'PBX1', 'SLC4A7', 'FOXA1', 'MCCC2', 'IDH1', 'H2AFJ', 'CYP4Z1', 'IFI27', 'TBC1D9', 'ANPEP', 'DHRS2', 'TFF3', 'LGALS3BP', 'GATA3', 'LTF', 'IFITM2', 'IFITM1', 'AHNAK', 'SEPP1', 'ACADSB', 'PDCD4', 'MUCL1', 'CERS6', 'LRRC26', 'ASS1', 'SEMA3C', 'APLP2', 'AMFR', 'CDV3', 'VTCN1', 'PREX1', 'TP53INP1', 'LRIG1', 'ANK3', 'ACLY', 'CLSTN1', 'GNB1', 'C1orf64', 'STARD10', 'CA12', 'SCGB2A1', 'MGST1', 'PSAP', 'GNAS', 'MRPS30', 'MSMB', 'DDIT4', 'TTC36', 'S100A1', 'FAM208B', 'STT3B', 'SLC38A1', 'DMKN', 'SEC14L2', 'FMO5', 'DCAF10', 'WFDC2', 'GFRA1', 'LDLRAD4', 'TXNIP', 'SCGB3A1', 'APOD', 'N4BP2L2', 'TNC', 'ADIRF', 'NPY1R', 'NBPF1', 'TMEM176A', 'GLUL', 'BMP2K', 'SLC44A1', 'GFPT1', 'PSD3', 'CCNG2', 'CGNL1', 'TMED7', 'NOVA1', 'ARCN1', 'NEK10', 'GPC6', 'SCGB1B2P', 'IGHG4', 'SYT1', 'SYNGR2', 'HSPA1A', 'ATP6AP1', 'TSPAN13', 'MT-ND2', 'NIFK', 'MT-ATP8', 'MT-ATP6', 'MT-CO3', 'EVL', 'GRN', 'ERH', 'CD81', 'NUPR1', 'SELENBP1', 'C1orf56', 'LMO3', 'PLK2', 'HACD3', 'RBBP8', 'CANX', 'ENAH', 'SCD', 'CREB3L2', 'SYNCRIP', 'TBL1XR1', 'DDR1', 'ERBB3', 'CHPT1', 'BANF1', 'UGDH', 'SCUBE2', 'UQCR10', 'COX6C', 'ATP5G1', 'PRSS23', 'MYEOV2', 'PITX1', 'MT-ND4L', 'TPM1', 'HMGCS2', 'ADIPOR2', 'UGCG', 'FAM129B', 'TNIP1', 'IFI6', 'CA2', 'ESR1', 'TMBIM4', 'NFIX', 'PDCD6IP', 'CRIM1', 'ARHGEF12', 'ENTPD5', 'PATZ1', 'ZBTB41', 'UCP1', 'ANO1', 'RP11-356O9.1', 'MYB', 'ZBTB44', 'SCPEP1', 'HIPK2', 'CDK2AP1', 'CYHR1', 'SPINK8', 'FKBP10', 'ISOC1', 'CD59', 'RAMP1', 'AFF3', 'MT-CYB', 'PPP1CB', 'PKM', 'ALDH2', 'PRSS8', 'NPW', 'SPR', 'PRDX3', 'SCOC', 'TMED10', 'KIAA0196', 'NDP', 'ZSWIM7', 'AP2A1', 'PLAT', 'SUSD3', 'CRABP2', 'DNAJC12', 'DHCR24', 'PPT1', 'FAM234B', 'DDX17', 'LRP2', 'ABCD3', 'CDH1', 'NFIA') 
-
-gene_module[["gene_module_6"]]<-c('AGR2', 'TFF3', 'SELM', 'CD63', 'CTSD', 'MDK', 'CD74', 'S100A13', 'IFITM3', 'HLA-B', 'AZGP1', 'FXYD3', 'IFITM2', 'RABAC1', 'S100A14', 'CRABP2', 'LTF', 'RARRES1', 'HLA-A', 'PPIB', 'HLA-C', 'S100A10', 'S100A9', 'TIMP1', 'DDIT4', 'S100A16', 'LGALS1', 'LAPTM4A', 'SSR4', 'S100A6', 'CD59', 'BST2', 'PDIA3', 'KRT19', 'CD9', 'FXYD5', 'SCGB2A2', 'NUCB2', 'TMED3', 'LY6E', 'CFD', 'ITM2B', 'PDZK1IP1', 'LGALS3', 'NUPR1', 'SLPI', 'CLU', 'TMED9', 'HLA-DRA', 'SPTSSB', 'TMEM59', 'KRT8', 'CALR', 'HLA-DRB1', 'IFI6', 'NNMT', 'CALML5', 'S100P', 'TFF1', 'ATP1B1', 'SPINT2', 'PDIA6', 'S100A8', 'HSP90B1', 'LMAN1', 'RARRES3', 'SELENBP1', 'CEACAM6', 'TMEM176A', 'EPCAM', 'MAGED2', 'SNCG', 'DUSP4', 'CD24', 'PERP', 'WFDC2', 'HM13', 'TMBIM6', 'C12orf57', 'DKK1', 'MAGED1', 'PYCARD', 'RAMP1', 'C11orf31', 'STOM', 'TNFSF10', 'BSG', 'TMED10', 'ASS1', 'PDLIM1', 'CST3', 'PDIA4', 'NDUFA4', 'GSTP1', 'TYMP', 'SH3BGRL3', 'PRSS23', 'P4HA1', 'MUC5B', 'S100A1', 'PSAP', 'TAGLN2', 'MGST3', 'PRDX5', 'SMIM22', 'NPC2', 'MESP1', 'MYDGF', 'ASAH1', 'APP', 'NGFRAP1', 'TMEM176B', 'C8orf4', 'KRT81', 'VIMP', 'CXCL17', 'MUC1', 'COMMD6', 'TSPAN13', 'TFPI', 'C15orf48', 'CD151', 'TACSTD2', 'PSME2', 'CLDN7', 'ATP6AP2', 'CUTA', 'MT2A', 'CYB5A', 'CD164', 'TM4SF1', 'SCGB1D2', 'GSTM3', 'EGLN3', 'LMAN2', 'IFI27', 'PPP1R1B', 'B2M', 'ANXA2', 'SARAF', 'MUCL1', 'CSRP1', 'NPW', 'SLC3A2', 'PYDC1', 'QSOX1', 'TSPAN1', 'GPX1', 'TMSB4X', 'FGG', 'GUK1', 'IL32', 'ATP6V0E1', 'BCAP31', 'CHCHD10', 'TSPO', 'TNFRSF12A', 'MT1X', 'PDE4B', 'HSPA5', 'SCD', 'SERINC2', 'PSCA', 'VAMP8', 'ELF3', 'TSC22D3', 'S100A7', 'GLUL', 'ZG16B', 'TMEM45A', 'APMAP', 'RPS26', 'CALU', 'OSTC', 'NCCRP1', 'SQLE', 'RPS28', 'SSR2', 'SOX4', 'CLEC3A', 'TMEM9', 'RPL10', 'MUC5AC', 'HLA-DPA1', 'ZNHIT1', 'AQP5', 'CAPG', 'SPINT1', 'NDFIP1', 'FKBP2', 'C1S', 'LDHA', 'NEAT1', 'RPL36A', 'S100A11', 'LCN2', 'TUBA1A', 'GSTK1', 'SEPW1', 'P4HB') 
-
-gene_module[["gene_module_7"]]<-c('KCNQ1OT1', 'AKAP9', 'RHOB', 'SOX4', 'VEGFA', 'CCNL1', 'RSRP1', 'RRBP1', 'ELF3', 'H1FX', 'FUS', 'NEAT1', 'N4BP2L2', 'SLC38A2', 'BRD2', 'PNISR', 'CLDN4', 'MALAT1', 'SOX9', 'DDIT3', 'TAF1D', 'FOSB', 'ZNF83', 'ARGLU1', 'DSC2', 'MACF1', 'GTF2I', 'SEPP1', 'ANKRD30A', 'PRLR', 'MAFB', 'NFIA', 'ZFAS1', 'MTRNR2L12', 'RNMT', 'NUPR1', 'MT-ND6', 'RBM39', 'HSPA1A', 'HSPA1B', 'RGS16', 'SUCO', 'XIST', 'PDIA6', 'VMP1', 'SUGP2', 'LPIN1', 'NDRG1', 'PRRC2C', 'CELF1', 'HSP90B1', 'JUND', 'ACADVL', 'PTPRF', 'LMAN1', 'HEBP2', 'ATF3', 'BTG1', 'GNAS', 'TSPYL2', 'ZFP36L2', 'RHOBTB3', 'TFAP2A', 'RAB6A', 'KMT2C', 'POLR2J3', 'CTNND1', 'PRRC2B', 'RNF43', 'CAV1', 'RSPO3', 'IMPA2', 'FAM84A', 'FOS', 'IGFBP5', 'NCOA3', 'WSB1', 'MBNL2', 'MMP24-AS1', 'DDX5', 'AP000769.1', 'MIA3', 'ID2', 'HNRNPH1', 'FKBP2', 'SEL1L', 'PSAT1', 'ASNS', 'SLC3A2', 'EIF4EBP1', 'HSPH1', 'SNHG19', 'RNF19A', 'GRHL1', 'WBP1', 'SRRM2', 'RUNX1', 'ASH1L', 'HIST1H4C', 'RBM25', 'ZNF292', 'RNF213', 'PRPF38B', 'DSP', 'EPC1', 'FNBP4', 'ETV6', 'SPAG9', 'SIAH2', 'RBM33', 'CAND1', 'CEBPB', 'CD44', 'NOC2L', 'LY6E', 'ANGPTL4', 'GABPB1-AS1', 'MTSS1', 'DDX42', 'PIK3C2G', 'IAH1', 'ATL2', 'ADAM17', 'PHIP', 'MPZ', 'CYP27A1', 'IER2', 'ACTR3B', 'PDCD4', 'COLCA1', 'KIAA1324', 'TFAP2C', 'CTSC', 'MYC', 'MT1X', 'VIMP', 'SERHL2', 'YPEL3', 'MKNK2', 'ZNF552', 'CDH1', 'LUC7L3', 'DDIT4', 'HNRNPR', 'IFRD1', 'RASSF7', 'SNHG8', 'EPB41L4A-AS1', 'ZC3H11A', 'SNHG15', 'CREB3L2', 'ERBB3', 'THUMPD3-AS1', 'RBBP6', 'GPBP1', 'NARF', 'SNRNP70', 'RP11-290D2.6', 'SAT1', 'GRB7', 'H1F0', 'EDEM3', 'KIAA0907', 'ATF4', 'DNAJC3', 'DKK1', 'SF1', 'NAMPT', 'SETD5', 'DYNC1H1', 'GOLGB1', 'C4orf48', 'CLIC3', 'TECR', 'HOOK3', 'WDR60', 'TMEM101', 'SYCP2', 'C6orf62', 'METTL12', 'HIST1H2BG', 'PCMTD1', 'PWWP2A', 'HIST1H3H', 'NCK1', 'CRACR2B', 'NPW', 'RAB3GAP1', 'TMEM63A', 'MGP', 'ANKRD17', 'CALD1', 'PRKAR1A', 'PBX1', 'ATXN2L', 'FAM120A', 'SAT2', 'TAF10', 'SFRP1', 'CITED2') 
-
-#maybe add Ecotypes as well, no given gene lists from the publication??
+dat_meta<-dat@meta.data
 
 
+swarbrick_out<-as.data.frame(dat_meta %>% group_by(sample,predicted.id) %>% summarize(
+  swarbrick_Myeloid=median(prediction.score.Myeloid,na.rm=T),
+  swarbrick_B.cells=median(prediction.score.B.cells,na.rm=T),
+  swarbrick_Plasmablasts=median(prediction.score.Plasmablasts,na.rm=T),
+  swarbrick_T.cells=median(prediction.score.T.cells,na.rm=T),
+  swarbrick_Normal.Epithelial=median(prediction.score.Normal.Epithelial,na.rm=T),
+  swarbrick_Cancer.Epithelial=median(prediction.score.Cancer.Epithelial,na.rm=T),
+  swarbrick_CAFs=median(prediction.score.CAFs,na.rm=T),
+  swarbrick_PVL=median(prediction.score.PVL,na.rm=T),
+  swarbrick_Endothelial=median(prediction.score.Endothelial,na.rm=T)
+))
 
-single_sample_cell_signature_transfer<-function(x){
-  if(x %in% 1:12){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-  dat_sub<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial"))
-
-  #embo lineage
-  dat<-AddModuleScore(dat,features=lineage_in,names=names(lineage_in),assay="SoupXRNA",seed=123,search=TRUE)
-  colnames(dat@meta.data)[startsWith(prefix="Cluster",colnames(dat@meta.data))]<-c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str") #Rename them
-
-  #Immune cell features and PAM50 canonical short list of genes
-  for(i in 1:length(features_in)){
-    features_in[[i]]<-features_in[[i]][features_in[[i]] %in% row.names(dat[["SoupXRNA"]])] #make sure gene names match
-    dat<-MetaFeature(dat,features=c(features_in[[i]]),meta.name=names(features_in)[i],assay="SoupXRNA")}
-
-  #SCSubype List of genes
-  #run only on epithelial cells
-  module_scores<-AddModuleScore(dat_sub,features=module_feats,assay="SoupXRNA",search=TRUE,name=names(module_feats)) #use add module function to add cell scores
-  module_scores<-module_scores@meta.data[seq(ncol(module_scores@meta.data)-(length(module_feats)-1),ncol(module_scores@meta.data))]
-  colnames(module_scores)<-names(module_feats) #it adds a number at the end to each name by default, which I don't like
-  dat<-AddMetaData(dat,metadata=module_scores)
-
-  #Swarbrick Gene Modules
-  #run only on epithelial cells
-  gene_module_out<-AddModuleScore(dat_sub,features=gene_module,assay="SoupXRNA",search=TRUE,name=names(gene_module)) #use add module function to add cell scores
-  gene_module_out<-gene_module_out@meta.data[seq(ncol(gene_module_out@meta.data)-(length(gene_module)-1),ncol(gene_module_out@meta.data))]#get the 7 added gene modules
-  colnames(gene_module_out)<-names(gene_module) 
-  dat<-AddMetaData(dat,metadata=gene_module_out)
-  saveRDS(dat,file=file_in)
-}
-
-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_cell_signature_transfer)
+embo_out<-as.data.frame(dat_meta %>% group_by(sample,predicted.id) %>% summarize(
+  EMBO_TAMs=median(EMBO_prediction.score.TAMs,na.rm=T),                            
+  EMBO_TAMs_2=median(EMBO_prediction.score.TAMs_2,na.rm=T),            
+  EMBO_B.cells=median(EMBO_prediction.score.B.cells,na.rm=T), 
+  EMBO_Myeloid=median(EMBO_prediction.score.Myeloid,na.rm=T),           
+  EMBO_Plasma.cells=median(EMBO_prediction.score.Plasma.cells,na.rm=T),
+  EMBO_T.cells=median(EMBO_prediction.score.T.cells,na.rm=T),          
+  EMBO_Epithelial=median(EMBO_prediction.score.epithelial,na.rm=T), 
+  EMBO_cycling.epithelial=median(EMBO_prediction.score.cycling.epithelial,na.rm=T),       
+  EMBO_CAFs=median(EMBO_prediction.score.CAFs,na.rm=T),   
+  EMBO_Pericytes=median(EMBO_prediction.score.Pericytes,na.rm=T),                    
+  EMBO_Endothelial=median(EMBO_prediction.score.Endothelial,na.rm=T),
+))     
 
 
-single_sample_EMBO_assignment<-function(x){
-  if(x %in% 1:12){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-  met<-dat@meta.data
-  met<-met[met$predicted.id %in% c("Cancer Epithelial","Normal Epithelial"),]
-  embo_list<-  c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str" )
-  max_embo<-lapply(1:nrow(met),function(i) embo_list[which(met[i,embo_list]==max(met[i,embo_list],na.rm=T))])
-  max_embo<-unlist(lapply(1:length(max_embo),function(i) do.call("paste",as.list(max_embo[[i]]))))
-  max_embo<-unlist(lapply(max_embo,function(i) gsub("EMBO_","",i)))
-  names(max_embo)<-row.names(met)
-  dat<-AddMetaData(dat,max_embo,col.name="EMBO_designation")
-  print(paste("Saving",outname))
-  saveRDS(dat,file=file_in)
-}
+row.names(swarbrick_out)<-paste(swarbrick_out$sample,swarbrick_out$predicted.id)
+type_cols<-c(
+#epithelial
+"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", 
+#immune
+"B-cells" ="#089099", "T-cells" ="#003147", 
+#other
+"CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
 
-single_sample_PAM50_assignment<-function(x){
-  if(x %in% 1:12){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-  met<-dat@meta.data
-  met<-met[met$predicted.id %in% c("Cancer Epithelial","Normal Epithelial"),]
-  pam_list<-  c("Basal_SC","Her2E_SC","LumA_SC","LumB_SC")
-  max_pam<-lapply(1:nrow(met),function(i) pam_list[which(met[i,pam_list]==max(met[i,pam_list],na.rm=T))])
-  max_pam<-unlist(lapply(1:length(max_pam),function(i) do.call("paste",as.list(max_pam[[i]]))))
-  names(max_pam)<-row.names(met)
-  dat<-AddMetaData(dat,max_pam,col.name="SCSubtype_designation")
-  print(paste("Saving",outname))
-  saveRDS(dat,file=file_in)
-}
+side_ha<-rowAnnotation(df= data.frame(celltype=swarbrick_out$predicted.id, sample=swarbrick_out$sample),
+                col=list(
+                    celltype=setNames(type_cols,names(type_cols)),
+                    cluster=setNames(colorRampPalette(brewer.pal(12, "Set3"))(length(unique(swarbrick_out$sample))),unique(swarbrick_out$sample))
+                    ))
+#seriate order for nice lookin heatmap
+o = seriate(swarbrick_out[,3:ncol(swarbrick_out)], method = "BEA_TSP")
+
+SWARBRICK_SUB<-swarbrick_out[,3:ncol(swarbrick_out)]
+swarbrick<-Heatmap(SWARBRICK_SUB,
+  left_annotation=side_ha,
+  row_order = get_order(o, 1), column_order=1:ncol(SWARBRICK_SUB),
+  col=colorRamp2(c(0, max(SWARBRICK_SUB)), c("white", "blue")),
+  show_row_names=T)
+
+EMBO_SUB<-embo_out[,3:ncol(embo_out)]
+EMBO<-Heatmap(EMBO_SUB,
+  column_order = 1:ncol(EMBO_SUB),
+  col=colorRamp2(c(0, max(EMBO_SUB,na.rm=T)), c("white", "red")),
+  row_order=get_order(o,1))
+
+pdf("predictions.heatmap.pdf",width=30)
+swarbrick+EMBO
+dev.off()
+system("slack -F predictions.heatmap.pdf ryan_todo")
 
 
+table(dat$sample)
+#     RM_1      RM_2      RM_3      RM_4  sample_1 sample_10 sample_11 sample_12
+#     1845      1461       869       922      3518     18789      5575     13303
+#sample_15 sample_16 sample_19 sample_20  sample_3  sample_4  sample_5  sample_6
+#     1486       574      2116       718      7698     15250      1444       661
+# sample_7  sample_8  sample_9
+#     2656       717      1445
 
-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_PAM50_assignment)
-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_EMBO_assignment)
-
+table(dat[dat$predicted.id%in%c("Cancer Epithelial","Normal Epithelial"),]$sample)
+#     RM_1      RM_2      RM_3      RM_4  sample_1 sample_10 sample_11 sample_12
+#     1367       129       313       169        53      7023      4678     11791
+#sample_15 sample_16 sample_19 sample_20  sample_3  sample_4  sample_5  sample_6
+#      704       356      1648       284      4466      2768       792       448
+# sample_7  sample_8  sample_9
+#     1860       415      1096
 
 ```
-Plot Features on Cells Per Sample
+
+## Run ChromVAR on all data
+<!-- Done -->
 
 ```R
 library(Signac)
 library(Seurat)
+library(JASPAR2020)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
 set.seed(1234)
-library(ggplot2)
+library(BiocParallel)
+register(SerialParam()) #using single core mode
+
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
-single_sample_epcam<-function(x){
-  if(x %in% 1:12){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".EPCAM.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".EPCAM.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".EPCAM.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-  DefaultAssay(dat)<-"SoupXRNA"
-  plt<-FeaturePlot(dat,features="EPCAM",reduction="multimodal_umap",order=T)
-  ggsave(plt,file=out_plot,width=10,height=10)
-  system(paste0("slack -F ",out_plot," ryan_todo"))
-  plt<-VlnPlot(dat,features="EPCAM",group.by="predicted.id")
-  ggsave(plt,file=paste0(out_plot,"VlnPlt.pdf"),width=10,height=10)
-  system(paste0("slack -F ",paste0(out_plot,"VlnPlt.pdf")," ryan_todo"))
-}
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+DefaultAssay(dat)<-"ATAC"
+# Get a list of motif position frequency matrices from the JASPAR database
+pfm <- getMatrixSet(
+  x = JASPAR2020,
+  opts = list(species =9606, all_versions = FALSE))
 
-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_epcam)
+main.chroms <- standardChromosomes(BSgenome.Hsapiens.UCSC.hg38)
+keep.peaks <- which(as.character(seqnames(granges(dat[["ATAC"]]))) %in% main.chroms)
+dat[["ATAC"]] <- subset(dat[["ATAC"]], features = rownames(dat[["ATAC"]][keep.peaks]))
+
+# Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
+peaks<-granges(dat[["ATAC"]])
+
+motif.matrix.hg38 <- CreateMotifMatrix(features = peaks, 
+  pwm = pfm, 
+  genome = BSgenome.Hsapiens.UCSC.hg38, 
+  use.counts = FALSE)
+
+motif.hg38 <- CreateMotifObject(data = motif.matrix.hg38, 
+  pwm = pfm)
+
+dat <- SetAssayData(object = dat, 
+  assay = 'ATAC', 
+  slot = 'motifs', 
+  new.data = motif.hg38)
+
+dat <- RegionStats(object = dat, 
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  assay="ATAC")
+
+dat <- RunChromVAR( object = dat,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  assay="ATAC")
+
+saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
 
 ```
+## Using Signac Gene Activity Function
+<!-- Done -->
+This is to generate enhancer promoter linkages at genes (by proximity). Running on all data.
+
+```R
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(patchwork)
+library(cicero)
+library(SeuratObjects)
+library(EnsDb.Hsapiens.v86)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+gene_activity<-GeneActivity(dat,process_n=10000)
+saveRDS(gene_activity,file="phase2.QC.GeneActivity.rds")
+
+dat[["GeneActivity"]]<-CreateAssayObject(counts=gene_activity)
+dat<- NormalizeData(
+  object = dat,
+  assay = "GeneActivity",
+  normalization.method = 'LogNormalize',
+  scale.factor = median(dat$nCount_GeneActivity)
+)
+saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
+
+```
+
 
 # Determine Tumor Cells and Clones via CNV Callers
+<!-- Done -->
 
 ## InferCNV on RNA Profiles
+<!-- Done -->
 
 Immune and stromal cells were used to 
 define the reference cell-inferred copy number profiles. Similar to analysis done in https://www.nature.com/articles/s41588-021-00911-1
@@ -1570,32 +2188,31 @@ ucsc.levels <- str_replace(string=paste("chr",seqlevels(annotation),sep=""), pat
 seqlevels(annotation) <- ucsc.levels #standard seq level change threw error, using a string replace instead
 
 ####RUNNING INFERCNV#####
-infercnv_per_sample<-function(x){
+infercnv_per_sample<-function(x,prediction="EMBO"){
   #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
     if(x %in% 1:12){
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
     outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
+    #dat<-readRDS(file_in)
   }else if(x %in% 13:20){
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
     outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
+    #dat<-readRDS(file_in)
   }else{
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
     outname<-x
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
   }
+  dat<-readRDS("phase2.QC.filt.SeuratObject.rds") #use QC controlled bulk seurat object as input
+  dat<-subset(dat,sample==outname) #subset data to sample specified by x and outname
 
   DefaultAssay(dat)<-"RNA" #using raw counts, and not SOUPX corrected counts for this
   dat$cnv_ref<-"FALSE"
+  if(prediction="EMBO"){
+  dat@meta.data[!(dat$EMBO_predicted.id %in% c("epithelial")),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+    }else{
   dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells","CAFs"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
-  dat<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial","Endothelial","T-cells","B-cells","Myeloid","Plasmablasts","PVL","CAFs")) 
+  dat<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial","Endothelial","T-cells","B-cells","Myeloid","Plasmablasts","PVL","CAFs"))
+  } 
 
   #write out gene order list
   gene_order<-annotation[!duplicated(annotation$gene_name),]
@@ -1627,31 +2244,30 @@ infercnv_per_sample<-function(x){
                                HMM_report_by="cell",
                                resume_mode=T,
                                HMM_type='i3',
-                               num_threads=10)
+                               num_threads=30)
   saveRDS(infercnv_obj,paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.png"," -T ","\"",outname,"\"" ," ryan_todo") )
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.19_HMM_predHMMi3.hmm_mode-samples.Pnorm_0.5.repr_intensities.png"," -T ","\"",outname,"\"" ," ryan_todo") )
 
 }
 
-infercnv_per_sample(x=as.character(args[1]))
+infercnv_per_sample(x=as.character(args[1]),prediction="EMBO")
 
 #lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),infercnv_per_sample)
-
-#3 state model is here (gene by cell name data is in i3_hmm@expr.data)
-#i3_hmm<-readRDS(paste0(wd,"/",outname,"_inferCNV","/19_HMM_pred.repr_intensitiesHMMi3.hmm_mode-samples.Pnorm_0.5.infercnv_obj"))?
 
 ```
 
 
 ### Batch script for InferCNV Per Sample Processing
+<!-- Done -->
+
 Calling infercnv_per_sample.R script written above
 
 infercnv_slurm.sh
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
-#SBATCH --array=0-3
+#SBATCH --array=0-18
 #SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
 #SBATCH --cpus-per-task=30 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
 #SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
@@ -1659,9 +2275,7 @@ infercnv_slurm.sh
 #SBATCH --time=120:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
-array_in=("3" "11" "12" "RM_4" )
-#--array=0-18
-#array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4")
+array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4")
 sample_in=${array_in[$SLURM_ARRAY_TASK_ID]}
 multiome_dir="/home/groups/CEDAR/mulqueen/projects/multiome"
 
@@ -1671,11 +2285,14 @@ srun Rscript ${multiome_dir}/infercnv_per_sample.R $sample_in
 ```
 
 ### Job submit all infercnv processing runs.
+<!-- Done -->
+
 ```bash
 sbatch infercnv_slurm.sh
 ```
 
 ## Run CaSpER on RNA profiles
+<!-- Done -->
 
 casper_per_sample.R
 ```R
@@ -1690,26 +2307,26 @@ setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 library(CaSpER) 
 args = commandArgs(trailingOnly=TRUE)
 
-casper_per_sample<-function(x){
+casper_per_sample<-function(x,prediction="EMBO"){
   if(x %in% 1:12){
     sample_name<-paste0("sample_",x)
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
     outname<-paste0("sample_",x)
     file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
   }else if(x %in% 13:20){
     sample_name<-paste0("sample_",x)
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
     outname<-paste0("sample_",x)
     file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
   }else{
     sample_name<-x
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
     outname<-x
     file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
   }
+  dat<-readRDS("phase2.QC.filt.SeuratObject.rds") #use QC controlled bulk seurat object as input
+  dat<-subset(dat,sample==outname) #subset data to sample specified by x and outname
+
   obj_name=basename(file_in)
   dir_in=dirname(file_in)
   system(paste0("mkdir ",dir_in,"/casper"))
@@ -1721,8 +2338,12 @@ casper_per_sample<-function(x){
 
   DefaultAssay(dat)<-"RNA"
   dat$cnv_ref<-"FALSE"
+  if(prediction="EMBO"){
+  dat@meta.data[!(dat$EMBO_predicted.id %in% c("epithelial")),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+    }else{
   dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells","CAFs"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
-  dat<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial","Endothelial","T-cells","B-cells","Myeloid","Plasmablasts","PVL","CAFs")) 
+  dat<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial","Endothelial","T-cells","B-cells","Myeloid","Plasmablasts","PVL","CAFs"))
+  } 
 
   control<-names(dat$cnv_ref == "TRUE") #pulling this from the inferCNV function
   log.ge <- as.matrix(dat@assays$RNA@data)
@@ -1802,13 +2423,12 @@ casper_per_sample(x=as.character(args[1]))
 
 #lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"), function(x) casper_per_sample(x))
 
-#casper discretized matrix:
-#readRDS(paste0(dir_in,"/casper/",sample_name,".finalgenemat.rds"))
-
 ```
 
 
 ### Batch script for Casper Per Sample Processing
+<!-- Done -->
+
 Calling casper_per_sample.R script written above
 
 casper_slurm.sh
@@ -1831,11 +2451,15 @@ srun Rscript ${multiome_dir}/casper_per_sample.R $sample_in
 ```
 
 ### Job submit all casper processing runs.
+<!-- Done -->
+
 ```bash
 sbatch casper_slurm.sh
 ```
 
 ## Run CopyKat on RNA profiles
+<!-- Done -->
+
 https://github.com/navinlabcode/copykat
 
 copykat_per_sample.sh
@@ -1849,51 +2473,85 @@ library(copykat)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 args = commandArgs(trailingOnly=TRUE)
 
-copykat_per_sample<-function(x){
+copykat_per_sample<-function(x,prediction="EMBO"){
   if(x %in% 1:12){
     sample_name<-paste0("sample_",x)
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
     outname<-paste0("sample_",x)
     file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
   }else if(x %in% 13:20){
     sample_name<-paste0("sample_",x)
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
     outname<-paste0("sample_",x)
     file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
   }else{
     sample_name<-x
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
     outname<-x
     file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
   }
+  dat<-readRDS("phase2.QC.filt.SeuratObject.rds") #use QC controlled bulk seurat object as input
+  dat<-subset(dat,sample==outname) #subset data to sample specified by x and outname
+
   obj_name=basename(file_in)
   dir_in=dirname(file_in)
   system(paste0("mkdir ",dir_in,"/copykat"))
   exp.rawdata <- as.matrix(dat@assays$RNA@counts)
 
-
   DefaultAssay(dat)<-"RNA"
   dat$cnv_ref<-"FALSE"
+  if(prediction="EMBO"){
+  dat@meta.data[!(dat$EMBO_predicted.id %in% c("epithelial")),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+    }else{
   dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells","CAFs"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
-  dat<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial","Endothelial","T-cells","B-cells","Myeloid","Plasmablasts","PVL","CAFs")) 
+  dat<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial","Endothelial","T-cells","B-cells","Myeloid","Plasmablasts","PVL","CAFs"))
+  } 
   cnv_ref<-row.names(dat@meta.data[dat@meta.data$cnv_ref=="TRUE",])
-  copykat_out <- copykat(rawmat=exp.rawdata, KS.cut=0.15,LOW.DR=0.05,UP.DR=0.2,id.type="S", ngene.chr=5, win.size=25, sam.name=sample_name, distance="euclidean", norm.cell.names=cnv_ref,output.seg="FALSE", plot.genes="FALSE", genome="hg20",n.cores=10)
+  copykat_out <- copykat(rawmat=exp.rawdata, KS.cut=0.15,LOW.DR=0.05,UP.DR=0.2,id.type="S", ngene.chr=0, win.size=25, sam.name=sample_name, distance="euclidean", norm.cell.names=cnv_ref,output.seg="FALSE", plot.genes="FALSE", genome="hg20",n.cores=10)
   saveRDS(copykat_out,paste0(dir_in,"/copykat/",sample_name,".copykat.RDS"))
 }
 
 copykat_per_sample(x=as.character(args[1]))
 
+rawmat=exp.rawdata; KS.cut=0.15;LOW.DR=0.05;UP.DR=0.2;id.type="S"; ngene.chr=5; win.size=25; sam.name=sample_name; distance="euclidean"; norm.cell.names=cnv_ref;output.seg="FALSE"; plot.genes="FALSE"; genome="hg20";n.cores=10
+
 #lapply(c(12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x) copykat_per_sample(x))
 #to set CNV discrete changes, as per correspondence suggetions with Ruli Gao, 1.5x SD threshold, 1.5 absolute distance, or use +/-0.25 as cutoff
 ```
 
+
+### Batch script for Copykat Per Sample Processing
+<!-- Done -->
+
+Calling copykat_per_sample.R script written above
+
+copykat_slurm.sh
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=0-18
+#SBATCH --tasks-per-node=5 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=5 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
+#SBATCH --time=24:00:00 ## ask for 1 hour on the node
+#SBATCH --
+
+array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4")
+sample_in=${array_in[$SLURM_ARRAY_TASK_ID]}
+multiome_dir="/home/groups/CEDAR/mulqueen/projects/multiome"
+
+srun Rscript ${multiome_dir}/copykat_per_sample.R $sample_in
+
+```
+
 ## CopyscAT for ATAC CNV Calling 
+<!-- Done -->
+
 Using scATAC calling algorithm copyscAT from git repo https://github.com/spcdot/CopyscAT/
 
 ### Installation...
+<!-- Done -->
+
 ```R
 library(devtools)
 Sys.setenv("R_REMOTES_NO_ERRORS_FROM_WARNINGS" = "true")
@@ -1907,6 +2565,7 @@ mkdir /home/groups/CEDAR/mulqueen/ref/copyscat
 ```
 
 ### Now Running samples
+<!-- Done -->
 
 Code from https://github.com/spcdot/CopyscAT/blob/master/copyscat_tutorial.R
 Initialize reference genome information for CopyscAT.
@@ -1919,13 +2578,15 @@ library(BSgenome.Hsapiens.UCSC.hg38)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
 #Generate tile references
-generateReferences(BSgenome.Hsapiens.UCSC.hg38,genomeText = "hg38",tileWidth = 1e6,outputDir = "/home/groups/CEDAR/mulqueen/ref/copyscat")
+generateReferences(BSgenome.Hsapiens.UCSC.hg38,genomeText = "hg38" ,tileWidth = 1e6,outputDir = "/home/groups/CEDAR/mulqueen/ref/copyscat")
 
 ##### REGULAR WORKFLOW #####
 
 ```
 
 copyscat_per_sample.R
+<!-- Done -->
+
 ```R
 library(Seurat)
 library(Signac)
@@ -1951,20 +2612,20 @@ copyscAT_per_sample<-function(x){
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
     outname<-paste0("sample_",x)
     file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
   }else if(x %in% 13:20){
     sample_name<-paste0("sample_",x)
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
     outname<-paste0("sample_",x)
     file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
   }else{
     sample_name<-x
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
     outname<-x
     file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
   }
+  dat<-readRDS("phase2.QC.filt.SeuratObject.rds") #use QC controlled bulk seurat object as input
+  dat<-subset(dat,sample==outname) #subset data to sample specified by x and outname
+
   obj_name=basename(file_in)
   dir_in=dirname(file_in)
   system(paste0("mkdir ",dir_in,"/copyscat"))
@@ -1987,10 +2648,18 @@ copyscAT_per_sample<-function(x){
   #PART 2: ASSESSMENT OF CHROMOSOME-LEVEL CNVs 
   #ALTERNATE METHOD FOR CNV CALLING (with normal cells as background)
   #Using same normal cell selection as used for CASPER and InferCNV
+  DefaultAssay(dat)<-"RNA"
   dat$cnv_ref<-"FALSE"
+  if(prediction="EMBO"){
+  dat@meta.data[!(dat$EMBO_predicted.id %in% c("epithelial")),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+    }else{
   dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells","CAFs"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
+  dat<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial","Endothelial","T-cells","B-cells","Myeloid","Plasmablasts","PVL","CAFs"))
+  } 
   control<-names(dat$cnv_ref == "TRUE") #pulling this from the inferCNV function
   #compute central tendencies based on normal cells only
+  colnames(scData_collapse)<-gsub(outname,"",colnames(scData_collapse))
+  control<-gsub(paste0(outname,"_"),"",control)
   control <- control[control %in% colnames(scData_collapse)] #filter control list to control cells that survived filter
   median_iqr <- computeCenters(scData_collapse %>% select(chrom,control),summaryFunction=summaryFunction)
   #setting medianQuantileCutoff to -1 and feeding non-neoplastic barcodes in as normalCells can improve accuracy of CNV calls
@@ -2023,13 +2692,13 @@ copyscAT_per_sample<-function(x){
 copyscAT_per_sample(x=as.character(args[1]))
 
 #lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2", "RM_3","RM_4",4,10,12),copyscAT_per_sample)
-#Done
-copyscAT_per_sample(x=20)
 #copyscat_dat<-readRDS(file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs_matrix.rds"))
 
 ```
 
 ### Batch script for copyscAT Per Sample Processing
+<!-- Done -->
+
 Calling copyscat_per_sample.R script written above
 
 copyscat_slurm.sh
@@ -2053,159 +2722,20 @@ srun Rscript ${multiome_dir}/copyscat_per_sample.R $sample_in
 ```
 
 ### Job submit all copyscAT processing runs.
+<!-- Done -->
+
 ```bash
 sbatch copyscat_slurm.sh
 ```
+## HMMcopy Bulk Comparison across single-cell CNV Callers
+<!--Rerun-->
+HMMcopy comparison across CNV Callers and low-pass Whole genome data
 
-## Run IntClust on Samples
-Using iC10 CRAN Package https://cran.r-project.org/web/packages/iC10/iC10.pdf
-
-```R
-#install.packages("iC10")
-library(iC10)
-library(Seurat)
-library(Signac)
-#CN = ID (Sample Name) \t chromosome_name (Chr) \t loc.start (start) loc.end (end) seg.mean (log2ratio of segment)
-#OR
-#CN = Row (hgnc gene names) X Column (Sample)
-#Exp =  Row (hgnc gene names) X Column (Sample)
-
-#using InferCNV(gene level CNV calling) as CN matrix, and RNA data as Exp Matrix
-
-iC10_per_sample<-function(x){
-  #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
-  #dat is full path to seurat object
-  if(x %in% 1:12){
-    sample_name<-paste0("sample_",x)
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    sample_name<-paste0("sample_",x)
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    sample_name<-x
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-  obj_name=basename(file_in)
-  dir_in=dirname(file_in)
-  Idents(dat)<-dat$predicted.id
-  dat_ep<-subset(dat, cells = row.names(dat@meta.data[dat@meta.data$predicted.id%in% c("Normal Epithelial", "Cancer Epithelial"),]))
-  infercnv_obj<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
-  cnv<-log2(infercnv_obj@expr.data)
-  cnv<-cnv[,colnames(cnv) %in% colnames(dat_ep)]
-  exp<-dat_ep[["RNA"]]@counts
-
-  out<-matchFeatures(CN=cnv,Exp=exp,
-    CN.by.feat="gene",
-    Exp.by.feat="gene",
-    ref=NULL)
-  out<-normalizeFeatures(out, method="scale")
-  out<-iC10(out)
-  saveRDS(out,paste0(wd,"/",outname,"_iC10.Rds"))
-  dat<-AddMetaData(dat,out$class,col.name="ic10_class")
-  table(dat$ic10_class)
-  saveRDS(dat,file=file_in) #overwrite old file
-  print(paste("Finished Sample:",sample_name))
-}
-
-lapply(c(1,3,5,6,7,8,9,16,19,20,"RM_1","RM_2","RM_3",11,4,10,12), function(x) iC10_per_sample(x))
-#done 
-#15,"RM_4" not done
-```
-
-## Epithelial Subtyping Per Sample
-```R
-library(Seurat)
-library(Signac)
-library(ggplot2)
-library(dplyr)
-
-  #set up colors for samples
-  ###########Color Schema#################
-  type_cols<-c(
-  #epithelial
-  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-  "B-cells" ="#089099", "T-cells" ="#003147", #other
-  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
-  diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
-  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
-  ########################################
-  alpha_val=0.33
-
-epithelial_class_persample<-function(x){
-  if(x %in% 1:12){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-  }
-  dat<-readRDS(file=file_in)
-  atac_sub<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial"))
-  if(!("ic10_class" %in% colnames(atac_sub@meta.data))){
-    atac_sub$ic10_class<-"NA"
-  }
-  plt_cell_count<-atac_sub@meta.data[,c("sample","predicted.id","diagnosis","molecular_type","PAM50_designation","EMBO_designation","ic10_class")]
-  print(outname)
-  return(plt_cell_count)
-}
-
-
-#grab all epithelial classifications
-cell_count<-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x)epithelial_class_persample(x))
-
-saveRDS(cell_count,"sample_epithelial_designations.rds") #save nested list of cell type assignment
-
-#plot output of celltype count per sample
-out<-readRDS("sample_epithelial_designations.rds")
-out<-do.call("rbind",out)
-colnames(out)<-c("sample","predicted.id","diagnosis","molecular_type","SCSubtype_designation","EMBO_designation","ic10_class") #rename just for simplicity
-#clean up for samples with equal values
-out[!(out$SCSubtype_designation %in% c("Basal","Her2","LumA","LumB","Normal")),]$SCSubtype_designation<-NA
-  #set up colors for samples
-  ###########Color Schema#################
-  type_cols<-c(
-  #epithelial
-  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-  "B-cells" ="#089099", "T-cells" ="#003147", #other
-  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
-  diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
-  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
-  ########################################
-plt1<-ggplot(out,aes(x=sample,fill=SCSubtype_designation))+geom_bar(position="fill")+theme_minimal()+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
-plt2<-ggplot(out,aes(x=sample,fill=EMBO_designation))+geom_bar(position="fill")+theme_minimal()+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
-plt3<-ggplot(out,aes(x=sample,fill=ic10_class))+geom_bar(position="fill")+theme_minimal()+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
-plt<-plt1/plt2/plt3
-ggsave(plt,file="sample_epithelial_type_assignment.pdf")
-system("slack -F sample_epithelial_type_assignment.pdf ryan_todo")
-
-library(dplyr)
-write.table(out,file="sample_epithelial_type_assignment.tsv",col.names=T,row.names=F,sep="\t",quote=F)
-system("slack -F sample_epithelial_type_assignment.tsv ryan_todo") #note this was calculated per sample as well as in the merged data set,  the assumption is that they will be the same
-
-
-```
-
-
-# Comparison of Clones determined by CNV Callers
+hmmcopy_comparisons.R
 
 ```R
+#before running R increase slave limit 
+#ulimit -s 32000 # enlarge stack limit to 32 megs
 library(Signac)
 library(Seurat)
 library(EnsDb.Hsapiens.v86)
@@ -2218,851 +2748,23 @@ library(infercnv)
 library(ComplexHeatmap)
 library(circlize)
 library(patchwork)
+library(CaSpER) 
+library(SCOPE)
+library(WGSmapp)
+library(doParallel)
 library(reshape2)
+library(parallel)
+library(HMMcopy)
+library(RColorBrewer)
 library(philentropy)
-library(CaSpER)
 library(dendextend)
 library(ggalluvial)
+args = commandArgs(trailingOnly=TRUE)
 
-
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-  ###########Color Schema#################
-  type_cols<-c(
-  #epithelial
-  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-  "B-cells" ="#089099", "T-cells" ="#003147", #other
-  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
-  diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
-  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
-  pam50_colors<-c("Basal"="red","Her2"="pink","LumA"="blue","LumB"="cyan","Normal"="grey","NA"="black")
-  embo_colors<-c("Basal"="green","LP"="blue","ML"="orange","Str"="red","NA"="black")
-  ########################################
-
-plotting_copyscat_persample<-function(x){
-  if(x %in% 1:12){
-    sample_name<-paste0("sample_",x)
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    sample_name<-paste0("sample_",x)
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    sample_name<-x
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-  obj_name=basename(file_in)
-  dir_in=dirname(file_in)
-
-  copyscat_out<-readRDS(paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs.rds"))
-  cnv_dat<-(copyscat_out[[3]])
-  row.names(cnv_dat)<-cnv_dat[,1]
-  cnv_dat<-cnv_dat[,2:ncol(cnv_dat)]
-  cnv_dat<-cnv_dat[,colnames(cnv_dat) %in% c('chr1p', 'chr1q', 'chr2p', 'chr2q', 'chr3p', 'chr3q', 'chr4p', 'chr5q', 'chr6p', 'chr6q', 'chr7p', 'chr7q', 'chr8p', 'chr8q', 'chr9p', 'chr9q', 'chr10p', 'chr10q', 'chr11p', 'chr11q', 'chr12p', 'chr12q', 'chr13p', 'chr13q', 'chr14p', 'chr14q', 'chr15p', 'chr15q', 'chr16p', 'chr16q', 'chr17p', 'chr17q', 'chr18p', 'chr18q', 'chr19p', 'chr19q', 'chr20p', 'chr20q', 'chr21p', 'chr21q', 'chr22p', 'chr22q')] 
-
-  cnv_dat<-as.data.frame(cnv_dat)
-  dat$cnv_ref<-"FALSE"
-  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
-  DefaultAssay(dat)<-"RNA"
-
-  cnv_ref<-cnv_dat[row.names(cnv_dat) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="TRUE",]),]
-  cnv<-cnv_dat[row.names(cnv_dat) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="FALSE",]),]
-
-  col_fun = colorRamp2(c(0,2,4),c("blue","white","red"))
-  print("Performing distance calculation.")
-
-  dist_method="manhattan"
-  dist_x<-philentropy::distance(cnv,method=dist_method,as.dist.obj=T,use.row.names=T)
-  dend <- dist_x %>%  hclust(method="ward.D2") %>% as.dendrogram(edge.root=F,h=2) 
-  k_search<-find_k(dend,krange=2:10) #search for optimal K from 2-10
-  k_clus_number<-k_search$nc
-  print(paste("Determined ",k_clus_number," of clusters."))
-  k_clus_id<-k_search$pamobject$clustering
-  dend <- color_branches(dend, k = k_clus_number)    #split breakpoint object by clusters
-  saveRDS(dend,paste0(dir_in,"/copyscat/",sample_name,"copyscat_dend.rds"))
-
-  print("Generating heatmap of CNVs.")
-  
-  #set up heatmap annotation
-  met<-as.data.frame(dat@meta.data)
-  met_ref<-met[row.names(met) %in% row.names(cnv_ref),]
-  met<-met[row.names(met) %in% row.names(cnv),]
-  if(any(!(unique(met$PAM50_designation) %in% names(pam50_colors)))){
-  met[met$PAM50_designation %in% unique(met$PAM50_designation)[!(unique(met$PAM50_designation) %in% names(pam50_colors))],]$PAM50_designation<-"NA"}
-  if(any(!(unique(met$EMBO_designation) %in% names(embo_colors)))){
-  met[met$EMBO_designation %in% unique(met$EMBO_designation)[!(unique(met$EMBO_designation) %in% names(embo_colors))],]$EMBO_designation<-"NA"}
-
-  read_count_col<-colorRamp2(c(min(met$gex_exonic_umis+met$gex_intronic_umis),
-    max(met$gex_exonic_umis+met$gex_intronic_umis)), 
-    c("white","black"))
-
-  ha = HeatmapAnnotation(which="row",
-    cell_type=met$predicted.id,
-    #cnv_ref=met$cnv_ref,
-    read_count= met$gex_exonic_umis+met$gex_intronic_umis,
-    pam_50=met$PAM50_designation,
-    embo=met$EMBO_designation,
-          col = list(cell_type = type_cols,
-            #cnv_ref=ref_cols,
-            read_count=read_count_col,
-            embo=embo_colors,
-            pam_50=pam50_colors))
-
-  plt1<-Heatmap(cnv,
-      show_row_names=F,
-      show_column_names=F,
-      column_order=1:ncol(cnv),
-      col=col_fun,
-      cluster_rows=dend,
-      left_annotation=ha#,
-      #column_split=factor(substr(colnames(cnv),1,nchar(colnames(cnv))-1),levels=unique(substr(colnames(cnv),1,nchar(colnames(cnv))-1)))
-      )
-  ha_ref = HeatmapAnnotation(which="row",
-    cell_type=met_ref$predicted.id,
-    #cnv_ref=met$cnv_ref,
-    read_count= met_ref$gex_exonic_umis+met_ref$gex_intronic_umis,
-          col = list(cell_type = type_cols,
-            #cnv_ref=ref_cols,
-            read_count=read_count_col))
-  plt1_ref<-Heatmap(cnv_ref,
-      show_row_names=F,
-      show_column_names=F,
-      column_order=1:ncol(cnv_ref),
-      col=col_fun,
-      left_annotation=ha_ref#,
-      #column_split=factor(substr(colnames(cnv),1,nchar(colnames(cnv))-1),levels=unique(substr(colnames(cnv),1,nchar(colnames(cnv))-1)))
-      )
-    pdf(paste0(dir_in,"/copyscat",sample_name,".copyscat.heatmap.pdf"),width=20)
-    print(plt1_ref)
-    print(plt1)
-    dev.off()
-    system(paste0("slack -F ",paste0(dir_in,"/copyscat",sample_name,".copyscat.heatmap.pdf")," ryan_todo"))
-}
-
-lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2", "RM_3","RM_4",4,10,12),plotting_copyscat_persample)
-#1,3,5,8
-
-```
-### Files for Travis
-
-Transfering to /home/groups/CEDAR/scATACcnv/Hisham_data/final_data:
-- Metadata
-- Counts matrix (atac)
-- peaks bed file
-- inferCNV folder
-- Casper folder
-- atac_possorted_bam.bam
-- Seurat Object
-
-```R
-library(Signac)
-library(Seurat)
-
-transfer_data<-function(x){
-if(x %in% 1:12){
-    sample_name<-paste0("sample_",x)
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    sample_name<-paste0("sample_",x)
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    sample_name<-x
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-  metadata<-as.data.frame(dat@meta.data)
-  counts_matrix<-as.data.frame(dat[["peaks"]]@counts)
-  peaks_bed_file<-as.data.frame(do.call("rbind",strsplit(row.names(dat[["peaks"]]),"-")))
-  write.table(metadata,file=paste0(wd,"/","metadata.tsv"),sep="\t",col.names=T,row.names=T)
-  write.table(counts_matrix,file=paste0(wd,"/","counts_matrix.tsv"),sep="\t",col.names=T,row.names=T)
-  write.table(peaks_bed_file,file=paste0(wd,"/","peaks.bed"),sep="\t",col.names=F,row.names=F)
-  print(paste("Finished sample:",sample_name))
-}
-
-lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12),function(x) transfer_data(x))
-```
-
-- Metadata
-- Counts matrix (atac)
-- peaks bed file
-- inferCNV folder
-- Casper folder
-- atac_possorted_bam.bam
-- Seurat Object
-
-```bash
-out_dir="/home/groups/CEDAR/scATACcnv/Hisham_data/final_data"
-mkdir $out_dir
-
-
-for i in 1 3 5 6 7 8 9 10 11 12; do
-  sample="sample_"${i}
-  in_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_"${i}"/outs"
-  mkdir ${out_dir}"/"${sample};
-  cp ${in_dir}"/metadata.tsv" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/peaks.bed" ${out_dir}"/sample_"${i}
-  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/sample_"${i}
-  cp -r ${in_dir}"/casper" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/"${sample}".QC.SeuratObject.rds" ${out_dir}"/sample_"${i} & done &
-
-
-for i in 15 16 19 20; do
-  sample="sample_"${i}
-  in_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_"${i}"/outs"
-  mkdir ${out_dir}"/"${sample};
-  cp ${in_dir}"/metadata.tsv" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/peaks.bed" ${out_dir}"/sample_"${i}
-  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/sample_"${i}
-  cp -r ${in_dir}"/casper" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/"${sample}".QC.SeuratObject.rds" ${out_dir}"/sample_"${i} & done &
-
-for i in "RM_1" "RM_2" "RM_3" "RM_4"; do
-  sample=${i}
-  in_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/"${i}"/outs"
-  mkdir ${out_dir}"/"${sample};
-  cp ${in_dir}"/metadata.tsv" ${out_dir}"/"${sample}
-  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/"${sample}
-  cp ${in_dir}"/peaks.bed" ${out_dir}"/"${sample}
-  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/"${sample}
-  cp -r ${in_dir}"/casper" ${out_dir}"/"${sample}
-  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/"${sample}
-  cp ${in_dir}"/"${sample}".QC.SeuratObject.rds" ${out_dir}"/"${sample} & done &
-
-```
-
-Call peaks per cell type
-
-```R
-library(Signac)
-library(Seurat)
-library(EnsDb.Hsapiens.v86)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(GenomeInfoDb)
-set.seed(1234)
-library(stringr)
-library(ggplot2)
-library(RColorBrewer)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/")
-
-
-dat<-readRDS("phase2.QC.SeuratObject.rds")
-
-#call peaks per predicted.id cell type
-peaks <- CallPeaks(dat, 
-  assay="ATAC",
-  group.by="predicted.id",
-  combine.peaks=FALSE,
-  macs2.path = "/home/groups/CEDAR/mulqueen/src/miniconda3/bin/macs2")
-  #use this set of peaks for all samples
-
-for(i in 1:length(peaks)){
-  # remove peaks on nonstandard chromosomes and in genomic blacklist regions
-  peak_name<-unique(dat$predicted.id)[i]
-  peaks_out <- keepStandardChromosomes(peaks[[i]], pruning.mode = "coarse")
-  peaks_out <- subsetByOverlaps(x = peaks_out, ranges = blacklist_hg38_unified, invert = TRUE)
-  print(paste0("Generated peakset for ",peak_name))
-  write.table(as.data.frame(peaks_out)[1:3],file=paste0(peak_name,".bed"),sep="\t",quote=F,col.names=F,row.names=F)
-}
-
-```
-
-```bash
-cp *bed /home/groups/CEDAR/scATACcnv/Hisham_data/final_data
-```
-
-# Recreate new merged Seurat object with filtered cells
-
-
-Final Merged Seurat Object from all phases after QC
-
-```R
-library(Signac)
-library(Seurat)
-library(EnsDb.Hsapiens.v86)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(GenomeInfoDb)
-set.seed(1234)
-library(stringr)
-library(ggplot2)
+x=args[1]
 
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
-# set up sample loop to load the RNA and ATAC data, save to seurat object
-merge_seurat<-function(x){
-  #function to handle different sample directories##################
-  if(x %in% 1:12){
-  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-  outname<-paste0("sample_",x)
-  }else if(x %in% 13:20){
-  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-  outname<-paste0("sample_",x)
-  }else{
-  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-  outname<-x
-  }
-  ####################################################################
-  #read in data
-  dat<-readRDS(paste0(wd,"/",outname,".QC.SeuratObject.rds"))
-  dat$sample<-outname #set up sample metadata
-  return(dat)}
-
-out<-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),merge_seurat)
-
-
-dat <- merge(out[[1]], y = as.list(out[2:length(out)]), add.cell.ids = c(paste0("sample_",c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20)),"RM_1","RM_2","RM_3","RM_4"), project = "all_data")
-saveRDS(dat,file="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/phase2.QC.SeuratObject.rds")
-```
-
-### Add EMBO cell predictions to merged seurat object
-
-```R
-library(Signac)
-library(Seurat)
-library(EnsDb.Hsapiens.v86)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(GenomeInfoDb)
-set.seed(1234)
-library(stringr)
-library(ggplot2)
-
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-dat_merged<-readRDS(file="phase2.QC.SeuratObject.rds")
-
-# set up sample loop to load the RNA and ATAC data, save to seurat object
-embo_metaextractor<-function(x){
-  #function to handle different sample directories##################
-  if(x %in% 1:12){
-  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-  outname<-paste0("sample_",x)
-  }else if(x %in% 13:20){
-  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-  outname<-paste0("sample_",x)
-  }else{
-  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-  outname<-x
-  }
-  ####################################################################
-  #read in data
-  dat<-readRDS(paste0(wd,"/",outname,".QC.SeuratObject.rds"))
-  dat_met<-dat@meta.data[startsWith(prefix="EMBO_prediction.",colnames(dat@meta.data))]
-  row.names(dat_met)<-paste(outname,row.names(dat_met),sep="_")#set up sample metadata
-  return(dat_met)}
-
-out_met<-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),embo_metaextractor)
-
-met<-do.call("rbind",out_met)
-
-dat_merged<-AddMetaData(dat_merged,met)
-saveRDS(dat_merged,file="phase2.QC.SeuratObject.rds")
-```
-
-### Perform Merged Object Clustering
-
-```R
-library(Signac)
-library(Seurat)
-library(EnsDb.Hsapiens.v86)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(GenomeInfoDb)
-set.seed(1234)
-library(stringr)
-library(ggplot2)
-library(RColorBrewer)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/")
-
-dat<-readRDS("phase2.QC.SeuratObject.rds")
-
-
-#RNA Processing
-DefaultAssay(dat) <- "SoupXRNA"
-dat <- SCTransform(dat)
-dat <- RunPCA(dat)
-dat<- RunUMAP(
-  object = dat,
-  reduction.name="rna_umap",
-  reduction="pca",
-  assay = "SCT",
-  verbose = TRUE,
-  dims=1:50
-)
-
-#DNA Accessibility processing
-DefaultAssay(dat) <- "peaks"
-dat <- FindTopFeatures(dat, min.cutoff = 5)
-dat <- RunTFIDF(dat)
-dat <- RunSVD(dat)
-dat<- RunUMAP(
-  object = dat,
-  reduction.name="atac_umap",
-  reduction="lsi",
-  assay = "peaks",
-  verbose = TRUE,
-  dims=2:40
-)
-
-
-# build a joint neighbor graph using both assays
-dat <- FindMultiModalNeighbors(
-  object = dat,
-  reduction.list = list("pca", "lsi"), 
-  dims.list = list(1:50, 2:40), #I think the ATAC UMAP does a better job integrating samples, maybe skip dim 1 for RNA also?
-  modality.weight.name = "RNA.weight",
-  verbose = TRUE
-)
-
-# build a joint UMAP visualization
-dat <- RunUMAP(
-  object = dat,
-  nn.name = "weighted.nn",
-  reduction.name="multimodal_umap",
-  assay = "RNA",
-  verbose = TRUE
-)
-#set up colors for samples
-  ###########Color Schema#################
-  type_cols<-c(
-  #epithelial
-  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-  "B-cells" ="#089099", "T-cells" ="#003147", #other
-  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
-  diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
-  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
-  ########################################
-
-my_cols<-colorRampPalette(brewer.pal(8, "Spectral"))(length(unique(dat$seurat_clusters)))
-alpha_val=0.33
-p1<-DimPlot(dat,reduction="rna_umap",group.by="predicted.id")+ggtitle("RNA UMAP")+theme_minimal()+scale_fill_manual(values=type_cols)
-p2<-DimPlot(dat,reduction="atac_umap",group.by="predicted.id")+ggtitle("ATAC UMAP")+theme_minimal()+scale_fill_manual(values=type_cols)
-p3<-DimPlot(dat,reduction="multimodal_umap",group.by="predicted.id")+ggtitle("Multimodal UMAP")+theme_minimal()+scale_fill_manual(values=type_cols)
-
-
-
-#Cluster on multimodal graph
-dat <- FindClusters(dat, resolution = 0.8, verbose = FALSE,graph="wknn")
-p4<-DimPlot(dat,reduction="multimodal_umap",group.by="seurat_clusters")+ggtitle("Multimodal UMAP Clusters")
-
-#Finally Plot results
-plt<-(p1 | p2)/(p3 | p4)
-ggsave(plt,file="phase2_multimodal.umap.pdf",width=10,height=10)
-system("slack -F phase2_multimodal.umap.pdf ryan_todo")
-saveRDS(dat,file="phase2.QC.SeuratObject.rds")
-
-```
-
-### Cistopic on merged samples
-
-```R
-library(Signac)
-library(Seurat)
-library(EnsDb.Hsapiens.v86)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(GenomeInfoDb)
-set.seed(1234)
-library(stringr)
-library(ggplot2)
-library(RColorBrewer)
-library(SeuratWrappers)
-library(cisTopic)
-library(patchwork)
-library(org.Hs.eg.db)
-library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-library(AUCell)
-library(rtracklayer)
-library(parallel)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-atac_sub<-readRDS("phase2.QC.SeuratObject.rds")
-wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-outname<-paste0("phase2")
-cistopic_counts_frmt<-atac_sub$peaks@counts
-row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
-sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
-print("made cistopic object")
-sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(10:30),nCores=5,addModels=FALSE)
-saveRDS(sub_cistopic_models,file=paste0(wd,"/",outname,".CisTopicObject.Rds"))
-
-sub_cistopic_models<-addCellMetadata(sub_cistopic_models, cell.data =atac_sub@meta.data)
-pdf(paste0(wd,"/",outname,"_model_selection.pdf"))
-par(mfrow=c(3,3))
-sub_cistopic_models<- selectModel(sub_cistopic_models, type='derivative')
-dev.off()
-system(paste0("slack -F ",paste0(wd,"/",outname,"_model_selection.pdf")," ryan_todo"))
-
-saveRDS(sub_cistopic_models,file=paste0(wd,"/",outname,".CisTopicObject.Rds"))
-sub_cistopic_models<-readRDS(file=paste0(wd,"/",outname,".CisTopicObject.Rds"))
-print("finshed running cistopic")
-
-#Add cell embeddings into seurat
-cell_embeddings<-as.data.frame(sub_cistopic_models@selected.model$document_expects)
-colnames(cell_embeddings)<-sub_cistopic_models@cell.names
-n_topics<-nrow(cell_embeddings)
-row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
-cell_embeddings<-as.data.frame(t(cell_embeddings))
-
-#Add feature loadings into seurat
-feature_loadings<-as.data.frame(sub_cistopic_models@selected.model$topics)
-row.names(feature_loadings)<-paste0("topic_",1:n_topics)
-feature_loadings<-as.data.frame(t(feature_loadings))
-
-#combined cistopic results (cistopic loadings and umap with seurat object)
-cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
-atac_sub@reductions$cistopic<-cistopic_obj
-n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic")) #add scaling for ncount peaks somewhere in here
-atac_sub<-RunUMAP(atac_sub,reduction="cistopic",dims=1:n_topics)
-atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics ) 
-atac_sub <- FindClusters(object = atac_sub, verbose = TRUE, graph.name="peaks_snn", resolution=0.2 ) 
-plt1<-DimPlot(atac_sub,reduction="umap",group.by=c("sample","seurat_clusters"))
-plt2<-FeaturePlot(atac_sub,reduction="umap",features=c("nucleosome_signal","TSS.enrichment","nCount_peaks","nFeature_peaks"))
-pdf(paste0(wd,"/",outname,".umap.pdf"),width=10)
-print(plt1)
-print(plt2)
-dev.off()
-system(paste0("slack -F ",paste0(wd,"/",outname,".umap.pdf")," ryan_todo"))
-saveRDS(atac_sub,"phase2.QC.SeuratObject.rds")
-```
-### Vibe check on cell type prediction
-
-Plot out a heatmap of cell type scores per sample and prediction. I'm trying to figure out how specific they are and if results are concordant. Also plotting top 10 genes from Swarbrick gross cell type identification as a heatmap
-Genes from Supplementary Table 9 (major classification).
-
-```R
-library(Signac)
-library(Seurat)
-set.seed(1234)
-library(ggplot2)
-library(ComplexHeatmap)
-library(dplyr)
-library(circlize)
-library(RColorBrewer)
-library(seriation)
-
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-dat_in<-readRDS("phase2.QC.SeuratObject.rds")
-
-dat<-dat_in@meta.data
-
-
-swarbrick_out<-as.data.frame(dat %>% group_by(sample,predicted.id) %>% summarize(
-  swarbrick_B.cells=median(prediction.score.B.cells,na.rm=T),
-  swarbrick_Myeloid=median(prediction.score.Myeloid,na.rm=T),
-  swarbrick_Plasmablasts=median(prediction.score.Plasmablasts,na.rm=T),
-  swarbrick_T.cells=median(prediction.score.T.cells,na.rm=T),
-  swarbrick_Normal.Epithelial=median(prediction.score.Normal.Epithelial,na.rm=T),
-  swarbrick_Cancer.Epithelial=median(prediction.score.Cancer.Epithelial,na.rm=T),
-  swarbrick_CAFs=median(prediction.score.CAFs,na.rm=T),
-  swarbrick_PVL=median(prediction.score.PVL,na.rm=T),
-  swarbrick_Endothelial=median(prediction.score.Endothelial,na.rm=T)
-))
-
-embo_out<-as.data.frame(dat %>% group_by(sample,predicted.id) %>% summarize(
-  EMBO_B.cells=median(EMBO_prediction.score.B.cells,na.rm=T), 
-  EMBO_TAMs=median(EMBO_prediction.score.TAMs,na.rm=T),                            
-  EMBO_TAMs_2=median(EMBO_prediction.score.TAMs_2,na.rm=T),            
-  EMBO_Myeloid=median(EMBO_prediction.score.Myeloid,na.rm=T),           
-  EMBO_Plasma.cells=median(EMBO_prediction.score.Plasma.cells,na.rm=T),
-  EMBO_T.cells=median(EMBO_prediction.score.T.cells,na.rm=T),          
-  EMBO_Epithelial=median(EMBO_prediction.score.epithelial,na.rm=T), 
-  EMBO_cycling.epithelial=median(EMBO_prediction.score.cycling.epithelial,na.rm=T),       
-  EMBO_CAFs=median(EMBO_prediction.score.CAFs,na.rm=T),   
-  EMBO_Pericytes=median(EMBO_prediction.score.Pericytes,na.rm=T),                    
-  EMBO_Endothelial=median(EMBO_prediction.score.Endothelial,na.rm=T),
-))     
-
-
-row.names(swarbrick_out)<-paste(swarbrick_out$sample,swarbrick_out$predicted.id)
-type_cols<-c(
-#epithelial
-"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", 
-#immune
-"B-cells" ="#089099", "T-cells" ="#003147", 
-#other
-"CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
-
-side_ha<-rowAnnotation(df= data.frame(celltype=swarbrick_out$predicted.id, sample=swarbrick_out$sample),
-                col=list(
-                    celltype=setNames(type_cols,names(type_cols)),
-                    cluster=setNames(colorRampPalette(brewer.pal(12, "Set3"))(length(unique(swarbrick_out$sample))),unique(swarbrick_out$sample))
-                    ))
-#seriate order for nice lookin heatmap
-o = seriate(swarbrick_out[,3:ncol(swarbrick_out)], method = "BEA_TSP")
-
-swarbrick<-Heatmap(swarbrick_out[,3:ncol(swarbrick_out)],
-  left_annotation=side_ha,
-  row_order = get_order(o, 1), column_order=1:ncol(swarbrick),
-  col=colorRamp2(c(0, max(swarbrick_out[,3:ncol(swarbrick_out)])), c("white", "blue")),
-  show_row_names=T)
-
-EMBO<-Heatmap(embo_out[,3:ncol(embo_out)],
-  column_order = 1:ncol(EMBO),
-  col=colorRamp2(c(0, max(embo_out[,3:ncol(embo_out)],na.rm=T)), c("white", "red")),
-  row_order=get_order(o,1))
-
-pdf("predictions.heatmap.pdf",width=30)
-swarbrick+EMBO
-dev.off()
-system("slack -F predictions.heatmap.pdf ryan_todo")
-
-
-table(dat$sample)
-#     RM_1      RM_2      RM_3      RM_4  sample_1 sample_10 sample_11 sample_12
-#     1845      1461       869       922      3518     18789      5575     13303
-#sample_15 sample_16 sample_19 sample_20  sample_3  sample_4  sample_5  sample_6
-#     1486       574      2116       718      7698     15250      1444       661
-# sample_7  sample_8  sample_9
-#     2656       717      1445
-
-table(dat[dat$predicted.id%in%c("Cancer Epithelial","Normal Epithelial"),]$sample)
-#     RM_1      RM_2      RM_3      RM_4  sample_1 sample_10 sample_11 sample_12
-#     1367       129       313       169        53      7023      4678     11791
-#sample_15 sample_16 sample_19 sample_20  sample_3  sample_4  sample_5  sample_6
-#      704       356      1648       284      4466      2768       792       448
-# sample_7  sample_8  sample_9
-#     1860       415      1096
-
-
-
-#########THIS PORTION TO BE FIXED#######################
-
-gene_list<-read.table("/home/groups/CEDAR/mulqueen/ref/breast_cancer_celltype_genelist.tsv",sep="\t",head=T)
-gene_list<-as.data.frame(gene_list %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC))
-gene_list<-gene_list[!duplicated(gene_list$gene),]
-
-rna_mat<-dat_in@assays$SoupXRNA@data
-rna_mat<-rna_mat[row.names(rna_mat) %in% gene_list$gene,]
-rna_mat<-as.data.frame(t(as.data.frame(rna_mat)))
-rna_mat$samp<-paste(dat$sample,dat$predicted.id)
-rna_mat<-as.data.frame(rna_mat) %>% group_by(samp) %>% summarise_at(vars(!starts_with("samp")), ~mean(as.numeric(.x), na.rm = TRUE))
-#rna_mat<-AggregateExpression(dat_in, assays = "SoupXRNA", features = gene_list$gene, return.seurat = FALSE, group.by = c("sample","predicted.id"), #sample slot = "data")
-rna_mat<-as.data.frame(rna_mat)
-row.names(rna_mat)<-rna_mat$samp
-rna_mat<-rna_mat[colnames(rna_mat) != "samp"]
-rna_mat<-as.data.frame(scale(rna_mat))
-
-
-gene_list<-gene_list[gene_list$gene %in% colnames(rna_mat),]
-top_ha<-columnAnnotation(df= data.frame(celltype=gene_list$cluster),
-                col=list(
-                    celltype=setNames(type_cols,names(type_cols))
-                    ))
-
-rna<-Heatmap(rna_mat,
-  column_order=1:ncol(rna_mat),
-  column_split=gene_list$cluster,
-  top_annotation=top_ha,
-  row_order = get_order(o, 1),  
-  col=colorRamp2(c(0, max(rna_mat,na.rm=T)), c("white", "black"))
-)
-
-
-
-pdf("predictions.heatmap.pdf",width=30)
-swarbrick+EMBO+rna
-dev.off()
-system("slack -F predictions.heatmap.pdf ryan_todo")
-
-```
-For some reason T-cells are showing high expression across the board. 
-
-
-## Run ChromVAR on all data
-
-```R
-library(Signac)
-library(Seurat)
-library(JASPAR2020)
-library(TFBSTools)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(patchwork)
-set.seed(1234)
-library(BiocParallel)
-register(SerialParam()) #using single core mode
-
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-dat<-readRDS("phase2.QC.SeuratObject.rds")
-DefaultAssay(dat)<-"ATAC"
-# Get a list of motif position frequency matrices from the JASPAR database
-pfm <- getMatrixSet(
-  x = JASPAR2020,
-  opts = list(species =9606, all_versions = FALSE))
-
-main.chroms <- standardChromosomes(BSgenome.Hsapiens.UCSC.hg38)
-keep.peaks <- which(as.character(seqnames(granges(dat[["ATAC"]]))) %in% main.chroms)
-dat[["ATAC"]] <- subset(dat[["ATAC"]], features = rownames(dat[["ATAC"]][keep.peaks]))
-
-# Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
-peaks<-granges(dat[["ATAC"]])
-
-motif.matrix.hg38 <- CreateMotifMatrix(features = peaks, 
-  pwm = pfm, 
-  genome = BSgenome.Hsapiens.UCSC.hg38, 
-  use.counts = FALSE)
-
-motif.hg38 <- CreateMotifObject(data = motif.matrix.hg38, 
-  pwm = pfm)
-
-dat <- SetAssayData(object = dat, 
-  assay = 'ATAC', 
-  slot = 'motifs', 
-  new.data = motif.hg38)
-
-dat <- RegionStats(object = dat, 
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  assay="ATAC")
-
-dat <- RunChromVAR( object = dat,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  assay="ATAC")
-
-saveRDS(dat,file="phase2.QC.SeuratObject.rds")
-
-```
-## Using Signac Gene Activity Function
-This is to generate enhancer promoter linkages at genes (by proximity). Running on all data.
-
-```R
-library(Signac)
-library(Seurat)
-library(SeuratWrappers)
-library(ggplot2)
-library(patchwork)
-library(cicero)
-library(SeuratObjects)
-library(EnsDb.Hsapiens.v86)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-dat<-readRDS("phase2.QC.SeuratObject.rds")
-gene_activity<-GeneActivity(dat,process_n=10000)
-saveRDS(gene_activity,file="phase2.QC.GeneActivity.rds")
-
-dat[["GeneActivity"]]<-CreateAssayObject(counts=gene_activity)
-dat<- NormalizeData(
-  object = dat,
-  assay = "GeneActivity",
-  normalization.method = 'LogNormalize',
-  scale.factor = median(dat$nCount_GeneActivity)
-)
-saveRDS(dat,file="phase2.QC.SeuratObject.rds")
-
-```
-
-## Genome tracks of celltype markers
-
-```R
-library(Signac)
-library(Seurat)
-library(SeuratWrappers)
-library(ggplot2)
-library(SeuratObjects)
-library(EnsDb.Hsapiens.v86)
-library(cowplot)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-dat<-readRDS("phase2.QC.SeuratObject.rds")
-
-x<-"ESR1"
-annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
-Idents(dat)<-dat$predicted.id 
-
-cov_plots<-function(dat=dat,gene_name="ESR1",outname="test",extend=2000){
-  
-  #get chromvar motif name
-  gene_TF <- ConvertMotifID(dat, name = gene_name,assay="ATAC")
-
-  # get gene location
-  gene_loc<-annotation[annotation$gene_name==gene_name,]
-  gene_loc<-as.data.frame(gene_loc,row.names=NULL)
-  gene_loc<-head(gene_loc[which(max(gene_loc$end-gene_loc$start)==c(gene_loc$end-gene_loc$start)),],n=1)
-  if(gene_loc$start<gene_loc$end){
-  gene_range<-paste0("chr",as.character(gene_loc$seqnames),"-",gene_loc$start-extend,"-",gene_loc$end+extend)
-  }else{
-  gene_range<-paste0("chr",as.character(gene_loc$seqnames),"-",gene_loc$start+extend,"-",gene_loc$end-extend)
-  }
-  annot_plot<-AnnotationPlot(object=dat, region=gene_range)
-  peak_plot<-PeakPlot(object=dat,region=gene_range)
-
-  cov_plot <- CoveragePlot(object = dat, region = gene_range, assay="peaks", annotation=FALSE,peaks=FALSE,links=FALSE) 
-  plt_rna<-VlnPlot(dat,features=gene_name,assay="RNA",slot="counts",flip=TRUE,pt.size=0)+coord_flip()+scale_x_discrete(limits = rev(levels(Idents(dat))))
-  plt_tf<-VlnPlot(dat,features=gene_TF,assay="chromvar",flip=TRUE,pt.size=0)+coord_flip()+scale_x_discrete(limits = rev(levels(Idents(dat))))
-
-  layout<-"
-  AAAAAA##
-  EEEEEE##
-  BBBBBBCD
-  BBBBBBCD
-  BBBBBBCD
-  "
-
-  plt<-wrap_plots(
-    A=annot_plot,
-    B=cov_plot,
-    C=plt_rna,
-    D=plt_tf,
-    E=peak_plot,
-    design=layout,heights = c(1,3,1,2,3,1,2),guides="collect")+ggtitle(outname)
-  return(plt)
-}
-
-
-#Markers with high cell type AUC determined in section Transcription Factor Expression Markers
-  prefix="dat"
-  da_tf_markers<-readRDS(paste0(prefix,"_celltype_TF_markers.RDS"))
-  da_tf_markers$gene
-
-lapply(c(da_tf_markers$gene),function(y){
-  plot<-cov_plots(dat=dat,gene_name=y,outname=y)
-  ggsave(plot,file=paste0("merged_coverageplt_",y,"celltype.pdf"),width=15,height=10)
-  system(paste0("slack -F ",paste0("merged_coverageplt_",y,"celltype.pdf")," ryan_todo"))
-  })
-```
-## Pseudobulk Clustering of Stroma, Immune and Epithelial Cells
-
-### Epithelial Clustering
-```R
-library(Signac)
-library(Seurat)
-library(SeuratWrappers)
-library(ggplot2)
-library(cisTopic)
-library(SeuratWrappers)
-library(patchwork)
-set.seed(1234)
-library(org.Hs.eg.db)
-library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-library(AUCell)
-library(rtracklayer)
-library(parallel)
-library(RColorBrewer)
-library(ggplot2)
-set.seed(1234)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-dat<-readRDS("phase2.QC.SeuratObject.rds")
-
-
-#set up colors for samples
 ###########Color Schema#################
 type_cols<-c(
 #epithelial
@@ -3071,196 +2773,540 @@ type_cols<-c(
 "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
 diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
 molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
+pam50_colors<-c("Basal"="red","Her2"="pink","LumA"="blue","LumB"="cyan","Normal"="grey","NA"="black")
+embo_colors<-c("Basal"="green","LP"="blue","ML"="orange","Str"="red","NA"="black")
 ########################################
-alpha_val=0.33
 
 
-celltype_cistopic_generation<-function(celltype_list=c("Cancer Epithelial","Normal Epithelial"),outname="epithelial"){
-  atac_sub<-subset(dat,predicted.id %in% celltype_list)
+getmode <- function(x) {
+  u <- unique(x)
+  tab <- tabulate(match(x, u))
+  u[tab == max(tab)]
+}
 
-  cistopic_counts_frmt<-atac_sub@assays$peaks@counts
-  row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
-  sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
-  print("made cistopic object")
-  sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(10:30),nCores=5,addModels=FALSE)
-  saveRDS(sub_cistopic_models,file=paste0(outname,".CisTopicObject.Rds"))
+set_up_ref<-function(bins,ref_outname,save_rds=FALSE){ #modified version of SCOPE's get_bam_bed function
+  genome <- BSgenome.Hsapiens.UCSC.hg38
+  ref <- bins[which(as.character(seqnames(bins)) %in% paste0("chr", c(seq_len(22), "X", "Y")))] #autosomes and X Y
 
-  sub_cistopic_models<- selectModel(sub_cistopic_models, type='derivative')
-  
-  saveRDS(sub_cistopic_models,file=paste0(outname,".CisTopicObject.Rds"))
-  sub_cistopic_models<-readRDS(file=paste0(outname,".CisTopicObject.Rds"))
-  print("finshed running cistopic")
-
-  #Add cell embeddings into seurat
-  cell_embeddings<-as.data.frame(sub_cistopic_models@selected.model$document_expects)
-  colnames(cell_embeddings)<-sub_cistopic_models@cell.names
-  n_topics<-nrow(cell_embeddings)
-  row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
-  cell_embeddings<-as.data.frame(t(cell_embeddings))
-
-  #Add feature loadings into seurat
-  feature_loadings<-as.data.frame(sub_cistopic_models@selected.model$topics)
-  row.names(feature_loadings)<-paste0("topic_",1:n_topics)
-  feature_loadings<-as.data.frame(t(feature_loadings))
-
-  #combined cistopic results (cistopic loadings and umap with seurat object)
-  cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
-  print("Cistopic Loading into Seurat")
-  atac_sub@reductions$cistopic<-cistopic_obj
-  n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic")) #add scaling for ncount peaks somewhere in here
-  print("Running UMAP")
-  atac_sub<-RunUMAP(atac_sub,reduction="cistopic",dims=1:n_topics)
-  atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics ) 
-  atac_sub <- FindClusters(object = atac_sub, verbose = TRUE, graph.name="peaks_snn", resolution=0.2 ) 
-  print("Plotting UMAPs")
-  plt1<-DimPlot(atac_sub,reduction="umap",group.by=c("seurat_clusters"))
-  pdf(paste0(outname,".cistopic.umap.pdf"),width=10)
-  print(plt1)
-  dev.off()
-  system(paste0("slack -F ",paste0(outname,".cistopic.umap.pdf")," ryan_todo"))
-  saveRDS(atac_sub,paste0(outname,".SeuratObject.rds"))
+  #Compute mappability for each reference bin.
+  mapp_gref<-mapp_hg38 #this is packaged with SCOPE, mappability across bins
+  mapp <- rep(1, length(ref))
+  #seqlevelsStyle(ref) <- "UCSC"
+  for (chr in as.character(unique(seqnames(ref)))) {
+      message("Getting mappability for ", chr, sep = "")
+      chr.index <- which(as.matrix(seqnames(ref)) == chr)
+      ref.chr <- ref[which(as.character(seqnames(ref)) == chr)]
+      mapp.chr <- rep(1, length(ref.chr))
+      overlap <- as.matrix(findOverlaps(ref.chr, mapp_gref))
+      for (i in unique(overlap[, 1])) {
+          index.temp <- overlap[which(overlap[, 1] == i), 2]
+          overlap.sub <- findOverlaps(ref.chr[i], mapp_gref[index.temp])
+          overlap.intersect <- pintersect(ref.chr[i][queryHits(overlap.sub)],mapp_gref[index.temp][subjectHits(overlap.sub)])
+          mapp.chr[i] <- sum((mapp_gref$score[index.temp]) * (width(overlap.intersect)))/sum(width(overlap.intersect))
+      }
+      mapp[chr.index] <- mapp.chr
   }
 
-celltype_cistopic_generation(celltype_list=c("Cancer Epithelial","Normal Epithelial"),outname="epithelial")
-celltype_cistopic_generation(celltype_list=c("B-cells","T-cells","Myeloid","Plasmablasts"),outname="immune")
-celltype_cistopic_generation(celltype_list=c("CAFs","Endothelial","PVL"),outname="stromal")
+  #Compute GC for each bin, also from SCOPE
+  gc <- rep(NA, length(ref))
+  for (chr in unique(seqnames(ref))) {
+      message("Getting GC content for chr ", chr, sep = "")
+      chr.index <- which(as.matrix(seqnames(ref)) == chr)
+      ref.chr <- IRanges(start = start(ref)[chr.index], end = end(ref)[chr.index])
+      if (chr == "X" | chr == "x" | chr == "chrX" | chr == "chrx") {
+          chrtemp <- "chrX"
+      }
+      else if (chr == "Y" | chr == "y" | chr == "chrY" | chr == "chry") {
+          chrtemp <- "chrY"
+      }
+      else {
+          chrtemp <- as.numeric(mapSeqlevels(as.character(chr), 
+              "NCBI")[1])
+      }
+      if (length(chrtemp) == 0) 
+      message("Chromosome cannot be found in NCBI database. ")
+      chrm <- unmasked(genome[[chrtemp]])
+      seqs <- Views(chrm, ref.chr)
+      af <- alphabetFrequency(seqs, baseOnly = TRUE, as.prob = TRUE)
+      gc[chr.index] <- round((af[, "G"] + af[, "C"]) * 100, 2)
+  }
 
-#Rerun other clustering now that data is subset
-celltype_clustering<-function(x,outname){
-  dat<-readRDS(x)
-
-  #set up colors for samples
-  my_cols = brewer.pal(1,"Spectral")
-  alpha_val=0.33
-
-  #RNA Processing
-  DefaultAssay(dat) <- "SoupXRNA"
-  dat <- SCTransform(dat)
-  dat <- RunPCA(dat)
-  dat<- RunUMAP(object = dat, reduction.name="rna_umap", reduction="pca", assay = "SoupXRNA", verbose = TRUE, dims=1:50 ) 
-  p1<-DimPlot(dat,reduction="rna_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("RNA UMAP")+theme(legend.position="none")
-
-  #DNA Accessibility processing
-  DefaultAssay(dat) <- "peaks"
-  dat <- FindTopFeatures(dat, min.cutoff = 5)
-  dat <- RunTFIDF(dat)
-  dat <- RunSVD(dat)
-  dat<- RunUMAP(object = dat, reduction.name="atac_umap", reduction="lsi", assay = "peaks", verbose = TRUE, dims=2:40 )
-  p2<-DimPlot(dat,reduction="atac_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("ATAC UMAP")+theme(legend.position="none")
-
-
-  # build a joint neighbor graph using both assays (ATAC LSI)
-    dat <- FindMultiModalNeighbors(object = dat, reduction.list = list("pca", "lsi"), dims.list = list(1:50, 2:40),modality.weight.name = "RNA.weight", verbose = TRUE )
-    # build a joint UMAP visualization
-    dat <- RunUMAP(object = dat, nn.name = "weighted.nn", reduction.name="multimodal_umap", assay = "SoupXRNA", verbose = TRUE ) 
-    p3<-DimPlot(dat,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Multimodal UMAP Doublets")+theme(legend.position="none")
-
-  #Try multimodal with cistopic
-    dat <- RunUMAP(object = dat, reduction="cistopic", reduction.name="cistopic_umap", dims=1:ncol(dat@reductions$cistopic), assay = "peaks", verbose = TRUE )
-    # build a joint neighbor graph using both assays
-    dat <- FindMultiModalNeighbors(object = dat, reduction.list = list("pca", "cistopic"), dims.list = list(1:50, 1:ncol(dat@reductions$cistopic)), modality.weight.name = "RNA.weight", verbose = TRUE )
-    # build a joint UMAP visualization
-    dat <- RunUMAP(object = dat, nn.name = "weighted.nn", reduction.name="multimodal_umap", assay = "SoupXRNA", verbose = TRUE )
-
-  #plot cistopic umap too
-  p4<-DimPlot(dat,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
-  p5<-DimPlot(dat,reduction="cistopic_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Cistopic UMAP")+theme(legend.position="none")
-  p6<-DimPlot(dat,reduction="multimodal_umap",group.by="sample")+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
-  #Cluster on multimodal graph
-  dat <- FindClusters(dat, resolution = 0.8, verbose = FALSE,graph="wknn")
-
-
-  #Finally Plot results
-  plt<-(p1 | p2)/(p3 | p4)/(p5|p6)
-  ggsave(plt,file=paste0(outname,".umap.pdf"))
-  system(paste0("slack -F ",paste0(outname,".umap.pdf")," ryan_todo"))
-  saveRDS(dat,file=paste0(outname,".SeuratObject.rds"))
+  ref@elementMetadata$gc<-gc
+  ref@elementMetadata$mapp<-mapp
+  if(save_rds){
+  saveRDS(ref,file=ref_outname)}
+  return(ref)
 }
 
-celltype_clustering(x="stromal.SeuratObject.rds",outname="stromal")
-celltype_clustering(x="immune.SeuratObject.rds",outname="immune")
-celltype_clustering(x="epithelial.SeuratObject.rds",outname="epithelial")
+get_sample_coverage<-function(bam_in="EXP220921HM_BCMM_WG01_S9_L002_R1_001.batch.dedup.RG.bam",ref,samp_name="sample_9"){
+  sampname<-samp_name
+    seg.dup <- read.table(system.file("extdata", "GRCh38GenomicSuperDup.tab", package = "WGSmapp"))
+    gaps <- read.table(system.file("extdata", "hg38gaps.txt", package = "WGSmapp"))
+    seg.dup <- seg.dup[!is.na(match(seg.dup[,1], paste('chr', c(seq_len(22), 'X', 'Y'), sep = ''))),]
+    seg.dup <- GRanges(seqnames = seg.dup[,1], ranges = IRanges(start = seg.dup[,2], end = seg.dup[,3]))
+    gaps <- gaps[!is.na(match(gaps[,2], paste('chr', c(seq_len(22), 'X', 'Y'), sep = ''))),]
+    gaps <- GRanges(seqnames = gaps[,2], ranges = IRanges(start = gaps[,3], end = gaps[,4]))
+    mask.ref <- sort(c(seg.dup, gaps))
+
+    Y <- matrix(nrow = length(ref), ncol = length(sampname))
+    rownames(Y) <- paste(seqnames(ref), ":", start(ref), "-", end(ref), sep = "")
+    colnames(Y) <- sampname
+    bamurl <- bam_in
+    what <- c("rname", "pos", "mapq", "qwidth")
+    flag <- scanBamFlag( isDuplicate = FALSE, isUnmappedQuery = FALSE, isNotPassingQualityControls = FALSE) # isFirstMateRead = TRUE #isPaired = TRUE,
+    param <- ScanBamParam(what = what, flag = flag)
+    bam <- scanBam(bamurl, param = param)[[1]]
+    message("Getting coverage for sample ", ": ", sampname, "...", sep = "")
+    
+    bam.ref <- GRanges(seqnames = bam$rname, ranges = IRanges(start = bam[["pos"]], width = bam[["qwidth"]]))
+    bam.ref <- bam.ref[bam$mapq >= 20] #Q20 threshold
+    bam.ref <- suppressWarnings(bam.ref[countOverlaps(bam.ref, mask.ref) == 0])
+    Y[, 1] <- countOverlaps(ref, bam.ref)
+    return(Y)
+}
+
+get_HMMcopy_counts<-function(in_bed,outname="sample_1",bulk_bam,ref_outname=NULL,MAKE_NEW_REF=FALSE,SMALL_REF=FALSE){
+    bins<-makeGRangesFromDataFrame(in_bed)
+    if(MAKE_NEW_REF|SMALL_REF){
+      if(MAKE_NEW_REF){
+      ref<-set_up_ref(bins=bins,ref_outname=ref_outname,save_rds=TRUE)}
+      else{ref<-set_up_ref(bins=bins,ref_outname=ref_outname,save_rds=FALSE)} #bins is granges of windows to use
+    } else {
+    ref<-readRDS(ref_outname) #bins is granges of windows to use
+    }
+    y<-get_sample_coverage(bam_in=bulk_bam,ref=ref,samp_name=outname)
+    count<-cbind(as.data.frame(ref),y)
+    colnames(count)<-c("chr","start","end","width","strand","gc","map","reads")
+    count<-count[c("chr","start","end","reads","gc","map")]
+    count$gc<-count$gc/100
+    count<-data.table(count)
+    count<-correctReadcount(count)
+    count$chr<-as.character(count$chr)
+    count<-count[count$chr!="chrY",]
+    seg<-HMMsegment(count)
+    count$state<-seg$state
+    count$state<-as.character(count$state)
+    count$chr<-factor(count$chr,levels=paste0("chr",c(1:22,"X")))
+    count<-count[order(count$chr,count$start),]
+    count$row_order<-1:nrow(count)
+    return(count)
+}
+
+plot_bulk_genome<-function(count){
+  plt<-ggplot(count,aes(x=row_order,y=copy,color=as.character(state)))+
+    scale_color_manual(values=cols)+
+    geom_point(size=1,alpha=1)+
+    ylab("")+
+    xlab("")+
+    ylim(-3,3)+
+    facet_grid(~chr,space="free",scales="free_x")+
+    theme_minimal()+
+    theme(axis.text.y = element_text(size=30),
+        axis.text.x = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.spacing.x=unit(0.1,"lines"),
+        strip.background = element_blank(), 
+        legend.position="none",
+        panel.border = element_rect(colour = "black", fill = NA,size=3))
+  return(plt)
+}
 
 
+plot_singlecell_cnvs<-function(dat=dat,cnv=t(infercnv_obj@expr.data),assay="infercnv",outname=outname,wd=wd,bulk_plot=plt_100kb,chr_split=infercnv_obj@gene_order$chr,sum_windows=hmmcopy_infercnv_win,file_in,amp_value,del_value){
+  #dat is full path to seurat object
+  dat_file_path=file_in
+  dat$cnv_ref<-"FALSE"
+  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #this is same as initial run of inferCNV, just didn't save seurat object
+  cnv_ref<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="TRUE",]),]
+  cnv<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="FALSE",]),]
+  col_fun = colorRamp2(c(min(unlist(cnv)), median(unlist(cnv)), max(unlist(cnv))), c("blue", "white", "red"))
+
+  #discretized window calls
+  cnv_discrete<-matrix(0,ncol=ncol(cnv),nrow=nrow(cnv))
+  cnv_discrete[which(cnv>=amp_value,arr.ind=T)]<-1
+  cnv_discrete[which(cnv<=del_value,arr.ind=T)]<--1
+  # discrete_col<-setNames(c("blue","white","red"),nm=c("-1","0","1"))
+
+  # dist_method="manhattan"
+  # dist_x<-philentropy::distance(cnv_discrete,method=dist_method,as.dist.obj=T,use.row.names=T)
+  # dend <- dist_x %>%  hclust(method="ward.D2") %>% as.dendrogram(edge.root=F,h=2) 
+  # k_search<-find_k(dend,krange=2:10) #search for optimal K from 2-10
+  # k_clus_number<-k_search$nc
+  # k_clus_id<-k_search$pamobject$clustering
+  # dend <- color_branches(dend, k = k_clus_number)    #split breakpoint object by clusters
+  # saveRDS(dend,file=paste0(wd,"/",outname,".",assay,".dend.Rds")) #save dendrogram
+
+  # #set up heatmap annotations
+  # met<-as.data.frame(dat@meta.data)
+  # met_ref<-met[row.names(met) %in% row.names(cnv_ref),]
+  # met<-met[row.names(met) %in% row.names(cnv),]
+  # if(any(!(unique(met$PAM50_designation) %in% names(pam50_colors)))){
+  #   met[met$PAM50_designation %in% unique(met$PAM50_designation)[!(unique(met$PAM50_designation) %in% names(pam50_colors))],]$PAM50_designation<-"NA"}
+  # if(any(!(unique(met$EMBO_designation) %in% names(embo_colors)))){
+  #   met[met$EMBO_designation %in% unique(met$EMBO_designation)[!(unique(met$EMBO_designation) %in% names(embo_colors))],]$EMBO_designation<-"NA"}
+  # read_count_col<-colorRamp2(c(min(met$gex_exonic_umis+met$gex_intronic_umis),
+  #   max(met$gex_exonic_umis+met$gex_intronic_umis)), 
+  #   c("white","black"))
+
+  # ha = HeatmapAnnotation(which="row",
+  #   cell_type=met$predicted.id,
+  #   read_count= met$gex_exonic_umis+met$gex_intronic_umis,
+  #   pam_50=met$PAM50_designation,
+  #   embo=met$EMBO_designation,
+  #         col = list(cell_type = type_cols,
+  #           read_count=read_count_col,
+  #           embo=embo_colors,
+  #           pam_50=pam50_colors))
+
+  # sum_windows<-sum_windows[colnames(cnv),]
+  # state_cols = setNames(brewer.pal(n=6,name="RdBu"), nm = c("6","5","4","3","2","1")) # black, red, green, blue
+  # copy_col<-colorRamp2(c(min(sum_windows$HMMcopy_mean_copymetric,na.rm=TRUE),0,
+  #   max(sum_windows$HMMcopy_mean_copymetric,na.rm=TRUE)), 
+  #   c("blue","white","red"))
+
+  # hwin = HeatmapAnnotation(which="column",
+  #   copy_state=sum_windows$HMMcopy_mode_copystate,
+  #   copy_metric=sum_windows$HMMcopy_mean_copymetric,
+  #         col = list(copy_state = state_cols,
+  #           copy_metric=copy_col))
+  # plt1<-Heatmap(cnv,
+  #     show_row_names=F,
+  #     show_column_names=F,
+  #     column_order=1:ncol(cnv),
+  #     col=col_fun,
+  #     cluster_rows=dend,
+  #     left_annotation=ha,
+  #     top_annotation=hwin,
+  #     column_split=chr_split)
+
+  # ha_ref = HeatmapAnnotation(which="row",
+  #   cell_type=met_ref$predicted.id,
+  #   read_count= met_ref$gex_exonic_umis+met_ref$gex_intronic_umis,
+  #         col = list(cell_type = type_cols,
+  #           read_count=read_count_col))
+  # plt1_ref<-Heatmap(cnv_ref,
+  #     show_row_names=F,
+  #     show_column_names=F,
+  #     column_order=1:ncol(cnv),
+  #     col=col_fun,
+  #     left_annotation=ha_ref,
+  #     column_split=chr_split)
+
+  # plt2<-Heatmap(cnv_discrete,
+  #     show_row_names=F,
+  #     show_column_names=F,
+  #     column_order=1:ncol(cnv),
+  #     col=discrete_col,
+  #     cluster_rows=dend,
+  #     left_annotation=ha,
+  #     top_annotation=hwin,
+  #     column_split=chr_split)
+
+  #   pdf(paste0(wd,"/",outname,".",assay,".heatmap.pdf"),width=40)
+  #   print(bulk_plot)
+  #   print(plt1_ref)
+  #   print(plt1)
+  #   print(plt2)
+  #   dev.off()
+  #   system(paste0("slack -F ",paste0(wd,"/",outname,".",assay,".heatmap.pdf")," ryan_todo"))
+    return(cnv_discrete)
+}
+
+HMMcopy_comparison<-function(x,file_in="phase2.QC.filt.SeuratObject.rds"){
+
+    if(x %in% 1:12){
+      sample_name<-paste0("sample_",x)
+      wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+      outname<-paste0("sample_",x)
+    }else if(x %in% 13:20){
+      sample_name<-paste0("sample_",x)
+      wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+      outname<-paste0("sample_",x)
+    }else{
+      sample_name<-x
+      wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+      outname<-x
+    }
+    dat<-readRDS(file_in)
+    dat<-subset(dat,sample==outname) #subset data to sample specified by x and outname
+    dir_in<-dirname(file_in)
+    bulk_bam<-bam_vec[outname]
+    bulk_bam<-paste(bamfolder,bulk_bam,sep="/")
+
+  #100kb windows
+    print(paste(outname,"100kb windows"))
+    ref_outname=paste(dirname(bulk_bam),"100kb_windows.rds",sep="/")
+    if(x==1){ MAKE_NEW_REF=FALSE
+    } else {MAKE_NEW_REF=FALSE} #only make the ref windows for the first sample
+    bins <- tileGenome(seqinfo(genome), tilewidth = 100 * 1000, cut.last.tile.in.chrom = TRUE) #set bins by other CNV callers
+    counts<-get_HMMcopy_counts(in_bed=bins,outname=outname,bulk_bam=bulk_bam,ref_outname=ref_outname,MAKE_NEW_REF=MAKE_NEW_REF)
+    saveRDS(counts,file=paste0(wd,"/",outname,"_bulkWGS_HMMcopy.100kb.rds"))
+    counts<-readRDS(file=paste0(wd,"/",outname,"_bulkWGS_HMMcopy.100kb.rds"))
+    plt_100kb<-plot_bulk_genome(counts)+ggtitle(paste(outname,"100kb Bins",mean(counts$start-counts$end)))
+
+  #InferCNV
+    assay="InferCNV"
+    #3 state model is here (gene by cell name data is in i3_hmm@expr.data)
+    i3_hmm<-readRDS(paste0(wd,"/",outname,"_inferCNV","/19_HMM_pred.repr_intensitiesHMMi3.hmm_mode-samples.Pnorm_0.5.infercnv_obj"))
+    print(paste(outname,"InferCNV windows"))
+    #infercnv_obj<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
+    infercnv_obj<-i3_hmm
+    #Format Data
+    infercnv_bed<-infercnv_obj@gene_order
+    cnv_in<-t(infercnv_obj@expr.data)
+    chr_in<-infercnv_obj@gene_order$chr
+    chr_in<-factor(chr_in,levels=unique(chr_in))
+    #Summarize Data over WGS
+    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(infercnv_bed)))
+    hmmcopy_infercnv_win<-cbind(infercnv_bed,
+      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(infercnv_bed),function(x) 
+          mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+      HMMcopy_mode_copystate=unlist(lapply(1:nrow(infercnv_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+    #Cluster and Plot
+    disc_infercnv<-plot_singlecell_cnvs(
+        dat=dat,
+        cnv=cnv_in,
+        assay=assay,
+        outname=outname,
+        wd=wd,
+        chr_split=chr_in,
+        bulk_plot=plt_100kb,
+        sum_windows=hmmcopy_infercnv_win,
+        file_in=file_in,
+        amp_value=1.5,
+        del_value=0.5)
+    write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+    write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_infercnv,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
+    write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_infercnv_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
+
+  #CASPER 
+    #casper discretized matrix:
+    dir_in<-wd
+    casper_cnv<-readRDS(paste0(dir_in,"/casper/",outname,".finalgenemat.rds"))
+    #Run different segmentation scales? https://rpubs.com/akdes/673120 (section 3)
+    assay="CASPER"
+    print(paste(outname,"CASPER windows"))
+    casper_obj<-readRDS(paste0(dir_in,"/casper/",outname,".finalobj.rds"))
+    #Format Data
+    casper_bed<-casper_obj@annotation[,c("Chr","start","end")]
+    row.names(casper_bed)<-casper_obj@annotation$Gene
+    casper_bed$Chr<-paste0("chr",casper_bed$Chr)
+    colnames(casper_bed)<-c("chr","start","end")
+    #Summarize Data over WGS
+    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(casper_bed)))
+    hmmcopy_casper_win<-cbind(casper_bed,
+      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(casper_bed),function(x) 
+          mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+      HMMcopy_mode_copystate=unlist(lapply(1:nrow(casper_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+    cnv_in<-t(casper_cnv)
+    cnv_in<-cnv_in[,colnames(cnv_in)%in%casper_obj@annotation.filt$Gene]
+    chr_in<-casper_obj@annotation.filt[casper_obj@annotation.filt$Gene %in% colnames(cnv_in),]
+    chr_in<-paste0("chr",chr_in$Chr)
+    chr_in<-factor(chr_in,levels=unique(chr_in))
+    hmmcopy_casper_win<-hmmcopy_casper_win[colnames(cnv_in),]
+    #Cluster and Plot
+    disc_casper<-plot_singlecell_cnvs(
+        dat=dat,
+        cnv=cnv_in,
+        assay="casper",
+        outname=outname,
+        wd=wd,
+        chr_split=chr_in,
+        bulk_plot=plt_100kb,
+        sum_windows=hmmcopy_casper_win,
+        file_in=file_in,
+        amp_value=1,
+        del_value=-1)
+     write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+    write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_casper,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
+     write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_casper_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
+
+  #CopyKAT 
+
+    assay="CopyKAT"
+    #to set CNV discrete changes, as per correspondence suggetions with Ruli Gao, 1.5x SD threshold, 1.5 absolute distance, or use +/-0.25 as cutoff
+    print(paste(outname,"CopyKat windows"))
+    copykat_obj<-readRDS(paste0(dir_in,"/copykat/",outname,".copykat.RDS"))
+    #Format Data
+    copykat_bed<-copykat_obj$CNAmat[1:2]
+    copykat_bed$chrom<-paste0("chr",copykat_bed$chrom)
+    copykat_bed[copykat_bed$chrom=="chr23",]$chrom<-"chrX"
+    bed_split<-split(x=copykat_bed,f=copykat_bed$chrom)
+    copykat_bed<-do.call("rbind",lapply(bed_split,function(x) {
+      print(x[1,1])
+      chrend<-chr_end[chr_end$chr==x[1,1],]$length
+      x$chromend<-c(x$chrompos[1:length(x$chrompos)-1]+diff(x$chrompos),chrend)
+      return(x)}))
+    colnames(copykat_bed)<-c("chr","start","end")
+    #Summarize Data over WGS
+    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(copykat_bed)))
+    hmmcopy_copykat_win<-cbind(copykat_bed,
+      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(copykat_bed),function(x) 
+          mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+      HMMcopy_mode_copystate=unlist(lapply(1:nrow(copykat_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+    row.names(hmmcopy_copykat_win)<-row.names(1:nrow(hmmcopy_copykat_win))
+    cnv_in<-t(copykat_obj$CNAmat[,4:ncol(copykat_obj$CNAmat)])
+    row.names(cnv_in)<-gsub("\\.","-",row.names(cnv_in))
+    chr_in<-paste0("chr",copykat_obj$CNAmat[,1])
+    chr_in<-factor(chr_in,levels=unique(chr_in))
+    sd_value<-sd(unlist(cnv_in))
+    norm_value<-mean(unlist(cnv_in))
+    amp_value<-norm_value+(sd_value*1.5)
+    del_value<-norm_value-(sd_value*1.5)
+    #Cluster and Plot
+    disc_copykat<-plot_singlecell_cnvs(
+        dat=dat,
+        cnv=cnv_in,
+        assay="CopyKAT",
+        outname=outname,
+        wd=wd,
+        chr_split=chr_in,
+        bulk_plot=plt_100kb,
+        sum_windows=hmmcopy_copykat_win,
+        file_in=file_in,
+        amp_value=amp_value,
+        del_value=del_value)
+     write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+      write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copykat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
+     write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_copykat_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
+
+  #COPYSCAT
+    assay="copyscat"
+    copyscat_dat<-readRDS(file=paste0(dir_in,"/copyscat/",outname,"copyscat_cnvs_matrix.rds"))
+    print(paste(outname,"Copyscat windows"))
+    copyscat_obj<-readRDS(file=paste0(dir_in,"/copyscat/",outname,"copyscat_cnvs.rds"))
+    #Format Data
+    copyscat_dat<-copyscat_dat[[1]]
+    row.names(copyscat_dat)<-copyscat_dat[,1]
+    copyscat_dat<-t(copyscat_dat[,2:ncol(copyscat_dat)])
+    copyscat_chr<-unique(copyscat_obj[[1]]$Chrom[!(copyscat_obj[[1]]$Chrom %in% row.names(copyscat_dat))])
+    copyscat_cellid<-colnames(copyscat_dat)
+    copyscat_cellid<-paste(outname,colnames(copyscat_dat),sep="_")
+    copyscat_cellid[length(copyscat_cellid)]<-"medianNorm"
+    copyscat_unreported <- data.frame(matrix(ncol = length(copyscat_cellid), nrow = length(copyscat_chr),data=2))
+    row.names(copyscat_unreported)<-copyscat_chr
+    colnames(copyscat_unreported)<-copyscat_cellid
+    colnames(copyscat_dat)<-copyscat_cellid
+    copyscat_dat<-rbind(copyscat_dat,copyscat_unreported)
+    copyscat_dat<-copyscat_dat[match(cytoband$chr,row.names(copyscat_dat)),]
+    copyscat_dat<-copyscat_dat[!startsWith(prefix="NA",row.names(copyscat_dat)),]
+    copyscat_bed<-cytoband[cytoband$chr %in% row.names(copyscat_dat),]
+    copyscat_bed$chr<-paste0("chr",copyscat_bed$chrom)
+    copyscat_bed<-copyscat_bed[,c("chr","start","end")]
+    #Summarize Data over WGS
+    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(copyscat_bed)))
+    hmmcopy_copyscat_win<-cbind(copyscat_bed,
+      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(copyscat_bed),function(x) mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+      HMMcopy_mode_copystate=unlist(lapply(1:nrow(copyscat_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+    cnv_in<-t(copyscat_dat)
+    chr_in<-substr(colnames(cnv_in),1,nchar(colnames(cnv_in))-1)
+    chr_in<-factor(chr_in,levels=unique(chr_in))
+    cnv_in<-cnv_in[1:nrow(cnv_in)-1,]#remove median norm measure
+    row.names(hmmcopy_copyscat_win)<-colnames(cnv_in)
+    #Cluster and Plot
+    disc_copyscat<-plot_singlecell_cnvs(
+        dat=dat,
+        cnv=cnv_in,
+        assay="CopySCAT",
+        outname=outname,
+        wd=wd,
+        chr_split=chr_in,
+        bulk_plot=plt_100kb,
+        sum_windows=hmmcopy_copyscat_win,
+        file_in=file_in,
+        amp_value=2,
+        del_value=0)
+     write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+      write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copyscat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
+     write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_copyscat_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
+
+
+  #RobustCNV
+    assay="RobustCNV"
+    robustcnv_obj<-read.csv(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/",outname,"_1MB_robustCNV.csv"))
+    colnames(robustcnv_obj)<-paste(outname,colnames(robustcnv_obj),sep="_")
+    #Format Data
+    colnames(robustcnv_obj)<-gsub(colnames(robustcnv_obj),pattern="\\.",replacement="-")
+    robustcnv_bed<-read.table(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/","window_1MB.bed"))
+    colnames(robustcnv_bed)<-c("chr","start","end","win")
+    robustcnv_bed<-robustcnv_bed[!robustcnv_bed$chr %in% c("chrX","chrY"),]
+    #Summarize Data over WGS
+    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(robustcnv_bed)))
+    hmmcopy_robustcnv_win<-cbind(robustcnv_bed,
+      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(robustcnv_bed),function(x) mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+      HMMcopy_mode_copystate=unlist(lapply(1:nrow(robustcnv_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+    cnv_in<-t(robustcnv_obj)
+    colnames(cnv_in)<-robustcnv_bed$win
+    row.names(hmmcopy_robustcnv_win)<-colnames(cnv_in)
+    chr_in<-hmmcopy_robustcnv_win$chr
+    sd_value<-sd(unlist(cnv_in))
+    norm_value<-mean(unlist(cnv_in))
+    amp_value<-norm_value+(sd_value*1.5)
+    del_value<-norm_value-(sd_value*1.5)
+    #Cluster and Plot
+    disc_robustcnv<-plot_singlecell_cnvs(
+        dat=dat,
+        cnv=cnv_in,
+        assay="RobustCNV",
+        outname=outname,
+        wd=wd,
+        chr_split=chr_in,
+        bulk_plot=plt_100kb,
+        sum_windows=hmmcopy_robustcnv_win,
+        file_in=file_in,
+        amp_value=amp_value,
+        del_value=del_value)
+    write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+      write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_robustcnv,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
+    write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_robustcnv_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
+}
+
+bamfolder <- "/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
+bamFile <- list.files(bamfolder, pattern = 'dedup.RG.bam$')
+bamdir <- file.path(bamfolder, bamFile)
+sampname_raw <- paste("sample",c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20),sep="_") #bams are ordered by sample number as well #3,11,12
+bam_vec<-setNames(bamFile,nm=sampname_raw)
+colnames(cytoband)<-c("chrom","start","end","arm")
+cytoband$chr<-paste0("chr",cytoband$chrom,cytoband$arm)
+chr_end<-data.frame(chr=BSgenome.Hsapiens.UCSC.hg38@seqinfo@seqnames,length=BSgenome.Hsapiens.UCSC.hg38@seqinfo@seqlengths)
+cols = setNames(brewer.pal(n=6,name="RdBu"), nm = c("6","5","4","3","2","1")) # black, red, green, blue
+genome <- BSgenome.Hsapiens.UCSC.hg38
+out_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/cnv_comparison"
+system(paste("mkdir",out_dir))
+HMMcopy_comparison(x)
+#lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20),HMMcopy_comparison) 
 
 ```
 
-### Integration: Now Clustering together on RNA profiles using harmony to integrate
+Writing out as a batch script for slurm job submission
 
-```R
-library(harmony)
-library(cisTopic)
-library(Signac)
-library(Seurat)
-library(GenomeInfoDb)
-library(ggplot2)
-set.seed(1234)
-library(EnsDb.Hsapiens.v86)
-library(Matrix)
+compare_hmm_slurm.sh
+```bash
+#!/bin/bash
+#SBATCH --nodes=1 #request 1 node
+#SBATCH --array=0-13
+#SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
+#SBATCH --cpus-per-task=10 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
+#SBATCH --time=24:00:00 ## ask for 1 hour on the node
+#SBATCH --
 
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "15" "16" "19" "20") 
+sample_in=${array_in[$SLURM_ARRAY_TASK_ID]}
+multiome_dir="/home/groups/CEDAR/mulqueen/projects/multiome"
 
-
-###########Color Schema#################
-type_cols<-c(
-#epithelial
-"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-"B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
-"CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
-
-diag_cols<-c("IDC"="red", "DCIS"="grey","NAT"="lightblue","ILC"="green")
-
-molecular_type_cols<-c("DCIS"="grey", "ER+/PR-/HER2-"="#EBC258", "ER+/PR-/HER2+"="#F7B7BB","ER+/PR+/HER2-"="#ff6699","NA"="lightblue")
-########################################
-
-
-harmony_sample_integration<-function(x,outname){
-  dat<-readRDS(x)
-  dat<-RunHarmony(dat,group.by.vars="sample",reduction.save="harmony_atac",assay.use="ATAC",reduction="cistopic",project.dim=F)
-  dat<-RunHarmony(dat,group.by.vars="sample",reduction.save="harmony_rna",assay.use="RNA",reduction="pca",project.dim=F)
-
-  dat<-RunUMAP(dat,reduction.name="harmonyumap_rna",reduction = "harmony_rna",dims=1:dim(dat@reductions$harmony_rna)[2]) 
-  dat<-RunUMAP(dat,reduction.name="harmonyumap_atac",reduction = "harmony_atac",dims=1:dim(dat@reductions$harmony_atac)[2]) 
-
-  # build a joint neighbor graph using both assays
-  dat <- FindMultiModalNeighbors(
-    object = dat,
-    reduction.list = list("harmony_rna", "harmony_atac"), 
-    dims.list = list(1:dim(dat@reductions$harmony_rna)[2], 1:dim(dat@reductions$harmony_atac)[2]), 
-    modality.weight.name = "multimodal.weight",
-    weighted.nn.name="multimodal_harmony.nn",
-    verbose = TRUE
-  )
-  # build a joint UMAP Harmony visualization
-  dat <- RunUMAP(object = dat, nn.name = "multimodal_harmony.nn",reduction.name="multimodal_harmony_umap", assay = "SoupXRNA", verbose = TRUE ) 
-
-  i="predicted.id"
-  plt1<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=type_cols)
-  ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
-  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
-
-  i="diagnosis"
-  plt1<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=diag_cols)
-  ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
-  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
-
-  i="sample"
-  plt1<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i)
-  ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
-  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
-
-  saveRDS(dat,file=x)
-}
-
-harmony_sample_integration(x="stromal.SeuratObject.rds",outname="stromal")
-harmony_sample_integration(x="immune.SeuratObject.rds",outname="immune")
-harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial")
-harmony_sample_integration(x="phase2.QC.SeuratObject.rds",outname="all_cells")
+srun Rscript ${multiome_dir}/compare_hmm_slurm.sh $sample_in
 
 ```
+
+Job submit all HMMcopy jobs for comparison
+```bash
+sbatch compare_hmm_slurm.sh
+```
+
 
 ## Transcription Factor Expression Markers
-
+<!-- Done -->
 Based on seurat tutorial https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html#wnn-analysis-of-10x-multiome-rna-atac-1
 Using average AUC to define markers that work across modalities (RNA, Gene Activity, and TF motifs). Doing this across cell types, and then within cell types across diagnoses.
 
@@ -3286,6 +3332,9 @@ type_cols<-c(
 "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
 "B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
 "CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
+
+embo_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
+       
 
 diag_cols<-c("IDC"="red", "DCIS"="grey","NAT"="lightblue","ILC"="green")
 
@@ -3504,18 +3553,10 @@ run_top_TFs<-function(obj=stromal,prefix="stromal",i="predicted.id"){
   plot_top_TFs(x=obj,tf_markers=da_tf_markers,prefix=prefix,group_by.=i,CHROMVAR=TRUE,GA=TRUE)
 }
 
-#stromal celltypes
-stromal<-readRDS("stromal.SeuratObject.rds")
-run_top_TFs(obj=stromal,prefix="stromal",i="predicted.id")
-
-#immune celltypes
-immune<-readRDS("immune.SeuratObject.rds")
-run_top_TFs(obj=immune,prefix="immune",i="predicted.id")
-
 
 #all cells celltypes
-dat<-readRDS("phase2.QC.SeuratObject.rds")
-run_top_TFs(obj=dat,prefix="dat",i="predicted.id")
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+run_top_TFs(obj=dat,prefix="dat",i="EMBO_predicted.id")
 
 #Per cell type, run diagnosis differences
 #Removing ILC cells first just because we don't have enough samples for comparison
@@ -3531,15 +3572,771 @@ for(k in unique(dat$predicted.id)){
 
 ```
 
-## Bar plots across cells
+## Epithelial Subtyping
+<!-- Rerun -->
+
+### Additional Cell Signatures
+<!-- Done -->
+From https://github.com/yunshun/HumanBreast10X/tree/main/Signatures
+
+```bash
+cd /home/groups/CEDAR/mulqueen/ref/embo
+#downloaded files from
+#https://github.com/yunshun/HumanBreast10X/blob/main/Signatures/Human-PosSigGenes.RData
+#https://github.com/yunshun/HumanBreast10X/blob/main/Signatures/ImmuneMarkers2.txt
+#https://github.com/yunshun/HumanBreast10X/blob/main/Signatures/PAM50.txt
+```
+
+### Use EMBO and Swarbrick Paper Cell Types to Define Signatures
+<!-- Rerun -->
 
 ```R
 library(Signac)
 library(Seurat)
+set.seed(1234)
 library(ggplot2)
-library(dplyr) 
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
- 
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+#cell lineage
+  load("/home/groups/CEDAR/mulqueen/ref/embo/Human-PosSigGenes.RData")
+  ls()
+  #[1] "Basal" "LP"    "ML"    "Str" #lineage types
+  lineage_in=list(EMBO_Basal=Basal,EMBO_LP=LP,EMBO_ML=ML,EMBO_Str=Str)
+
+#Immune markers
+  immune_in<-read.table("/home/groups/CEDAR/mulqueen/ref/embo/ImmuneMarkers2.txt",header=T,sep="\t")
+  immune_in<-lapply(split(immune_in,immune_in$CellType),function(x) x$Signatures)#split up data frame to a named list of genes per cell type
+  names(immune_in)<-paste0("EMBO_",names(immune_in))#rename the list just so we can track the source
+
+#using both the given PAM50 short list and the Swarbrick supplied more extensive gene list below
+  PAM50_in<-read.table("/home/groups/CEDAR/mulqueen/ref/embo/PAM50.txt",header=T,sep="\t")
+  PAM50_in<-lapply(split(PAM50_in,PAM50_in$Subtype),function(x) x$Gene)#split up data frame to a named list of genes per cell type
+  names(PAM50_in)<-paste0("PAM50_",names(PAM50_in))
+  features_in=c(immune_in,PAM50_in)   
+
+#SCSubtype Features determined by Swarbrick manuscript (Supp Table 4)
+  module_feats<-list()
+  module_feats[["Basal_SC"]]=c('EMP1', 'TAGLN', 'TTYH1', 'RTN4', 'TK1', 'BUB3', 'IGLV3.25', 'FAM3C', 'TMEM123', 'KDM5B', 'KRT14', 'ALG3', 'KLK6', 'EEF2', 'NSMCE4A', 'LYST', 'DEDD', 'HLA.DRA', 'PAPOLA', 'SOX4', 'ACTR3B', 'EIF3D', 'CACYBP', 'RARRES1', 'STRA13', 'MFGE8', 'FRZB', 'SDHD', 'UCHL1', 'TMEM176A', 'CAV2', 'MARCO', 'P4HB', 'CHI3L2', 'APOE', 'ATP1B1', 'C6orf15', 'KRT6B', 'TAF1D', 'ACTA2', 'LY6D', 'SAA2', 'CYP27A1', 'DLK1', 'IGKV1.5', 'CENPW', 'RAB18', 'TNFRSF11B', 'VPS28', 'HULC', 'KRT16', 'CDKN2A', 'AHNAK2', 'SEC22B', 'CDC42EP1', 'HMGA1', 'CAV1', 'BAMBI', 'TOMM22', 'ATP6V0E2', 'MTCH2', 'PRSS21', 'HDAC2', 'ZG16B', 'GAL', 'SCGB1D2', 'S100A2', 'GSPT1', 'ARPC1B', 'NIT1', 'NEAT1', 'DSC2', 'RP1.60O19.1', 'MAL2', 'TMEM176B', 'CYP1B1', 'EIF3L', 'FKBP4', 'WFDC2', 'SAA1', 'CXCL17', 'PFDN2', 'UCP2', 'RAB11B', 'FDCSP', 'HLA.DPB1', 'PCSK1N', 'C4orf48', 'CTSC')
+  module_feats[["Her2E_SC"]]=c('PSMA2', 'PPP1R1B', 'SYNGR2', 'CNPY2', 'LGALS7B', 'CYBA', 'FTH1', 'MSL1', 'IGKV3.15', 'STARD3', 'HPD', 'HMGCS2', 'ID3', 'NDUFB8', 'COTL1', 'AIM1', 'MED24', 'CEACAM6', 'FABP7', 'CRABP2', 'NR4A2', 'COX14', 'ACADM', 'PKM', 'ECH1', 'C17orf89', 'NGRN', 'ATG5', 'SNHG25', 'ETFB', 'EGLN3', 'CSNK2B', 'RHOC', 'PSENEN', 'CDK12', 'ATP5I', 'ENTHD2', 'QRSL1', 'S100A7', 'TPM1', 'ATP5C1', 'HIST1H1E', 'LGALS1', 'GRB7', 'AQP3', 'ALDH2', 'EIF3E', 'ERBB2', 'LCN2', 'SLC38A10', 'TXN', 'DBI', 'RP11.206M11.7', 'TUBB', 'CRYAB', 'CD9', 'PDSS2', 'XIST', 'MED1', 'C6orf203', 'PSMD3', 'TMC5', 'UQCRQ', 'EFHD1', 'BCAM', 'GPX1', 'EPHX1', 'AREG', 'CDK2AP2', 'SPINK8', 'PGAP3', 'NFIC', 'THRSP', 'LDHB', 'MT1X', 'HIST1H4C', 'LRRC26', 'SLC16A3', 'BACE2', 'MIEN1', 'AR', 'CRIP2', 'NME1', 'DEGS2', 'CASC3', 'FOLR1', 'SIVA1', 'SLC25A39', 'IGHG1', 'ORMDL3', 'KRT81', 'SCGB2B2', 'LINC01285', 'CXCL8', 'KRT15', 'RSU1', 'ZFP36L2', 'DKK1', 'TMED10', 'IRX3', 'S100A9', 'YWHAZ')
+  module_feats[["LumA_SC"]]=c('SH3BGRL', 'HSPB1', 'PHGR1', 'SOX9', 'CEBPD', 'CITED2', 'TM4SF1', 'S100P', 'KCNK6', 'AGR3', 'MPC2', 'CXCL13', 'RNASET2', 'DDIT4', 'SCUBE2', 'KRT8', 'MZT2B', 'IFI6', 'RPS26', 'TAGLN2', 'SPTSSA', 'ZFP36L1', 'MGP', 'KDELR2', 'PPDPF', 'AZGP1', 'AP000769.1', 'MYBPC1', 'S100A1', 'TFPI2', 'JUN', 'SLC25A6', 'HSP90AB1', 'ARF5', 'PMAIP1', 'TNFRSF12A', 'FXYD3', 'RASD1', 'PYCARD', 'PYDC1', 'PHLDA2', 'BZW2', 'HOXA9', 'XBP1', 'AGR2', 'HSP90AA1') 
+  module_feats[["LumB_SC"]]=c('UGCG', 'ARMT1', 'ISOC1', 'GDF15', 'ZFP36', 'PSMC5', 'DDX5', 'TMEM150C', 'NBEAL1', 'CLEC3A', 'GADD45G', 'MARCKS', 'FHL2', 'CCDC117', 'LY6E', 'GJA1', 'PSAP', 'TAF7', 'PIP', 'HSPA2', 'DSCAM.AS1', 'PSMB7', 'STARD10', 'ATF3', 'WBP11', 'MALAT1', 'C6orf48', 'HLA.DRB1', 'HIST1H2BD', 'CCND1', 'STC2', 'NR4A1', 'NPY1R', 'FOS', 'ZFAND2A', 'CFL1', 'RHOB', 'LMNA', 'SLC40A1', 'CYB5A', 'SRSF5', 'SEC61G', 'CTSD', 'DNAJC12', 'IFITM1', 'MAGED2', 'RBP1', 'TFF1', 'APLP2', 'TFF3', 'TRH', 'NUPR1', 'EMC3', 'TXNIP', 'ARPC4', 'KCNE4', 'ANPEP', 'MGST1', 'TOB1', 'ADIRF', 'TUBA1B', 'MYEOV2', 'MLLT4', 'DHRS2', 'IFITM2')
+  module_feats[["proliferation_score"]]<-c("BIRC5", "CCNB1", "CDC20", "NUF2", "CEP55", "NDC80", "MKI67", "PTTG1", "RRM2", "TYMS","UBE2C")
+
+#Swarbrick Gene Module Classification (Supp Table 5)
+gene_module<-list()
+  gene_module[["gene_module_1"]]<-c('ATF3', 'JUN', 'NR4A1', 'IER2', 'DUSP1', 'ZFP36', 'JUNB', 'FOS', 'FOSB', 'PPP1R15A', 'KLF6', 'DNAJB1', 'EGR1', 'BTG2', 'HSPA1B', 'HSPA1A', 'RHOB', 'CLDN4', 'MAFF', 'GADD45B', 'IRF1', 'EFNA1', 'SERTAD1', 'TSC22D1', 'CEBPD', 'CCNL1', 'TRIB1', 'MYC', 'ELF3', 'LMNA', 'NFKBIA', 'TOB1', 'HSPB1', 'BRD2', 'MCL1', 'PNRC1', 'IER3', 'KLF4', 'ZFP36L2', 'SAT1', 'ZFP36L1', 'DNAJB4', 'PHLDA2', 'NEAT1', 'MAP3K8', 'GPRC5A', 'RASD1', 'NFKBIZ', 'CTD-3252C9.4', 'BAMBI', 'RND1', 'HES1', 'PIM3', 'SQSTM1', 'HSPH1', 'ZFAND5', 'AREG', 'CD55', 'CDKN1A', 'UBC', 'CLDN3', 'DDIT3', 'BHLHE40', 'BTG1', 'ANKRD37', 'SOCS3', 'NAMPT', 'SOX4', 'LDLR', 'TIPARP', 'TM4SF1', 'CSRNP1', 'GDF15', 'ZFAND2A', 'NR4A2', 'ERRFI1', 'RAB11FIP1', 'TRAF4', 'MYADM', 'ZC3H12A', 'HERPUD1', 'CKS2', 'BAG3', 'TGIF1', 'ID3', 'JUND', 'PMAIP1', 'TACSTD2', 'ETS2', 'DNAJA1', 'PDLIM3', 'KLF10', 'CYR61', 'MXD1', 'TNFAIP3', 'NCOA7', 'OVOL1', 'TSC22D3', 'HSP90AA1', 'HSPA6', 'C15orf48', 'RHOV', 'DUSP4', 'B4GALT1', 'SDC4', 'C8orf4', 'DNAJB6', 'ICAM1', 'DNAJA4', 'MRPL18', 'GRB7', 'HNRNPA0', 'BCL3', 'DUSP10', 'EDN1', 'FHL2', 'CXCL2', 'TNFRSF12A', 'S100P', 'HSPB8', 'INSIG1', 'PLK3', 'EZR', 'IGFBP5', 'SLC38A2', 'DNAJB9', 'H3F3B', 'TPM4', 'TNFSF10', 'RSRP1', 'ARL5B', 'ATP1B1', 'HSPA8', 'IER5', 'SCGB2A1', 'YPEL2', 'TMC5', 'FBXO32', 'MAP1LC3B', 'MIDN', 'GADD45G', 'VMP1', 'HSPA5', 'SCGB2A2', 'TUBA1A', 'WEE1', 'PDK4', 'STAT3', 'PERP', 'RBBP6', 'KCNQ1OT1', 'OSER1', 'SERP1', 'UBE2B', 'HSPE1', 'SOX9', 'MLF1', 'UBB', 'MDK', 'YPEL5', 'HMGCS1', 'PTP4A1', 'WSB1', 'CEBPB', 'EIF4A2', 'S100A10', 'ELMSAN1', 'ISG15', 'CCNI', 'CLU', 'TIMP3', 'ARL4A', 'SERPINH1', 'SCGB1D2', 'UGDH', 'FUS', 'BAG1', 'IFRD1', 'TFF1', 'SERTAD3', 'IGFBP4', 'TPM1', 'PKIB', 'MALAT1', 'XBP1', 'HEBP2', 'GEM', 'EGR2', 'ID2', 'EGR3', 'HSPD1', 'GLUL', 'DDIT4', 'CDC42EP1', 'RBM39', 'MT-ND5', 'CSNK1A1', 'SLC25A25', 'PEG10', 'DEDD2')
+
+gene_module[["gene_module_2"]]<-c('AZGP1', 'ATP5C1', 'ATP5F1', 'NHP2', 'MGP', 'RPN2', 'C14orf2', 'NQO1', 'REEP5', 'SSR2', 'NDUFA8', 'ATP5E', 'SH3BGRL', 'PIP', 'PRDX2', 'RAB25', 'EIF3L', 'PRDX1', 'USMG5', 'DAD1', 'SEC61G', 'CCT3', 'NDUFA4', 'APOD', 'CHCHD10', 'DDIT4', 'MRPL24', 'NME1', 'DCXR', 'NDUFAB1', 'ATP5A1', 'ATP5B', 'ATOX1', 'SLC50A1', 'POLR2I', 'TIMM8B', 'VPS29', 'TIMP1', 'AHCY', 'PRDX3', 'RBM3', 'GSTM3', 'ABRACL', 'RBX1', 'PAFAH1B3', 'AP1S1', 'RPL34', 'ATPIF1', 'PGD', 'CANX', 'SELENBP1', 'ATP5J', 'PSME2', 'PSME1', 'SDHC', 'AKR1A1', 'GSTP1', 'RARRES3', 'ISCU', 'NPM1', 'SPDEF', 'BLVRB', 'NDUFB3', 'RPL36A', 'MDH1', 'MYEOV2', 'MAGED2', 'CRIP2', 'SEC11C', 'CD151', 'COPE', 'PFN2', 'ALDH2', 'SNRPD2', 'TSTD1', 'RPL13A', 'HIGD2A', 'NDUFC1', 'PYCARD', 'FIS1', 'ITM2B', 'PSMB3', 'G6PD', 'CST3', 'SH3BGRL3', 'TAGLN2', 'NDUFA1', 'TMEM183A', 'S100A10', 'NGFRAP1', 'DEGS2', 'ARPC5', 'TM7SF2', 'RPS10', 'LAMTOR5', 'TMEM256', 'UQCRB', 'TMEM141', 'KRTCAP2', 'HM13', 'NDUFS6', 'PARK7', 'PSMD4', 'NDUFB11', 'TOMM7', 'EIF6', 'UQCRHL', 'ADI1', 'VDAC1', 'C9orf16', 'ETFA', 'LSM3', 'UQCRH', 'CYB5A', 'SNRPE', 'BSG', 'SSR3', 'DPM3', 'LAMTOR4', 'RPS11', 'FAM195A', 'TMEM261', 'ATP5I', 'EIF5A', 'PIN4', 'ATXN10', 'ATP5G3', 'ARPC3', 'UBA52', 'BEX4', 'ROMO1', 'SLC25A6', 'SDCBP', 'EIF4EBP1', 'PFDN6', 'PSMA3', 'RNF7', 'SPCS2', 'CYSTM1', 'CAPG', 'CD9', 'GRHPR', 'SEPP1', 'ESF1', 'TFF3', 'ARPC1B', 'ANXA5', 'WDR83OS', 'LYPLA1', 'COMT', 'MDH2', 'DNPH1', 'RAB13', 'EIF3K', 'PTGR1', 'LGALS3', 'TPI1', 'COPZ1', 'LDHA', 'PSMD8', 'EIF2S3', 'NME3', 'EIF3E', 'MRPL13', 'ZFAND6', 'FAM162A', 'ATP6V0E1', 'TMED10', 'HNRNPA3', 'PPA1', 'SNX17', 'APOA1BP', 'TUFM', 'ECHS1', 'GLTSCR2', 'RPS27L', 'NDUFB1', 'SSBP1', 'PRDX6', 'ENO1', 'PPP4C', 'COA3', 'TCEAL4', 'MRPL54', 'LAMTOR2', 'PAIP2', 'DAP', 'RPL22L1', 'C6orf203', 'TECR', 'PEBP1', 'TMED9', 'ATP6V1F', 'ESD', 'EIF3I', 'SCO2', 'ATP5D', 'UAP1', 'TMEM258', 'COX17')
+
+gene_module[["gene_module_3"]]<-c('HLA-B', 'HLA-A', 'VIM', 'CD74', 'SRGN', 'HLA-C', 'IFI27', 'HLA-E', 'IFITM1', 'PSMB9', 'RGCC', 'S100A4', 'HLA-DRA', 'ISG15', 'IL32', 'SPARC', 'TAGLN', 'IFITM3', 'IFITM2', 'IGFBP7', 'CALD1', 'HLA-DPB1', 'HLA-DPA1', 'B2M', 'TIMP1', 'RGS1', 'FN1', 'ACTA2', 'HLA-DRB1', 'SERPING1', 'ANXA1', 'TPM2', 'TMSB4X', 'CD69', 'CCL4', 'LAPTM5', 'GSN', 'APOE', 'STAT1', 'SPARCL1', 'IFI6', 'DUSP1', 'CXCR4', 'CCL5', 'UBE2L6', 'MYL9', 'SLC2A3', 'BST2', 'CAV1', 'CD52', 'ZFP36L2', 'HLA-DQB1', 'PDLIM1', 'TNFAIP3', 'CORO1A', 'RARRES3', 'TYMP', 'C1S', 'PTRF', 'PSME2', 'CYTIP', 'COL1A1', 'PSMB8', 'NNMT', 'HLA-DQA1', 'DUSP2', 'COL1A2', 'ARHGDIB', 'COL6A2', 'FOS', 'CCL2', 'BGN', 'ID3', 'TUBA1A', 'RAC2', 'LBH', 'HLA-DRB5', 'FCER1G', 'GBP1', 'C1QA', 'COTL1', 'LUM', 'MYL6', 'GBP2', 'BTG1', 'CD37', 'HCST', 'LIMD2', 'IFIT3', 'IL7R', 'PTPRC', 'NKG7', 'FYB', 'TAP1', 'LTB', 'S100A6', 'COL3A1', 'EMP3', 'A2M', 'JUNB', 'TPM1', 'FABP4', 'TXNIP', 'SAT1', 'FXYD5', 'CD3E', 'HLA-DMA', 'CTSC', 'TSC22D3', 'MYL12A', 'CST3', 'CNN2', 'PHLDA1', 'LYZ', 'IFI44L', 'MARCKS', 'ID1', 'DCN', 'TGFBI', 'BIRC3', 'THY1', 'LGALS1', 'GPX1', 'C1QB', 'CD2', 'CST7', 'COL6A3', 'ACAP1', 'IFI16', 'ITM2B', 'POSTN', 'LDHB', 'FLNA', 'FILIP1L', 'CDKN1A', 'IRF1', 'LGALS3', 'SERPINH1', 'EFEMP1', 'PSME1', 'SH3BGRL3', 'IL2RG', 'CD3D', 'SFRP2', 'TIMP3', 'ALOX5AP', 'GMFG', 'CYBA', 'TAGLN2', 'LAP3', 'RGS2', 'CLEC2B', 'TRBC2', 'NR4A2', 'S100A8', 'PSMB10', 'OPTN', 'CTSB', 'FTL', 'KRT17', 'AREG', 'MYH9', 'MMP7', 'COL6A1', 'GZMA', 'RNASE1', 'PCOLCE', 'PTN', 'PYCARD', 'ARPC2', 'SGK1', 'COL18A1', 'GSTP1', 'NPC2', 'SOD3', 'MFGE8', 'COL4A1', 'ADIRF', 'HLA-F', 'CD7', 'APOC1', 'TYROBP', 'C1QC', 'TAPBP', 'STK4', 'RHOH', 'RNF213', 'SOD2', 'TPM4', 'CALM1', 'CTGF', 'PNRC1', 'CD27', 'CD3G', 'PRKCDBP', 'PARP14', 'IGKC', 'IGFBP5', 'IFIT1', 'LY6E')
+
+gene_module[["gene_module_4"]]<-c('STMN1', 'H2AFZ', 'UBE2C', 'TUBA1B', 'BIRC5', 'HMGB2', 'ZWINT', 'TUBB', 'HMGB1', 'DEK', 'CDK1', 'HMGN2', 'UBE2T', 'TK1', 'RRM2', 'RANBP1', 'TYMS', 'CENPW', 'MAD2L1', 'CKS2', 'CKS1B', 'NUSAP1', 'TUBA1C', 'PTTG1', 'KPNA2', 'PCNA', 'CENPF', 'HIST1H4C', 'CDKN3', 'UBE2S', 'CCNB1', 'HMGA1', 'DTYMK', 'SNRPB', 'CDC20', 'NASP', 'MCM7', 'PLP2', 'TUBB4B', 'PLK1', 'CCNB2', 'MKI67', 'TOP2A', 'TPX2', 'PKMYT1', 'PRC1', 'SMC4', 'CENPU', 'RAN', 'DUT', 'PA2G4', 'BUB3', 'RAD21', 'SPC25', 'HN1', 'CDCA3', 'H2AFV', 'HNRNPA2B1', 'CCNA2', 'PBK', 'LSM5', 'DNAJC9', 'RPA3', 'TMPO', 'SNRPD1', 'CENPA', 'KIF20B', 'USP1', 'H2AFX', 'PPM1G', 'NUF2', 'SNRPG', 'KIF22', 'KIAA0101', 'DEPDC1', 'RNASEH2A', 'MT2A', 'STRA13', 'ANLN', 'CACYBP', 'NCL', 'NUDT1', 'ECT2', 'LSM4', 'ASF1B', 'CENPN', 'TMEM106C', 'CCT5', 'HSPA8', 'HMMR', 'SRSF3', 'AURKB', 'GGH', 'AURKA', 'TRIP13', 'CDCA8', 'HMGB3', 'HNRNPAB', 'FAM83D', 'CDC25B', 'GGCT', 'KNSTRN', 'CCT6A', 'PTGES3', 'ANP32E', 'CENPK', 'MCM3', 'DDX21', 'HSPD1', 'SKA2', 'CALM2', 'UHRF1', 'HINT1', 'ORC6', 'MZT1', 'MIS18BP1', 'WDR34', 'NAP1L1', 'TEX30', 'SFN', 'HSPE1', 'CENPM', 'TROAP', 'CDCA5', 'RACGAP1', 'SLC25A5', 'ATAD2', 'DBF4', 'KIF23', 'CEP55', 'SIVA1', 'SAC3D1', 'PSIP1', 'CLSPN', 'CCT2', 'DLGAP5', 'PSMA4', 'SMC2', 'AP2S1', 'RAD51AP1', 'MND1', 'ILF2', 'DNMT1', 'NUCKS1', 'LMNB1', 'RFC4', 'EIF5A', 'NPM3', 'ARL6IP1', 'ASPM', 'GTSE1', 'TOMM40', 'HNRNPA1', 'GMNN', 'FEN1', 'CDCA7', 'SLBP', 'TNFRSF12A', 'TM4SF1', 'CKAP2', 'CENPE', 'SRP9', 'DDX39A', 'COMMD4', 'RBM8A', 'CALM3', 'RRM1', 'ENO1', 'ANP32B', 'SRSF7', 'FAM96A', 'TPRKB', 'FABP5', 'PPIF', 'SERPINE1', 'TACC3', 'RBBP7', 'NEK2', 'CALM1', 'GMPS', 'EMP2', 'HMG20B', 'SMC3', 'HSPA9', 'NAA20', 'NUDC', 'RPL39L', 'PRKDC', 'CDCA4', 'HIST1H1A', 'HES6', 'SUPT16H', 'PTMS', 'VDAC3', 'PSMC3', 'ATP5G1', 'PSMA3', 'PGP', 'KIF2C', 'CARHSP1')
+
+gene_module[["gene_module_5"]]<-c('GJA1', 'SCGB2A2', 'ARMT1', 'MAGED2', 'PIP', 'SCGB1D2', 'CLTC', 'MYBPC1', 'PDZK1', 'MGP', 'SLC39A6', 'CCND1', 'SLC9A3R1', 'NAT1', 'SUB1', 'CYP4X1', 'STC2', 'CROT', 'CTSD', 'FASN', 'PBX1', 'SLC4A7', 'FOXA1', 'MCCC2', 'IDH1', 'H2AFJ', 'CYP4Z1', 'IFI27', 'TBC1D9', 'ANPEP', 'DHRS2', 'TFF3', 'LGALS3BP', 'GATA3', 'LTF', 'IFITM2', 'IFITM1', 'AHNAK', 'SEPP1', 'ACADSB', 'PDCD4', 'MUCL1', 'CERS6', 'LRRC26', 'ASS1', 'SEMA3C', 'APLP2', 'AMFR', 'CDV3', 'VTCN1', 'PREX1', 'TP53INP1', 'LRIG1', 'ANK3', 'ACLY', 'CLSTN1', 'GNB1', 'C1orf64', 'STARD10', 'CA12', 'SCGB2A1', 'MGST1', 'PSAP', 'GNAS', 'MRPS30', 'MSMB', 'DDIT4', 'TTC36', 'S100A1', 'FAM208B', 'STT3B', 'SLC38A1', 'DMKN', 'SEC14L2', 'FMO5', 'DCAF10', 'WFDC2', 'GFRA1', 'LDLRAD4', 'TXNIP', 'SCGB3A1', 'APOD', 'N4BP2L2', 'TNC', 'ADIRF', 'NPY1R', 'NBPF1', 'TMEM176A', 'GLUL', 'BMP2K', 'SLC44A1', 'GFPT1', 'PSD3', 'CCNG2', 'CGNL1', 'TMED7', 'NOVA1', 'ARCN1', 'NEK10', 'GPC6', 'SCGB1B2P', 'IGHG4', 'SYT1', 'SYNGR2', 'HSPA1A', 'ATP6AP1', 'TSPAN13', 'MT-ND2', 'NIFK', 'MT-ATP8', 'MT-ATP6', 'MT-CO3', 'EVL', 'GRN', 'ERH', 'CD81', 'NUPR1', 'SELENBP1', 'C1orf56', 'LMO3', 'PLK2', 'HACD3', 'RBBP8', 'CANX', 'ENAH', 'SCD', 'CREB3L2', 'SYNCRIP', 'TBL1XR1', 'DDR1', 'ERBB3', 'CHPT1', 'BANF1', 'UGDH', 'SCUBE2', 'UQCR10', 'COX6C', 'ATP5G1', 'PRSS23', 'MYEOV2', 'PITX1', 'MT-ND4L', 'TPM1', 'HMGCS2', 'ADIPOR2', 'UGCG', 'FAM129B', 'TNIP1', 'IFI6', 'CA2', 'ESR1', 'TMBIM4', 'NFIX', 'PDCD6IP', 'CRIM1', 'ARHGEF12', 'ENTPD5', 'PATZ1', 'ZBTB41', 'UCP1', 'ANO1', 'RP11-356O9.1', 'MYB', 'ZBTB44', 'SCPEP1', 'HIPK2', 'CDK2AP1', 'CYHR1', 'SPINK8', 'FKBP10', 'ISOC1', 'CD59', 'RAMP1', 'AFF3', 'MT-CYB', 'PPP1CB', 'PKM', 'ALDH2', 'PRSS8', 'NPW', 'SPR', 'PRDX3', 'SCOC', 'TMED10', 'KIAA0196', 'NDP', 'ZSWIM7', 'AP2A1', 'PLAT', 'SUSD3', 'CRABP2', 'DNAJC12', 'DHCR24', 'PPT1', 'FAM234B', 'DDX17', 'LRP2', 'ABCD3', 'CDH1', 'NFIA') 
+
+gene_module[["gene_module_6"]]<-c('AGR2', 'TFF3', 'SELM', 'CD63', 'CTSD', 'MDK', 'CD74', 'S100A13', 'IFITM3', 'HLA-B', 'AZGP1', 'FXYD3', 'IFITM2', 'RABAC1', 'S100A14', 'CRABP2', 'LTF', 'RARRES1', 'HLA-A', 'PPIB', 'HLA-C', 'S100A10', 'S100A9', 'TIMP1', 'DDIT4', 'S100A16', 'LGALS1', 'LAPTM4A', 'SSR4', 'S100A6', 'CD59', 'BST2', 'PDIA3', 'KRT19', 'CD9', 'FXYD5', 'SCGB2A2', 'NUCB2', 'TMED3', 'LY6E', 'CFD', 'ITM2B', 'PDZK1IP1', 'LGALS3', 'NUPR1', 'SLPI', 'CLU', 'TMED9', 'HLA-DRA', 'SPTSSB', 'TMEM59', 'KRT8', 'CALR', 'HLA-DRB1', 'IFI6', 'NNMT', 'CALML5', 'S100P', 'TFF1', 'ATP1B1', 'SPINT2', 'PDIA6', 'S100A8', 'HSP90B1', 'LMAN1', 'RARRES3', 'SELENBP1', 'CEACAM6', 'TMEM176A', 'EPCAM', 'MAGED2', 'SNCG', 'DUSP4', 'CD24', 'PERP', 'WFDC2', 'HM13', 'TMBIM6', 'C12orf57', 'DKK1', 'MAGED1', 'PYCARD', 'RAMP1', 'C11orf31', 'STOM', 'TNFSF10', 'BSG', 'TMED10', 'ASS1', 'PDLIM1', 'CST3', 'PDIA4', 'NDUFA4', 'GSTP1', 'TYMP', 'SH3BGRL3', 'PRSS23', 'P4HA1', 'MUC5B', 'S100A1', 'PSAP', 'TAGLN2', 'MGST3', 'PRDX5', 'SMIM22', 'NPC2', 'MESP1', 'MYDGF', 'ASAH1', 'APP', 'NGFRAP1', 'TMEM176B', 'C8orf4', 'KRT81', 'VIMP', 'CXCL17', 'MUC1', 'COMMD6', 'TSPAN13', 'TFPI', 'C15orf48', 'CD151', 'TACSTD2', 'PSME2', 'CLDN7', 'ATP6AP2', 'CUTA', 'MT2A', 'CYB5A', 'CD164', 'TM4SF1', 'SCGB1D2', 'GSTM3', 'EGLN3', 'LMAN2', 'IFI27', 'PPP1R1B', 'B2M', 'ANXA2', 'SARAF', 'MUCL1', 'CSRP1', 'NPW', 'SLC3A2', 'PYDC1', 'QSOX1', 'TSPAN1', 'GPX1', 'TMSB4X', 'FGG', 'GUK1', 'IL32', 'ATP6V0E1', 'BCAP31', 'CHCHD10', 'TSPO', 'TNFRSF12A', 'MT1X', 'PDE4B', 'HSPA5', 'SCD', 'SERINC2', 'PSCA', 'VAMP8', 'ELF3', 'TSC22D3', 'S100A7', 'GLUL', 'ZG16B', 'TMEM45A', 'APMAP', 'RPS26', 'CALU', 'OSTC', 'NCCRP1', 'SQLE', 'RPS28', 'SSR2', 'SOX4', 'CLEC3A', 'TMEM9', 'RPL10', 'MUC5AC', 'HLA-DPA1', 'ZNHIT1', 'AQP5', 'CAPG', 'SPINT1', 'NDFIP1', 'FKBP2', 'C1S', 'LDHA', 'NEAT1', 'RPL36A', 'S100A11', 'LCN2', 'TUBA1A', 'GSTK1', 'SEPW1', 'P4HB') 
+
+gene_module[["gene_module_7"]]<-c('KCNQ1OT1', 'AKAP9', 'RHOB', 'SOX4', 'VEGFA', 'CCNL1', 'RSRP1', 'RRBP1', 'ELF3', 'H1FX', 'FUS', 'NEAT1', 'N4BP2L2', 'SLC38A2', 'BRD2', 'PNISR', 'CLDN4', 'MALAT1', 'SOX9', 'DDIT3', 'TAF1D', 'FOSB', 'ZNF83', 'ARGLU1', 'DSC2', 'MACF1', 'GTF2I', 'SEPP1', 'ANKRD30A', 'PRLR', 'MAFB', 'NFIA', 'ZFAS1', 'MTRNR2L12', 'RNMT', 'NUPR1', 'MT-ND6', 'RBM39', 'HSPA1A', 'HSPA1B', 'RGS16', 'SUCO', 'XIST', 'PDIA6', 'VMP1', 'SUGP2', 'LPIN1', 'NDRG1', 'PRRC2C', 'CELF1', 'HSP90B1', 'JUND', 'ACADVL', 'PTPRF', 'LMAN1', 'HEBP2', 'ATF3', 'BTG1', 'GNAS', 'TSPYL2', 'ZFP36L2', 'RHOBTB3', 'TFAP2A', 'RAB6A', 'KMT2C', 'POLR2J3', 'CTNND1', 'PRRC2B', 'RNF43', 'CAV1', 'RSPO3', 'IMPA2', 'FAM84A', 'FOS', 'IGFBP5', 'NCOA3', 'WSB1', 'MBNL2', 'MMP24-AS1', 'DDX5', 'AP000769.1', 'MIA3', 'ID2', 'HNRNPH1', 'FKBP2', 'SEL1L', 'PSAT1', 'ASNS', 'SLC3A2', 'EIF4EBP1', 'HSPH1', 'SNHG19', 'RNF19A', 'GRHL1', 'WBP1', 'SRRM2', 'RUNX1', 'ASH1L', 'HIST1H4C', 'RBM25', 'ZNF292', 'RNF213', 'PRPF38B', 'DSP', 'EPC1', 'FNBP4', 'ETV6', 'SPAG9', 'SIAH2', 'RBM33', 'CAND1', 'CEBPB', 'CD44', 'NOC2L', 'LY6E', 'ANGPTL4', 'GABPB1-AS1', 'MTSS1', 'DDX42', 'PIK3C2G', 'IAH1', 'ATL2', 'ADAM17', 'PHIP', 'MPZ', 'CYP27A1', 'IER2', 'ACTR3B', 'PDCD4', 'COLCA1', 'KIAA1324', 'TFAP2C', 'CTSC', 'MYC', 'MT1X', 'VIMP', 'SERHL2', 'YPEL3', 'MKNK2', 'ZNF552', 'CDH1', 'LUC7L3', 'DDIT4', 'HNRNPR', 'IFRD1', 'RASSF7', 'SNHG8', 'EPB41L4A-AS1', 'ZC3H11A', 'SNHG15', 'CREB3L2', 'ERBB3', 'THUMPD3-AS1', 'RBBP6', 'GPBP1', 'NARF', 'SNRNP70', 'RP11-290D2.6', 'SAT1', 'GRB7', 'H1F0', 'EDEM3', 'KIAA0907', 'ATF4', 'DNAJC3', 'DKK1', 'SF1', 'NAMPT', 'SETD5', 'DYNC1H1', 'GOLGB1', 'C4orf48', 'CLIC3', 'TECR', 'HOOK3', 'WDR60', 'TMEM101', 'SYCP2', 'C6orf62', 'METTL12', 'HIST1H2BG', 'PCMTD1', 'PWWP2A', 'HIST1H3H', 'NCK1', 'CRACR2B', 'NPW', 'RAB3GAP1', 'TMEM63A', 'MGP', 'ANKRD17', 'CALD1', 'PRKAR1A', 'PBX1', 'ATXN2L', 'FAM120A', 'SAT2', 'TAF10', 'SFRP1', 'CITED2') 
+
+#maybe add Ecotypes as well, no given gene lists from the publication??
+
+
+
+single_sample_cell_signature_transfer<-function(x){
+  if(x %in% 1:12){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  dat_sub<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial"))
+
+  #embo lineage
+  dat<-AddModuleScore(dat,features=lineage_in,names=names(lineage_in),assay="SoupXRNA",seed=123,search=TRUE)
+  colnames(dat@meta.data)[startsWith(prefix="Cluster",colnames(dat@meta.data))]<-c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str") #Rename them
+
+  #Immune cell features and PAM50 canonical short list of genes
+  for(i in 1:length(features_in)){
+    features_in[[i]]<-features_in[[i]][features_in[[i]] %in% row.names(dat[["SoupXRNA"]])] #make sure gene names match
+    dat<-MetaFeature(dat,features=c(features_in[[i]]),meta.name=names(features_in)[i],assay="SoupXRNA")}
+
+  #SCSubype List of genes
+  #run only on epithelial cells
+  module_scores<-AddModuleScore(dat_sub,features=module_feats,assay="SoupXRNA",search=TRUE,name=names(module_feats)) #use add module function to add cell scores
+  module_scores<-module_scores@meta.data[seq(ncol(module_scores@meta.data)-(length(module_feats)-1),ncol(module_scores@meta.data))]
+  colnames(module_scores)<-names(module_feats) #it adds a number at the end to each name by default, which I don't like
+  dat<-AddMetaData(dat,metadata=module_scores)
+
+  #Swarbrick Gene Modules
+  #run only on epithelial cells
+  gene_module_out<-AddModuleScore(dat_sub,features=gene_module,assay="SoupXRNA",search=TRUE,name=names(gene_module)) #use add module function to add cell scores
+  gene_module_out<-gene_module_out@meta.data[seq(ncol(gene_module_out@meta.data)-(length(gene_module)-1),ncol(gene_module_out@meta.data))]#get the 7 added gene modules
+  colnames(gene_module_out)<-names(gene_module) 
+  dat<-AddMetaData(dat,metadata=gene_module_out)
+  saveRDS(dat,file=file_in)
+}
+
+lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_cell_signature_transfer)
+
+
+single_sample_EMBO_assignment<-function(x){
+  if(x %in% 1:12){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  met<-dat@meta.data
+  met<-met[met$predicted.id %in% c("Cancer Epithelial","Normal Epithelial"),]
+  embo_list<-  c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str" )
+  max_embo<-lapply(1:nrow(met),function(i) embo_list[which(met[i,embo_list]==max(met[i,embo_list],na.rm=T))])
+  max_embo<-unlist(lapply(1:length(max_embo),function(i) do.call("paste",as.list(max_embo[[i]]))))
+  max_embo<-unlist(lapply(max_embo,function(i) gsub("EMBO_","",i)))
+  names(max_embo)<-row.names(met)
+  dat<-AddMetaData(dat,max_embo,col.name="EMBO_designation")
+  print(paste("Saving",outname))
+  saveRDS(dat,file=file_in)
+}
+
+single_sample_PAM50_assignment<-function(x){
+  if(x %in% 1:12){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  met<-dat@meta.data
+  met<-met[met$predicted.id %in% c("Cancer Epithelial","Normal Epithelial"),]
+  pam_list<-  c("Basal_SC","Her2E_SC","LumA_SC","LumB_SC")
+  max_pam<-lapply(1:nrow(met),function(i) pam_list[which(met[i,pam_list]==max(met[i,pam_list],na.rm=T))])
+  max_pam<-unlist(lapply(1:length(max_pam),function(i) do.call("paste",as.list(max_pam[[i]]))))
+  names(max_pam)<-row.names(met)
+  dat<-AddMetaData(dat,max_pam,col.name="SCSubtype_designation")
+  print(paste("Saving",outname))
+  saveRDS(dat,file=file_in)
+}
+
+
+
+lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_PAM50_assignment)
+lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_EMBO_assignment)
+
+
+```
+Plot Features on Cells Per Sample
+
+```R
+library(Signac)
+library(Seurat)
+set.seed(1234)
+library(ggplot2)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+single_sample_epcam<-function(x){
+  if(x %in% 1:12){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".EPCAM.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".EPCAM.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".EPCAM.umap.pdf")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  DefaultAssay(dat)<-"SoupXRNA"
+  plt<-FeaturePlot(dat,features="EPCAM",reduction="multimodal_umap",order=T)
+  ggsave(plt,file=out_plot,width=10,height=10)
+  system(paste0("slack -F ",out_plot," ryan_todo"))
+  plt<-VlnPlot(dat,features="EPCAM",group.by="predicted.id")
+  ggsave(plt,file=paste0(out_plot,"VlnPlt.pdf"),width=10,height=10)
+  system(paste0("slack -F ",paste0(out_plot,"VlnPlt.pdf")," ryan_todo"))
+}
+
+lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_epcam)
+
+```
+
+## Run IntClust on Samples
+<!-- Rerun  waiting on final CNV profiles-->
+
+Using iC10 CRAN Package https://cran.r-project.org/web/packages/iC10/iC10.pdf
+
+```R
+#install.packages("iC10")
+library(iC10)
+library(Seurat)
+library(Signac)
+#CN = ID (Sample Name) \t chromosome_name (Chr) \t loc.start (start) loc.end (end) seg.mean (log2ratio of segment)
+#OR
+#CN = Row (hgnc gene names) X Column (Sample)
+#Exp =  Row (hgnc gene names) X Column (Sample)
+
+#using InferCNV(gene level CNV calling) as CN matrix, and RNA data as Exp Matrix
+
+iC10_per_sample<-function(x){
+  #https://bioconductor.org/packages/devel/bioc/manuals/infercnv/man/infercnv.pdf
+  #dat is full path to seurat object
+  if(x %in% 1:12){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    sample_name<-x
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  obj_name=basename(file_in)
+  dir_in=dirname(file_in)
+  Idents(dat)<-dat$predicted.id
+  dat_ep<-subset(dat, cells = row.names(dat@meta.data[dat@meta.data$predicted.id%in% c("Normal Epithelial", "Cancer Epithelial"),]))
+  infercnv_obj<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
+  cnv<-log2(infercnv_obj@expr.data)
+  cnv<-cnv[,colnames(cnv) %in% colnames(dat_ep)]
+  exp<-dat_ep[["RNA"]]@counts
+
+  out<-matchFeatures(CN=cnv,Exp=exp,
+    CN.by.feat="gene",
+    Exp.by.feat="gene",
+    ref=NULL)
+  out<-normalizeFeatures(out, method="scale")
+  out<-iC10(out)
+  saveRDS(out,paste0(wd,"/",outname,"_iC10.Rds"))
+  dat<-AddMetaData(dat,out$class,col.name="ic10_class")
+  table(dat$ic10_class)
+  saveRDS(dat,file=file_in) #overwrite old file
+  print(paste("Finished Sample:",sample_name))
+}
+
+lapply(c(1,3,5,6,7,8,9,16,19,20,"RM_1","RM_2","RM_3",11,4,10,12), function(x) iC10_per_sample(x))
+#done 
+#15,"RM_4" not done
+```
+
+## Epithelial Subtyping Per Sample
+<!-- Rerun -->
+
+```R
+library(Seurat)
+library(Signac)
+library(ggplot2)
+library(dplyr)
+
+  #set up colors for samples
+  ###########Color Schema#################
+  type_cols<-c(
+  #epithelial
+  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+  "B-cells" ="#089099", "T-cells" ="#003147", #other
+  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
+  diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
+  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
+  ########################################
+  alpha_val=0.33
+
+epithelial_class_persample<-function(x){
+  if(x %in% 1:12){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+  }
+  dat<-readRDS(file=file_in)
+  atac_sub<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial"))
+  if(!("ic10_class" %in% colnames(atac_sub@meta.data))){
+    atac_sub$ic10_class<-"NA"
+  }
+  plt_cell_count<-atac_sub@meta.data[,c("sample","predicted.id","diagnosis","molecular_type","PAM50_designation","EMBO_designation","ic10_class")]
+  print(outname)
+  return(plt_cell_count)
+}
+
+
+#grab all epithelial classifications
+cell_count<-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x)epithelial_class_persample(x))
+
+saveRDS(cell_count,"sample_epithelial_designations.rds") #save nested list of cell type assignment
+
+#plot output of celltype count per sample
+out<-readRDS("sample_epithelial_designations.rds")
+out<-do.call("rbind",out)
+colnames(out)<-c("sample","predicted.id","diagnosis","molecular_type","SCSubtype_designation","EMBO_designation","ic10_class") #rename just for simplicity
+#clean up for samples with equal values
+out[!(out$SCSubtype_designation %in% c("Basal","Her2","LumA","LumB","Normal")),]$SCSubtype_designation<-NA
+  #set up colors for samples
+  ###########Color Schema#################
+  type_cols<-c(
+  #epithelial
+  "Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+  "B-cells" ="#089099", "T-cells" ="#003147", #other
+  "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
+  diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
+  molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
+  ########################################
+plt1<-ggplot(out,aes(x=sample,fill=SCSubtype_designation))+geom_bar(position="fill")+theme_minimal()+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
+plt2<-ggplot(out,aes(x=sample,fill=EMBO_designation))+geom_bar(position="fill")+theme_minimal()+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
+plt3<-ggplot(out,aes(x=sample,fill=ic10_class))+geom_bar(position="fill")+theme_minimal()+facet_wrap(.~diagnosis+molecular_type,scale="free_x")
+plt<-plt1/plt2/plt3
+ggsave(plt,file="sample_epithelial_type_assignment.pdf")
+system("slack -F sample_epithelial_type_assignment.pdf ryan_todo")
+
+library(dplyr)
+write.table(out,file="sample_epithelial_type_assignment.tsv",col.names=T,row.names=F,sep="\t",quote=F)
+system("slack -F sample_epithelial_type_assignment.tsv ryan_todo") #note this was calculated per sample as well as in the merged data set,  the assumption is that they will be the same
+
+
+```
+
+<!-- Rerun -->
+<!--
+#ER binding poor and good outcome from patients, overlap with ATAC data
+http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Poor%20outcome%20ER%20regions.bed.gz
+http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Good%20outcome%20ER%20regions.bed.gz
+-->
+
+### Files for Travis
+<!-- Rerun -->
+
+Transfering to /home/groups/CEDAR/scATACcnv/Hisham_data/final_data:
+- Metadata
+- Counts matrix (atac)
+- peaks bed file
+- inferCNV folder
+- Casper folder
+- atac_possorted_bam.bam
+- Seurat Object
+
+```R
+library(Signac)
+library(Seurat)
+
+transfer_data<-function(x){
+if(x %in% 1:12){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    sample_name<-paste0("sample_",x)
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    sample_name<-x
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }
+  metadata<-as.data.frame(dat@meta.data)
+  counts_matrix<-as.data.frame(dat[["peaks"]]@counts)
+  peaks_bed_file<-as.data.frame(do.call("rbind",strsplit(row.names(dat[["peaks"]]),"-")))
+  write.table(metadata,file=paste0(wd,"/","metadata.tsv"),sep="\t",col.names=T,row.names=T)
+  write.table(counts_matrix,file=paste0(wd,"/","counts_matrix.tsv"),sep="\t",col.names=T,row.names=T)
+  write.table(peaks_bed_file,file=paste0(wd,"/","peaks.bed"),sep="\t",col.names=F,row.names=F)
+  print(paste("Finished sample:",sample_name))
+}
+
+lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12),function(x) transfer_data(x))
+```
+
+- Metadata
+- Counts matrix (atac)
+- peaks bed file
+- inferCNV folder
+- Casper folder
+- atac_possorted_bam.bam
+- Seurat Object
+
+```bash
+out_dir="/home/groups/CEDAR/scATACcnv/Hisham_data/final_data"
+mkdir $out_dir
+
+
+for i in 1 3 5 6 7 8 9 10 11 12; do
+  sample="sample_"${i}
+  in_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_"${i}"/outs"
+  mkdir ${out_dir}"/"${sample};
+  cp ${in_dir}"/metadata.tsv" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/peaks.bed" ${out_dir}"/sample_"${i}
+  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/sample_"${i}
+  cp -r ${in_dir}"/casper" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/"${sample}".QC.SeuratObject.rds" ${out_dir}"/sample_"${i} & done &
+
+
+for i in 15 16 19 20; do
+  sample="sample_"${i}
+  in_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_"${i}"/outs"
+  mkdir ${out_dir}"/"${sample};
+  cp ${in_dir}"/metadata.tsv" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/peaks.bed" ${out_dir}"/sample_"${i}
+  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/sample_"${i}
+  cp -r ${in_dir}"/casper" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/sample_"${i}
+  cp ${in_dir}"/"${sample}".QC.SeuratObject.rds" ${out_dir}"/sample_"${i} & done &
+
+for i in "RM_1" "RM_2" "RM_3" "RM_4"; do
+  sample=${i}
+  in_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/"${i}"/outs"
+  mkdir ${out_dir}"/"${sample};
+  cp ${in_dir}"/metadata.tsv" ${out_dir}"/"${sample}
+  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/"${sample}
+  cp ${in_dir}"/peaks.bed" ${out_dir}"/"${sample}
+  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/"${sample}
+  cp -r ${in_dir}"/casper" ${out_dir}"/"${sample}
+  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/"${sample}
+  cp ${in_dir}"/"${sample}".QC.SeuratObject.rds" ${out_dir}"/"${sample} & done &
+
+```
+
+Call peaks per cell type
+<!-- Rerun -->
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+library(RColorBrewer)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/")
+
+
+dat<-readRDS("phase2.QC.SeuratObject.rds")
+
+#call peaks per predicted.id cell type
+peaks <- CallPeaks(dat, 
+  assay="ATAC",
+  group.by="predicted.id",
+  combine.peaks=FALSE,
+  macs2.path = "/home/groups/CEDAR/mulqueen/src/miniconda3/bin/macs2")
+  #use this set of peaks for all samples
+
+for(i in 1:length(peaks)){
+  # remove peaks on nonstandard chromosomes and in genomic blacklist regions
+  peak_name<-unique(dat$predicted.id)[i]
+  peaks_out <- keepStandardChromosomes(peaks[[i]], pruning.mode = "coarse")
+  peaks_out <- subsetByOverlaps(x = peaks_out, ranges = blacklist_hg38_unified, invert = TRUE)
+  print(paste0("Generated peakset for ",peak_name))
+  write.table(as.data.frame(peaks_out)[1:3],file=paste0(peak_name,".bed"),sep="\t",quote=F,col.names=F,row.names=F)
+}
+
+```
+
+```bash
+cp *bed /home/groups/CEDAR/scATACcnv/Hisham_data/final_data
+```
+
+## Genome tracks of celltype markers
+<!-- Rerun -->
+
+```R
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(SeuratObjects)
+library(EnsDb.Hsapiens.v86)
+library(cowplot)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+x<-"ESR1"
+annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+Idents(dat)<-dat$predicted.id 
+
+cov_plots<-function(dat=dat,gene_name="ESR1",outname="test",extend=2000){
+  
+  #get chromvar motif name
+  gene_TF <- ConvertMotifID(dat, name = gene_name,assay="ATAC")
+
+  # get gene location
+  gene_loc<-annotation[annotation$gene_name==gene_name,]
+  gene_loc<-as.data.frame(gene_loc,row.names=NULL)
+  gene_loc<-head(gene_loc[which(max(gene_loc$end-gene_loc$start)==c(gene_loc$end-gene_loc$start)),],n=1)
+  if(gene_loc$start<gene_loc$end){
+  gene_range<-paste0("chr",as.character(gene_loc$seqnames),"-",gene_loc$start-extend,"-",gene_loc$end+extend)
+  }else{
+  gene_range<-paste0("chr",as.character(gene_loc$seqnames),"-",gene_loc$start+extend,"-",gene_loc$end-extend)
+  }
+  annot_plot<-AnnotationPlot(object=dat, region=gene_range)
+  peak_plot<-PeakPlot(object=dat,region=gene_range)
+
+  cov_plot <- CoveragePlot(object = dat, region = gene_range, assay="peaks", annotation=FALSE,peaks=FALSE,links=FALSE) 
+  plt_rna<-VlnPlot(dat,features=gene_name,assay="RNA",slot="counts",flip=TRUE,pt.size=0)+coord_flip()+scale_x_discrete(limits = rev(levels(Idents(dat))))
+  plt_tf<-VlnPlot(dat,features=gene_TF,assay="chromvar",flip=TRUE,pt.size=0)+coord_flip()+scale_x_discrete(limits = rev(levels(Idents(dat))))
+
+  layout<-"
+  AAAAAA##
+  EEEEEE##
+  BBBBBBCD
+  BBBBBBCD
+  BBBBBBCD
+  "
+
+  plt<-wrap_plots(
+    A=annot_plot,
+    B=cov_plot,
+    C=plt_rna,
+    D=plt_tf,
+    E=peak_plot,
+    design=layout,heights = c(1,3,1,2,3,1,2),guides="collect")+ggtitle(outname)
+  return(plt)
+}
+
+
+#Markers with high cell type AUC determined in section Transcription Factor Expression Markers
+  prefix="dat"
+  da_tf_markers<-readRDS(paste0(prefix,"_celltype_TF_markers.RDS"))
+  da_tf_markers$gene
+
+lapply(c(da_tf_markers$gene),function(y){
+  plot<-cov_plots(dat=dat,gene_name=y,outname=y)
+  ggsave(plot,file=paste0("merged_coverageplt_",y,"celltype.pdf"),width=15,height=10)
+  system(paste0("slack -F ",paste0("merged_coverageplt_",y,"celltype.pdf")," ryan_todo"))
+  })
+```
+
+## Subclustering Per Celltype
+<!-- Rerun with EMBO cell types-->
+
+### Epithelial Clustering
+```R
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(cisTopic)
+library(SeuratWrappers)
+library(patchwork)
+set.seed(1234)
+library(org.Hs.eg.db)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(AUCell)
+library(rtracklayer)
+library(parallel)
+library(RColorBrewer)
+library(ggplot2)
+set.seed(1234)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+
+#set up colors for samples
+###########Color Schema#################
+type_cols<-c(
+#epithelial
+"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+"B-cells" ="#089099", "T-cells" ="#003147", #other
+"CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
+diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
+molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
+########################################
+alpha_val=0.33
+
+
+celltype_cistopic_generation<-function(celltype_list=c("Cancer Epithelial","Normal Epithelial"),outname="epithelial"){
+  atac_sub<-subset(dat,predicted.id %in% celltype_list)
+
+  cistopic_counts_frmt<-atac_sub@assays$peaks@counts
+  row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
+  sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
+  print("made cistopic object")
+  sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(10:30),nCores=5,addModels=FALSE)
+  saveRDS(sub_cistopic_models,file=paste0(outname,".CisTopicObject.Rds"))
+
+  sub_cistopic_models<- selectModel(sub_cistopic_models, type='derivative')
+  
+  saveRDS(sub_cistopic_models,file=paste0(outname,".CisTopicObject.Rds"))
+  sub_cistopic_models<-readRDS(file=paste0(outname,".CisTopicObject.Rds"))
+  print("finshed running cistopic")
+
+  #Add cell embeddings into seurat
+  cell_embeddings<-as.data.frame(sub_cistopic_models@selected.model$document_expects)
+  colnames(cell_embeddings)<-sub_cistopic_models@cell.names
+  n_topics<-nrow(cell_embeddings)
+  row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
+  cell_embeddings<-as.data.frame(t(cell_embeddings))
+
+  #Add feature loadings into seurat
+  feature_loadings<-as.data.frame(sub_cistopic_models@selected.model$topics)
+  row.names(feature_loadings)<-paste0("topic_",1:n_topics)
+  feature_loadings<-as.data.frame(t(feature_loadings))
+
+  #combined cistopic results (cistopic loadings and umap with seurat object)
+  cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
+  print("Cistopic Loading into Seurat")
+  atac_sub@reductions$cistopic<-cistopic_obj
+  n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic")) #add scaling for ncount peaks somewhere in here
+  print("Running UMAP")
+  atac_sub<-RunUMAP(atac_sub,reduction="cistopic",dims=1:n_topics)
+  atac_sub <- FindNeighbors(object = atac_sub, reduction = 'cistopic', dims = 1:n_topics ) 
+  atac_sub <- FindClusters(object = atac_sub, verbose = TRUE, graph.name="peaks_snn", resolution=0.2 ) 
+  print("Plotting UMAPs")
+  plt1<-DimPlot(atac_sub,reduction="umap",group.by=c("seurat_clusters"))
+  pdf(paste0(outname,".cistopic.umap.pdf"),width=10)
+  print(plt1)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".cistopic.umap.pdf")," ryan_todo"))
+  saveRDS(atac_sub,paste0(outname,".SeuratObject.rds"))
+  }
+
+#Rerun other clustering now that data is subset
+celltype_clustering<-function(x,outname){
+  dat<-readRDS(x)
+
+  #set up colors for samples
+  my_cols = brewer.pal(1,"Spectral")
+  alpha_val=0.33
+
+  #RNA Processing
+  DefaultAssay(dat) <- "SoupXRNA"
+  dat <- SCTransform(dat)
+  dat <- RunPCA(dat)
+  dat<- RunUMAP(object = dat, reduction.name="rna_umap", reduction="pca", assay = "SoupXRNA", verbose = TRUE, dims=1:50 ) 
+  p1<-DimPlot(dat,reduction="rna_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("RNA UMAP")+theme(legend.position="none")
+
+  #DNA Accessibility processing
+  DefaultAssay(dat) <- "peaks"
+  dat <- FindTopFeatures(dat, min.cutoff = 5)
+  dat <- RunTFIDF(dat)
+  dat <- RunSVD(dat)
+  dat<- RunUMAP(object = dat, reduction.name="atac_umap", reduction="lsi", assay = "peaks", verbose = TRUE, dims=2:40 )
+  p2<-DimPlot(dat,reduction="atac_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("ATAC UMAP")+theme(legend.position="none")
+
+
+  # build a joint neighbor graph using both assays (ATAC LSI)
+    dat <- FindMultiModalNeighbors(object = dat, reduction.list = list("pca", "lsi"), dims.list = list(1:50, 2:40),modality.weight.name = "RNA.weight", verbose = TRUE )
+    # build a joint UMAP visualization
+    dat <- RunUMAP(object = dat, nn.name = "weighted.nn", reduction.name="multimodal_umap", assay = "SoupXRNA", verbose = TRUE ) 
+    p3<-DimPlot(dat,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Multimodal UMAP Doublets")+theme(legend.position="none")
+
+  #Try multimodal with cistopic
+    dat <- RunUMAP(object = dat, reduction="cistopic", reduction.name="cistopic_umap", dims=1:ncol(dat@reductions$cistopic), assay = "peaks", verbose = TRUE )
+    # build a joint neighbor graph using both assays
+    dat <- FindMultiModalNeighbors(object = dat, reduction.list = list("pca", "cistopic"), dims.list = list(1:50, 1:ncol(dat@reductions$cistopic)), modality.weight.name = "RNA.weight", verbose = TRUE )
+    # build a joint UMAP visualization
+    dat <- RunUMAP(object = dat, nn.name = "weighted.nn", reduction.name="multimodal_umap", assay = "SoupXRNA", verbose = TRUE )
+
+  #plot cistopic umap too
+  p4<-DimPlot(dat,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
+  p5<-DimPlot(dat,reduction="cistopic_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Cistopic UMAP")+theme(legend.position="none")
+  p6<-DimPlot(dat,reduction="multimodal_umap",group.by="sample")+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
+  #Cluster on multimodal graph
+  dat <- FindClusters(dat, resolution = 0.8, verbose = FALSE,graph="wknn")
+
+
+  #Finally Plot results
+  plt<-(p1 | p2)/(p3 | p4)/(p5|p6)
+  ggsave(plt,file=paste0(outname,".umap.pdf"))
+  system(paste0("slack -F ",paste0(outname,".umap.pdf")," ryan_todo"))
+  saveRDS(dat,file=paste0(outname,"filt.SeuratObject.rds"))
+}
+
+
+for (i in unique(dat$predicted.id)){
+celltype_cistopic_generation(celltype_list=c(i),outname=gsub(" ","_",i))
+}
+
+for (i in unique(dat$predicted.id){
+celltype_clustering(x=paste0(i,".SeuratObject.rds"),outname=gsub(" ","_",i))
+}
+
+
+```
+
+### Integration: Now Clustering together on RNA profiles using harmony to integrate
+
+```R
+library(harmony)
+library(cisTopic)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(ggplot2)
+set.seed(1234)
+library(EnsDb.Hsapiens.v86)
+library(Matrix)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
 
 ###########Color Schema#################
 type_cols<-c(
@@ -3548,68 +4345,61 @@ type_cols<-c(
 "B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
 "CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
 
-diag_cols<-c("IDC"="red", "DCIS"="grey")
+diag_cols<-c("IDC"="red", "DCIS"="grey","NAT"="lightblue","ILC"="green")
 
-molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"="#F7B7BB")
+molecular_type_cols<-c("DCIS"="grey", "ER+/PR-/HER2-"="#EBC258", "ER+/PR-/HER2+"="#F7B7BB","ER+/PR+/HER2-"="#ff6699","NA"="lightblue")
 ########################################
 
 
+harmony_sample_integration<-function(x,outname){
+  dat<-readRDS(x)
+  dat<-RunHarmony(dat,group.by.vars="sample",reduction.save="harmony_atac",assay.use="ATAC",reduction="cistopic",project.dim=F)
+  dat<-RunHarmony(dat,group.by.vars="sample",reduction.save="harmony_rna",assay.use="RNA",reduction="pca",project.dim=F)
 
-dat<-readRDS("phase2.QC.SeuratObject.rds")
+  dat<-RunUMAP(dat,reduction.name="harmonyumap_rna",reduction = "harmony_rna",dims=1:dim(dat@reductions$harmony_rna)[2]) 
+  dat<-RunUMAP(dat,reduction.name="harmonyumap_atac",reduction = "harmony_atac",dims=1:dim(dat@reductions$harmony_atac)[2]) 
 
-
-
-
-  # build a joint UMAP visualization
-  dat2 <- RunUMAP(
-    object = dat2,
-    nn.name = "weighted.nn",
-    reduction.name="multimodal_umap",
-    assay = "SoupXRNA",
+  # build a joint neighbor graph using both assays
+  dat <- FindMultiModalNeighbors(
+    object = dat,
+    reduction.list = list("harmony_rna", "harmony_atac"), 
+    dims.list = list(1:dim(dat@reductions$harmony_rna)[2], 1:dim(dat@reductions$harmony_atac)[2]), 
+    modality.weight.name = "multimodal.weight",
+    weighted.nn.name="multimodal_harmony.nn",
     verbose = TRUE
   )
+  # build a joint UMAP Harmony visualization
+  dat <- RunUMAP(object = dat, nn.name = "multimodal_harmony.nn",reduction.name="multimodal_harmony_umap", assay = "SoupXRNA", verbose = TRUE ) 
 
+  i="predicted.id"
+  plt1<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=type_cols)
+  ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
 
-p1<-DimPlot(dat,reduction="rna_umap",group.by="sample")+ggtitle("RNA UMAP")
-p2<-DimPlot(dat,reduction="atac_umap",group.by="sample")+ggtitle("ATAC UMAP")
-p3<-DimPlot(dat,reduction="multimodal_umap",group.by="sample")+ggtitle("Multimodal UMAP")
+  i="diagnosis"
+  plt1<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=diag_cols)
+  ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
 
-plt<-(p1|p2)/p3
-ggsave(plt,file="all_samples.umap.pdf")
-system(paste0("slack -F ","all_samples.umap.pdf"," ryan_todo"))
+  i="sample"
+  plt1<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i)
+  ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
 
-#Finally Plot results
-ggsave(plt,file=paste0(wd,"/",outname,".umap2.pdf"))
-system(paste0("slack -F ",paste0(wd,"/",outname,".umap2.pdf")," ryan_todo"))
-saveRDS(dat,file=paste0(wd,"/",outname,".QC.SeuratObject.rds"))
+  saveRDS(dat,file=x)
 }
 
-
-#Set up metadata and set up facet labels as factors for ordering
-metadat<-as.data.frame(dat@meta.data)
-metadat$diagnosis = factor(metadat$diagnosis, levels=c("NAT","DCIS","IDC","ILC"), labels=c("NAT","DCIS","IDC","ILC")) 
-metadat$molecular_type = factor(metadat$molecular_type, levels=c("NA","DCIS","ER+/PR+/HER2-","ER+/PR-/HER2-","ER+/PR-/HER2+"), labels=c("NA","DCIS","ER+/PR+/HER2-","ER+/PR-/HER2-","ER+/PR-/HER2+")) 
-
-
-#Cells PF (log10)
-metadat$epi<-"Nonepi"
-metadat[metadat$predicted.id %in% c("Cancer Epithelial","Normal Epithelial"),]$epi<-"Epi"
-DF<-as.data.frame(metadat %>% group_by(diagnosis, molecular_type,sample,epi) %>% tally())
-plt1<-ggplot(DF,aes(x=sample,fill=epi,y=n))+geom_bar(stat="identity")+theme_minimal()+facet_grid(.~diagnosis+molecular_type,scales="free_x",space="free")
-ggsave(plt1,file="barplot_qc_cellcount.pdf")
-system("slack -F barplot_qc_cellcount.pdf ryan_todo")
-
-#Cell types (stacked bar)
-DF<-as.data.frame(metadat %>% group_by(diagnosis, molecular_type,sample,predicted.id) %>% tally())
-plt1<-ggplot(DF,aes(x=sample,fill=predicted.id,y=n))+geom_bar(position="fill",stat="identity")+theme_minimal()+scale_fill_manual(values=type_cols)+facet_wrap(.~diagnosis+molecular_type,nrow=1,scales="free")
-ggsave(plt1,file="barplot_qc_celltype.pdf")
-system("slack -F barplot_qc_celltype.pdf ryan_todo")
-
-
+harmony_sample_integration(x="stromal.SeuratObject.rds",outname="stromal")
+harmony_sample_integration(x="immune.SeuratObject.rds",outname="immune")
+harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial")
+harmony_sample_integration(x="phase2.QC.SeuratObject.rds",outname="all_cells")
 
 ```
 
+
+
 ## Plot of Differential Genes across Normal epithelial (NAT) DCIS and IDC
+<!-- Rerun -->
 
 ```R
 library(Signac)
@@ -3712,8 +4502,10 @@ for (i in c("ESR1")){
 #ERICH5
 ```
 ## Comparison of cell types across diagnoses and other factors.
+<!-- Rerun -->
 
-# 3D Plotting in Blender
+## 3D Plotting in Blender
+<!-- Rerun -->
 
 ```R
 #3d umap
@@ -3734,1037 +4526,7 @@ system("slack -F multiome_tumor.tsv ryan_todo")
 
 
 
-
-
-# Low Pass Whole Genome Sequencing Data
-
-## Align to hg38 with bwa-mem
-
-```bash
-cd /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2
-cat readme.txt 
-#Run     Lane    Sample  I7 Index ID     Index1  I5 Index ID     Index2
-#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_A1-12        D712    AGCGATAG        D501    AGGCTATA
-#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_B1-12        D712    AGCGATAG        D502    GCCTCTAT
-#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_C1-12        D712    AGCGATAG        D503    AGGATAGG
-#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_D1-12        D712    AGCGATAG        D504    TCAGAGCC
-#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_E1-12        D712    AGCGATAG        D505    CTTCGCCT
-#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_F1-12        D712    AGCGATAG        D506    TAAGATTA
-#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_G1-12        D712    AGCGATAG        D507    ACGTCCTG
-#220929_A01058_0265_AHNGVCDRX2   1       EXP220921HM_BC32-3_H1-12        D712    AGCGATAG        D508    GTCAGTAC
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG01   N701    TAAGGCGA        S505    CTCCTTAC
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG03   N702    CGTACTAG        S505    CTCCTTAC
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG04   N703    AGGCAGAA        S505    CTCCTTAC
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG05   N704    TCCTGAGC        S505    CTCCTTAC
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG06   N705    GGACTCCT        S505    CTCCTTAC
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG07   N706    TAGGCATG        S505    CTCCTTAC
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG08   N707    CTCTCTAC        S505    CTCCTTAC
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG09   N710    CGAGGCTG        S505    CTCCTTAC
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG10   N701    TAAGGCGA        S506    TATGCAGT
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG11   N702    CGTACTAG        S506    TATGCAGT
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG12   N703    AGGCAGAA        S506    TATGCAGT
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG15   N704    TCCTGAGC        S506    TATGCAGT
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG16   N705    GGACTCCT        S506    TATGCAGT
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG19   N706    TAGGCATG        S506    TATGCAGT
-#220929_A01058_0265_AHNGVCDRX2   2       EXP220921HM_BCMM_WG20   N707    CTCTCTAC        S506    TATGCAGT
-
-#I'm taking the BCMM samples as the low pass whole genome for this project
-
-cd /home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM
-
-
-
-
-```
-
-## Batch script for Alignment
-Using the bwa mem for alignment.
-
-wgs_alignment.sbatch
-```bash
-#!/bin/bash
-#SBATCH --nodes=1 #request 1 node
-#SBATCH --array=1-15
-#SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
-#SBATCH --cpus-per-task=30 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
-#SBATCH --mem-per-cpu=5gb ## request gigabyte per cpu
-#SBATCH --time=5:00:00 ## ask for 3 hour on the node
-#SBATCH --
-
-fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
-ref="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.fa"
-file_in=`ls $fastq_dir/*WG*R1*.fastq.gz | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}' `
-
-#Align and output as bam file
-R1=$file_in
-R2=`echo $bam_in | awk '{ gsub("_R1_", "_R2_"); print $0}' `
-output_name=${R1::-9}".batch.bam"
-bwa mem -t 10 $ref $R1 $R2 | samtools sort -T . -@5 - | samtools view -b -@5 - > $output_name
-
-```
-
-```bash
-sbatch wgs_alignment.sbatch
-```
-
-## Batch script for deduplication via Picard
-wgs_dedup.sbatch
-```bash
-#!/bin/bash
-#SBATCH --nodes=1 #request 1 node
-#SBATCH --array=1-15
-#SBATCH --tasks-per-node=15 ##we want our node to do N tasks at the same time
-#SBATCH --cpus-per-task=1 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
-#SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
-#SBATCH --time=3:00:00 ## ask for 3 hour on the node
-#SBATCH --
-
-picard_dir="/home/groups/CEDAR/tools/picard-tools-1.119/"
-fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
-list_files=`ls $fastq_dir/*WG*R1*.bam`
-bam_in=`ls $fastq_dir/*WG*R1*.bam | awk -v line=$SLURM_ARRAY_TASK_ID '{if (NR == line) print $0}'`
-i=$bam_in
-output_name=${i::-4}".dedup.bam"
-output_metrics=${i::-4}".dedup.metrics.txt"
-
-#picard mark duplicates
-java -jar ${picard_dir}/MarkDuplicates.jar \
-        I=$i \
-        O=$output_name \
-        M=$output_metrics
-```
-
-```bash
-sbatch wgs_dedup.sbatch
-```
-
-## Runing GATK4
-Following https://gatk.broadinstitute.org/hc/en-us/articles/360035531152--How-to-Call-common-and-rare-germline-copy-number-variants
-
-Download and set up a conda environment
-Following 
-```bash
-#wget https://github.com/broadinstitute/gatk/archive/refs/tags/4.2.6.1.tar.gz
-#tar -xvf 4.2.6.1.tar.gz
-#cp gatkcondaenv.yml.template gatkcondaenv.yml
-#conda env create -n gatk -f gatkcondaenv.yml
-#using previously installed version
-conda install -c bioconda gcnvkernel
-#source activate gatk
-```
-### Process bam files into counts data
-
-Using 10Kbp windows and the cellranger genome for consistency.
-
-```bash
-source activate gatk
-gatk="/home/groups/CEDAR/nishida/src/gatk-4.1.2.0/gatk"
-ref_dir="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/"
-ref="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.fa"
-fastq_dir="/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
-picard_dir="/home/groups/CEDAR/tools/picard-tools-1.119/"
-
-#download mappability information
-cd $ref_dir
-wget https://bismap.hoffmanlab.org/raw/hg38/k50.umap.bed.gz
-gzip -d k50.umap.bed.gz
-#Index file
-$gatk IndexFeatureFile \
-        -F k50.umap.bed
-
-hg38_map="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/k50.umap.bed"
-
-
-$gatk IndexFeatureFile \
-        -L preprocessed.10000.interval_list \
-        -R $ref \
-        --mappability-track $hg38_map \
-        -imr OVERLAPPING_ONLY \
-        -O preprocessed.10000.annot.tsv
-
-#Prepare reference file
-  #idx
-  cd $ref_dir
-  samtools faidx genome.fa
-
-  #dict
-  cd $fastq_dir
-  $gatk CreateSequenceDictionary -R $ref
-
-#Prepare intervals
-$gatk PreprocessIntervals \
-    -R $ref \
-    --bin-length 10000 \
-    --padding 0 \
-    --interval-merging-rule OVERLAPPING_ONLY \
-    -O preprocessed.10000.interval_list
-
-#Annotate for downstream filtering
-$gatk AnnotateIntervals \
-        -L preprocessed.10000.interval_list \
-        -R $ref \
-        -imr OVERLAPPING_ONLY \
-        --mappability-track $hg38_map \
-        -O preprocessed.10000.annot.tsv
-
-
-#Add read group for processing
-for i in ${fastq_dir}/*WG*R1*.dedup.bam; do
-  output_name=${i::-4}".RG.bam"
-  RG_out=`basename $i | awk '{split($0,a,"_"); print a[4]}'`
-  java -jar ${picard_dir}/AddOrReplaceReadGroups.jar \
-        I=$i \
-        O=$output_name\
-        RGID=1 \
-        RGLB=$RG_out \
-        RGPL=illumina \
-        RGPU=unit1 \
-        RGSM=$RG_out &
-  done &
-
-#index bam files then perform bin counting
-for i in ${fastq_dir}/*WG*R1*.dedup.RG.bam; do
-  samtools index $i & done &
-
-#note this can also be fed a bed file of intervals to perfectly match the single cell calling if needed
-for i in ${fastq_dir}/*WG*R1*.dedup.RG.bam; do
-  output_name=${i::-10}
-   $gatk CollectReadCounts \
-        -L preprocessed.10000.interval_list \
-        -R $ref \
-        -imr OVERLAPPING_ONLY \
-        -I $i \
-        -O ${output_name}.hdf5
-    done &
-
-#Filter intervals
-$gatk FilterIntervals \
-        -L preprocessed.10000.interval_list \
-        --annotated-intervals preprocessed.10000.annot.tsv \
-        -I EXP220921HM_BCMM_WG01_S9_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG06_S13_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG10_S17_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG16_S21_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG03_S10_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG07_S14_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG11_S18_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG19_S22_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG04_S11_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG08_S15_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG12_S19_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG20_S23_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG05_S12_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG09_S16_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG15_S20_L002_R1_001.batch.de.hdf5 \
-        -imr OVERLAPPING_ONLY \
-        -O preprocessed.10000.filtered.interval_list
-
-#Set up ploidy prior (check that it is properly tab-separated)
-
-echo """CONTIG_NAME PLOIDY_PRIOR_0  PLOIDY_PRIOR_1  PLOIDY_PRIOR_2  PLOIDY_PRIOR_3  PLOIDY_PRIOR_4  PLOIDY_PRIOR_5
-chr1  0.01  0.01  0.95  0.01  0.01  0.01
-chr2  0.01  0.01  0.95  0.01  0.01  0.01
-chr3  0.01  0.01  0.95  0.01  0.01  0.01
-chr4  0.01  0.01  0.95  0.01  0.01  0.01
-chr5  0.01  0.01  0.95  0.01  0.01  0.01
-chr6  0.01  0.01  0.95  0.01  0.01  0.01
-chr7  0.01  0.01  0.95  0.01  0.01  0.01
-chr8  0.01  0.01  0.95  0.01  0.01  0.01
-chr9  0.01  0.01  0.95  0.01  0.01  0.01
-chr10 0.01  0.01  0.95  0.01  0.01  0.01
-chr11 0.01  0.01  0.95  0.01  0.01  0.01
-chr12 0.01  0.01  0.95  0.01  0.01  0.01
-chr13 0.01  0.01  0.95  0.01  0.01  0.01
-chr14 0.01  0.01  0.95  0.01  0.01  0.01
-chr15 0.01  0.01  0.95  0.01  0.01  0.01
-chr16 0.01  0.01  0.95  0.01  0.01  0.01
-chr17 0.01  0.01  0.95  0.01  0.01  0.01
-chr18 0.01  0.01  0.95  0.01  0.01  0.01
-chr19 0.01  0.01  0.95  0.01  0.01  0.01
-chr20 0.01  0.01  0.95  0.01  0.01  0.01
-chr21 0.01  0.01  0.95  0.01  0.01  0.01
-chr22 0.01  0.01  0.95  0.01  0.01  0.01
-chrX  0.01  0.01  0.95  0.01  0.01  0.01
-chrY  1 0 0 0 0 0""" > ploidy_prior.tsv
-
-#DetermineGermlineContigPloidy
-$gatk DetermineGermlineContigPloidy \
-        -L preprocessed.10000.filtered.interval_list \
-        --interval-merging-rule OVERLAPPING_ONLY \
-        -I EXP220921HM_BCMM_WG01_S9_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG06_S13_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG10_S17_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG16_S21_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG03_S10_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG07_S14_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG11_S18_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG19_S22_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG04_S11_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG08_S15_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG12_S19_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG20_S23_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG05_S12_L002_R1_001.batch.de.hdf5 -I EXP220921HM_BCMM_WG09_S16_L002_R1_001.batch.de.hdf5 \
-        -I EXP220921HM_BCMM_WG15_S20_L002_R1_001.batch.de.hdf5 \
-        --output . \
-        --contig-ploidy-priors ploidy_prior.tsv \
-        --output-prefix ploidy \
-        --verbosity DEBUG
-
-
-```
-
-## Using HMMCopy as well
-
-Install HMMcopy utils
-```bash
-git clone https://github.com/shahcompbio/hmmcopy_utils
-cd /home/groups/CEDAR/mulqueen/src/hmmcopy_utils
-cmake .
-make
-
-ref_dir="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/"
-ref="/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.fa"
-hmm_utils="/home/groups/CEDAR/mulqueen/src/hmmcopy_utils"
-bowtie-build $ref ${ref::-3} #build bowtie reference index
-${hmm_utils}/util/mappability/generateMap.pl -o ${ref::-3}.map.bw -i ${ref::-3} $ref #make mappability
-#10kb windows
-${hmm_utils}/bin/mapCounter -w 10000 ${ref::-3}.map.bw > ${ref::-3}.10000.map.wig #make windows
-${hmm_utils}/bin/gcCounter -w 10000 ${ref} > ${ref::-3}.10000.gc.wig #make gc measure per window
-
-```
-Code from SCOPE and HMMCopy. Similar to s3wgs processing. 
-```R
-
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM")
-
-library(HMMcopy)
-
-rfile <- system.file("/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.gc.wig") 
-gfile <- system.file("/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.gc.wig") #gc content
-mfile <- system.file("/home/groups/CEDAR/mulqueen/ref/refdata-gex-GRCh38-2020-A/fasta/Homo_sapiens/NCBI/GRCh38/Sequence/BWAIndex/genome.map.bw") #mappability
-normal_reads <- wigsToRangedData(rfile, gfile, mfile)
-
-
-```
-
-Using SCOPE WGSmapp and HMMcopy for analysis in R
-
-```R
-library(SCOPE)
-library(WGSmapp)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(doParallel)
-library(ggplot2)
-library(patchwork)
-library(ComplexHeatmap)
-library(reshape2)
-library(circlize)
-library(parallel)
-library(HMMcopy)
-library(RColorBrewer)
-#Initalization
-bamfolder <- "/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
-bamFile <- list.files(bamfolder, pattern = 'dedup.RG.bam$')
-bamdir <- file.path(bamfolder, bamFile)
-sampname_raw <- paste("sample",c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20),sep="_") #bams are ordered by sample number as well
-setwd(bamfolder)
-
-
-set_up_ref<-function(bins){ #modified version of SCOPE's get_bam_bed function
-  genome <- BSgenome.Hsapiens.UCSC.hg38
-  ref <- bins[which(as.character(seqnames(bins)) %in% paste0("chr", c(seq_len(22), "X", "Y")))] #autosomes and X Y
-
-  #Compute mappability for each reference bin.
-  mapp_gref<-mapp_hg38 #this is packaged with SCOPE, mappability across bins
-  mapp <- rep(1, length(ref))
-  #seqlevelsStyle(ref) <- "UCSC"
-  for (chr in as.character(unique(seqnames(ref)))) {
-      message("Getting mappability for ", chr, sep = "")
-      chr.index <- which(as.matrix(seqnames(ref)) == chr)
-      ref.chr <- ref[which(as.character(seqnames(ref)) == chr)]
-      mapp.chr <- rep(1, length(ref.chr))
-      overlap <- as.matrix(findOverlaps(ref.chr, mapp_gref))
-      for (i in unique(overlap[, 1])) {
-          index.temp <- overlap[which(overlap[, 1] == i), 2]
-          overlap.sub <- findOverlaps(ref.chr[i], mapp_gref[index.temp])
-          overlap.intersect <- pintersect(ref.chr[i][queryHits(overlap.sub)],mapp_gref[index.temp][subjectHits(overlap.sub)])
-          mapp.chr[i] <- sum((mapp_gref$score[index.temp]) * (width(overlap.intersect)))/sum(width(overlap.intersect))
-      }
-      mapp[chr.index] <- mapp.chr
-  }
-
-  #Compute GC for each bin, also from SCOPE
-  gc <- rep(NA, length(ref))
-  for (chr in unique(seqnames(ref))) {
-      message("Getting GC content for chr ", chr, sep = "")
-      chr.index <- which(as.matrix(seqnames(ref)) == chr)
-      ref.chr <- IRanges(start = start(ref)[chr.index], end = end(ref)[chr.index])
-      if (chr == "X" | chr == "x" | chr == "chrX" | chr == "chrx") {
-          chrtemp <- "chrX"
-      }
-      else if (chr == "Y" | chr == "y" | chr == "chrY" | chr == "chry") {
-          chrtemp <- "chrY"
-      }
-      else {
-          chrtemp <- as.numeric(mapSeqlevels(as.character(chr), 
-              "NCBI")[1])
-      }
-      if (length(chrtemp) == 0) 
-      message("Chromosome cannot be found in NCBI database. ")
-      chrm <- unmasked(genome[[chrtemp]])
-      seqs <- Views(chrm, ref.chr)
-      af <- alphabetFrequency(seqs, baseOnly = TRUE, as.prob = TRUE)
-      gc[chr.index] <- round((af[, "G"] + af[, "C"]) * 100, 2)
-  }
-
-  ref@elementMetadata$gc<-gc
-  ref@elementMetadata$mapp<-mapp
-  return(ref)
-}
-
-get_sample_coverage<-function(bam_in="EXP220921HM_BCMM_WG01_S9_L002_R1_001.batch.dedup.RG.bam",ref,samp_name="sample_9"){
-  sampname<-samp_name
-    seg.dup <- read.table(system.file("extdata", "GRCh38GenomicSuperDup.tab", package = "WGSmapp"))
-    gaps <- read.table(system.file("extdata", "hg38gaps.txt", package = "WGSmapp"))
-    seg.dup <- seg.dup[!is.na(match(seg.dup[,1], paste('chr', c(seq_len(22), 'X', 'Y'), sep = ''))),]
-    seg.dup <- GRanges(seqnames = seg.dup[,1], ranges = IRanges(start = seg.dup[,2], end = seg.dup[,3]))
-    gaps <- gaps[!is.na(match(gaps[,2], paste('chr', c(seq_len(22), 'X', 'Y'), sep = ''))),]
-    gaps <- GRanges(seqnames = gaps[,2], ranges = IRanges(start = gaps[,3], end = gaps[,4]))
-    mask.ref <- sort(c(seg.dup, gaps))
-
-    Y <- matrix(nrow = length(ref), ncol = length(sampname))
-    rownames(Y) <- paste(seqnames(ref), ":", start(ref), "-", end(ref), sep = "")
-    colnames(Y) <- sampname
-    bamurl <- bam_in
-    what <- c("rname", "pos", "mapq", "qwidth")
-    flag <- scanBamFlag( isDuplicate = FALSE, isUnmappedQuery = FALSE, isNotPassingQualityControls = FALSE) # isFirstMateRead = TRUE #isPaired = TRUE,
-    param <- ScanBamParam(what = what, flag = flag)
-    bam <- scanBam(bamurl, param = param)[[1]]
-    message("Getting coverage for sample ", ": ", sampname, "...", sep = "")
-    
-    bam.ref <- GRanges(seqnames = bam$rname, ranges = IRanges(start = bam[["pos"]], width = bam[["qwidth"]]))
-    bam.ref <- bam.ref[bam$mapq >= 20] #Q20 threshold
-    bam.ref <- suppressWarnings(bam.ref[countOverlaps(bam.ref, mask.ref) == 0])
-    Y[, 1] <- countOverlaps(ref, bam.ref)
-    return(Y)
-}
-
-genome <- BSgenome.Hsapiens.UCSC.hg38
-bins <- tileGenome(seqinfo(genome), tilewidth = 1000 * 1000, cut.last.tile.in.chrom = TRUE) #set bins by other CNV callers
-ref<-set_up_ref(bins=bins) #bins is granges of windows to use
-Y<-lapply(1:length(bamFile),function(x) get_sample_coverage(bam_in=bamFile[x],ref=ref,samp_name=sampname_raw[x]))
-Y<-do.call("cbind",Y)
-
-#HMM Correction
-hmmcopy_sample<-function(x){
-  count<-cbind(as.data.frame(ref),Y[,x])
-  samp<-sampname_raw[x]
-  if(any(endsWith(samp,paste0("_",as.character(1:12))))){
-  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/",samp,"/outs")
-  } else {
-  wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/",samp,"/outs")
-  }
-  colnames(count)<-c("chr","start","end","width","strand","gc","map","reads")
-  count<-count[c("chr","start","end","reads","gc","map")]
-  count$gc<-count$gc/100
-  count<-data.table(count)
-  count<-correctReadcount(count)
-  count$chr<-as.character(count$chr)
-  count<-count[count$chr!="chrY",]
-  seg<-HMMsegment(count)
-  count$state<-seg$state
-  count$state<-as.character(count$state)
-  count$chr<-factor(count$chr,levels=paste0("chr",c(1:22,"X")))
-  count<-count[order(count$chr,count$start),]
-  count$row_order<-1:nrow(count)
-  cols = setNames(brewer.pal(n=6,name="RdBu"), nm = c("6","5","4","3","2","1")) # black, red, green, blue
-
-  plt<-ggplot(count,aes(x=row_order,y=copy,color=as.character(state)))+
-    scale_color_manual(values=cols)+
-    geom_point(size=2.5,alpha=1)+
-    ylab("")+
-    xlab("")+
-    ylim(-3,3)+
-    facet_grid(~chr,space="free",scales="free_x")+
-    theme_minimal()+
-    theme(axis.text.y = element_text(size=30),
-        axis.text.x = element_blank(), 
-        panel.grid.minor = element_blank(),
-        panel.spacing.x=unit(0.1,"lines"),
-        strip.background = element_blank(), 
-        legend.position="none",
-        panel.border = element_rect(colour = "black", fill = NA,size=3))
-
-  ggsave(plt,file=paste0(wd,"/",samp,"_HMMcopy.pdf"),width=2000,height=250,units="mm",limitsize=F)
-  system(paste0("slack -F ",paste0(wd,"/",samp,"_HMMcopy.pdf")," ryan_todo"))
-  saveRDS(count,file=paste0(wd,"/",samp,"_bulkWGS_HMMcopy.rds"))
-}
-
-hmm_y<-lapply(1:length(bamFile),function(x) hmmcopy_sample(x))
-
-
-
-```
-
-HMMcopy comparison across CNV Callers
-
-hmmcopy_comparisons.R
-```R
-#before running R increase slave limit 
-#ulimit -s 32000 # enlarge stack limit to 32 megs
-library(Signac)
-library(Seurat)
-library(EnsDb.Hsapiens.v86)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(GenomeInfoDb)
-set.seed(1234)
-library(stringr)
-library(ggplot2)
-library(infercnv)
-library(ComplexHeatmap)
-library(circlize)
-library(patchwork)
-library(CaSpER) 
-library(SCOPE)
-library(WGSmapp)
-library(doParallel)
-library(reshape2)
-library(parallel)
-library(HMMcopy)
-library(RColorBrewer)
-library(philentropy)
-library(dendextend)
-library(ggalluvial)
-args = commandArgs(trailingOnly=TRUE)
-
-x=args[1]
-
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-###########Color Schema#################
-type_cols<-c(
-#epithelial
-"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-"B-cells" ="#089099", "T-cells" ="#003147", #other
-"CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
-diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
-molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
-pam50_colors<-c("Basal"="red","Her2"="pink","LumA"="blue","LumB"="cyan","Normal"="grey","NA"="black")
-embo_colors<-c("Basal"="green","LP"="blue","ML"="orange","Str"="red","NA"="black")
-########################################
-
-
-getmode <- function(x) {
-  u <- unique(x)
-  tab <- tabulate(match(x, u))
-  u[tab == max(tab)]
-}
-
-set_up_ref<-function(bins,ref_outname,save_rds=FALSE){ #modified version of SCOPE's get_bam_bed function
-  genome <- BSgenome.Hsapiens.UCSC.hg38
-  ref <- bins[which(as.character(seqnames(bins)) %in% paste0("chr", c(seq_len(22), "X", "Y")))] #autosomes and X Y
-
-  #Compute mappability for each reference bin.
-  mapp_gref<-mapp_hg38 #this is packaged with SCOPE, mappability across bins
-  mapp <- rep(1, length(ref))
-  #seqlevelsStyle(ref) <- "UCSC"
-  for (chr in as.character(unique(seqnames(ref)))) {
-      message("Getting mappability for ", chr, sep = "")
-      chr.index <- which(as.matrix(seqnames(ref)) == chr)
-      ref.chr <- ref[which(as.character(seqnames(ref)) == chr)]
-      mapp.chr <- rep(1, length(ref.chr))
-      overlap <- as.matrix(findOverlaps(ref.chr, mapp_gref))
-      for (i in unique(overlap[, 1])) {
-          index.temp <- overlap[which(overlap[, 1] == i), 2]
-          overlap.sub <- findOverlaps(ref.chr[i], mapp_gref[index.temp])
-          overlap.intersect <- pintersect(ref.chr[i][queryHits(overlap.sub)],mapp_gref[index.temp][subjectHits(overlap.sub)])
-          mapp.chr[i] <- sum((mapp_gref$score[index.temp]) * (width(overlap.intersect)))/sum(width(overlap.intersect))
-      }
-      mapp[chr.index] <- mapp.chr
-  }
-
-  #Compute GC for each bin, also from SCOPE
-  gc <- rep(NA, length(ref))
-  for (chr in unique(seqnames(ref))) {
-      message("Getting GC content for chr ", chr, sep = "")
-      chr.index <- which(as.matrix(seqnames(ref)) == chr)
-      ref.chr <- IRanges(start = start(ref)[chr.index], end = end(ref)[chr.index])
-      if (chr == "X" | chr == "x" | chr == "chrX" | chr == "chrx") {
-          chrtemp <- "chrX"
-      }
-      else if (chr == "Y" | chr == "y" | chr == "chrY" | chr == "chry") {
-          chrtemp <- "chrY"
-      }
-      else {
-          chrtemp <- as.numeric(mapSeqlevels(as.character(chr), 
-              "NCBI")[1])
-      }
-      if (length(chrtemp) == 0) 
-      message("Chromosome cannot be found in NCBI database. ")
-      chrm <- unmasked(genome[[chrtemp]])
-      seqs <- Views(chrm, ref.chr)
-      af <- alphabetFrequency(seqs, baseOnly = TRUE, as.prob = TRUE)
-      gc[chr.index] <- round((af[, "G"] + af[, "C"]) * 100, 2)
-  }
-
-  ref@elementMetadata$gc<-gc
-  ref@elementMetadata$mapp<-mapp
-  if(save_rds){
-  saveRDS(ref,file=ref_outname)}
-  return(ref)
-}
-
-get_sample_coverage<-function(bam_in="EXP220921HM_BCMM_WG01_S9_L002_R1_001.batch.dedup.RG.bam",ref,samp_name="sample_9"){
-  sampname<-samp_name
-    seg.dup <- read.table(system.file("extdata", "GRCh38GenomicSuperDup.tab", package = "WGSmapp"))
-    gaps <- read.table(system.file("extdata", "hg38gaps.txt", package = "WGSmapp"))
-    seg.dup <- seg.dup[!is.na(match(seg.dup[,1], paste('chr', c(seq_len(22), 'X', 'Y'), sep = ''))),]
-    seg.dup <- GRanges(seqnames = seg.dup[,1], ranges = IRanges(start = seg.dup[,2], end = seg.dup[,3]))
-    gaps <- gaps[!is.na(match(gaps[,2], paste('chr', c(seq_len(22), 'X', 'Y'), sep = ''))),]
-    gaps <- GRanges(seqnames = gaps[,2], ranges = IRanges(start = gaps[,3], end = gaps[,4]))
-    mask.ref <- sort(c(seg.dup, gaps))
-
-    Y <- matrix(nrow = length(ref), ncol = length(sampname))
-    rownames(Y) <- paste(seqnames(ref), ":", start(ref), "-", end(ref), sep = "")
-    colnames(Y) <- sampname
-    bamurl <- bam_in
-    what <- c("rname", "pos", "mapq", "qwidth")
-    flag <- scanBamFlag( isDuplicate = FALSE, isUnmappedQuery = FALSE, isNotPassingQualityControls = FALSE) # isFirstMateRead = TRUE #isPaired = TRUE,
-    param <- ScanBamParam(what = what, flag = flag)
-    bam <- scanBam(bamurl, param = param)[[1]]
-    message("Getting coverage for sample ", ": ", sampname, "...", sep = "")
-    
-    bam.ref <- GRanges(seqnames = bam$rname, ranges = IRanges(start = bam[["pos"]], width = bam[["qwidth"]]))
-    bam.ref <- bam.ref[bam$mapq >= 20] #Q20 threshold
-    bam.ref <- suppressWarnings(bam.ref[countOverlaps(bam.ref, mask.ref) == 0])
-    Y[, 1] <- countOverlaps(ref, bam.ref)
-    return(Y)
-}
-
-get_HMMcopy_counts<-function(in_bed,outname="sample_1",bulk_bam,ref_outname=NULL,MAKE_NEW_REF=FALSE,SMALL_REF=FALSE){
-    bins<-makeGRangesFromDataFrame(in_bed)
-    if(MAKE_NEW_REF|SMALL_REF){
-      if(MAKE_NEW_REF){
-      ref<-set_up_ref(bins=bins,ref_outname=ref_outname,save_rds=TRUE)}
-      else{ref<-set_up_ref(bins=bins,ref_outname=ref_outname,save_rds=FALSE)} #bins is granges of windows to use
-    } else {
-    ref<-readRDS(ref_outname) #bins is granges of windows to use
-    }
-    y<-get_sample_coverage(bam_in=bulk_bam,ref=ref,samp_name=outname)
-    count<-cbind(as.data.frame(ref),y)
-    colnames(count)<-c("chr","start","end","width","strand","gc","map","reads")
-    count<-count[c("chr","start","end","reads","gc","map")]
-    count$gc<-count$gc/100
-    count<-data.table(count)
-    count<-correctReadcount(count)
-    count$chr<-as.character(count$chr)
-    count<-count[count$chr!="chrY",]
-    seg<-HMMsegment(count)
-    count$state<-seg$state
-    count$state<-as.character(count$state)
-    count$chr<-factor(count$chr,levels=paste0("chr",c(1:22,"X")))
-    count<-count[order(count$chr,count$start),]
-    count$row_order<-1:nrow(count)
-    return(count)
-}
-
-plot_bulk_genome<-function(count){
-  plt<-ggplot(count,aes(x=row_order,y=copy,color=as.character(state)))+
-    scale_color_manual(values=cols)+
-    geom_point(size=1,alpha=1)+
-    ylab("")+
-    xlab("")+
-    ylim(-3,3)+
-    facet_grid(~chr,space="free",scales="free_x")+
-    theme_minimal()+
-    theme(axis.text.y = element_text(size=30),
-        axis.text.x = element_blank(), 
-        panel.grid.minor = element_blank(),
-        panel.spacing.x=unit(0.1,"lines"),
-        strip.background = element_blank(), 
-        legend.position="none",
-        panel.border = element_rect(colour = "black", fill = NA,size=3))
-  return(plt)
-}
-
-
-plot_singlecell_cnvs<-function(dat=dat,cnv=t(infercnv_obj@expr.data),assay="infercnv",outname=outname,wd=wd,bulk_plot=plt_100kb,chr_split=infercnv_obj@gene_order$chr,sum_windows=hmmcopy_infercnv_win,file_in,amp_value,del_value){
-  #dat is full path to seurat object
-  dat_file_path=file_in
-  dat$cnv_ref<-"FALSE"
-  dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #this is same as initial run of inferCNV, just didn't save seurat object
-  cnv_ref<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="TRUE",]),]
-  cnv<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="FALSE",]),]
-  col_fun = colorRamp2(c(min(unlist(cnv)), median(unlist(cnv)), max(unlist(cnv))), c("blue", "white", "red"))
-
-  #discretized window calls
-  cnv_discrete<-matrix(0,ncol=ncol(cnv),nrow=nrow(cnv))
-  cnv_discrete[which(cnv>=amp_value,arr.ind=T)]<-1
-  cnv_discrete[which(cnv<=del_value,arr.ind=T)]<--1
-  discrete_col<-setNames(c("blue","white","red"),nm=c("-1","0","1"))
-
-  dist_method="manhattan"
-  dist_x<-philentropy::distance(cnv_discrete,method=dist_method,as.dist.obj=T,use.row.names=T)
-  dend <- dist_x %>%  hclust(method="ward.D2") %>% as.dendrogram(edge.root=F,h=2) 
-  k_search<-find_k(dend,krange=2:10) #search for optimal K from 2-10
-  k_clus_number<-k_search$nc
-  k_clus_id<-k_search$pamobject$clustering
-  dend <- color_branches(dend, k = k_clus_number)    #split breakpoint object by clusters
-  saveRDS(dend,file=paste0(wd,"/",outname,".",assay,".dend.Rds")) #save dendrogram
-
-  #set up heatmap annotations
-  met<-as.data.frame(dat@meta.data)
-  met_ref<-met[row.names(met) %in% row.names(cnv_ref),]
-  met<-met[row.names(met) %in% row.names(cnv),]
-  if(any(!(unique(met$PAM50_designation) %in% names(pam50_colors)))){
-    met[met$PAM50_designation %in% unique(met$PAM50_designation)[!(unique(met$PAM50_designation) %in% names(pam50_colors))],]$PAM50_designation<-"NA"}
-  if(any(!(unique(met$EMBO_designation) %in% names(embo_colors)))){
-    met[met$EMBO_designation %in% unique(met$EMBO_designation)[!(unique(met$EMBO_designation) %in% names(embo_colors))],]$EMBO_designation<-"NA"}
-  read_count_col<-colorRamp2(c(min(met$gex_exonic_umis+met$gex_intronic_umis),
-    max(met$gex_exonic_umis+met$gex_intronic_umis)), 
-    c("white","black"))
-
-  ha = HeatmapAnnotation(which="row",
-    cell_type=met$predicted.id,
-    read_count= met$gex_exonic_umis+met$gex_intronic_umis,
-    pam_50=met$PAM50_designation,
-    embo=met$EMBO_designation,
-          col = list(cell_type = type_cols,
-            read_count=read_count_col,
-            embo=embo_colors,
-            pam_50=pam50_colors))
-
-  sum_windows<-sum_windows[colnames(cnv),]
-  state_cols = setNames(brewer.pal(n=6,name="RdBu"), nm = c("6","5","4","3","2","1")) # black, red, green, blue
-  copy_col<-colorRamp2(c(min(sum_windows$HMMcopy_mean_copymetric,na.rm=TRUE),0,
-    max(sum_windows$HMMcopy_mean_copymetric,na.rm=TRUE)), 
-    c("blue","white","red"))
-
-  hwin = HeatmapAnnotation(which="column",
-    copy_state=sum_windows$HMMcopy_mode_copystate,
-    copy_metric=sum_windows$HMMcopy_mean_copymetric,
-          col = list(copy_state = state_cols,
-            copy_metric=copy_col))
-  plt1<-Heatmap(cnv,
-      show_row_names=F,
-      show_column_names=F,
-      column_order=1:ncol(cnv),
-      col=col_fun,
-      cluster_rows=dend,
-      left_annotation=ha,
-      top_annotation=hwin,
-      column_split=chr_split)
-
-  ha_ref = HeatmapAnnotation(which="row",
-    cell_type=met_ref$predicted.id,
-    read_count= met_ref$gex_exonic_umis+met_ref$gex_intronic_umis,
-          col = list(cell_type = type_cols,
-            read_count=read_count_col))
-  plt1_ref<-Heatmap(cnv_ref,
-      show_row_names=F,
-      show_column_names=F,
-      column_order=1:ncol(cnv),
-      col=col_fun,
-      left_annotation=ha_ref,
-      column_split=chr_split)
-
-  plt2<-Heatmap(cnv_discrete,
-      show_row_names=F,
-      show_column_names=F,
-      column_order=1:ncol(cnv),
-      col=discrete_col,
-      cluster_rows=dend,
-      left_annotation=ha,
-      top_annotation=hwin,
-      column_split=chr_split)
-
-    pdf(paste0(wd,"/",outname,".",assay,".heatmap.pdf"),width=40)
-    print(bulk_plot)
-    print(plt1_ref)
-    print(plt1)
-    print(plt2)
-    dev.off()
-    system(paste0("slack -F ",paste0(wd,"/",outname,".",assay,".heatmap.pdf")," ryan_todo"))
-    return(cnv_discrete)
-}
-
-HMMcopy_comparison<-function(x){
- if(x %in% 1:12){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-  }else if(x %in% 13:20){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-  }
-    dat<-readRDS(file_in)
-    dir_in<-dirname(file_in)
-    bulk_bam<-bam_vec[outname]
-    bulk_bam<-paste(bamfolder,bulk_bam,sep="/")
-
-  #100kb windows
-    print(paste(outname,"100kb windows"))
-    ref_outname=paste(dirname(bulk_bam),"100kb_windows.rds",sep="/")
-    if(x==1){ MAKE_NEW_REF=FALSE
-    } else {MAKE_NEW_REF=FALSE} #only make the ref windows for the first sample
-    bins <- tileGenome(seqinfo(genome), tilewidth = 100 * 1000, cut.last.tile.in.chrom = TRUE) #set bins by other CNV callers
-    counts<-get_HMMcopy_counts(in_bed=bins,outname=outname,bulk_bam=bulk_bam,ref_outname=ref_outname,MAKE_NEW_REF=MAKE_NEW_REF)
-    saveRDS(counts,file=paste0(wd,"/",outname,"_bulkWGS_HMMcopy.100kb.rds"))
-    counts<-readRDS(file=paste0(wd,"/",outname,"_bulkWGS_HMMcopy.100kb.rds"))
-    plt_100kb<-plot_bulk_genome(counts)+ggtitle(paste(outname,"100kb Bins",mean(counts$start-counts$end)))
-
-  #InferCNV
-    assay="InferCNV"
-    #3 state model is here (gene by cell name data is in i3_hmm@expr.data)
-    i3_hmm<-readRDS(paste0(wd,"/",outname,"_inferCNV","/19_HMM_pred.repr_intensitiesHMMi3.hmm_mode-samples.Pnorm_0.5.infercnv_obj"))
-    print(paste(outname,"InferCNV windows"))
-    #infercnv_obj<-readRDS(paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
-    infercnv_obj<-i3_hmm
-    #Format Data
-    infercnv_bed<-infercnv_obj@gene_order
-    cnv_in<-t(infercnv_obj@expr.data)
-    chr_in<-infercnv_obj@gene_order$chr
-    chr_in<-factor(chr_in,levels=unique(chr_in))
-    #Summarize Data over WGS
-    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(infercnv_bed)))
-    hmmcopy_infercnv_win<-cbind(infercnv_bed,
-      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(infercnv_bed),function(x) 
-          mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
-      HMMcopy_mode_copystate=unlist(lapply(1:nrow(infercnv_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
-    #Cluster and Plot
-    disc_infercnv<-plot_singlecell_cnvs(
-        dat=dat,
-        cnv=cnv_in,
-        assay=assay,
-        outname=outname,
-        wd=wd,
-        chr_split=chr_in,
-        bulk_plot=plt_100kb,
-        sum_windows=hmmcopy_infercnv_win,
-        file_in=file_in,
-        amp_value=1.5,
-        del_value=0.5)
-    write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
-    write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_infercnv,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
-     write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_infercnv_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
-
-  #CASPER 
-    #casper discretized matrix:
-    casper_cnv<-readRDS(paste0(dir_in,"/casper/",outname,".finalgenemat.rds"))
-    #Run different segmentation scales? https://rpubs.com/akdes/673120 (section 3)
-    assay="CASPER"
-    print(paste(outname,"CASPER windows"))
-    casper_obj<-readRDS(paste0(dir_in,"/casper/",outname,".finalobj.rds"))
-    #Format Data
-    casper_bed<-casper_obj@annotation[,c("Chr","start","end")]
-    row.names(casper_bed)<-casper_obj@annotation$Gene
-    casper_bed$Chr<-paste0("chr",casper_bed$Chr)
-    colnames(casper_bed)<-c("chr","start","end")
-    #Summarize Data over WGS
-    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(casper_bed)))
-    hmmcopy_casper_win<-cbind(casper_bed,
-      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(casper_bed),function(x) 
-          mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
-      HMMcopy_mode_copystate=unlist(lapply(1:nrow(casper_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
-    cnv_in<-t(casper_cnv)
-    cnv_in<-cnv_in[,colnames(cnv_in)%in%casper_obj@annotation.filt$Gene]
-    chr_in<-casper_obj@annotation.filt[casper_obj@annotation.filt$Gene %in% colnames(cnv_in),]
-    chr_in<-paste0("chr",chr_in$Chr)
-    chr_in<-factor(chr_in,levels=unique(chr_in))
-    hmmcopy_casper_win<-hmmcopy_casper_win[colnames(cnv_in),]
-    #Cluster and Plot
-    disc_casper<-plot_singlecell_cnvs(
-        dat=dat,
-        cnv=cnv_in,
-        assay="casper",
-        outname=outname,
-        wd=wd,
-        chr_split=chr_in,
-        bulk_plot=plt_100kb,
-        sum_windows=hmmcopy_casper_win,
-        file_in=file_in,
-        amp_value=1,
-        del_value=-1)
-     write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
-    write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_casper,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
-     write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_casper_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
-
-  #CopyKAT 
-
-    assay="CopyKAT"
-    #to set CNV discrete changes, as per correspondence suggetions with Ruli Gao, 1.5x SD threshold, 1.5 absolute distance, or use +/-0.25 as cutoff
-    print(paste(outname,"CopyKat windows"))
-    copykat_obj<-readRDS(paste0(dir_in,"/copykat/",outname,".copykat.RDS"))
-    #Format Data
-    copykat_bed<-copykat_obj$CNAmat[1:2]
-    copykat_bed$chrom<-paste0("chr",copykat_bed$chrom)
-    copykat_bed[copykat_bed$chrom=="chr23",]$chrom<-"chrX"
-    bed_split<-split(x=copykat_bed,f=copykat_bed$chrom)
-    copykat_bed<-do.call("rbind",lapply(bed_split,function(x) {
-      print(x[1,1])
-      chrend<-chr_end[chr_end$chr==x[1,1],]$length
-      x$chromend<-c(x$chrompos[1:length(x$chrompos)-1]+diff(x$chrompos),chrend)
-      return(x)}))
-    colnames(copykat_bed)<-c("chr","start","end")
-    #Summarize Data over WGS
-    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(copykat_bed)))
-    hmmcopy_copykat_win<-cbind(copykat_bed,
-      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(copykat_bed),function(x) 
-          mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
-      HMMcopy_mode_copystate=unlist(lapply(1:nrow(copykat_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
-    row.names(hmmcopy_copykat_win)<-row.names(1:nrow(hmmcopy_copykat_win))
-    cnv_in<-t(copykat_obj$CNAmat[,4:ncol(copykat_obj$CNAmat)])
-    row.names(cnv_in)<-gsub("\\.","-",row.names(cnv_in))
-    chr_in<-paste0("chr",copykat_obj$CNAmat[,1])
-    chr_in<-factor(chr_in,levels=unique(chr_in))
-    sd_value<-sd(unlist(cnv_in))
-    norm_value<-mean(unlist(cnv_in))
-    amp_value<-norm_value+(sd_value*1.5)
-    del_value<-norm_value-(sd_value*1.5)
-    #Cluster and Plot
-    disc_copykat<-plot_singlecell_cnvs(
-        dat=dat,
-        cnv=cnv_in,
-        assay="CopyKAT",
-        outname=outname,
-        wd=wd,
-        chr_split=chr_in,
-        bulk_plot=plt_100kb,
-        sum_windows=hmmcopy_copykat_win,
-        file_in=file_in,
-        amp_value=amp_value,
-        del_value=del_value)
-     write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
-      write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copykat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
-     write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_copykat_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
-
-  #COPYSCAT
-    assay="copyscat"
-    copyscat_dat<-readRDS(file=paste0(dir_in,"/copyscat/",outname,"copyscat_cnvs_matrix.rds"))
-    print(paste(outname,"Copyscat windows"))
-    copyscat_obj<-readRDS(file=paste0(dir_in,"/copyscat/",outname,"copyscat_cnvs.rds"))
-    #Format Data
-    copyscat_dat<-copyscat_dat[[1]]
-    row.names(copyscat_dat)<-copyscat_dat[,1]
-    copyscat_dat<-t(copyscat_dat[,2:ncol(copyscat_dat)])
-    copyscat_chr<-unique(copyscat_obj[[1]]$Chrom[!(copyscat_obj[[1]]$Chrom %in% row.names(copyscat_dat))])
-    copyscat_cellid<-colnames(copyscat_dat)
-    copyscat_unreported <- data.frame(matrix(ncol = length(copyscat_cellid), nrow = length(copyscat_chr),data=2))
-    row.names(copyscat_unreported)<-copyscat_chr
-    colnames(copyscat_unreported)<-copyscat_cellid
-    copyscat_dat<-rbind(copyscat_dat,copyscat_unreported)
-    copyscat_dat<-copyscat_dat[match(cytoband$chr,row.names(copyscat_dat)),]
-    copyscat_dat<-copyscat_dat[!startsWith(prefix="NA",row.names(copyscat_dat)),]
-    copyscat_bed<-cytoband[cytoband$chr %in% row.names(copyscat_dat),]
-    copyscat_bed$chr<-paste0("chr",copyscat_bed$chrom)
-    copyscat_bed<-copyscat_bed[,c("chr","start","end")]
-    #Summarize Data over WGS
-    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(copyscat_bed)))
-    hmmcopy_copyscat_win<-cbind(copyscat_bed,
-      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(copyscat_bed),function(x) mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
-      HMMcopy_mode_copystate=unlist(lapply(1:nrow(copyscat_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
-    cnv_in<-t(copyscat_dat)
-    chr_in<-substr(colnames(cnv_in),1,nchar(colnames(cnv_in))-1)
-    chr_in<-factor(chr_in,levels=unique(chr_in))
-    cnv_in<-cnv_in[1:nrow(cnv_in)-1,]#remove median norm measure
-    row.names(hmmcopy_copyscat_win)<-colnames(cnv_in)
-    #Cluster and Plot
-    disc_copyscat<-plot_singlecell_cnvs(
-        dat=dat,
-        cnv=cnv_in,
-        assay="CopySCAT",
-        outname=outname,
-        wd=wd,
-        chr_split=chr_in,
-        bulk_plot=plt_100kb,
-        sum_windows=hmmcopy_copyscat_win,
-        file_in=file_in,
-        amp_value=2,
-        del_value=0)
-     write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
-      write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copyscat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
-     write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_copyscat_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
-
-
-  #RobustCNV
-    assay="RobustCNV"
-    robustcnv_obj<-read.csv(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/",outname,"_1MB_robustCNV.csv"))
-    #Format Data
-    colnames(robustcnv_obj)<-gsub(colnames(robustcnv_obj),pattern="\\.",replacement="-")
-    robustcnv_bed<-read.table(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/","window_1MB.bed"))
-    colnames(robustcnv_bed)<-c("chr","start","end","win")
-    robustcnv_bed<-robustcnv_bed[!robustcnv_bed$chr %in% c("chrX","chrY"),]
-    #Summarize Data over WGS
-    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(robustcnv_bed)))
-    hmmcopy_robustcnv_win<-cbind(robustcnv_bed,
-      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(robustcnv_bed),function(x) mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
-      HMMcopy_mode_copystate=unlist(lapply(1:nrow(robustcnv_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
-    cnv_in<-t(robustcnv_obj)
-    colnames(cnv_in)<-robustcnv_bed$win
-    row.names(hmmcopy_robustcnv_win)<-colnames(cnv_in)
-    chr_in<-hmmcopy_robustcnv_win$chr
-    sd_value<-sd(unlist(cnv_in))
-    norm_value<-mean(unlist(cnv_in))
-    amp_value<-norm_value+(sd_value*1.5)
-    del_value<-norm_value-(sd_value*1.5)
-    #Cluster and Plot
-    disc_robustcnv<-plot_singlecell_cnvs(
-        dat=dat,
-        cnv=cnv_in,
-        assay="RobustCNV",
-        outname=outname,
-        wd=wd,
-        chr_split=chr_in,
-        bulk_plot=plt_100kb,
-        sum_windows=hmmcopy_robustcnv_win,
-        file_in=file_in,
-        amp_value=amp_value,
-        del_value=del_value)
-    write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
-      write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_robustcnv,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
-    write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_robustcnv_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
-}
-
-bamfolder <- "/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
-bamFile <- list.files(bamfolder, pattern = 'dedup.RG.bam$')
-bamdir <- file.path(bamfolder, bamFile)
-sampname_raw <- paste("sample",c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20),sep="_") #bams are ordered by sample number as well #3,11,12
-bam_vec<-setNames(bamFile,nm=sampname_raw)
-colnames(cytoband)<-c("chrom","start","end","arm")
-cytoband$chr<-paste0("chr",cytoband$chrom,cytoband$arm)
-chr_end<-data.frame(chr=BSgenome.Hsapiens.UCSC.hg38@seqinfo@seqnames,length=BSgenome.Hsapiens.UCSC.hg38@seqinfo@seqlengths)
-cols = setNames(brewer.pal(n=6,name="RdBu"), nm = c("6","5","4","3","2","1")) # black, red, green, blue
-genome <- BSgenome.Hsapiens.UCSC.hg38
-out_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/cnv_comparison"
-system(paste("mkdir",out_dir))
-HMMcopy_comparison(x)
-#lapply(c(3,4,5,6,7,8,9,10,11,15,16,19,20),HMMcopy_comparison) #waiting for infercnv for 12 to finish #1,3,
-lapply(c(3,4,7,9,10,11,15,20),HMMcopy_comparison) #waiting for infercnv for 12 to finish #1,3,
-
-lapply(c(19,15,11,10,9,7),HMMcopy_comparison) 
-#Set states to match CNV Callers by mode of called states per window
-
-```
-
-```bash
-for i in 4 5 6 7 8;
-do Rscript hmmcopy_comparisons.R $i; done &
-```
-Writing out as a batch script for slurm job submission
-
-compare_hmm_slurm.sh
-```bash
-#!/bin/bash
-#SBATCH --nodes=1 #request 1 node
-#SBATCH --array=0-13
-#SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
-#SBATCH --cpus-per-task=10 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
-#SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
-#SBATCH --time=24:00:00 ## ask for 1 hour on the node
-#SBATCH --
-
-array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "15" "16" "19" "20") 
-sample_in=${array_in[$SLURM_ARRAY_TASK_ID]}
-multiome_dir="/home/groups/CEDAR/mulqueen/projects/multiome"
-
-srun Rscript ${multiome_dir}/compare_hmm_slurm.sh $sample_in
-
-```
-
-Job submit all HMMcopy jobs for comparison
-```bash
-sbatch compare_hmm_slurm.sh
-```
-
-
+<!-- NOT GOING TO WORK, TOO LOW COV
 ### Looking for subclonality in bulk WGS libraries
 
 Install Battenberg
@@ -4825,13 +4587,12 @@ for fout in fouts_dict.values():
     fout.close()
 ```
 
+-->
+
+<!--
 #ER binding poor and good outcome from patients, overlap with ATAC data
 http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Poor%20outcome%20ER%20regions.bed.gz
 http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Good%20outcome%20ER%20regions.bed.gz
 
-#sample specificity between cancer and normal epithelial, superenhancers are open more frequently
-#plot epithelial cell subtype per sample
-#use cnv to infer changes, then do lineage comparisons, plot BAF across regions
-#use HMMcopy to test ATAC changes
-#plot cell prediction specificity (predicted ID values density plot colored by predicted ID cell types)
 
+-->

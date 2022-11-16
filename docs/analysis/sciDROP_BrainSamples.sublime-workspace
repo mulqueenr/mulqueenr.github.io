@@ -1,0 +1,266 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"idx",
+				"idx_match_list"
+			],
+			[
+				"hmm",
+				"hmmcopy_robustcnv_win"
+			],
+			[
+				"sum_",
+				"sum_windows"
+			],
+			[
+				"que",
+				"queryHits"
+			],
+			[
+				"save",
+				"save_rds"
+			],
+			[
+				"bam",
+				"bamfolder"
+			],
+			[
+				"copyscat",
+				"copyscat_unreported"
+			],
+			[
+				"colu",
+				"column_split"
+			],
+			[
+				"seura",
+				"seurat_subcluster"
+			],
+			[
+				"harmony",
+				"harmony_rna"
+			],
+			[
+				"sub",
+				"subcluster"
+			],
+			[
+				"rota",
+				"rotation_euler"
+			],
+			[
+				"atta",
+				"attach_left_or_right"
+			],
+			[
+				"attach_",
+				"attach_ob"
+			],
+			[
+				"an",
+				"anchor_left_or_right"
+			],
+			[
+				"hy",
+				"hybridize_anchor"
+			],
+			[
+				"op",
+				"operator"
+			],
+			[
+				"PAM",
+				"PAM50_designation"
+			],
+			[
+				"pam",
+				"pam50_colors"
+			]
+		]
+	},
+	"buffers":
+	[
+	],
+	"build_system": "",
+	"build_system_choices":
+	[
+	],
+	"build_varint": "",
+	"command_palette":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"console":
+	{
+		"height": 0.0,
+		"history":
+		[
+		]
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"file_history":
+	[
+		"/Users/rmulqueen/Documents/GitHub/mulqueenr.github.io/docs/_includes/section_nav.html",
+		"/Users/rmulqueen/Documents/GitHub/mulqueenr.github.io/docs/_layouts/cedar_analysis.html",
+		"/Users/rmulqueen/Documents/GitHub/mulqueenr.github.io/docs/analysis/sciDROP_BrainSamples.md",
+		"/Users/rmulqueen/Documents/GitHub/mulqueenr.github.io/docs/analysis/sciatac_tbr1.md",
+		"/Users/rmulqueen/Desktop/hmmcopy_nmt.R",
+		"/Users/rmulqueen/Documents/GitHub/mulqueenr.github.io/docs/CEDAR analysis/10x_multiomephase2.md",
+		"/Users/rmulqueen/Documents/GitHub/mulqueenr.github.io/docs/s3 Data/s3wgs.md",
+		"/Users/rmulqueen/Downloads/13059_2014_431_MOESM17_ESM/ClassifyAllStudies.R",
+		"/Users/rmulqueen/Downloads/13059_2014_431_MOESM17_ESM/classifier_functions.R",
+		"/Users/rmulqueen/Documents/GitHub/blender_DNA_builder/utils/dna_builder_utils.py",
+		"/Users/rmulqueen/Documents/GitHub/blender_DNA_builder/data/dna.blend",
+		"/Users/rmulqueen/Documents/GitHub/mulqueenr.github.io/docs/side_projects/3d_scatterplots.md",
+		"/Users/rmulqueen/Documents/GitHub/blender_3D_scatter_plot/utils/scatterplot_utils.py",
+		"/Users/rmulqueen/Documents/GitHub/blender_DNA_builder/__init__.py",
+		"/Users/rmulqueen/Documents/GitHub/blender_3D_scatter_plot/__init__.py",
+		"/Users/rmulqueen/Documents/projects/sciDROP/hg38/hg38_3d.umap.tsv",
+		"/Users/rmulqueen/Documents/GitHub/blender_3D_scatter_plot/test_data/test.tsv",
+		"/Users/rmulqueen/Documents/GitHub/blender_3D_scatter_plot/utils/__init__.py",
+		"/Users/rmulqueen/Library/Application Support/Blender/3.2/scripts/addons/3d_scatter.py",
+		"/Users/rmulqueen/Documents/Blender/dna_builder/dna_built.py",
+		"/Users/rmulqueen/Documents/Blender/dna_builder/LICENSE",
+		"/Users/rmulqueen/Documents/Blender/dna_builder/dna_builder_utils.py",
+		"/Users/rmulqueen/Documents/Blender/dna_builder/__init__.py",
+		"/Users/rmulqueen/Library/Application Support/Blender/3.2/scripts/addons/__init__.py"
+	],
+	"find":
+	{
+		"height": 24.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": true,
+		"find_history":
+		[
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": true,
+		"replace_history":
+		[
+		],
+		"reverse": false,
+		"scrollbar_highlights": true,
+		"show_context": true,
+		"use_buffer2": true,
+		"use_gitignore": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"sheets":
+			[
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 24.0
+	},
+	"input":
+	{
+		"height": 36.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.find_results":
+	{
+		"height": 0.0
+	},
+	"pinned_build_system": "",
+	"project": "sciDROP_BrainSamples.sublime-project",
+	"replace":
+	{
+		"height": 44.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_symbol":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"selected_group": 0,
+	"settings":
+	{
+	},
+	"show_minimap": true,
+	"show_open_files": false,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 281.0,
+	"status_bar_visible": true,
+	"template_settings":
+	{
+	}
+}

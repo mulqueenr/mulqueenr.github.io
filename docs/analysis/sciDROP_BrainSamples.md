@@ -339,6 +339,7 @@ out_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard
 samtools merge -f -@ 20 -h $sciDROP_70k_dir/hg38.bbrd.q10.bam $out_dir/hg38.merged.bbrd.q10.bam $sciDROP_70k_dir/hg38.bbrd.q10.bam $sciDROP_20k_dir/hg38.bbrd.q10.bam &  
 samtools merge -f -@ 20 -h $sciDROP_70k_dir/mm10.bbrd.q10.bam $out_dir/mm10.merged.bbrd.q10.bam $sciDROP_70k_dir/mm10.bbrd.q10.bam $sciDROP_20k_dir/mm10.bbrd.q10.bam &  
 
+
 #Call peaks by read pileups
 cd $out_dir
 scitools callpeaks hg38.merged.bbrd.q10.bam &
@@ -3559,7 +3560,7 @@ import sys
 
 def change_id(x):
     global i
-    x.id=barc[i]+"."+str(i)
+    x.id=barc[i]+":"+str(i)
     i+=1
     return(x)
 
@@ -3692,7 +3693,6 @@ idx_list=['AACCACA','AACGGTG','AACGTAA','AACTCTT','AAGCAGC','AAGGTTC','AAGTGCG',
 constant_1="TATGCATGAC"
 constant_2="AGTCACTGAG" #i think this is actually reversed in the sequence
 linker1 = "CCTAGTCGCGTAGAC" #this is from the parse_oligoes.py, not sure if it is in this sequence though
-index_accepted=[]
 
 #Function to find a single mismatch against list of given indexes
 def one_mismatch_find(bc):
@@ -3740,7 +3740,6 @@ def change_id(title1,seq1,qual1):
             if bc1_matched and bc2_matched and bc3_matched:
                 number_out=title1.split(" ")[0].split(".")[2]
                 barc=bc1+bc2+bc3
-                index_accepted.append(number_out)
                 seq1=seq1[tn5_adapt_cut[0].end:]
                 qual1=qual1[tn5_adapt_cut[0].end:]
                 title1=barc+"."+number_out
@@ -3751,11 +3750,6 @@ def change_id(title1,seq1,qual1):
     else:
         pass
     return((title1, seq1, qual1))
-
-#Grab the read name index
-def check_read_index(x):
-    number_out=x.split(" ")[0].split(".")[2]
-    return(number_out)
 
 
 fq1=sys.argv[1] #read argument fq1="SRR8310661.sra_1.fastq.gz"
@@ -3769,8 +3763,8 @@ with gzip.open(fq1, "rt") as handle1:
                 for (title1, seq1, qual1), (title2, seq2, qual2) in zip(FastqGeneralIterator(handle1), FastqGeneralIterator(handle2)):
                     out=change_id(title1, seq1, qual1)
                     if out[0].startswith("SRR") is False:
-                        outfile_fq1.write("@%s\n%s\n+\n%s\n" % (title1, seq1, qual1))
-                        outfile_fq2.write("@%s\n%s\n+\n%s\n" % (title1, seq2, qual2))
+                        outfile_fq1.write("@%s\n%s\n+\n%s\n" % (out[0], out[1], out[2]))
+                        outfile_fq2.write("@%s\n%s\n+\n%s\n" % (out[0], seq2, qual2))
 
 ```
 
@@ -3797,7 +3791,8 @@ srun python /home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/barcode_ddscata
 
 ```bash
 ref_dir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
-gzip -r ${ref_dir}/ddscATAC/*/*/*fastq
+fastq_in=`ls ${ref_dir}/ddscATAC/*/*/*fastq`; 
+for i in $fastq_in; do gzip -f $i & done &
 ```
 
 
@@ -3865,74 +3860,161 @@ Once all fastq files have their cell-barcode identifier within their read name, 
 
 ```bash
 scitools="/home/groups/oroaklab/src/scitools/scitools-dev/scitools"
+sciDROP_70k_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_70k"
+sciatac_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232"
+scimap_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233"
+snatac_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/snATAC/SRR6768122/SRR6768122"
+ddscATAC_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC"
+tenxatacv1_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1"
+tenxatacv2_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2"
+ref_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
 
 #Alignment
 ##sciatac alignment
-sciatac_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232"
 $scitools fastq-align -m 5G -n -t 20 -r 20 mm10 \
 $sciatac_outdir/sciATAC_mus \
 $sciatac_outdir/SRR13437232_1.barc.fastq.gz \
 $sciatac_outdir/SRR13437232_2.barc.fastq.gz &
 
 ##scimap alignment
-scimap_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233"
 $scitools fastq-align -m 5G -n -t 20 -r 20 mm10 \
 $scimap_outdir/sciMAP_mus \
 $scimap_outdir/SRR13437233_1.barc.fastq.gz \
 $scimap_outdir/SRR13437233_2.barc.fastq.gz &
 
 ##snATAC alignment
-snatac_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/snATAC/SRR6768122/SRR6768122"
 $scitools fastq-align -m 5G -n -t 20 -r 20 mm10 \
 $snatac_outdir/snATAC_mus \
 $snatac_outdir/SRR6768122.sra_1.barc.fastq.gz \
 $snatac_outdir/SRR6768122.sra_2.barc.fastq.gz &
 
 ##ddscATAC alignment
-ddscATAC_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC"
 for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
 $scitools fastq-align -m 5G -n -t 10 -r 10 mm10 \
 $ddscATAC_outdir/ddscATAC_mus_${i} \
 $ddscATAC_outdir/${i}/${i}/${i}.sra_1.barc.fastq.gz \
 $ddscATAC_outdir/${i}/${i}/${i}.sra_2.barc.fastq.gz ; done &
 
+##Some bam files how read names with the wrong delimter, so now I'm just going to corret (replace a "." with a ":" so it is scitools compatible)
+#sciATAC
+((samtools view -H $sciatac_outdir/sciATAC_mus.nsrt.bam) && (samtools view $sciatac_outdir/sciATAC_mus.nsrt.bam |  awk 'OFS="\t" {gsub(/[.]/,":",$1);print}')) | samtools view -b > $sciatac_outdir/sciATAC_mus.RG.nsrt.bam &
+#sciMAP
+((samtools view -H $scimap_outdir/sciMAP_mus.nsrt.bam) && (samtools view $scimap_outdir/sciMAP_mus.nsrt.bam |  awk 'OFS="\t" {gsub(/[.]/,":",$1);print}')) | samtools view -b > $scimap_outdir/sciMAP_mus.RG.nsrt.bam &
+#snATAC
+((samtools view -H $snatac_outdir/snATAC_mus.nsrt.bam) && (samtools view $snatac_outdir/snATAC_mus.nsrt.bam |  awk 'OFS="\t" {gsub(/[.]/,":",$1);print}')) | samtools view -b > $snatac_outdir/snATAC_mus.RG.nsrt.bam &
+#10xv1
+((samtools view -H $tenxatacv1_outdir/tenxv1_mus.bam) && (samtools view $tenxatacv1_outdir/tenxv1_mus.bam |  awk 'OFS="\t" {gsub(/[.]/,":",$1);print}')) | samtools view -b > $tenxatacv1_outdir/tenxv1_mus.RG.bam &
+#10xv2
+((samtools view -H $tenxatacv2_outdir/tenxv2_mus.bam) && (samtools view $tenxatacv2_outdir/tenxv2_mus.bam |  awk 'OFS="\t" {gsub(/[.]/,":",$1);print}')) | samtools view -b > $tenxatacv2_outdir/tenxv2_mus.RG.bam &
+#ddscATAC_outdir
+for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
+    ((samtools view -H $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.bam ) && (samtools view $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.bam |  awk 'OFS="\t" {gsub(/[.]/,":",$1);print}')) | samtools view -b > $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam & done &
 
+```
+
+```bash
 #Remove duplicates based on cellID, chromosome and start sites per read
 ##using the name sorted (-n) barcode based removal of duplicates
-$scitools bam-rmdup -n -t 12 ${sciatac_outdir}/sciATAC_mus.nsrt.bam 
-$scitools bam-rmdup -n -t 12 ${scimap_outdir}/sciMAP_mus.nsrt.bam 
-$scitools bam-rmdup -n -t 12 ${snatac_outdir}/snATAC_mus.nsrt.bam 
-ddscATAC_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC"
+$scitools bam-rmdup -n -t 4 ${sciatac_outdir}/sciATAC_mus.RG.nsrt.bam &
+$scitools bam-rmdup -n -t 4 ${scimap_outdir}/sciMAP_mus.RG.nsrt.bam &
+$scitools bam-rmdup -n -t 4 ${snatac_outdir}/snATAC_mus.RG.nsrt.bam &
+$scitools bam-rmdup -t 4 ${tenxatacv1_outdir}/tenxv1_mus.RG.bam &
+$scitools bam-rmdup -t 4 ${tenxatacv2_outdir}/tenxv2_mus.RG.bam &
 for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
-$scitools bam-rmdup -n -t 10 $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.bam & done &
+$scitools bam-rmdup -n -t 10 $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam & done &
 
-#Merge bam files
-${sciatac_outdir}/sciATAC_mus.nsrt.bam
-${scimap_outdir}/sciMAP_mus.nsrt.bam 
-${snatac_outdir}/snATAC_mus.nsrt.bam 
-${ddscATAC_outdir}/ddscATAC_mus_${i}.nsrt.bam
-${ddscATAC_outdir}/ddscATAC_mus_${i}.nsrt.bam
-${ddscATAC_outdir}/ddscATAC_mus_${i}.nsrt.bam
-${ddscATAC_outdir}/ddscATAC_mus_${i}.nsrt.bam
-${ddscATAC_outdir}/ddscATAC_mus_${i}.nsrt.bam
-${ddscATAC_outdir}/ddscATAC_mus_${i}.nsrt.bam
+#Merge all bam files
+$scitools bam-merge ${ref_outdir}/all_methods_merged2_mm10.bbrd.q10.bam \
+${sciatac_outdir}/sciATAC_mus.nsrt.bam \
+${scimap_outdir}/sciMAP_mus.nsrt.bam \
+${snatac_outdir}/snATAC_mus.nsrt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310661.nsrt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310662.nsrt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310663.nsrt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310664.nsrt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310665.nsrt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310666.nsrt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310667.nsrt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310668.nsrt.bam \
+${sciDROP_70k_dir}/mm10.bbrd.q10.bam
 
-samtools cat -n -r -h 
+#correct all bam files to have the same read name layout
+((samtools view -H all_methods_merged2_mm10.bbrd.q10.bam) && (samtools view all_methods_merged2_mm10.bbrd.q10.bam |  awk 'OFS="\t" {gsub(/[.]/,":",$1);print}')) | samtools view -b > all_methods_merged_fixed_mm10.bbrd.q10.bam &
+
+#Get read count per cell and filter to those with >1000
+
 
 #Call peaks by read pileups
-$scitools callpeaks -f mm10 sciATAC_mus.bbrd.q10.bam &
+$scitools callpeaks -f mm10 ${ref_outdir}/all_methods_merged2_mm10.bbrd.q10.bam &
 
-#Make counts matrix
-scitools atac-counts -O sciATAC_mus sciATAC_mus.nsrt.bbrd.q10.bam  \
-sciATAC_mus.bbrd.q10.500.bed &
+#Note due to technical difficulties I had to merge peaks and buffer to 500bp with awk
+################
+out="all_methods_merged2_mm10.bbrd.q10"
+input_narrowPeak="all_methods_merged2_mm10.bbrd.q10_peaks.narrowPeak"
+
+bedtools merge -i $input_narrowPeak 2>/dev/null | awk 'OFS="\t" {if($1!~ /(M|Y|L|K|G|Un|Random|Alt)/i){
+if($3-$2<500){
+    mid=int(($3+$2)/2);
+    $2=mid-250
+    $3=mid+250}
+if($2>0){
+    print $1,$2,$3
+} else print $1,0,$3;
+}}' | bedtools sort -i -  2>/dev/null| bedtools merge -i - 2>/dev/null | awk 'OFS="\t" {print $1,$2,$3,$1_$2_$3}' > ${out}.500.bed
+################
+
+bed_file="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged2_mm10.bbrd.q10.500.bed"
+
+
+#Check for barcode duplicates
+#If all cell barcodes are unique, there should be the same number of lines if we accound for bam origin or not
+samtools view all_methods_merged2_mm10.bbrd.q10.bam | awk '{split($1,a,"[:]");split(a[1],b,"[.]");print b[1]}' | sort -T . --parallel=20 | uniq -c | wc -l > barc_count.txt &
+samtools view all_methods_merged2_mm10.bbrd.q10.bam | awk '{split($1,a,"BAMID=");split(a[1],b,"[.]");split(b[1],c,":");print c[1],a[2]}' | sort -T . --parallel=20 | uniq -c | wc -l > barcANDmethod_count.txt &
+
+#Make counts matrix on merged peaks per technology
+$scitools atac-counts -O scATAC_mus_all all_methods_merged2_mm10.bbrd.q10.bam \
+all_methods_merged2_mm10.bbrd.q10.500.bed &
 
 #scitools wrapper for samtools isize
 scitools isize mm10.merged.bbrd.q10.bam &
 
 #scitools wrapper for tss enrichment
 scitools bam-tssenrich mm10.merged.bbrd.q10.bam mm10 &
+
+
 ```
 
+## Set Up MetaData per Analysis
+
+```bash
+#sciMAP and sciATAC data
+scimap_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233"
+tenxatacv1_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1"
+tenxatacv2_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2"
+ddscATAC_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC"
+
+cd $scimap_outdir
+wget https://ftp.ncbi.nlm.nih.gov/geo/series/GSE164nnn/GSE164849/suppl/GSE164849_sciMAP.metadata.csv.gz
+
+#snATAC
+
+#10x v1
+cd $tenxatacv1_outdir
+wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_analysis.tar.gz
+tar -xvf atac_v1_adult_brain_fresh_5k_analysis.tar.gz
+#clsuters in /home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1/analysis/clustering/graphclust/clusters.csv
+
+#10x v2
+cd $tenxatacv1_outdir
+wget https://cf.10xgenomics.com/samples/cell-atac/2.1.0/8k_mouse_cortex_ATACv2_nextgem_Chromium_X/8k_mouse_cortex_ATACv2_nextgem_Chromium_X_analysis.tar.gz
+tar -xvf 8k_mouse_cortex_ATACv2_nextgem_Chromium_X_analysis.tar.gz
+#clusters in /home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2/analysis/clustering/graphclust/clusters.csv
+
+#ddATAC
+cd $ddscATAC_outdir
+wget https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/mousebrain/data/mousebrain-master_dataframe.rds
+#clusters in dat<-readRDS("/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/mousebrain-master_dataframe.rds")
+```
 
 <!---
 
