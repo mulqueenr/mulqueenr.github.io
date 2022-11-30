@@ -3876,36 +3876,17 @@ for i in ${ref_dir}/s3atac/${sra}/*fastq;
 do gzip $i & done &
 ````
 
-Generating a script for bam setup and output, just as above.
-barcode_scimap.py
-```python
-import gzip
-from Bio import SeqIO
-import sys
-
-def change_id(x):
-    global i
-    x.id=barc[i]+"."+str(i)
-    i+=1
-    return(x)
-
-fq1=sys.argv[1] #read argument
-fq3=sys.argv[2] #index argument
-barc=[str(record.seq) for record in SeqIO.parse(gzip.open(fq3,"rt"), "fastq")] #make list of barcodes
-i=0
-SeqIO.write((change_id(x=record) for record in SeqIO.parse(gzip.open(fq1,"rt"), 'fastq')), sys.stdout, "fastq")
-```
-
-Now running this python script for both fastq 1 and fastq 2.
-
+Or use bams from original manuscript. Since it is already aligned to the same mm10 file.
 ```bash
-python ./barcode_scimap.py SRR13437233_1.fastq.gz SRR13437233_3.fastq.gz > SRR13437233_1.barc.fastq &
-python ./barcode_scimap.py SRR13437233_2.fastq.gz SRR13437233_3.fastq.gz > SRR13437233_2.barc.fastq &
+cd ${ref_dir}/s3atac
+ls /home/groups/oroaklab/adey_lab/projects/s3/s3WGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits/single_prededup_bams/mm10.RG*prededup.bam > scbam_list.txt
+
+samtools cat -b scbam_list.txt -@20 -o s3atac.mm10.bam
+
+#metadata
+wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM5289nnn/GSM5289637/suppl/GSM5289637_s3atac.mm10.metadata.csv.gz
 ```
 
-```bash
-
-```
 Once all fastq files have their cell-barcode identifier within their read name, use scitools for fastq alignments and processing.
 
 ```bash
@@ -3972,6 +3953,8 @@ $scitools bam-project -X ${tenxatacv1_outdir}/tenxv1_mus.RG.bam &
 $scitools bam-project -X ${tenxatacv2_outdir}/tenxv2_mus.RG.bam &
 for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
 $scitools bam-project -X $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam; done & 
+$scitools bam-project -X ${s3atac_outdir}/s3atac.mm10.bam  &
+
 ```
 
 Remove PCR duplicate reads
@@ -3986,6 +3969,8 @@ $scitools bam-rmdup -t 4 ${tenxatacv1_outdir}/tenxv1_mus.RG.bam
 $scitools bam-rmdup -t 4 ${tenxatacv2_outdir}/tenxv2_mus.RG.bam 
 for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
 $scitools bam-rmdup -n -t 4 $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam ; done 
+$scitools bam-rmdup -n -t 4 ${s3atac_outdir}/s3atac.mm10.bam
+
 ```
 
 Filter cells with less than 1000 unique reads
@@ -3998,6 +3983,7 @@ $scitools bam-filter  -N 1000 ${tenxatacv1_outdir}/tenxv1_mus.RG.bam &
 $scitools bam-filter  -N 1000 ${tenxatacv2_outdir}/tenxv2_mus.RG.bam &
 for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
 $scitools bam-filter  -N 1000 $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam & done &
+$scitools bam-filter  -N 1000 ${s3atac_outdir}/s3atac.mm10.bbrd.q10.bam
 
 ```
 
@@ -4018,6 +4004,7 @@ ${ddscATAC_outdir}/ddscATAC_mus_SRR8310667.nsrt.RG.filt.bam \
 ${ddscATAC_outdir}/ddscATAC_mus_SRR8310668.nsrt.RG.filt.bam \
 ${tenxatacv1_outdir}/tenxv1_mus.RG.bam \
 ${tenxatacv2_outdir}/tenxv2_mus.RG.bam \
+${s3atac_outdir}/s3atac.mm10.bbrd.q10.filt.bam \
 ${sciDROP_70k_dir}/mm10.bbrd.q10.bam
 
 #Make fragment files
@@ -4175,7 +4162,10 @@ bamid_readable<-c("BAMID=1"="sciATAC",
     "BAMID=9"="ddscATAC",
     "BAMID=10"="ddscATAC",
     "BAMID=11"="ddscATAC",
-    "BAMID=12"="sciDROP") #this is based on the order of bam-merge scitools call above
+    "BAMID=12"="tenxv1",
+    "BAMID=13"="tenxv2",
+    "BAMID=14"="s3ATAC",
+    "BAMID=15"="sciDROP") #this is based on the order of bam-merge scitools call above
 bamid<-setNames(nm=bamid_annot$V1,bamid_annot$V2)
 bamid_reads<-setNames(nm=bamid_annot$V1,bamid_readable[bamid_annot$V2])
 mm10_atac<-AddMetaData(mm10_atac,bamid,col.name="bam_id")
