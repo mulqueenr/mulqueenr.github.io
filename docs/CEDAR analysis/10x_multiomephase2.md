@@ -1711,9 +1711,7 @@ saveRDS(dat_merged,file="phase2.QC.SeuratObject.rds")
 ### Cistopic on merged samples
 <!-- Done -->
 
-## Rerun from here with proper filtering
-<!-- Done -->
-
+Filter cells to the follow criteria
 * scrublet reported predicted_doublets is false
 * at least 500 ATAC fragments, no more than 10k 
 * at least 100 gene expression exonic mapped UMIs, no more than 10k
@@ -1918,7 +1916,7 @@ saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
 
 
 ## Bar plots across cells
-<!--Rerun-->
+<!--Done-->
 ```R
 library(Signac)
 library(Seurat)
@@ -1934,6 +1932,8 @@ type_cols<-c(
 "B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
 "CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
 
+embo_cell_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
+       
 diag_cols<-c("IDC"="red", "DCIS"="grey")
 
 molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"="#F7B7BB")
@@ -1949,8 +1949,7 @@ metadat<-as.data.frame(dat@meta.data)
 metadat$diagnosis = factor(metadat$diagnosis, levels=c("NAT","DCIS","IDC","ILC"), labels=c("NAT","DCIS","IDC","ILC")) 
 metadat$molecular_type = factor(metadat$molecular_type, levels=c("NA","DCIS","ER+/PR+/HER2-","ER+/PR-/HER2+","ER+/PR-/HER2-"), labels=c("NA","DCIS","ER+/PR+/HER2-","ER+/PR-/HER2+","ER+/PR-/HER2-")) 
 
-
-#Cells PF (log10)
+#Cells PF
 metadat$epi<-"Nonepi"
 metadat[metadat$predicted.id %in% c("Cancer Epithelial","Normal Epithelial"),]$epi<-"Epi"
 DF<-as.data.frame(metadat %>% group_by(diagnosis, molecular_type,sample,epi) %>% tally())
@@ -1961,8 +1960,14 @@ system("slack -F barplot_qc_cellcount.pdf ryan_todo")
 #Cell types (stacked bar)
 DF<-as.data.frame(metadat %>% group_by(diagnosis, molecular_type,sample,predicted.id) %>% tally())
 plt1<-ggplot(DF,aes(x=sample,fill=predicted.id,y=n))+geom_bar(position="fill",stat="identity")+theme_minimal()+scale_fill_manual(values=type_cols)+facet_grid(.~diagnosis+molecular_type,scales="free_x",space="free")
-ggsave(plt1,file="barplot_qc_celltype.pdf")
-system("slack -F barplot_qc_celltype.pdf ryan_todo")
+ggsave(plt1,file="swarbrick_barplot_qc_celltype.pdf")
+system("slack -F swarbrick_barplot_qc_celltype.pdf ryan_todo")
+
+#Cell types (stacked bar)
+DF<-as.data.frame(metadat %>% group_by(diagnosis, molecular_type,sample,EMBO_predicted.id) %>% tally())
+plt1<-ggplot(DF,aes(x=sample,fill=EMBO_predicted.id,y=n))+geom_bar(position="fill",stat="identity")+theme_minimal()+scale_fill_manual(values=embo_cell_cols)+facet_grid(.~diagnosis+molecular_type,scales="free_x",space="free")
+ggsave(plt1,file="Embo_barplot_qc_celltype.pdf")
+system("slack -F Embo_barplot_qc_celltype.pdf ryan_todo")
 
 ```
 ### Vibe check on cell type prediction
@@ -2207,7 +2212,7 @@ infercnv_per_sample<-function(x,prediction="EMBO"){
 
   DefaultAssay(dat)<-"RNA" #using raw counts, and not SOUPX corrected counts for this
   dat$cnv_ref<-"FALSE"
-  if(prediction="EMBO"){
+  if(prediction=="EMBO"){
   dat@meta.data[!(dat$EMBO_predicted.id %in% c("epithelial")),]$cnv_ref<-"TRUE" #set cnv ref by cell type
     }else{
   dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells","CAFs"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
@@ -2253,7 +2258,7 @@ infercnv_per_sample<-function(x,prediction="EMBO"){
 
 infercnv_per_sample(x=as.character(args[1]),prediction="EMBO")
 
-#lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),infercnv_per_sample)
+#lapply(c(4,10),infercnv_per_sample)
 
 ```
 
@@ -2338,7 +2343,7 @@ casper_per_sample<-function(x,prediction="EMBO"){
 
   DefaultAssay(dat)<-"RNA"
   dat$cnv_ref<-"FALSE"
-  if(prediction="EMBO"){
+  if(prediction=="EMBO"){
   dat@meta.data[!(dat$EMBO_predicted.id %in% c("epithelial")),]$cnv_ref<-"TRUE" #set cnv ref by cell type
     }else{
   dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells","CAFs"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
@@ -2421,7 +2426,7 @@ casper_per_sample<-function(x,prediction="EMBO"){
 
 casper_per_sample(x=as.character(args[1]))
 
-#lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"), function(x) casper_per_sample(x))
+#lapply(c(7,9,11,15,16,19,"RM_2","RM_3"), function(x) casper_per_sample(x))
 
 ```
 
@@ -2500,7 +2505,7 @@ copykat_per_sample<-function(x,prediction="EMBO"){
 
   DefaultAssay(dat)<-"RNA"
   dat$cnv_ref<-"FALSE"
-  if(prediction="EMBO"){
+  if(prediction=="EMBO"){
   dat@meta.data[!(dat$EMBO_predicted.id %in% c("epithelial")),]$cnv_ref<-"TRUE" #set cnv ref by cell type
     }else{
   dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells","CAFs"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
@@ -2512,10 +2517,9 @@ copykat_per_sample<-function(x,prediction="EMBO"){
 }
 
 copykat_per_sample(x=as.character(args[1]))
+lapply(c(10,11,12,19,"RM_1","RM_2"),function(x) copykat_per_sample(x))
 
-rawmat=exp.rawdata; KS.cut=0.15;LOW.DR=0.05;UP.DR=0.2;id.type="S"; ngene.chr=5; win.size=25; sam.name=sample_name; distance="euclidean"; norm.cell.names=cnv_ref;output.seg="FALSE"; plot.genes="FALSE"; genome="hg20";n.cores=10
-
-#lapply(c(12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x) copykat_per_sample(x))
+#lapply(c(1,3,4,10,11,12,19,"RM_1","RM_2"),function(x) copykat_per_sample(x))
 #to set CNV discrete changes, as per correspondence suggetions with Ruli Gao, 1.5x SD threshold, 1.5 absolute distance, or use +/-0.25 as cutoff
 ```
 
@@ -2532,7 +2536,7 @@ copykat_slurm.sh
 #SBATCH --array=0-18
 #SBATCH --tasks-per-node=5 ##we want our node to do N tasks at the same time
 #SBATCH --cpus-per-task=5 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
-#SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
+#SBATCH --mem-per-cpu=20gb ## request gigabyte per cpu
 #SBATCH --time=24:00:00 ## ask for 1 hour on the node
 #SBATCH --
 
@@ -2606,7 +2610,7 @@ initialiseEnvironment(genomeFile="/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_
                       upperTrim=0.8)
 
 #Set up copyscAT Loop per sample
-copyscAT_per_sample<-function(x){
+copyscAT_per_sample<-function(x,prediction="EMBO"){
   if(x %in% 1:12){
     sample_name<-paste0("sample_",x)
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
@@ -2650,7 +2654,7 @@ copyscAT_per_sample<-function(x){
   #Using same normal cell selection as used for CASPER and InferCNV
   DefaultAssay(dat)<-"RNA"
   dat$cnv_ref<-"FALSE"
-  if(prediction="EMBO"){
+  if(prediction=="EMBO"){
   dat@meta.data[!(dat$EMBO_predicted.id %in% c("epithelial")),]$cnv_ref<-"TRUE" #set cnv ref by cell type
     }else{
   dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells","CAFs"),]$cnv_ref<-"TRUE" #set cnv ref by cell type
@@ -3274,7 +3278,7 @@ genome <- BSgenome.Hsapiens.UCSC.hg38
 out_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/cnv_comparison"
 system(paste("mkdir",out_dir))
 HMMcopy_comparison(x)
-#lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20),HMMcopy_comparison) 
+lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20),HMMcopy_comparison) 
 
 ```
 
@@ -3322,7 +3326,13 @@ library(chromVAR)
 library(JASPAR2020)
 library(TFBSTools)
 library(motifmatchr)
+library(grid)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(patchwork)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
 
 
 
@@ -3333,7 +3343,7 @@ type_cols<-c(
 "B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
 "CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
 
-embo_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
+embo_cell_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
        
 
 diag_cols<-c("IDC"="red", "DCIS"="grey","NAT"="lightblue","ILC"="green")
@@ -3387,9 +3397,39 @@ topTFs <- function(markers_list,celltype, padj.cutoff = 1e-2,rna=NA,ga=NA,motifs
   return(top_tfs)
 }
 
+
+#Make volcano plot per modality
+plot_volcano<-function(markers.=markers,prefix,assay){
+  markers.$sig<-ifelse(markers.$padj<=0.05,"sig","non_sig")
+  markers.<-markers.[!duplicated(markers.$feature),]
+  markers.<-markers.[is.finite(markers.$pval),]
+  markers.$label<-""
+  markers.<-markers.[order(markers.$padj),]
+  ident_1_labels<- row.names(head(markers.[which((markers.$sig=="sig") & (markers.$logFC>0)),] ,n=10))#significant, is ident1 specific, is top 10
+  ident_2_labels<- row.names(head(markers.[which((markers.$sig=="sig") & (markers.$logFC<0)),] ,n=10))#significant, is ident1 specific, is top 10
+  markers.[c(ident_1_labels,ident_2_labels),]$label<-markers.[c(ident_1_labels,ident_2_labels),]$feature
+  x_scale<-max(abs(markers.$logFC))*1.1 #find proper scaling for x axis
+  plt<-ggplot(markers.,aes(x=logFC,y=-log10(padj),color=sig,label=label,alpha=0.1))+
+    geom_point(size=0.5)+
+    theme_bw()+
+    scale_fill_manual(values=c("non_sig"="#999999", "sig"="#FF0000"))+
+    xlim(c(-x_scale,x_scale))+
+    geom_vline(xintercept=0)+
+    geom_hline(yintercept=-log10(0.05))+
+    geom_text_repel(size=2,segment.size=0.1,max.overlaps=Inf,min.segment.length = 0, nudge_y = 1, segment.angle = 20,color="black") +
+    theme(legend.position = "none",axis.title.x = element_blank(),axis.title.y = element_blank())
+    ggsave(plt,file=paste0(prefix,"_",assay,"_DE_volcano.pdf"),width=5,units="in",height=5)
+  system(paste0("slack -F ",prefix,"_",assay,"_DE_volcano.pdf"," ryan_todo"))
+}
+
 #Identify top markers
-Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA"){
-    markers <- presto:::wilcoxauc.Seurat(X = x, group_by = group_by., assay = 'data', seurat_assay = assay.)
+Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA",prefix.){
+    markers <- presto:::wilcoxauc.Seurat(X = x, group_by = group_by., 
+      groups_use=unname(unlist(unique(x@meta.data[group_by.]))),
+      y=unname(unlist(unique(x@meta.data[group_by.]))), 
+      assay = 'data', seurat_assay = assay.)
+    write.table(markers,file=paste0(prefix.,"_",assay.,"_DE_table.tsv"),sep="\t",row.names=F,col.names=T,quote=F)
+    plot_volcano(markers.=markers,prefix=prefix.,assay=assay.)
     colnames(markers) <- paste(assay., colnames(markers),sep=".")
     if (assay. == "chromvar") {
       motif.names <- markers[,paste0(assay.,".feature")]
@@ -3542,7 +3582,7 @@ plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group
 
 #Final wrapper function
 run_top_TFs<-function(obj=stromal,prefix="stromal",i="predicted.id"){
-  markers<-lapply(c("RNA","GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=obj,group_by.=i,assay.=assay))
+  markers<-lapply(c("RNA","GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=obj,group_by.=i,assay.=assay,prefix.=prefix))
   names(markers)<-c("RNA","GeneActivity","chromvar")
   markers_out<-do.call("rbind",lapply(unique(obj@meta.data[,i]),function(x) head(topTFs(markers_list=markers,celltype=x,rna=markers$RNA,ga=markers$GeneActivity,motifs=markers$chromvar),n=10))) #grab top 5 TF markers per celltype
   dim(markers_out)
@@ -3573,7 +3613,7 @@ for(k in unique(dat$predicted.id)){
 ```
 
 ## Epithelial Subtyping
-<!-- Rerun -->
+<!-- Done -->
 
 ### Additional Cell Signatures
 <!-- Done -->
@@ -3588,7 +3628,7 @@ cd /home/groups/CEDAR/mulqueen/ref/embo
 ```
 
 ### Use EMBO and Swarbrick Paper Cell Types to Define Signatures
-<!-- Rerun -->
+<!-- Done -->
 
 ```R
 library(Signac)
@@ -3643,124 +3683,70 @@ gene_module[["gene_module_7"]]<-c('KCNQ1OT1', 'AKAP9', 'RHOB', 'SOX4', 'VEGFA', 
 
 
 
-single_sample_cell_signature_transfer<-function(x){
-  if(x %in% 1:12){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
-  dat_sub<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial"))
+sample_cell_signature_transfer<-function(){
+  dat_epi<-subset(dat,EMBO_predicted.id=="epithelial")
 
   #embo lineage
-  dat<-AddModuleScore(dat,features=lineage_in,names=names(lineage_in),assay="SoupXRNA",seed=123,search=TRUE)
-  colnames(dat@meta.data)[startsWith(prefix="Cluster",colnames(dat@meta.data))]<-c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str") #Rename them
+  dat_epi<-AddModuleScore(dat_epi,features=lineage_in,names=names(lineage_in),assay="SoupXRNA",seed=123,search=TRUE)
+
+  colnames(dat_epi@meta.data)[which(colnames(dat_epi@meta.data) %in% c("Cluster1","Cluster2","Cluster3","Cluster4"))]<-c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str") #Rename them
 
   #Immune cell features and PAM50 canonical short list of genes
   for(i in 1:length(features_in)){
-    features_in[[i]]<-features_in[[i]][features_in[[i]] %in% row.names(dat[["SoupXRNA"]])] #make sure gene names match
-    dat<-MetaFeature(dat,features=c(features_in[[i]]),meta.name=names(features_in)[i],assay="SoupXRNA")}
+    features_in[[i]]<-features_in[[i]][features_in[[i]] %in% row.names(dat_epi[["SoupXRNA"]])] #make sure gene names match
+    dat_epi<-MetaFeature(dat_epi,features=c(features_in[[i]]),meta.name=names(features_in)[i],assay="SoupXRNA")}
 
   #SCSubype List of genes
   #run only on epithelial cells
-  module_scores<-AddModuleScore(dat_sub,features=module_feats,assay="SoupXRNA",search=TRUE,name=names(module_feats)) #use add module function to add cell scores
+  module_scores<-AddModuleScore(dat_epi,features=module_feats,assay="SoupXRNA",search=TRUE,name=names(module_feats)) #use add module function to add cell scores
   module_scores<-module_scores@meta.data[seq(ncol(module_scores@meta.data)-(length(module_feats)-1),ncol(module_scores@meta.data))]
   colnames(module_scores)<-names(module_feats) #it adds a number at the end to each name by default, which I don't like
-  dat<-AddMetaData(dat,metadata=module_scores)
+  dat_epi<-AddMetaData(dat,metadata=module_scores)
 
   #Swarbrick Gene Modules
   #run only on epithelial cells
-  gene_module_out<-AddModuleScore(dat_sub,features=gene_module,assay="SoupXRNA",search=TRUE,name=names(gene_module)) #use add module function to add cell scores
+  gene_module_out<-AddModuleScore(dat_epi,features=gene_module,assay="SoupXRNA",search=TRUE,name=names(gene_module)) #use add module function to add cell scores
   gene_module_out<-gene_module_out@meta.data[seq(ncol(gene_module_out@meta.data)-(length(gene_module)-1),ncol(gene_module_out@meta.data))]#get the 7 added gene modules
   colnames(gene_module_out)<-names(gene_module) 
-  dat<-AddMetaData(dat,metadata=gene_module_out)
-  saveRDS(dat,file=file_in)
+  dat_epi<-AddMetaData(dat_epi,metadata=gene_module_out)
+  out<-dat_epi@meta.data[c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str",names(module_feats),names(gene_module))]
+  return(out)
 }
 
-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_cell_signature_transfer)
-
-
-single_sample_EMBO_assignment<-function(x){
-  if(x %in% 1:12){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
+single_sample_PAM50_assignment<-function(){
   met<-dat@meta.data
-  met<-met[met$predicted.id %in% c("Cancer Epithelial","Normal Epithelial"),]
-  embo_list<-  c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str" )
-  max_embo<-lapply(1:nrow(met),function(i) embo_list[which(met[i,embo_list]==max(met[i,embo_list],na.rm=T))])
-  max_embo<-unlist(lapply(1:length(max_embo),function(i) do.call("paste",as.list(max_embo[[i]]))))
-  max_embo<-unlist(lapply(max_embo,function(i) gsub("EMBO_","",i)))
-  names(max_embo)<-row.names(met)
-  dat<-AddMetaData(dat,max_embo,col.name="EMBO_designation")
-  print(paste("Saving",outname))
-  saveRDS(dat,file=file_in)
+  met<-met[met$EMBO_predicted.id %in% c("epithelial"),]
+  pam50_list<-  c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str" )
+  max_pam50<-lapply(1:nrow(met),function(i) pam50_list[which(met[i,pam50_list]==max(met[i,pam50_list],na.rm=T))])
+  max_pam50<-unlist(lapply(1:length(max_pam50),function(i) do.call("paste",as.list(max_pam50[[i]]))))
+  max_pam50<-unlist(lapply(max_pam50,function(i) gsub("EMBO_","",i)))
+  names(max_pam50)<-row.names(met)
+  return(max_pam50)
 }
 
-single_sample_PAM50_assignment<-function(x){
-  if(x %in% 1:12){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else if(x %in% 13:20){
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }else{
-    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    out_plot<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".predictions.umap.pdf")
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
-  }
+single_sample_SCtype_assignment<-function(){
   met<-dat@meta.data
-  met<-met[met$predicted.id %in% c("Cancer Epithelial","Normal Epithelial"),]
-  pam_list<-  c("Basal_SC","Her2E_SC","LumA_SC","LumB_SC")
-  max_pam<-lapply(1:nrow(met),function(i) pam_list[which(met[i,pam_list]==max(met[i,pam_list],na.rm=T))])
-  max_pam<-unlist(lapply(1:length(max_pam),function(i) do.call("paste",as.list(max_pam[[i]]))))
-  names(max_pam)<-row.names(met)
-  dat<-AddMetaData(dat,max_pam,col.name="SCSubtype_designation")
-  print(paste("Saving",outname))
-  saveRDS(dat,file=file_in)
+  met<-met[met$EMBO_predicted.id %in% c("epithelial"),]
+  scsubtype_list<-  c("Basal_SC","Her2E_SC","LumA_SC","LumB_SC")
+  max_scsubtype<-lapply(1:nrow(met),function(i) scsubtype_list[which(met[i,scsubtype_list]==max(met[i,scsubtype_list],na.rm=T))])
+  max_scsubtype<-unlist(lapply(1:length(max_scsubtype),function(i) do.call("paste",as.list(max_scsubtype[[i]]))))
+  names(max_scsubtype)<-row.names(met)
+  return(max_scsubtype)
 }
 
+#Generate scores per epithelial cell
+epithelial_metadata<-sample_cell_signature_transfer()
+dat<-AddMetaData(dat,metadata=epithelial_metadata) #add to master data frame metadata
 
+#assign top PAM50 designation by epithelial cells
+max_pam50<-single_sample_SCtype_assignment()
+dat<-AddMetaData(dat,max_pam50,col.name="PAM50_epi_designation")
 
-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_PAM50_assignment)
-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),single_sample_EMBO_assignment)
+#assign top scsubtype by epithelial cells
+max_scsubtype<-single_sample_PAM50_assignment()
+dat<-AddMetaData(dat,max_scsubtype,col.name="SCSubtype_epi_designation")
 
+saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
 
 ```
 Plot Features on Cells Per Sample
@@ -3872,7 +3858,7 @@ lapply(c(1,3,5,6,7,8,9,16,19,20,"RM_1","RM_2","RM_3",11,4,10,12), function(x) iC
 ```
 
 ## Epithelial Subtyping Per Sample
-<!-- Rerun -->
+<!-- Rerun once ic50 is done -->
 
 ```R
 library(Seurat)
@@ -3955,12 +3941,15 @@ system("slack -F sample_epithelial_type_assignment.tsv ryan_todo") #note this wa
 ```
 
 <!-- Rerun -->
-<!--
-#ER binding poor and good outcome from patients, overlap with ATAC data
-http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Poor%20outcome%20ER%20regions.bed.gz
-http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Good%20outcome%20ER%20regions.bed.gz
--->
+## ER binding poor and good outcome from patients, overlap with ATAC data
+```bash
+cd /home/groups/CEDAR/mulqueen/ref
+wget http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Poor%20outcome%20ER%20regions.bed.gz
+wget http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Good%20outcome%20ER%20regions.bed.gz
+mv "Good outcome ER regions.bed.gz" goodoutcome_ER_regions.bed.gz
+mv "Poor outcome ER regions.bed.gz" pooroutcome_ER_regions.bed.gz 
 
+```
 ### Files for Travis
 <!-- Rerun -->
 
@@ -3976,26 +3965,24 @@ Transfering to /home/groups/CEDAR/scATACcnv/Hisham_data/final_data:
 ```R
 library(Signac)
 library(Seurat)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+dat_all<-readRDS("phase2.QC.filt.SeuratObject.rds")
+library(parallel)
 
 transfer_data<-function(x){
-if(x %in% 1:12){
+  print(paste("Running Sample:",x))
+  if(x %in% 1:12){
     sample_name<-paste0("sample_",x)
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
+    dat<-subset(dat_all, sample==sample_name)
   }else if(x %in% 13:20){
     sample_name<-paste0("sample_",x)
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
-    outname<-paste0("sample_",x)
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
+    dat<-subset(dat_all, sample==sample_name)
   }else{
     sample_name<-x
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
-    outname<-x
-    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
-    dat<-readRDS(file_in)
+    dat<-subset(dat_all, sample==sample_name)
   }
   metadata<-as.data.frame(dat@meta.data)
   counts_matrix<-as.data.frame(dat[["peaks"]]@counts)
@@ -4004,9 +3991,10 @@ if(x %in% 1:12){
   write.table(counts_matrix,file=paste0(wd,"/","counts_matrix.tsv"),sep="\t",col.names=T,row.names=T)
   write.table(peaks_bed_file,file=paste0(wd,"/","peaks.bed"),sep="\t",col.names=F,row.names=F)
   print(paste("Finished sample:",sample_name))
+  saveRDS(dat,file=paste0(wd,"/",sample_name,".QC.filt.SeuratObject.rds"))
 }
 
-lapply(c(1,3,5,6,7,8,9,15,16,19,20,"RM_1","RM_2","RM_3","RM_4",11,4,10,12),function(x) transfer_data(x))
+mclapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x) transfer_data(x),mc.cores=6)
 ```
 
 - Metadata
@@ -4022,42 +4010,53 @@ out_dir="/home/groups/CEDAR/scATACcnv/Hisham_data/final_data"
 mkdir $out_dir
 
 
-for i in 1 3 5 6 7 8 9 10 11 12; do
+for i in 1 3 4 5 6 7 8 9 10 11 12; do
   sample="sample_"${i}
   in_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_"${i}"/outs"
-  mkdir ${out_dir}"/"${sample};
-  cp ${in_dir}"/metadata.tsv" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/peaks.bed" ${out_dir}"/sample_"${i}
-  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/sample_"${i}
-  cp -r ${in_dir}"/casper" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/"${sample}".QC.SeuratObject.rds" ${out_dir}"/sample_"${i} & done &
+  mkdir ${out_dir}"/"${sample}; 
+  cp ${in_dir}"/metadata.tsv" ${out_dir}"/sample_"${i} &
+  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/sample_"${i} & 
+  cp ${in_dir}"/peaks.bed" ${out_dir}"/sample_"${i} & 
+  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/sample_"${i} & 
+  cp -r ${in_dir}"/casper" ${out_dir}"/sample_"${i} &
+  cp -r ${in_dir}"/copykat" ${out_dir}"/sample_"${i} &
+  cp -r ${in_dir}"/copyscat" ${out_dir}"/sample_"${i} &
+  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/sample_"${i} & 
+  cp ${in_dir}"/"${sample}".QC.filt.SeuratObject.rds" ${out_dir}"/sample_"${i} &
+  echo "Finished ${sample}" & done &
 
 
 for i in 15 16 19 20; do
   sample="sample_"${i}
   in_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_"${i}"/outs"
-  mkdir ${out_dir}"/"${sample};
-  cp ${in_dir}"/metadata.tsv" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/peaks.bed" ${out_dir}"/sample_"${i}
-  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/sample_"${i}
-  cp -r ${in_dir}"/casper" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/sample_"${i}
-  cp ${in_dir}"/"${sample}".QC.SeuratObject.rds" ${out_dir}"/sample_"${i} & done &
+  mkdir ${out_dir}"/"${sample}; 
+  cp ${in_dir}"/metadata.tsv" ${out_dir}"/sample_"${i} &
+  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/sample_"${i} &
+  cp ${in_dir}"/peaks.bed" ${out_dir}"/sample_"${i} &
+  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/sample_"${i} &
+  cp -r ${in_dir}"/casper" ${out_dir}"/sample_"${i} &
+  cp -r ${in_dir}"/copykat" ${out_dir}"/sample_"${i} &
+  cp -r ${in_dir}"/copyscat" ${out_dir}"/sample_"${i} &
+  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/sample_"${i} &
+  cp ${in_dir}"/"${sample}".QC.filt.SeuratObject.rds" ${out_dir}"/sample_"${i} &
+  echo "Finished ${sample}" & done 
+
 
 for i in "RM_1" "RM_2" "RM_3" "RM_4"; do
   sample=${i}
   in_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/"${i}"/outs"
   mkdir ${out_dir}"/"${sample};
-  cp ${in_dir}"/metadata.tsv" ${out_dir}"/"${sample}
-  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/"${sample}
-  cp ${in_dir}"/peaks.bed" ${out_dir}"/"${sample}
-  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/"${sample}
-  cp -r ${in_dir}"/casper" ${out_dir}"/"${sample}
-  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/"${sample}
-  cp ${in_dir}"/"${sample}".QC.SeuratObject.rds" ${out_dir}"/"${sample} & done &
+  cp ${in_dir}"/metadata.tsv" ${out_dir}"/"${sample} &
+  cp ${in_dir}"/counts_matrix.tsv" ${out_dir}"/"${sample} &
+  cp ${in_dir}"/peaks.bed" ${out_dir}"/"${sample} &
+  cp -r ${in_dir}"/"${sample}"_inferCNV" ${out_dir}"/"${sample} &
+  cp -r ${in_dir}"/casper" ${out_dir}"/"${sample} &
+  cp -r ${in_dir}"/copykat" ${out_dir}"/"${sample} &
+  cp -r ${in_dir}"/copyscat" ${out_dir}"/"${sample} &
+  cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/"${sample} &
+  cp ${in_dir}"/"${sample}".QC.filt.SeuratObject.rds" ${out_dir}"/"${sample} &
+  echo "Finished ${sample}" & done 
+
 
 ```
 
@@ -4614,3 +4613,260 @@ http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Good%20outco
 
 
 -->
+
+
+## R Session Info with all packages loaded
+
+{% capture summary %} Code {% endcapture %} {% capture details %}  
+
+```bash
+R version 4.0.3 (2020-10-10)
+Platform: x86_64-conda-linux-gnu (64-bit)
+Running under: CentOS Linux 7 (Core)
+
+Matrix products: default
+BLAS/LAPACK: /home/groups/CEDAR/mulqueen/src/miniconda3/lib/libopenblasp-r0.3.17.so
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+ [1] splines   grid      parallel  stats4    stats     graphics  grDevices
+ [8] utils     datasets  methods   base     
+
+other attached packages:
+  [1] harmony_0.1.0                           
+  [2] cowplot_1.1.1                           
+  [3] iC10_1.5                                
+  [4] iC10TrainingData_1.3.1                  
+  [5] impute_1.64.0                           
+  [6] pamr_1.56.1                             
+  [7] survival_3.3-1                          
+  [8] ggrepel_0.9.1                           
+  [9] motifmatchr_1.12.0                      
+ [10] chromVAR_1.12.0                         
+ [11] forcats_0.5.1                           
+ [12] purrr_0.3.4                             
+ [13] readr_2.1.3                             
+ [14] tidyverse_1.3.2                         
+ [15] ggalluvial_0.12.3                       
+ [16] dendextend_1.16.0                       
+ [17] philentropy_0.6.0                       
+ [18] CopyscAT_0.30                           
+ [19] jsonlite_1.8.0                          
+ [20] gplots_3.1.3                            
+ [21] tibble_3.1.8                            
+ [22] tidyr_1.1.4                             
+ [23] edgeR_3.32.1                            
+ [24] changepoint_2.2.3                       
+ [25] zoo_1.8-10                              
+ [26] FNN_1.1.3                               
+ [27] Rtsne_0.16                              
+ [28] fastcluster_1.2.3                       
+ [29] NMF_0.24.0                              
+ [30] bigmemory_4.5.36                        
+ [31] cluster_2.1.3                           
+ [32] rngtools_1.5.2                          
+ [33] pkgmaker_0.32.2                         
+ [34] registry_0.5-1                          
+ [35] viridis_0.6.2                           
+ [36] viridisLite_0.4.1                       
+ [37] copykat_1.1.0                           
+ [38] CaSpER_0.2.0                            
+ [39] GOstats_2.56.0                          
+ [40] graph_1.68.0                
+  [41] Category_2.56.0                         
+ [42] GO.db_3.12.1                            
+ [43] limma_3.46.0                            
+ [44] biomaRt_2.46.3                          
+ [45] ape_5.6-2                               
+ [46] ggnetwork_0.5.10                        
+ [47] intergraph_2.0-2                        
+ [48] igraph_1.3.0                            
+ [49] gridExtra_2.3                           
+ [50] scales_1.2.1                            
+ [51] ggpubr_0.4.0                            
+ [52] mclust_5.4.10                           
+ [53] reshape_0.8.9                           
+ [54] pheatmap_1.0.12                         
+ [55] signal_0.7-7                            
+ [56] Rcpp_1.0.9                              
+ [57] infercnv_1.6.0                          
+ [58] cicero_1.8.1                            
+ [59] Gviz_1.34.1                             
+ [60] monocle_2.18.0                          
+ [61] DDRTree_0.1.5                           
+ [62] irlba_2.3.5                             
+ [63] VGAM_1.1-6                              
+ [64] Matrix_1.4-1                            
+ [65] BiocParallel_1.24.1                     
+ [66] TFBSTools_1.28.0                        
+ [67] JASPAR2020_0.99.10                      
+ [68] seriation_1.3.6                         
+ [69] dplyr_1.0.9                             
+ [70] AUCell_1.13.3                           
+ [71] TxDb.Hsapiens.UCSC.hg38.knownGene_3.10.0
+ [72] org.Hs.eg.db_3.12.0                     
+ [73] cisTopic_0.3.0                          
+ [74] SeuratWrappers_0.3.0                    
+ [75] stringr_1.4.0                           
+ [76] EnsDb.Hsapiens.v86_2.99.0               
+ [77] ensembldb_2.14.0                        
+ [78] AnnotationFilter_1.14.0                 
+ [79] GenomicFeatures_1.42.2                  
+ [80] AnnotationDbi_1.52.0                    
+ [81] Biobase_2.50.0                          
+ [82] sp_1.5-0                                
+ [83] SeuratObject_4.1.0                      
+ [84] Seurat_4.1.1                            
+ [85] Signac_1.5.0                            
+ [86] SoupX_1.6.1                             
+ [87] RColorBrewer_1.1-3                      
+  [88] circlize_0.4.15                         
+ [89] reshape2_1.4.4                          
+ [90] ComplexHeatmap_2.6.2                    
+ [91] patchwork_1.1.1                         
+ [92] ggplot2_3.3.6                           
+ [93] doParallel_1.0.17                       
+ [94] iterators_1.0.14                        
+ [95] foreach_1.5.2                           
+ [96] BSgenome.Hsapiens.UCSC.hg38_1.4.3       
+ [97] WGSmapp_1.2.0                           
+ [98] SCOPE_1.2.0                             
+ [99] BSgenome.Hsapiens.UCSC.hg19_1.4.3       
+[100] BSgenome_1.58.0                         
+[101] rtracklayer_1.50.0                      
+[102] Rsamtools_2.6.0                         
+[103] Biostrings_2.58.0                       
+[104] XVector_0.30.0                          
+[105] GenomicRanges_1.42.0                    
+[106] GenomeInfoDb_1.26.7                     
+[107] IRanges_2.24.1                          
+[108] S4Vectors_0.28.1                        
+[109] BiocGenerics_0.36.1                     
+[110] HMMcopy_1.32.0                          
+[111] data.table_1.14.4                       
+
+loaded via a namespace (and not attached):
+  [1] pbapply_1.5-0               haven_2.5.0                
+  [3] lattice_0.20-45             vctrs_0.5.0                
+  [5] expm_0.999-6                fastICA_1.2-3              
+  [7] mgcv_1.8-40                 RBGL_1.66.0                
+  [9] blob_1.2.3                  spatstat.data_2.2-0        
+ [11] later_1.3.0                 DBI_1.1.3                  
+ [13] R.utils_2.12.0              SingleCellExperiment_1.12.0
+ [15] rappdirs_0.3.3              uwot_0.1.11                
+ [17] jpeg_0.1-9                  zlibbioc_1.36.0            
+ [19] rgeos_0.5-9                 htmlwidgets_1.5.4          
+ [21] mvtnorm_1.1-3               GlobalOptions_0.1.2        
+ [23] future_1.26.1               leiden_0.4.2               
+ [25] KernSmooth_2.23-20          DT_0.23                    
+ [27] promises_1.2.0.1            DelayedArray_0.16.3        
+ [29] Hmisc_4.7-0                 fs_1.5.2                   
+ [31] fastmatch_1.1-3             RhpcBLASctl_0.21-247.1     
+ [33] digest_0.6.30               png_0.1-7                  
+ [35] rjags_4-13                  qlcMatrix_0.9.7            
+ [37] sctransform_0.3.3           pkgconfig_2.0.3            
+ [39] docopt_0.7.1                gridBase_0.4-7             
+ [41] spatstat.random_2.2-0       statnet.common_4.6.0       
+ [43] lgr_0.4.3                   reticulate_1.25            
+ [45] SummarizedExperiment_1.20.0 network_1.17.2             
+ [47] modeltools_0.2-23           GetoptLong_1.0.5           
+ [49] xfun_0.31                   tidyselect_1.2.0           
+ [51] DNAcopy_1.64.0              ica_1.0-3                  
+ [53] snow_0.4-4                  rlang_1.0.6                
+ [55] glue_1.6.2                  modelr_0.1.9               
+ [57] lambda.r_1.2.4              text2vec_0.6.1             
+ [59] CNEr_1.26.0                 matrixStats_0.62.0         
+ [61] MatrixGenerics_1.2.1        ggseqlogo_0.1              
+ [63] ggsignif_0.6.3              httpuv_1.6.5               
+ [65] class_7.3-20                TH.data_1.1-1              
+ [67] seqLogo_1.56.0              annotate_1.68.0            
+ [69] bit_4.0.4                   mime_0.12                  
+ [71] Exact_3.1                   stringi_1.7.5              
+ [73] RcppRoll_0.3.0              spatstat.sparse_2.1-1      
+ [75] scattermore_0.8             bitops_1.0-7               
+ [77] cli_3.4.1                   RSQLite_2.2.8              
+ [79] bigmemory.sri_0.1.3         libcoin_1.0-9              
+ [81] rstudioapi_0.13             TSP_1.2-0                  
+ [83] GenomicAlignments_1.26.0    nlme_3.1-158               
+ [85] locfit_1.5-9.4              VariantAnnotation_1.36.0   
+ [87] listenv_0.8.0               SnowballC_0.7.0            
+ [89] miniUI_0.1.1.1              R.oo_1.25.0                
+ [91] dbplyr_2.2.1                readxl_1.4.0               
+ [93] lifecycle_1.0.3             munsell_0.5.0              
+ [95] cellranger_1.1.0            R.methodsS3_1.8.2          
+ [97] caTools_1.18.2              codetools_0.2-18           
+ [99] coda_0.19-4                 lmtest_0.9-40              
+[101] htmlTable_2.4.1             xtable_1.8-4               
+[103] ROCR_1.0-11                 googlesheets4_1.0.1        
+[105] formatR_1.12                BiocManager_1.30.18        
+[107] abind_1.4-5                 farver_2.1.1               
+[109] rsparse_0.5.0               parallelly_1.32.0          
+[111] RANN_2.6.1                  askpass_1.1                
+[113] biovizBase_1.38.0           poweRlaw_0.70.6            
+[115] sparsesvd_0.2               RcppAnnoy_0.0.19           
+[117] goftest_1.2-3               futile.options_1.0.1       
+[119] dichromat_2.0-0.1           future.apply_1.9.0         
+[121] ellipsis_0.3.2              prettyunits_1.1.1          
+[123] reprex_2.0.2                lubridate_1.8.0            
+[125] googledrive_2.0.0           ggridges_0.5.3             
+[127] mlapi_0.1.1                 remotes_2.4.2              
+[129] slam_0.1-50                 gargle_1.2.1               
+[131] argparse_2.1.5              spatstat.utils_2.3-1       
+[133] doSNOW_1.0.20               htmltools_0.5.2            
+[135] BiocFileCache_1.14.0        utf8_1.2.2                 
+[137] plotly_4.10.0               XML_3.99-0.9               
+[139] e1071_1.7-11                foreign_0.8-82             
+[141] withr_2.5.0                 fitdistrplus_1.1-8         
+[143] bit64_4.0.5                 rootSolve_1.8.2.3          
+[145] multcomp_1.4-19             ProtGenerics_1.22.0        
+[147] spatstat.core_2.4-4         combinat_0.0-8             
+[149] progressr_0.10.1            rsvd_1.0.5                 
+[151] memoise_2.0.1               arrow_5.0.0.2              
+[153] tzdb_0.3.0                  lmom_2.9                   
+[155] curl_4.3.2                  fansi_1.0.3                
+[157] GSEABase_1.52.1             tensor_1.5                 
+[159] checkmate_2.1.0             float_0.3-0                
+[161] cachem_1.0.6                deldir_1.0-6               
+[163] rjson_0.2.21                rstatix_0.7.0              
+[165] clue_0.3-61                 tools_4.0.3                
+[167] sandwich_3.0-2              magrittr_2.0.3             
+[169] RCurl_1.98-1.9              proxy_0.4-26               
+[171] car_3.1-0                   TFMPvalue_0.0.8            
+[173] xml2_1.3.3                  httr_1.4.3                 
+[175] assertthat_0.2.1            boot_1.3-28                
+[177] globals_0.15.1              R6_2.5.1                   
+[179] nnet_7.3-17                 genefilter_1.72.1          
+[181] DirichletMultinomial_1.32.0 progress_1.2.2             
+[183] KEGGREST_1.30.1             gtools_3.9.3               
+[185] shape_1.4.6                 coin_1.4-2                 
+[187] lsa_0.73.3                  carData_3.0-5              
+[189] colorspace_2.0-3            generics_0.1.3             
+[191] base64enc_0.1-3             pracma_2.3.8               
+[193] pillar_1.8.1                Rgraphviz_2.34.0           
+[195] tweenr_1.0.2                HSMMSingleCell_1.10.0      
+[197] GenomeInfoDbData_1.2.4      plyr_1.8.7                 
+[199] gtable_0.3.1                futile.logger_1.4.3        
+[201] rvest_1.0.3                 RcisTarget_1.11.10         
+[203] knitr_1.37                  latticeExtra_0.6-29        
+[205] fastmap_1.1.0               Cairo_1.5-12.2             
+[207] broom_1.0.0                 openssl_2.0.1              
+[209] backports_1.4.1             densityClust_0.3.2         
+[211] feather_0.3.5               gld_2.6.5                  
+[213] hms_1.1.2                   ggforce_0.3.3              
+[215] shiny_1.7.1                 polyclip_1.10-0            
+[217] DescTools_0.99.45           lazyeval_0.2.2             
+[219] lda_1.4.2                   Formula_1.2-4              
+[221] crayon_1.5.2                MASS_7.3-57                
+[223] AnnotationForge_1.32.0      rpart_4.1.16               
+[225] compiler_4.0.3              spatstat.geom_2.4-0        
+
+```
+
+{% endcapture %} {% include details.html %} 

@@ -339,6 +339,8 @@ out_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard
 samtools merge -f -@ 20 -h $sciDROP_70k_dir/hg38.bbrd.q10.bam $out_dir/hg38.merged.bbrd.q10.bam $sciDROP_70k_dir/hg38.bbrd.q10.bam $sciDROP_20k_dir/hg38.bbrd.q10.bam &  
 samtools merge -f -@ 20 -h $sciDROP_70k_dir/mm10.bbrd.q10.bam $out_dir/mm10.merged.bbrd.q10.bam $sciDROP_70k_dir/mm10.bbrd.q10.bam $sciDROP_20k_dir/mm10.bbrd.q10.bam &  
 
+#Project read count for mm10 across tech comparisons (towards end of code)
+scitools bam-project -X $sciDROP_70k_dir/mm10.bam &
 
 #Call peaks by read pileups
 cd $out_dir
@@ -3626,6 +3628,11 @@ mkdir ${ref_dir}/snATAC
 prefetch $sra --type fastq -X 50G -O ${ref_dir}/snATAC/${sra}
 fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_dir}/snATAC/${sra}/${sra} ${ref_dir}/snATAC/${sra}/${sra}.sra
 gzip ${ref_dir}/${sra}/*fastq &
+#download list of cells passing filter
+wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM2668nnn/GSM2668124/suppl/GSM2668124_p56.nchrM.merge.sel_cell.qc.txt.gz
+gzip -d GSM2668124_p56.nchrM.merge.sel_cell.qc.txt.gz
+#make filter cell list
+awk '{print $1'} GSM2668124_p56.nchrM.merge.sel_cell.qc.txt > GSM2668124_filtcells.list.txt
 ```
 
 Adjusting fastq readname format to jive with scitools.
@@ -3856,6 +3863,49 @@ tenx_bam="8k_mouse_cortex_ATACv2_nextgem_Chromium_X_possorted_bam.bam"
 
 ```
 
+s3ATAC
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM5289637
+
+```bash
+sra="SRR14494477"
+ref_dir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
+mkdir ${ref_dir}/s3atac
+prefetch $sra --type fastq -O ${ref_dir}/s3atac/${sra}
+fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_dir}/s3atac/${sra} ${sra}
+for i in ${ref_dir}/s3atac/${sra}/*fastq;
+do gzip $i & done &
+````
+
+Generating a script for bam setup and output, just as above.
+barcode_scimap.py
+```python
+import gzip
+from Bio import SeqIO
+import sys
+
+def change_id(x):
+    global i
+    x.id=barc[i]+"."+str(i)
+    i+=1
+    return(x)
+
+fq1=sys.argv[1] #read argument
+fq3=sys.argv[2] #index argument
+barc=[str(record.seq) for record in SeqIO.parse(gzip.open(fq3,"rt"), "fastq")] #make list of barcodes
+i=0
+SeqIO.write((change_id(x=record) for record in SeqIO.parse(gzip.open(fq1,"rt"), 'fastq')), sys.stdout, "fastq")
+```
+
+Now running this python script for both fastq 1 and fastq 2.
+
+```bash
+python ./barcode_scimap.py SRR13437233_1.fastq.gz SRR13437233_3.fastq.gz > SRR13437233_1.barc.fastq &
+python ./barcode_scimap.py SRR13437233_2.fastq.gz SRR13437233_3.fastq.gz > SRR13437233_2.barc.fastq &
+```
+
+```bash
+
+```
 Once all fastq files have their cell-barcode identifier within their read name, use scitools for fastq alignments and processing.
 
 ```bash
@@ -3867,6 +3917,7 @@ snatac_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/snATAC/SRR6768122/SRR
 ddscATAC_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC"
 tenxatacv1_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1"
 tenxatacv2_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2"
+s3atac_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/s3atac"
 ref_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
 
 #Alignment
@@ -3911,48 +3962,87 @@ for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR83
     ((samtools view -H $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.bam ) && (samtools view $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.bam |  awk 'OFS="\t" {gsub(/[.]/,":",$1);print}')) | samtools view -b > $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam & done &
 
 ```
+Project bams for each method for scaled library complexity
 
+```bash
+$scitools bam-project -X ${sciatac_outdir}/sciATAC_mus.RG.nsrt.bam &
+$scitools bam-project -X ${scimap_outdir}/sciMAP_mus.RG.nsrt.bam &
+$scitools bam-project -X ${snatac_outdir}/snATAC_mus.cellidfilt.filt.bam &
+$scitools bam-project -X ${tenxatacv1_outdir}/tenxv1_mus.RG.bam &
+$scitools bam-project -X ${tenxatacv2_outdir}/tenxv2_mus.RG.bam &
+for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
+$scitools bam-project -X $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam; done & 
+```
+
+Remove PCR duplicate reads
 ```bash
 #Remove duplicates based on cellID, chromosome and start sites per read
 ##using the name sorted (-n) barcode based removal of duplicates
-$scitools bam-rmdup -n -t 4 ${sciatac_outdir}/sciATAC_mus.RG.nsrt.bam &
-$scitools bam-rmdup -n -t 4 ${scimap_outdir}/sciMAP_mus.RG.nsrt.bam &
-$scitools bam-rmdup -n -t 4 ${snatac_outdir}/snATAC_mus.RG.nsrt.bam &
-$scitools bam-rmdup -t 4 ${tenxatacv1_outdir}/tenxv1_mus.RG.bam &
-$scitools bam-rmdup -t 4 ${tenxatacv2_outdir}/tenxv2_mus.RG.bam &
+#prefilter snatac before continuing
+$scitools bam-filter -L ${snatac_outdir}/GSM2668124_filtcells.list.txt -O ${snatac_outdir}/snATAC_mus.cellidfilt ${snatac_outdir}/snATAC_mus.RG.nsrt.bam &
+#back to removal of duplicate reads
+$scitools bam-rmdup -n -t 20 -O ${snatac_outdir}/snATAC_mus.RG. ${snatac_outdir}/snATAC_mus.cellidfilt.filt.bam &
+$scitools bam-rmdup -t 4 ${tenxatacv1_outdir}/tenxv1_mus.RG.bam 
+$scitools bam-rmdup -t 4 ${tenxatacv2_outdir}/tenxv2_mus.RG.bam 
 for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
-$scitools bam-rmdup -n -t 10 $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam & done &
+$scitools bam-rmdup -n -t 4 $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam ; done 
+```
 
-#Merge all bam files
-$scitools bam-merge ${ref_outdir}/all_methods_merged2_mm10.bbrd.q10.bam \
-${sciatac_outdir}/sciATAC_mus.nsrt.bam \
-${scimap_outdir}/sciMAP_mus.nsrt.bam \
-${snatac_outdir}/snATAC_mus.nsrt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310661.nsrt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310662.nsrt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310663.nsrt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310664.nsrt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310665.nsrt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310666.nsrt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310667.nsrt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310668.nsrt.bam \
+Filter cells with less than 1000 unique reads
+```bash
+#Filter all bam files to cellIDs with reads >1000
+$scitools bam-filter -N 1000 ${sciatac_outdir}/sciATAC_mus.RG.nsrt.bam &
+$scitools bam-filter -N 1000 ${scimap_outdir}/sciMAP_mus.RG.nsrt.bam &
+$scitools bam-filter  -N 1000 ${snatac_outdir}/snATAC_mus.RG.nsrt.bam & #Still waiting on bam-rmdup for this one
+$scitools bam-filter  -N 1000 ${tenxatacv1_outdir}/tenxv1_mus.RG.bam &
+$scitools bam-filter  -N 1000 ${tenxatacv2_outdir}/tenxv2_mus.RG.bam &
+for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
+$scitools bam-filter  -N 1000 $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam & done &
+
+```
+
+Merge all bam files and generate a tabix file for fragments.
+
+```bash
+$scitools bam-merge -m 10G ${ref_outdir}/all_methods_merged_mm10.bbrd.q10.bam \
+${sciatac_outdir}/sciATAC_mus.RG.nsrt.filt.bam \
+${scimap_outdir}/sciMAP_mus.RG.nsrt.filt.bam \
+${snatac_outdir}/snATAC_mus.RG.bbrd.q10.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310661.nsrt.RG.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310662.nsrt.RG.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310663.nsrt.RG.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310664.nsrt.RG.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310665.nsrt.RG.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310666.nsrt.RG.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310667.nsrt.RG.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310668.nsrt.RG.filt.bam \
+${tenxatacv1_outdir}/tenxv1_mus.RG.bam \
+${tenxatacv2_outdir}/tenxv2_mus.RG.bam \
 ${sciDROP_70k_dir}/mm10.bbrd.q10.bam
 
-#correct all bam files to have the same read name layout
-((samtools view -H all_methods_merged2_mm10.bbrd.q10.bam) && (samtools view all_methods_merged2_mm10.bbrd.q10.bam |  awk 'OFS="\t" {gsub(/[.]/,":",$1);print}')) | samtools view -b > all_methods_merged_fixed_mm10.bbrd.q10.bam &
+#Make fragment files
+tabix="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/tabix"
+bgzip="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/bgzip"
 
-#Get read count per cell and filter to those with >1000
+#mouse processing
+input_bam=${ref_outdir}/all_methods_merged_mm10.bbrd.q10.bam
+output_name=${input_bam::-4}
+samtools view --threads 20 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=20 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz ;
+zcat all_methods_merged_mm10.bbrd.q10.fragments.tsv.gz | awk 'OFS="\t" { if($1 !~ /M|Y|L|K|G|Un|Random|Alt|random/) {print $0}}' | $bgzip > $output_name.fragments.filt.tsv.gz ;
+$tabix -p bed $output_name.fragments.filt.tsv.gz ; 
 
+```
 
-#Call peaks by read pileups
-$scitools callpeaks -f mm10 ${ref_outdir}/all_methods_merged2_mm10.bbrd.q10.bam &
+Call peaks by read pileups
+```bash
+$scitools callpeaks -f mm10 ${ref_outdir}/all_methods_merged_mm10.bbrd.q10.bam &
 
 #Note due to technical difficulties I had to merge peaks and buffer to 500bp with awk
 ################
-out="all_methods_merged2_mm10.bbrd.q10"
-input_narrowPeak="all_methods_merged2_mm10.bbrd.q10_peaks.narrowPeak"
+out="all_methods_merged_mm10.bbrd.q10.final"
+input_narrowPeak="all_methods_merged_mm10.bbrd.q10_peaks.narrowPeak"
 
-bedtools merge -i $input_narrowPeak 2>/dev/null | awk 'OFS="\t" {if($1!~ /(M|Y|L|K|G|Un|Random|Alt)/i){
+bedtools merge -i $input_narrowPeak 2>/dev/null | awk 'OFS="\t" {if($1 !~ /M|Y|L|K|G|Un|Random|Alt|random/){
 if($3-$2<500){
     mid=int(($3+$2)/2);
     $2=mid-250
@@ -3960,39 +4050,38 @@ if($3-$2<500){
 if($2>0){
     print $1,$2,$3
 } else print $1,0,$3;
-}}' | bedtools sort -i -  2>/dev/null| bedtools merge -i - 2>/dev/null | awk 'OFS="\t" {print $1,$2,$3,$1_$2_$3}' > ${out}.500.bed
+}}' | bedtools sort -i -  2>/dev/null| bedtools merge -i - 2>/dev/null | awk 'OFS="\t" {print $1,$2,$3,$1"_"$2"_"$3}' > ${out}.500.bed
 ################
 
-bed_file="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged2_mm10.bbrd.q10.500.bed"
+```
+Make a counts matrix and a list of fragment sizes per cell ID.
 
-
-#Check for barcode duplicates
-#If all cell barcodes are unique, there should be the same number of lines if we accound for bam origin or not
-samtools view all_methods_merged2_mm10.bbrd.q10.bam | awk '{split($1,a,"[:]");split(a[1],b,"[.]");print b[1]}' | sort -T . --parallel=20 | uniq -c | wc -l > barc_count.txt &
-samtools view all_methods_merged2_mm10.bbrd.q10.bam | awk '{split($1,a,"BAMID=");split(a[1],b,"[.]");split(b[1],c,":");print c[1],a[2]}' | sort -T . --parallel=20 | uniq -c | wc -l > barcANDmethod_count.txt &
-
+```bash
+input_bed="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.final.500.bed"
+input_bam="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.bam"
 #Make counts matrix on merged peaks per technology
-$scitools atac-counts -O scATAC_mus_all all_methods_merged2_mm10.bbrd.q10.bam \
-all_methods_merged2_mm10.bbrd.q10.500.bed &
+$scitools atac-counts \
+$input_bam \
+$input_bed &
+
+#make an annotation file of bam source per cell id
+samtools view all_methods_merged_mm10.bbrd.q10.bam | awk 'OFS="\t" {split($1,a,":");print a[1],a[3]}' | sort --parallel=10 -T . -S 2G | uniq > bam_id.annot &
+
 
 #scitools wrapper for samtools isize
-scitools isize mm10.merged.bbrd.q10.bam &
-
-#scitools wrapper for tss enrichment
-scitools bam-tssenrich mm10.merged.bbrd.q10.bam mm10 &
-
+$scitools isize -A ${ref_outdir}/all_methods.tech.annot ${ref_outdir}/all_methods_merged_mm10.bbrd.q10.bam &
 
 ```
 
-## Set Up MetaData per Analysis
+## Get author-defined metadata per cell type
 
 ```bash
-#sciMAP and sciATAC data
 scimap_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233"
 tenxatacv1_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1"
 tenxatacv2_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2"
 ddscATAC_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC"
 
+#sciMAP and sciATAC data
 cd $scimap_outdir
 wget https://ftp.ncbi.nlm.nih.gov/geo/series/GSE164nnn/GSE164849/suppl/GSE164849_sciMAP.metadata.csv.gz
 
@@ -4002,7 +4091,7 @@ wget https://ftp.ncbi.nlm.nih.gov/geo/series/GSE164nnn/GSE164849/suppl/GSE164849
 cd $tenxatacv1_outdir
 wget https://cf.10xgenomics.com/samples/cell-atac/1.2.0/atac_v1_adult_brain_fresh_5k/atac_v1_adult_brain_fresh_5k_analysis.tar.gz
 tar -xvf atac_v1_adult_brain_fresh_5k_analysis.tar.gz
-#clsuters in /home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1/analysis/clustering/graphclust/clusters.csv
+#clusters in /home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1/analysis/clustering/graphclust/clusters.csv
 
 #10x v2
 cd $tenxatacv1_outdir
@@ -4016,93 +4105,176 @@ wget https://github.com/buenrostrolab/dscATAC_analysis_code/blob/master/mousebra
 #clusters in dat<-readRDS("/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/mousebrain-master_dataframe.rds")
 ```
 
-<!---
+### Set up Seurat Object
 
-## Cortex Layering 
-
-### Generating Monocle trajectory of excitatory neurons
-
-
-```python
+```R
 library(Signac)
 library(Seurat)
-library(SeuratWrappers)
+library(EnsDb.Mmusculus.v79)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
 library(ggplot2)
-library(patchwork)
-library(cicero)
+library(Matrix)
+setwd("/home/groups/CEDAR/mulqueen/mouse_brain_ref")
 
-setwd("/home/groups/oroaklab/adey_lab/projects/sciWGS/200730_s3FinalAnalysis/s3atac_data")
-
-#Read in data and modify to monocle CDS file
-#read in RDS file.
-hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
-
-#Subset hg38 to just excitatory neurons in the cortex and apply a trajectory, trying to get layer information here
-hg38_ex_neurons<-subset(hg38_atac,idents="2") #cluster 2 is excitatory neurons
+# extract gene annotations from EnsDb
+mm10_annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+ucsc.levels <- str_replace(string=paste("chr",seqlevels(mm10_annotation),sep=""), pattern="chrMT", replacement="chrM")
+seqlevels(mm10_annotation) <- ucsc.levels #standard seq level change threw error, using a string replace instead
+genome(mm10_annotation) <- "mm10"
+seqlevelsStyle(mm10_annotation) <- 'UCSC'
 
 
-monocle_processing<-function(prefix, seurat_input){
-    atac.cds <- as.cell_data_set(seurat_input)
-    atac.cds <- cluster_cells(cds = atac.cds, reduction_method = "UMAP") 
-    #Read in cds from cicero processing earlier and continue processing
-    atac.cds<- learn_graph(atac.cds, 
-                           use_partition = F, 
-                           learn_graph_control=list(
-                               minimal_branch_len=10,
-                               orthogonal_proj_tip=F,
-                               prune_graph=T))
-    #plot to see nodes for anchoring
-    plt1<-plot_cells(
-                    cds = atac.cds,
-                    show_trajectory_graph = TRUE,
-                    label_leaves=T,
-                    label_branch_points=F,
-                    label_roots=T)
-    #Also make a plot of just node names for easier identification
-    root_nodes<-as.data.frame(t(atac.cds@principal_graph_aux$UMAP$dp_mst))
-    root_nodes$label<-row.names(root_nodes)
-    plt2<-ggplot(
-        root_nodes,
-        aes(x=UMAP_1,y=UMAP_2))+
-        geom_text(aes(label=label),size=3)+
-        theme_bw()
-    plt<-(plt1+plt2)
-    ggsave(plt,file=paste(prefix,"trajectory.pdf",sep="_"),width=20)
-    system(paste0("slack -F ",paste(prefix,"trajectory.pdf",sep="_")," ryan_todo"))
-    return(atac.cds)
+#function to read in sparse matrix format from atac-count
+read_in_sparse<-function(x){ #x is character file prefix followed by .bbrd.q10.500.counts.sparseMatrix.values.gz
+    IN<-as.matrix(read.table(paste0(x,".counts.sparseMatrix.values.gz")))
+    IN<-sparseMatrix(i=IN[,1],j=IN[,2],x=IN[,3])
+    COLS<-read.table(paste0(x,".counts.sparseMatrix.cols.gz"))
+    colnames(IN)<-COLS$V1
+    ROWS<-read.table(paste0(x,".counts.sparseMatrix.rows.gz"))
+    row.names(IN)<-ROWS$V1
+    writeMM(IN,file=paste0(x,".counts.mtx")) #this is to generate counts matrices in scrublet friendly format
+    return(IN)
 }
 
-
-hg38_ex_neurons.cicero<-monocle_processing(seurat_input=hg38_ex_neurons,prefix="hg38_excNeurons")
-
-#Setting starting node as Y_21
-hg38_ex_neurons.cicero<-order_cells(hg38_ex_neurons.cicero,reduction_method="UMAP",root_pr_nodes="Y_21")
+mm10_counts<-read_in_sparse("all_methods_merged_mm10.bbrd.q10.final.500") # make mm10 counts matrix from sparse matrix
 
 
-#variance over pseudotime
-#pr_graph_test <- principalGraphTest(hg38_ex_neurons.cicero, k=6, cores=1)
-#dplyr::add_rownames(pr_graph_test) %>%
-#    dplyr::arrange(plyr::desc(morans_test_statistic), plyr::desc(-qval)) %>% head(3)
+#write out as MM format
+#Read in fragment path for coverage plots
+mm10_fragment.path="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.fragments.filt.tsv.gz"
 
-#Now replotting with pseudotime
-pdf("hg38_excNeurons.trajectory.pseudotime.pdf")
-plot_cells(
-  cds = hg38_ex_neurons.cicero,
-  show_trajectory_graph = TRUE,
-color_cells_by = "pseudotime"
+#Generate ChromatinAssay Objects
+mm10_chromatinassay <- CreateChromatinAssay(
+  counts = mm10_counts,
+  #genome="mm10",
+  min.cells = 1,
+  annotation=mm10_annotation,
+  sep=c("_","_"),
+  fragments=mm10_fragment.path
 )
+
+
+#Create Seurat Objects
+mm10_atac <- CreateSeuratObject(
+  counts = mm10_chromatinassay,
+  assay = "peaks"
+)
+
+#Meta.data to be updated after clustering
+bamid_annot<-read.table("bam_id.annot",header=F)
+bamid_readable<-c("BAMID=1"="sciATAC",
+    "BAMID=2"="sciMAP",
+    "BAMID=3"="snATAC",
+    "BAMID=4"="ddscATAC",
+    "BAMID=5"="ddscATAC",
+    "BAMID=6"="ddscATAC",
+    "BAMID=7"="ddscATAC",
+    "BAMID=8"="ddscATAC",
+    "BAMID=9"="ddscATAC",
+    "BAMID=10"="ddscATAC",
+    "BAMID=11"="ddscATAC",
+    "BAMID=12"="sciDROP") #this is based on the order of bam-merge scitools call above
+bamid<-setNames(nm=bamid_annot$V1,bamid_annot$V2)
+bamid_reads<-setNames(nm=bamid_annot$V1,bamid_readable[bamid_annot$V2])
+mm10_atac<-AddMetaData(mm10_atac,bamid,col.name="bam_id")
+mm10_atac<-AddMetaData(mm10_atac,bamid_reads,col.name="tech")
+mm10_atac<-readRDS(file="allmethods_merged_SeuratObject.Rds")
+tech_out<-cbind(colnames(mm10_atac),mm10_atac@meta.data$tech)
+write.table(tech_out,file="all_methods.tech.annot",sep="\t",quote=F,col.names=F,row.names=F)
+
+#saving unprocessed SeuratObjects
+saveRDS(mm10_atac,file="allmethods_merged_SeuratObject.Rds")
+
+mm10_atac <- RunTFIDF(mm10_atac)
+mm10_atac <- FindTopFeatures(mm10_atac, min.cutoff = 20)
+mm10_atac <- RunSVD(mm10_atac)
+mm10_atac <- RunUMAP(mm10_atac, dims = 2:50, reduction = 'lsi')
+
+plt<-DimPlot(mm10_atac, group.by = 'tech', pt.size = 0.1)
+ggsave(plt,file="all_methods.tech.pdf")
+system(paste0("slack -F ","all_methods.tech.unintegrated.pdf"," ryan_todo"))
+
+library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
+#Correcting bias with harmony
+pdf("mm10.harmony.convergence.pdf")
+harm_mat<-HarmonyMatrix(mm10_atac@reductions$lsi@cell.embeddings, mm10_atac@meta.data$tech,do_pca=FALSE,nclust=14,plot_convergence=T)
 dev.off()
-system("slack -F hg38_excNeurons.trajectory.pseudotime.pdf ryan_todo")
+system("slack -F mm10.harmony.convergence.pdf ryan_todo")
+mm10_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
+mm10_atac<-RunUMAP(mm10_atac, reduction = "harmony",dims=1:ncol(mm10_atac@reductions$harmony))
+mm10_atac <- FindNeighbors(object = mm10_atac,reduction = 'harmony')
+mm10_atac <- FindClusters(object = mm10_atac,verbose = TRUE,resolution=0.05)
 
-saveRDS(hg38_ex_neurons.cicero,"hg38_excNeurons.monocle.cds.Rds")
+#Add scimap/sciatac metadata
+scimap_meta<-read.csv("/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233/GSE164849_sciMAP.metadata.csv")
+scimap_celltype<-setNames(nm=scimap_meta$Barcode,scimap_meta$Celltype)
+mm10_atac<-AddMetaData(mm10_atac,scimap_celltype,col.name="celltype")
+plt<-DimPlot(mm10_atac,group.by = 'celltype', pt.size = 0.1)
+ggsave(plt,file="all_methods.scimapcelltype.harmony.pdf")
+system(paste0("slack -F ","all_methods.scimapcelltype.harmony.pdf"," ryan_todo"))
 
-#Append pseudotime to meta data of seurat object
-hg38_excNeurons_pseudotime<-as.data.frame(hg38_ex_neurons.cicero@principal_graph_aux@listData$UMAP$pseudotime)
-colnames(hg38_excNeurons_pseudotime)<-c("pseudotime")
-hg38_excNeurons_pseudotime$cellID<-row.names(hg38_excNeurons_pseudotime)
-
-hg38_ex_neurons$pseudotime<-hg38_excNeurons_pseudotime[match(hg38_excNeurons_pseudotime$cellID,hg38_ex_neurons$cellID),]$pseudotime
-
-saveRDS(hg38_ex_neurons,"hg38_excNeurons.SeuratObject.Rds")
-
+#Add FRIP based on the merged data peakset
+frip<-read.table("all_methods_merged_mm10.bbrd.q10.final.500.fracOnTarget.values",col.names=c("cellID","FRIP"))
+frip_in<-setNames(nm=row.names(frip),frip$FRIP)
+mm10_atac<-AddMetaData(mm10_atac,frip_in,col.name="FRIP")
+saveRDS(mm10_atac,file="allmethods_merged_SeuratObject.Rds")
 ```
+QC Plot comparisons
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Mmusculus.v79)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+library(Matrix)
+library(patchwork)
+library(palettetown)
+library(plyr)
+setwd("/home/groups/CEDAR/mulqueen/mouse_brain_ref")
+mm10_atac<-readRDS("allmethods_merged_SeuratObject.Rds")
+#table(mm10_atac$tech)
+#ddscATAC  sciATAC  sciDROP   sciMAP   snATAC 
+#    6961     5389    38606     9441     3034
+
+tech_col<-c("snATAC"="grey","sciATAC"="lightcyan4","ddscATAC"="honeydew4","sciMAP"="lightslategrey","sciDROP"="red")
+tech_order<-c("snATAC","sciATAC","ddscATAC","sciMAP","sciDROP")
+
+#Plot integration
+plt<-DimPlot(mm10_atac,group.by = 'tech', pt.size = 0.1)+scale_fill_manual(values=c(NA,NA,NA,NA,NA))+scale_color_manual(values=tech_col)
+ggsave(plt,file="all_methods.tech.harmony.pdf")
+system(paste0("slack -F ","all_methods.tech.harmony.pdf"," ryan_todo"))
+
+#Insert size histogram
+Idents(mm10_atac)<-"tech"
+dat<-as.data.frame(mm10_atac@meta.data)
+dat$tech <- factor(dat$tech, levels=tech_order)
+plt<-ggplot(dat,aes(x=tech,y=FRIP,color=tech))+geom_boxplot(alpha=0.8,fill="white",outlier.shape=NA)+scale_color_manual(values=tech_col)+theme_minimal() #+geom_jitter(alpha=0.1,size=0.1)
+ggsave(plt,file="frip_tech.pdf")
+system("slack -F frip_tech.pdf ryan_todo")
+
+ 
+#Projected complexity models per cell formatted as #cellid int slope
+tenxv1<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1/tenxv1_mus.RG.read_projections/model.txt"),"tenx_v1"
+tenxv2<-read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2/tenxv2_mus.RG.read_projections/model.txt")
+sciatac<-read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232/sciATAC_mus.RG.nsrt.read_projections/model.txt")
+scimap<-read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233/sciMAP_mus.RG.nsrt.read_projections/model.txt")
+snatac<-read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/snATAC/SRR6768122/SRR6768122/snATAC_mus.cellidfilt.filt.read_projections/model.txt")
+scidrop<-read.table() #RUNNING
+ddscatac<-do.call("rbind",
+    lapply(1:8,function(x) read.table(paste0("/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/ddscATAC_mus_SRR831066",x,".nsrt.RG.read_projections/model.txt")))) #RUNNING
+
+
+#plot isize
+isize<-read.table("all_methods_merged_mm10.bbrd.q10.isize.values",header=F,sep="\t")
+colnames(isize)<-c("tech","frag")
+plt<-ggplot(isize,aes(x=frag,color=tech,fill=tech))+geom_density()+theme_minimal()+scale_color_manual(values=tech_col)+scale_fill_manual(values=tech_col)+facet_grid(tech~.)
+ggsave(plt,file="isize_tech.pdf")
+system("slack -F isize_tech.pdf ryan_todo")
+```
+
+
