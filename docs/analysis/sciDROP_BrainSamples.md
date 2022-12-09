@@ -339,9 +339,6 @@ out_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard
 samtools merge -f -@ 20 -h $sciDROP_70k_dir/hg38.bbrd.q10.bam $out_dir/hg38.merged.bbrd.q10.bam $sciDROP_70k_dir/hg38.bbrd.q10.bam $sciDROP_20k_dir/hg38.bbrd.q10.bam &  
 samtools merge -f -@ 20 -h $sciDROP_70k_dir/mm10.bbrd.q10.bam $out_dir/mm10.merged.bbrd.q10.bam $sciDROP_70k_dir/mm10.bbrd.q10.bam $sciDROP_20k_dir/mm10.bbrd.q10.bam &  
 
-#Project read count for mm10 across tech comparisons (towards end of code)
-scitools bam-project -X $sciDROP_70k_dir/mm10.bam &
-
 #Call peaks by read pileups
 cd $out_dir
 scitools callpeaks hg38.merged.bbrd.q10.bam &
@@ -2094,7 +2091,7 @@ saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds")
 hg38_atac<-subset(hg38_atac,cells=which(!endsWith(hg38_atac@meta.data$cluster_ID,"NA")))
 
 #set clusters to test
-cluster_to_test<-unique(hg38_atac$cluster_ID)
+cluster_to_test<-unique(hg38_atac$seurat_clusters)
 #define DA functions for parallelization
 #Use LR test for atac data
 da_one_v_rest<-function(i,obj,group,assay.="GeneActivity",latent.vars.="nCount_GeneActivity"){
@@ -2120,7 +2117,7 @@ da_ga<-mclapply(
     cluster_to_test,
     FUN=da_one_v_rest,
     obj=hg38_atac,
-    group="cluster_ID",
+    group="seurat_clusters",
     assay.="GeneActivity",
     mc.cores=n.cores)
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
@@ -2133,7 +2130,7 @@ da_ga<-mclapply(
     cluster_to_test,
     FUN=da_one_v_rest,
     obj=hg38_atac,
-    group="cluster_ID",
+    group="seurat_clusters",
     assay.="chromvar", latent.vars.="nCount_peaks",
     mc.cores=n.cores)
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
@@ -2146,6 +2143,9 @@ da_ga<-read.csv(file="hg38.onevrest.da_ga.txt",head=T,sep="\t",row.names=NULL)
 da_ga$gene_name<-da_ga$da_region
 da_ga<-da_ga[complete.cases(da_ga),]
 da_ga<-da_ga[!endsWith(da_ga$enriched_group,"NA"),]
+
+########## RUNNING #########
+
 
 da_ga$label<-""
 for (x in unique(da_ga$enriched_group)){
@@ -2233,7 +2233,7 @@ hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
 #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
 sum_da_dend<-readRDS(file="hg38.geneactivity.dend.rds")
 dat_ga<-as.data.frame(t(as.data.frame(hg38_atac[["GeneActivity"]]@data)))
-sum_ga<-split(dat_ga,hg38_atac$cluster_ID) #group by rows to seurat clusters 
+sum_ga<-split(dat_ga,hg38_atac$seurat_clusters) #group by rows to seurat clusters 
 sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
 sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
 sum_ga<-t(sum_ga)
@@ -2283,20 +2283,18 @@ markers_limited<-markers_limited[match(row.names(sum_ga_sub),markers_limited$mar
 
 sum_ga_sub<-t(scale(t(sum_ga_sub),center=F,scale=T))
 
-annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
-annot<-annot[!(annot$subcluster_col=="NA"),]
-annot<-annot[!duplicated(annot$cluster_ID),]
-annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
-annot<-annot[match(colnames(sum_ga),annot$cluster_ID),]
-annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","cluster_col","seurat_clusters","celltype_col")] 
+annot<-annot[!duplicated(annot$seurat_clusters),]
+annot<-annot[annot$seurat_clusters %in% colnames(sum_ga),]
+annot<-annot[match(colnames(sum_ga),annot$seurat_clusters),]
+annot_clus_col<-annot[!duplicated(annot$seurat_clusters),]
 
-top_ha<-columnAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+top_ha<-columnAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters),
                 col=list(
                     celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
-                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
-                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters)))
                         ),
-                    show_legend = c(TRUE, TRUE, FALSE))
+                    show_legend = c(TRUE, TRUE))
 
 
 colfun=colorRamp2(quantile(unlist(sum_ga_sub), probs=c(0.5,0.90,0.95)),magma(3))
@@ -2337,7 +2335,7 @@ da_tf[da_tf$tf_name %in% selc_genes & da_tf$enriched_group==x,]$label<- da_tf[da
 
 #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
 dat_tf<-as.data.frame(t(as.data.frame(hg38_atac[["chromvar"]]@data)))
-sum_tf<-split(dat_tf,hg38_atac$cluster_ID) #group by rows to seurat clusters
+sum_tf<-split(dat_tf,hg38_atac$seurat_clusters) #group by rows to seurat clusters
 sum_tf<-lapply(sum_tf,function(x) apply(x,2,mean)) #take average across group
 sum_tf<-do.call("rbind",sum_tf) #condense to smaller data frame
 
@@ -2350,20 +2348,19 @@ sum_da_dend<-readRDS(file="hg38.geneactivity.dend.rds")
 
 sum_tf<-sum_tf[row.names(sum_tf) %in% unique(da_tf[da_tf$label!="",]$da_region),]
 row.names(sum_tf)<-da_tf[match(row.names(sum_tf),da_tf$da_region,nomatch=0),]$tf_name
-annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+annot<-hg38_atac@meta.data[,c("celltype","seurat_clusters","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
 annot<-annot[!(annot$subcluster_col=="NA"),]
-annot<-annot[!duplicated(annot$cluster_ID),]
-annot<-annot[annot$cluster_ID %in% colnames(sum_tf),]
-annot<-annot[match(colnames(sum_tf),annot$cluster_ID),]
+annot<-annot[!duplicated(annot$seurat_clusters),]
+annot<-annot[annot$seurat_clusters %in% colnames(sum_tf),]
+annot<-annot[match(colnames(sum_tf),annot$seurat_clusters),]
 sum_tf_plot<-t(sum_tf)
 
-annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+annot_clus_col<-annot[!duplicated(annot$seurat_clusters),]
 
-side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters),
                 col=list(
                     celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
-                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
-                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters)))
                         ))
 
 bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_tf_plot), labels = colnames(sum_tf_plot)))
@@ -3866,23 +3863,9 @@ tenx_bam="8k_mouse_cortex_ATACv2_nextgem_Chromium_X_possorted_bam.bam"
 s3ATAC
 https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM5289637
 
+For this I used the bam file on SRA since it is in the same reference genome. Downloaded via AWS bucket.
+
 ```bash
-sra="SRR14494477"
-ref_dir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
-mkdir ${ref_dir}/s3atac
-prefetch $sra --type fastq -O ${ref_dir}/s3atac/${sra}
-fasterq-dump --include-technical -t . -p -c 1G -b 1G -S -e 20 -m 50G -O ${ref_dir}/s3atac/${sra} ${sra}
-for i in ${ref_dir}/s3atac/${sra}/*fastq;
-do gzip $i & done &
-````
-
-Or use bams from original manuscript. Since it is already aligned to the same mm10 file.
-```bash
-cd ${ref_dir}/s3atac
-ls /home/groups/oroaklab/adey_lab/projects/s3/s3WGS/200730_s3FinalAnalysis/s3atac_data/single_cell_splits/single_prededup_bams/mm10.RG*prededup.bam > scbam_list.txt
-
-samtools cat -b scbam_list.txt -@20 -o s3atac.mm10.bam
-
 #metadata
 wget https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM5289nnn/GSM5289637/suppl/GSM5289637_s3atac.mm10.metadata.csv.gz
 ```
@@ -3948,6 +3931,8 @@ Project bams for each method for scaled library complexity
 ```bash
 $scitools bam-project -X ${sciatac_outdir}/sciATAC_mus.RG.nsrt.bam &
 $scitools bam-project -X ${scimap_outdir}/sciMAP_mus.RG.nsrt.bam &
+#prefilter snatac before continuing
+$scitools bam-filter -L ${snatac_outdir}/GSM2668124_filtcells.list.txt -O ${snatac_outdir}/snATAC_mus.cellidfilt ${snatac_outdir}/snATAC_mus.RG.nsrt.bam &
 $scitools bam-project -X ${snatac_outdir}/snATAC_mus.cellidfilt.filt.bam &
 $scitools bam-project -X ${tenxatacv1_outdir}/tenxv1_mus.RG.bam &
 $scitools bam-project -X ${tenxatacv2_outdir}/tenxv2_mus.RG.bam &
@@ -3955,57 +3940,66 @@ for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR83
 $scitools bam-project -X $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam; done & 
 $scitools bam-project -X ${s3atac_outdir}/s3atac.mm10.bam  &
 
+
+#Project read count for sciDROP mm10 across tech comparisons (towards end of code). 
+sciDROP_70k_dir="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_70k"
+awk 'OFS="\t" {a=substr($2,1,10);print $2,a}' mm10.complexity.txt > arbitrary_barcsplit.annot #will be used to split the big bam into ~30 smaller bams, so more memory managable
+$scitools bam-split -A arbitrary_barcsplit.annot mm10.bam & wait 
+for i in mm10.C*.bam; do
+    $scitools bam-project -X $i ; done &
+
 ```
 
 Remove PCR duplicate reads
 ```bash
 #Remove duplicates based on cellID, chromosome and start sites per read
 ##using the name sorted (-n) barcode based removal of duplicates
-#prefilter snatac before continuing
-$scitools bam-filter -L ${snatac_outdir}/GSM2668124_filtcells.list.txt -O ${snatac_outdir}/snATAC_mus.cellidfilt ${snatac_outdir}/snATAC_mus.RG.nsrt.bam &
+#Note: by default this also filters out cells with <1000 unique reads. This is the same way sciDROP data was processed.
+
 #back to removal of duplicate reads
-$scitools bam-rmdup -n -t 20 -O ${snatac_outdir}/snATAC_mus.RG. ${snatac_outdir}/snATAC_mus.cellidfilt.filt.bam &
-$scitools bam-rmdup -t 4 ${tenxatacv1_outdir}/tenxv1_mus.RG.bam 
-$scitools bam-rmdup -t 4 ${tenxatacv2_outdir}/tenxv2_mus.RG.bam 
+$scitools bam-rmdup -n -t 4 ${snatac_outdir}/snATAC_mus.cellidfilt.filt.bam & #done
+$scitools bam-rmdup -t 4 ${tenxatacv1_outdir}/tenxv1_mus.RG.bam & #done
+$scitools bam-rmdup -t 4 ${tenxatacv2_outdir}/tenxv2_mus.RG.bam & #done
+$scitools bam-rmdup -n -t 4 ${s3atac_outdir}/s3atac.mm10.bam & #done
+$scitools bam-rmdup -n -t 4 ${sciatac_outdir}/sciATAC_mus.RG.nsrt.bam & #done
+$scitools bam-rmdup -n -t 4 ${scimap_outdir}/sciMAP_mus.RG.nsrt.bam & #done
 for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
-$scitools bam-rmdup -n -t 4 $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam ; done 
-$scitools bam-rmdup -n -t 4 ${s3atac_outdir}/s3atac.mm10.bam
+$scitools bam-rmdup -n -t 4 $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam ; done & #done
 
 ```
 
-Filter cells with less than 1000 unique reads
+Filter all bam files
+
 ```bash
-#Filter all bam files to cellIDs with reads >1000
-$scitools bam-filter -N 1000 ${sciatac_outdir}/sciATAC_mus.RG.nsrt.bam &
-$scitools bam-filter -N 1000 ${scimap_outdir}/sciMAP_mus.RG.nsrt.bam &
-$scitools bam-filter  -N 1000 ${snatac_outdir}/snATAC_mus.RG.nsrt.bam & #Still waiting on bam-rmdup for this one
-$scitools bam-filter  -N 1000 ${tenxatacv1_outdir}/tenxv1_mus.RG.bam &
-$scitools bam-filter  -N 1000 ${tenxatacv2_outdir}/tenxv2_mus.RG.bam &
-for i in "SRR8310661" "SRR8310662" "SRR8310663" "SRR8310664" "SRR8310665" "SRR8310666" "SRR8310667" "SRR8310668"; do
-$scitools bam-filter  -N 1000 $ddscATAC_outdir/ddscATAC_mus_${i}.nsrt.RG.bam & done &
-$scitools bam-filter  -N 1000 ${s3atac_outdir}/s3atac.mm10.bbrd.q10.bam
-
+$scitools bam-filter -N 1000 -C ${sciatac_outdir}/sciATAC_mus.RG.complexity.txt ${sciatac_outdir}/sciATAC_mus.RG.bbrd.q10.bam &
+$scitools bam-filter -N 1000 -C ${scimap_outdir}/sciMAP_mus.RG.complexity.txt ${scimap_outdir}/sciMAP_mus.RG.bbrd.q10.bam &
+#snatac is prefiltered
+for i in 1 2 3 4 5 6 7 8; do
+$scitools bam-filter -N 1000 -C ${ddscATAC_outdir}/ddscATAC_mus_SRR831066${i}.RG.complexity.txt ${ddscATAC_outdir}/ddscATAC_mus_SRR831066${i}.RG.bbrd.q10.bam & done & 
+$scitools bam-filter -N 1000 -C ${tenxatacv1_outdir}/tenxv1_mus.RG.complexity.txt ${tenxatacv1_outdir}/tenxv1_mus.RG.bbrd.q10.bam &
+$scitools bam-filter -N 1000 -C ${tenxatacv2_outdir}/tenxv2_mus.RG.complexity.txt ${tenxatacv2_outdir}/tenxv2_mus.RG.bbrd.q10.bam &
+$scitools bam-filter -N 1000 -C ${s3atac_outdir}/s3atac.mm10.complexity.txt ${s3atac_outdir}/s3atac.mm10.bbrd.q10.bam &
+#scidrop is prefiltered
 ```
-
 Merge all bam files and generate a tabix file for fragments.
 
 ```bash
 $scitools bam-merge -m 10G ${ref_outdir}/all_methods_merged_mm10.bbrd.q10.bam \
-${sciatac_outdir}/sciATAC_mus.RG.nsrt.filt.bam \
-${scimap_outdir}/sciMAP_mus.RG.nsrt.filt.bam \
-${snatac_outdir}/snATAC_mus.RG.bbrd.q10.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310661.nsrt.RG.filt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310662.nsrt.RG.filt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310663.nsrt.RG.filt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310664.nsrt.RG.filt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310665.nsrt.RG.filt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310666.nsrt.RG.filt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310667.nsrt.RG.filt.bam \
-${ddscATAC_outdir}/ddscATAC_mus_SRR8310668.nsrt.RG.filt.bam \
-${tenxatacv1_outdir}/tenxv1_mus.RG.bam \
-${tenxatacv2_outdir}/tenxv2_mus.RG.bam \
+${sciatac_outdir}/sciATAC_mus.RG.bbrd.q10.filt.bam \
+${scimap_outdir}/sciMAP_mus.RG.bbrd.q10.filt.bam \
+${snatac_outdir}/snATAC_mus.cellidfilt.filt.bbrd.q10.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310661.RG.bbrd.q10.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310662.RG.bbrd.q10.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310663.RG.bbrd.q10.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310664.RG.bbrd.q10.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310665.RG.bbrd.q10.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310666.RG.bbrd.q10.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310667.RG.bbrd.q10.filt.bam \
+${ddscATAC_outdir}/ddscATAC_mus_SRR8310668.RG.bbrd.q10.filt.bam \
+${tenxatacv1_outdir}/tenxv1_mus.RG.bbrd.q10.filt.bam \
+${tenxatacv2_outdir}/tenxv2_mus.RG.bbrd.q10.filt.bam \
 ${s3atac_outdir}/s3atac.mm10.bbrd.q10.filt.bam \
-${sciDROP_70k_dir}/mm10.bbrd.q10.bam
+${sciDROP_70k_dir}/mm10.bbrd.q10.bam 
 
 #Make fragment files
 tabix="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/tabix"
@@ -4013,10 +4007,13 @@ bgzip="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda
 
 #mouse processing
 input_bam=${ref_outdir}/all_methods_merged_mm10.bbrd.q10.bam
+$scitools bam-tssenrich -X $input_bam mm10 
+
+
 output_name=${input_bam::-4}
-samtools view --threads 20 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 2G -T . --parallel=20 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz ;
-zcat all_methods_merged_mm10.bbrd.q10.fragments.tsv.gz | awk 'OFS="\t" { if($1 !~ /M|Y|L|K|G|Un|Random|Alt|random/) {print $0}}' | $bgzip > $output_name.fragments.filt.tsv.gz ;
-$tabix -p bed $output_name.fragments.filt.tsv.gz ; 
+samtools view --threads 10 $input_bam | awk 'OFS="\t" {split($1,a,":"); print $3,$4,$8,a[1],1}' | sort -S 20G -T . --parallel=10 -k1,1 -k2,2n -k3,3n | $bgzip > $output_name.fragments.tsv.gz ;
+zcat all_methods_merged_mm10.bbrd.q10.fragments.tsv.gz | awk 'OFS="\t" { if($1 !~ /M|Y|L|K|G|Un|Random|Alt|random/) {print $0}}' | $bgzip > $output_name.fragments.tsv.gz ;
+$tabix -p bed $output_name.fragments.tsv.gz ; 
 
 ```
 
@@ -4024,38 +4021,22 @@ Call peaks by read pileups
 ```bash
 $scitools callpeaks -f mm10 ${ref_outdir}/all_methods_merged_mm10.bbrd.q10.bam &
 
-#Note due to technical difficulties I had to merge peaks and buffer to 500bp with awk
-################
-out="all_methods_merged_mm10.bbrd.q10.final"
-input_narrowPeak="all_methods_merged_mm10.bbrd.q10_peaks.narrowPeak"
-
-bedtools merge -i $input_narrowPeak 2>/dev/null | awk 'OFS="\t" {if($1 !~ /M|Y|L|K|G|Un|Random|Alt|random/){
-if($3-$2<500){
-    mid=int(($3+$2)/2);
-    $2=mid-250
-    $3=mid+250}
-if($2>0){
-    print $1,$2,$3
-} else print $1,0,$3;
-}}' | bedtools sort -i -  2>/dev/null| bedtools merge -i - 2>/dev/null | awk 'OFS="\t" {print $1,$2,$3,$1"_"$2"_"$3}' > ${out}.500.bed
-################
-
 ```
 Make a counts matrix and a list of fragment sizes per cell ID.
 
 ```bash
-input_bed="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.final.500.bed"
+input_bed="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.500.bed"
 input_bam="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.bam"
+scitools="/home/groups/oroaklab/src/scitools/scitools-dev/scitools"
+ref_outdir="/home/groups/CEDAR/mulqueen/mouse_brain_ref"
+
 #Make counts matrix on merged peaks per technology
 $scitools atac-counts \
 $input_bam \
 $input_bed &
 
-#make an annotation file of bam source per cell id
-samtools view all_methods_merged_mm10.bbrd.q10.bam | awk 'OFS="\t" {split($1,a,":");print a[1],a[3]}' | sort --parallel=10 -T . -S 2G | uniq > bam_id.annot &
-
-
-#scitools wrapper for samtools isize
+#make an annotation file of bam source per cell id and scitools wrapper for samtools isize
+samtools view all_methods_merged_mm10.bbrd.q10.bam | awk 'OFS="\t" {split($1,a,":");print a[1],a[3]}' | sort --parallel=10 -T . -S 2G | uniq > bam_id.annot ;
 $scitools isize -A ${ref_outdir}/all_methods.tech.annot ${ref_outdir}/all_methods_merged_mm10.bbrd.q10.bam &
 
 ```
@@ -4125,12 +4106,12 @@ read_in_sparse<-function(x){ #x is character file prefix followed by .bbrd.q10.5
     return(IN)
 }
 
-mm10_counts<-read_in_sparse("all_methods_merged_mm10.bbrd.q10.final.500") # make mm10 counts matrix from sparse matrix
+mm10_counts<-read_in_sparse("all_methods_merged_mm10.bbrd.q10.500") # make mm10 counts matrix from sparse matrix
 
 
 #write out as MM format
 #Read in fragment path for coverage plots
-mm10_fragment.path="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.fragments.filt.tsv.gz"
+#mm10_fragment.path="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.fragments.tsv.gz"
 
 #Generate ChromatinAssay Objects
 mm10_chromatinassay <- CreateChromatinAssay(
@@ -4138,8 +4119,8 @@ mm10_chromatinassay <- CreateChromatinAssay(
   #genome="mm10",
   min.cells = 1,
   annotation=mm10_annotation,
-  sep=c("_","_"),
-  fragments=mm10_fragment.path
+  sep=c("_","_")#,
+  #fragments=mm10_fragment.path
 )
 
 
@@ -4170,7 +4151,6 @@ bamid<-setNames(nm=bamid_annot$V1,bamid_annot$V2)
 bamid_reads<-setNames(nm=bamid_annot$V1,bamid_readable[bamid_annot$V2])
 mm10_atac<-AddMetaData(mm10_atac,bamid,col.name="bam_id")
 mm10_atac<-AddMetaData(mm10_atac,bamid_reads,col.name="tech")
-mm10_atac<-readRDS(file="allmethods_merged_SeuratObject.Rds")
 tech_out<-cbind(colnames(mm10_atac),mm10_atac@meta.data$tech)
 write.table(tech_out,file="all_methods.tech.annot",sep="\t",quote=F,col.names=F,row.names=F)
 
@@ -4184,7 +4164,7 @@ mm10_atac <- RunUMAP(mm10_atac, dims = 2:50, reduction = 'lsi')
 
 plt<-DimPlot(mm10_atac, group.by = 'tech', pt.size = 0.1)
 ggsave(plt,file="all_methods.tech.pdf")
-system(paste0("slack -F ","all_methods.tech.unintegrated.pdf"," ryan_todo"))
+system(paste0("slack -F ","all_methods.tech.pdf"," ryan_todo"))
 
 library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
 #Correcting bias with harmony
@@ -4206,8 +4186,8 @@ ggsave(plt,file="all_methods.scimapcelltype.harmony.pdf")
 system(paste0("slack -F ","all_methods.scimapcelltype.harmony.pdf"," ryan_todo"))
 
 #Add FRIP based on the merged data peakset
-frip<-read.table("all_methods_merged_mm10.bbrd.q10.final.500.fracOnTarget.values",col.names=c("cellID","FRIP"))
-frip_in<-setNames(nm=row.names(frip),frip$FRIP)
+frip<-read.table("all_methods_merged_mm10.bbrd.q10.500.fracOnTarget.values",col.names=c("cellID","FRIP"))
+frip_in<-setNames(nm=frip$cellID,frip$FRIP)
 mm10_atac<-AddMetaData(mm10_atac,frip_in,col.name="FRIP")
 saveRDS(mm10_atac,file="allmethods_merged_SeuratObject.Rds")
 ```
@@ -4225,39 +4205,76 @@ library(Matrix)
 library(patchwork)
 library(palettetown)
 library(plyr)
+library(dplyr)
 setwd("/home/groups/CEDAR/mulqueen/mouse_brain_ref")
 mm10_atac<-readRDS("allmethods_merged_SeuratObject.Rds")
 #table(mm10_atac$tech)
-#ddscATAC  sciATAC  sciDROP   sciMAP   snATAC 
-#    6961     5389    38606     9441     3034
+#ddscATAC   s3ATAC  sciATAC  sciDROP   sciMAP   snATAC   tenxv1   tenxv2 
+#    6611      920     4638    38606     8206     3034     4663     9167 
 
-tech_col<-c("snATAC"="grey","sciATAC"="lightcyan4","ddscATAC"="honeydew4","sciMAP"="lightslategrey","sciDROP"="red")
-tech_order<-c("snATAC","sciATAC","ddscATAC","sciMAP","sciDROP")
+tech_col<-c("snATAC"="grey","sciATAC"="lightcyan4","ddscATAC"="honeydew4","sciMAP"="lightslategrey","sciDROP"="red","s3ATAC"="azure3","tenxv1"="cadetblue","tenxv2"="cadetblue2")
+tech_order<-c("snATAC","sciATAC","tenxv1","tenxv2","ddscATAC","sciMAP","s3ATAC","sciDROP")
 
 #Plot integration
 plt<-DimPlot(mm10_atac,group.by = 'tech', pt.size = 0.1)+scale_fill_manual(values=c(NA,NA,NA,NA,NA))+scale_color_manual(values=tech_col)
 ggsave(plt,file="all_methods.tech.harmony.pdf")
 system(paste0("slack -F ","all_methods.tech.harmony.pdf"," ryan_todo"))
 
-#Insert size histogram
+#FRIP histogram
 Idents(mm10_atac)<-"tech"
 dat<-as.data.frame(mm10_atac@meta.data)
 dat$tech <- factor(dat$tech, levels=tech_order)
-plt<-ggplot(dat,aes(x=tech,y=FRIP,color=tech))+geom_boxplot(alpha=0.8,fill="white",outlier.shape=NA)+scale_color_manual(values=tech_col)+theme_minimal() #+geom_jitter(alpha=0.1,size=0.1)
+plt<-ggplot(dat,aes(x=tech,y=FRIP,color=tech))+geom_boxplot(alpha=0.8,fill="white",outlier.shape=NA)+scale_color_manual(values=tech_col)+ylim(c(0,1))+theme_minimal() #+geom_jitter(alpha=0.1,size=0.1)
 ggsave(plt,file="frip_tech.pdf")
 system("slack -F frip_tech.pdf ryan_todo")
 
  
 #Projected complexity models per cell formatted as #cellid int slope
-tenxv1<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1/tenxv1_mus.RG.read_projections/model.txt"),"tenx_v1"
-tenxv2<-read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2/tenxv2_mus.RG.read_projections/model.txt")
-sciatac<-read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232/sciATAC_mus.RG.nsrt.read_projections/model.txt")
-scimap<-read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233/sciMAP_mus.RG.nsrt.read_projections/model.txt")
-snatac<-read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/snATAC/SRR6768122/SRR6768122/snATAC_mus.cellidfilt.filt.read_projections/model.txt")
-scidrop<-read.table() #RUNNING
-ddscatac<-do.call("rbind",
-    lapply(1:8,function(x) read.table(paste0("/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/ddscATAC_mus_SRR831066",x,".nsrt.RG.read_projections/model.txt")))) #RUNNING
+#Vmax=1/V2 ;Km=V3/V2
+#test_uniq = (($Vmax*$test_count)/($Km+$test_count))
 
+tenxv1<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1/tenxv1_mus.RG.read_projections/model.txt"),tech="tenxv1")
+tenxv2<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2/tenxv2_mus.RG.read_projections/model.txt"),tech="tenxv2")
+sciatac<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232/sciATAC_mus.RG.nsrt.read_projections/model.txt"),tech="sciATAC")
+scimap<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233/sciMAP_mus.RG.nsrt.read_projections/model.txt"),tech="sciMAP")
+snatac<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/snATAC/SRR6768122/SRR6768122/snATAC_mus.cellidfilt.filt.read_projections/model.txt"),tech="snATAC")
+s3atac<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/s3atac/s3atac.mm10.read_projections/model.txt"),tech="s3ATAC")
+scidrop<-cbind(do.call("rbind", 
+    lapply(c('CAGAGAGGAA', 'CAGAGAGGAC', 'CAGAGAGGAG', 'CAGAGAGGAT', 'CAGAGAGGCA', 'CAGAGAGGCC', 'CAGAGAGGCG', 'CAGAGAGGCT', 'CAGAGAGGGA', 'CAGAGAGGGC', 'CAGAGAGGGG', 'CAGAGAGGGT', 'CAGAGAGGTA', 'CAGAGAGGTC', 'CAGAGAGGTG', 'CAGAGAGGTT', 'CTCTCTACAA', 'CTCTCTACAC', 'CTCTCTACAG', 'CTCTCTACAT', 'CTCTCTACCA', 'CTCTCTACCC', 'CTCTCTACCG', 'CTCTCTACCT', 'CTCTCTACGA', 'CTCTCTACGC', 'CTCTCTACGG', 'CTCTCTACGT', 'CTCTCTACTA', 'CTCTCTACTC', 'CTCTCTACTG', 'CTCTCTACTT'), function(x) read.table(paste0("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_70k/mm10.",x,".read_projections/model.txt")))),tech="sciDROP")
+ddscatac<-cbind(do.call("rbind",
+    lapply(1:8,function(x) read.table(paste0("/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/ddscATAC_mus_SRR831066",x,".nsrt.RG.read_projections/model.txt")))),tech="ddscATAC")
+compl<-rbind(tenxv1,tenxv2,sciatac,scimap,snatac,s3atac,scidrop,ddscatac)
+f<-function(x,V2,V3) ((1/V2)*x)/((V3/V2)+x) #determine unique read count given a x read effort, using modelled projection
+
+f_read_in<-function(i){
+return(cbind(cellid=compl$V1,tech=compl$tech,read_effort=i,read_uniq=unlist(lapply(1:nrow(compl), function(j) f(x=i,V2=compl$V2[j],V3=compl$V3[j])))))
+}
+
+out<-lapply(c(500,1000,2500,5000,10000,20000,50000,100000), f_read_in)
+out<-as.data.frame(do.call("rbind",out))
+out$read_uniq<-as.numeric(out$read_uniq)
+out$tech <- factor(out$tech, levels=tech_order)
+out$read_effort <- factor(out$read_effort, levels=c(500,1000,2500,5000,10000,20000,50000,100000))
+
+plt<-ggplot(out,aes(x=read_effort,color=tech,fill=tech,y=read_uniq))+geom_boxplot(alpha=0.8,fill="white",outlier.shape=NA)+scale_color_manual(values=tech_col)+theme_minimal()+ylim(c(0,100000))
+ggsave(plt,file="complexity_tech.pdf")
+system("slack -F complexity_tech.pdf ryan_todo")
+
+#Alternative approach: mean projection
+f_sum<-function(x,vmax,km) (vmax*x)/(km+x) #determine unique read count given a x read effort, using modelled projection
+
+f_sum_read_in<-function(i){
+return(cbind(tech=sum_complexity$tech,read_effort=i,read_uniq=unlist(lapply(1:nrow(sum_complexity), function(j) f_sum(x=i,vmax=sum_complexity$vmax[j],km=sum_complexity$km[j])))))
+}
+sum_complexity<-as.data.frame(compl %>% group_by(tech) %>% summarize(vmax=1/mean(V2),km=mean(V3)/mean(V2)))
+out<-lapply(seq(1,10000000,1000), f_sum_read_in)
+out<-as.data.frame(do.call("rbind",out))
+out$read_effort<-as.numeric(out$read_effort)
+out$read_uniq<-as.numeric(out$read_uniq)
+
+plt<-ggplot(out,aes(x=read_uniq/read_effort,y=read_uniq,color=tech,group=tech))+geom_line()+scale_color_manual(values=tech_col)+theme_minimal()
+ggsave(plt,file="complexity_tech_sum.pdf")
+system("slack -F complexity_tech_sum.pdf ryan_todo")
 
 #plot isize
 isize<-read.table("all_methods_merged_mm10.bbrd.q10.isize.values",header=F,sep="\t")
@@ -4265,6 +4282,10 @@ colnames(isize)<-c("tech","frag")
 plt<-ggplot(isize,aes(x=frag,color=tech,fill=tech))+geom_density()+theme_minimal()+scale_color_manual(values=tech_col)+scale_fill_manual(values=tech_col)+facet_grid(tech~.)
 ggsave(plt,file="isize_tech.pdf")
 system("slack -F isize_tech.pdf ryan_todo")
+
+
+#TSS Enrichment
+mm10_atac<-TSSEnrichment(mm10_atac)
 ```
 
 
