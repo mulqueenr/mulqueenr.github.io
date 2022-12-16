@@ -1366,9 +1366,9 @@ system("slack -F ERTotalTum.umap.pdf ryan_todo")
 saveRDS(dat,"SeuratObject_ERTotalTum.rds")
 
 #ER+ All Cells
-dat1<-readRDS("SeuratObject_ERTotalSub.rds") #ER+ tumor non-epithelial cells
-dat2<-readRDS("SeuratObject_ERTotalTum.rds") #ER+ tumor epithelial
-dat_tc<-readRDS("SeuratObject_ERTotalTC.rds") #ER+ tumor T-cells
+dat1<-readRDS("/home/groups/CEDAR/mulqueen/ref/embo/SeuratObject_ERTotalSub.rds") #ER+ tumor non-epithelial cells
+dat2<-readRDS("/home/groups/CEDAR/mulqueen/ref/embo/SeuratObject_ERTotalTum.rds") #ER+ tumor epithelial
+dat_tc<-readRDS("/home/groups/CEDAR/mulqueen/ref/embo/SeuratObject_ERTotalTC.rds") #ER+ tumor T-cells
 dat<-merge(dat1,dat2)
 dat<-AddMetaData(dat,dat_tc$celltype,col.name="TCell_Subtype")
 saveRDS(dat,"SeuratObject_ERProcessed.rds")
@@ -2929,6 +2929,8 @@ plot_singlecell_cnvs<-function(dat=dat,cnv=t(infercnv_obj@expr.data),assay="infe
   cnv_discrete<-matrix(0,ncol=ncol(cnv),nrow=nrow(cnv))
   cnv_discrete[which(cnv>=amp_value,arr.ind=T)]<-1
   cnv_discrete[which(cnv<=del_value,arr.ind=T)]<--1
+  row.names(cnv_discrete)<-row.names(cnv)
+  colnames(cnv_discrete)<-colnames(cnv)
   # discrete_col<-setNames(c("blue","white","red"),nm=c("-1","0","1"))
 
   # dist_method="manhattan"
@@ -3061,10 +3063,17 @@ HMMcopy_comparison<-function(x,file_in="phase2.QC.filt.SeuratObject.rds"){
     chr_in<-infercnv_obj@gene_order$chr
     chr_in<-factor(chr_in,levels=unique(chr_in))
     #Summarize Data over WGS
-    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(infercnv_bed)))
+    refGR<-makeGRangesFromDataFrame(counts)
+    testGR<-makeGRangesFromDataFrame(infercnv_bed)
+    hits<-findOverlaps(refGR,testGR)
+    overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
+    percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
+    bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
     hmmcopy_infercnv_win<-cbind(infercnv_bed,
       HMMcopy_mean_copymetric=unlist(lapply(1:nrow(infercnv_bed),function(x) 
           mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+      HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(infercnv_bed),function(x) 
+          weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
       HMMcopy_mode_copystate=unlist(lapply(1:nrow(infercnv_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
     #Cluster and Plot
     disc_infercnv<-plot_singlecell_cnvs(
@@ -3097,11 +3106,19 @@ HMMcopy_comparison<-function(x,file_in="phase2.QC.filt.SeuratObject.rds"){
     casper_bed$Chr<-paste0("chr",casper_bed$Chr)
     colnames(casper_bed)<-c("chr","start","end")
     #Summarize Data over WGS
-    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(casper_bed)))
+    refGR<-makeGRangesFromDataFrame(counts)
+    testGR<-makeGRangesFromDataFrame(casper_bed)
+    hits<-findOverlaps(refGR,testGR)
+    overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
+    percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
+    bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
     hmmcopy_casper_win<-cbind(casper_bed,
       HMMcopy_mean_copymetric=unlist(lapply(1:nrow(casper_bed),function(x) 
           mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+      HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(casper_bed),function(x) 
+          weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
       HMMcopy_mode_copystate=unlist(lapply(1:nrow(casper_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+
     cnv_in<-t(casper_cnv)
     cnv_in<-cnv_in[,colnames(cnv_in)%in%casper_obj@annotation.filt$Gene]
     chr_in<-casper_obj@annotation.filt[casper_obj@annotation.filt$Gene %in% colnames(cnv_in),]
@@ -3142,12 +3159,22 @@ HMMcopy_comparison<-function(x,file_in="phase2.QC.filt.SeuratObject.rds"){
       x$chromend<-c(x$chrompos[1:length(x$chrompos)-1]+diff(x$chrompos),chrend)
       return(x)}))
     colnames(copykat_bed)<-c("chr","start","end")
+
     #Summarize Data over WGS
-    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(copykat_bed)))
+    refGR<-makeGRangesFromDataFrame(counts)
+    testGR<-makeGRangesFromDataFrame(copykat_bed)
+    hits<-findOverlaps(refGR,testGR)
+    overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
+    percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
+    bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
     hmmcopy_copykat_win<-cbind(copykat_bed,
       HMMcopy_mean_copymetric=unlist(lapply(1:nrow(copykat_bed),function(x) 
           mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+      HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(copykat_bed),function(x) 
+          weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
       HMMcopy_mode_copystate=unlist(lapply(1:nrow(copykat_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+
+
     row.names(hmmcopy_copykat_win)<-row.names(1:nrow(hmmcopy_copykat_win))
     cnv_in<-t(copykat_obj$CNAmat[,4:ncol(copykat_obj$CNAmat)])
     row.names(cnv_in)<-gsub("\\.","-",row.names(cnv_in))
@@ -3171,7 +3198,7 @@ HMMcopy_comparison<-function(x,file_in="phase2.QC.filt.SeuratObject.rds"){
         amp_value=amp_value,
         del_value=del_value)
      write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
-      write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copykat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
+    write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copykat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
      write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_copykat_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 
   #COPYSCAT
@@ -3197,11 +3224,21 @@ HMMcopy_comparison<-function(x,file_in="phase2.QC.filt.SeuratObject.rds"){
     copyscat_bed<-cytoband[cytoband$chr %in% row.names(copyscat_dat),]
     copyscat_bed$chr<-paste0("chr",copyscat_bed$chrom)
     copyscat_bed<-copyscat_bed[,c("chr","start","end")]
+
     #Summarize Data over WGS
-    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(copyscat_bed)))
+    refGR<-makeGRangesFromDataFrame(counts)
+    testGR<-makeGRangesFromDataFrame(copyscat_bed)
+    hits<-findOverlaps(refGR,testGR)
+    overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
+    percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
+    bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
     hmmcopy_copyscat_win<-cbind(copyscat_bed,
-      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(copyscat_bed),function(x) mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(copyscat_bed),function(x) 
+          mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+      HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(copyscat_bed),function(x) 
+          weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
       HMMcopy_mode_copystate=unlist(lapply(1:nrow(copyscat_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+
     cnv_in<-t(copyscat_dat)
     chr_in<-substr(colnames(cnv_in),1,nchar(colnames(cnv_in))-1)
     chr_in<-factor(chr_in,levels=unique(chr_in))
@@ -3221,24 +3258,35 @@ HMMcopy_comparison<-function(x,file_in="phase2.QC.filt.SeuratObject.rds"){
         amp_value=2,
         del_value=0)
      write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
-      write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copyscat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
+    write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copyscat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
      write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_copyscat_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 
 
   #RobustCNV
     assay="RobustCNV"
     robustcnv_obj<-read.csv(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/",outname,"_1MB_robustCNV.csv"))
+    #robustcnv_obj<-as.data.frame(t(read.table(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/","sample_4_scCNV_discrete_RobustCNV.tsv")))) for sample 4
     colnames(robustcnv_obj)<-paste(outname,colnames(robustcnv_obj),sep="_")
     #Format Data
     colnames(robustcnv_obj)<-gsub(colnames(robustcnv_obj),pattern="\\.",replacement="-")
     robustcnv_bed<-read.table(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/","window_1MB.bed"))
     colnames(robustcnv_bed)<-c("chr","start","end","win")
     robustcnv_bed<-robustcnv_bed[!robustcnv_bed$chr %in% c("chrX","chrY"),]
+
     #Summarize Data over WGS
-    bed_overlaps<-as.data.frame(findOverlaps(makeGRangesFromDataFrame(counts),makeGRangesFromDataFrame(robustcnv_bed)))
+    refGR<-makeGRangesFromDataFrame(counts)
+    testGR<-makeGRangesFromDataFrame(robustcnv_bed)
+    hits<-findOverlaps(refGR,testGR)
+    overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
+    percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
+    bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
     hmmcopy_robustcnv_win<-cbind(robustcnv_bed,
-      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(robustcnv_bed),function(x) mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(robustcnv_bed),function(x) 
+          mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+      HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(robustcnv_bed),function(x) 
+          weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
       HMMcopy_mode_copystate=unlist(lapply(1:nrow(robustcnv_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+
     cnv_in<-t(robustcnv_obj)
     colnames(cnv_in)<-robustcnv_bed$win
     row.names(hmmcopy_robustcnv_win)<-colnames(cnv_in)
@@ -3261,7 +3309,7 @@ HMMcopy_comparison<-function(x,file_in="phase2.QC.filt.SeuratObject.rds"){
         amp_value=amp_value,
         del_value=del_value)
     write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
-      write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_robustcnv,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
+    write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_robustcnv,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
     write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_robustcnv_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 }
 
@@ -3306,310 +3354,6 @@ srun Rscript ${multiome_dir}/compare_hmm_slurm.sh $sample_in
 Job submit all HMMcopy jobs for comparison
 ```bash
 sbatch compare_hmm_slurm.sh
-```
-
-
-## Transcription Factor Expression Markers
-<!-- Done -->
-Based on seurat tutorial https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html#wnn-analysis-of-10x-multiome-rna-atac-1
-Using average AUC to define markers that work across modalities (RNA, Gene Activity, and TF motifs). Doing this across cell types, and then within cell types across diagnoses.
-
-```R
-library(Signac)
-library(Seurat)
-library(tidyverse)
-library(ComplexHeatmap)
-library(seriation)
-library(viridis)
-library(circlize)
-library(chromVAR)
-library(JASPAR2020)
-library(TFBSTools)
-library(motifmatchr)
-library(grid)
-library(dplyr)
-library(ggplot2)
-library(ggrepel)
-library(patchwork)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-
-
-
-###########Color Schema#################
-type_cols<-c(
-#epithelial
-"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-"B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
-"CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
-
-embo_cell_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
-       
-
-diag_cols<-c("IDC"="red", "DCIS"="grey","NAT"="lightblue","ILC"="green")
-
-molecular_type_cols<-c("DCIS"="grey", "ER+/PR-/HER2-"="#EBC258", "ER+/PR-/HER2+"="#F7B7BB","ER+/PR+/HER2-"="#ff6699","NA"="lightblue")
-########################################
-
-
-#Grab top overlapping TFs
-topTFs <- function(markers_list,celltype, padj.cutoff = 1e-2,rna=NA,ga=NA,motifs=NA) {
-  ctmarkers_rna <- dplyr::filter(
-    rna, RNA.group == celltype) %>% 
-    arrange(-RNA.auc)
-
-    if(is.data.frame(motifs)) {
-    ctmarkers_motif <- dplyr::filter(
-      motifs, chromvar.group == celltype) %>% 
-      arrange(-chromvar.auc)
-    }
-
-    if(is.data.frame(ga)) {
-    ctmarkers_ga<- dplyr::filter(
-      ga, GeneActivity.group == celltype) %>% 
-      arrange(-GeneActivity.auc)
-    }
-
-    if(is.data.frame(motifs) && is.data.frame(ga)){    
-      top_tfs <- inner_join(
-        x = ctmarkers_rna[, c(2, 11, 6, 7)], 
-        y = ctmarkers_motif[, c(2, 1, 11, 6, 7)], by = "gene"
-      )
-      top_tfs <- inner_join(
-        x = top_tfs ,
-        y = ctmarkers_ga [,c(2, 11, 6, 7)], by = "gene"
-      )
-    }else if(is.data.frame(motifs)) {
-      top_tfs <- inner_join(
-        x = ctmarkers_rna[, c(2, 11, 6, 7)], 
-        y = ctmarkers_motif[, c(2, 1, 11, 6, 7)], by = "gene"
-      )
-    } else if (is.data.frame(ga)) {
-      top_tfs <- inner_join(
-        x = ctmarkers_rna[, c(2, 11, 6, 7)], 
-        y = ctmarkers_ga[,c(2, 11, 6, 7)], by = "gene"
-      )
-    } 
-  auc_colnames<-grep(".auc$",colnames(top_tfs))
-  top_tfs$avg_auc <-  rowMeans(top_tfs[auc_colnames])
-  top_tfs <- arrange(top_tfs, -avg_auc)
-  top_tfs$celltype<-celltype
-  return(top_tfs)
-}
-
-
-#Make volcano plot per modality
-plot_volcano<-function(markers.=markers,prefix,assay){
-  markers.$sig<-ifelse(markers.$padj<=0.05,"sig","non_sig")
-  markers.<-markers.[!duplicated(markers.$feature),]
-  markers.<-markers.[is.finite(markers.$pval),]
-  markers.$label<-""
-  markers.<-markers.[order(markers.$padj),]
-  ident_1_labels<- row.names(head(markers.[which((markers.$sig=="sig") & (markers.$logFC>0)),] ,n=10))#significant, is ident1 specific, is top 10
-  ident_2_labels<- row.names(head(markers.[which((markers.$sig=="sig") & (markers.$logFC<0)),] ,n=10))#significant, is ident1 specific, is top 10
-  markers.[c(ident_1_labels,ident_2_labels),]$label<-markers.[c(ident_1_labels,ident_2_labels),]$feature
-  x_scale<-max(abs(markers.$logFC))*1.1 #find proper scaling for x axis
-  plt<-ggplot(markers.,aes(x=logFC,y=-log10(padj),color=sig,label=label,alpha=0.1))+
-    geom_point(size=0.5)+
-    theme_bw()+
-    scale_fill_manual(values=c("non_sig"="#999999", "sig"="#FF0000"))+
-    xlim(c(-x_scale,x_scale))+
-    geom_vline(xintercept=0)+
-    geom_hline(yintercept=-log10(0.05))+
-    geom_text_repel(size=2,segment.size=0.1,max.overlaps=Inf,min.segment.length = 0, nudge_y = 1, segment.angle = 20,color="black") +
-    theme(legend.position = "none",axis.title.x = element_blank(),axis.title.y = element_blank())
-    ggsave(plt,file=paste0(prefix,"_",assay,"_DE_volcano.pdf"),width=5,units="in",height=5)
-  system(paste0("slack -F ",prefix,"_",assay,"_DE_volcano.pdf"," ryan_todo"))
-}
-
-#Identify top markers
-Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA",prefix.){
-    markers <- presto:::wilcoxauc.Seurat(X = x, group_by = group_by., 
-      groups_use=unname(unlist(unique(x@meta.data[group_by.]))),
-      y=unname(unlist(unique(x@meta.data[group_by.]))), 
-      assay = 'data', seurat_assay = assay.)
-    write.table(markers,file=paste0(prefix.,"_",assay.,"_DE_table.tsv"),sep="\t",row.names=F,col.names=T,quote=F)
-    plot_volcano(markers.=markers,prefix=prefix.,assay=assay.)
-    colnames(markers) <- paste(assay., colnames(markers),sep=".")
-    if (assay. == "chromvar") {
-      motif.names <- markers[,paste0(assay.,".feature")]
-      markers$gene <- ConvertMotifID(x, id = motif.names,assay="ATAC")
-    } else {
-    markers$gene <- markers[,paste0(assay.,".feature")]
-    }
-    return(markers) 
-}
-
-#Average markers across groups
-average_features<-function(x=hg38_atac,features=da_tf_markers$motif.feature,assay="chromvar",group_by.="predicted.id"){
-    #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
-    dat_motif<-x[[assay]]@data[features,]
-    dat_motif<-as.data.frame(t(as.data.frame(dat_motif)))
-    sum_motif<-split(dat_motif,x@meta.data[,group_by.]) #group by rows to seurat clusters
-    sum_motif<-lapply(sum_motif,function(x) apply(x,2,mean,na.rm=T)) #take average across group
-    sum_motif<-do.call("rbind",sum_motif) #condense to smaller data frame
-
-    sum_motif<-t(scale(sum_motif))
-    sum_motif<-sum_motif[row.names(sum_motif)%in%features,]
-    sum_motif<-sum_motif[complete.cases(sum_motif),]
-    return(sum_motif)
-}
-
-#Make a heatmap of aligned multiple modalities
-plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group_by.="predicted.id",CHROMVAR=TRUE,GA=TRUE){
-    tf_rna<-average_features(x=x,features=tf_markers$gene,assay="RNA",group_by.=group_by.)
-    tf_rna<-tf_rna[row.names(tf_rna) %in% tf_markers$gene,]
-
-  if(CHROMVAR){
-    tf_motif<-average_features(x=x,features=tf_markers$chromvar.feature,assay="chromvar",group_by.=group_by.)
-    tf_motif<-tf_motif[row.names(tf_motif) %in% tf_markers$chromvar.feature,]
-    row.names(tf_motif)<-tf_markers[tf_markers$chromvar.feature %in% row.names(tf_motif),]$gene
-    markers_list<-Reduce(intersect, list(row.names(tf_rna),row.names(tf_motif)))
-    tf_rna<-tf_rna[markers_list,]
-    tf_motif<-tf_motif[markers_list,]
-  }
-
-  if(GA){
-    tf_ga<-average_features(x=x,features=tf_markers$gene,assay="GeneActivity",group_by.=group_by.)
-    tf_ga<-tf_ga[row.names(tf_ga) %in% tf_markers$gene,]
-    markers_list<-Reduce(intersect, list(row.names(tf_rna),row.names(tf_ga)))
-    tf_rna<-tf_rna[markers_list,]
-    tf_ga<-tf_ga[markers_list,]
-
-  }
-  if(GA&&CHROMVAR){
-    markers_list<-Reduce(intersect, list(row.names(tf_rna),row.names(tf_motif),row.names(tf_ga)))
-    tf_rna<-tf_rna[markers_list,]
-    tf_motif<-tf_motif[markers_list,]
-    tf_ga<-tf_ga[markers_list,]
-  }
-
-    #set up heatmap seriation and order by RNA
-    o = seriate(max(tf_rna) - tf_rna, method = "BEA_TSP")
-    saveRDS(o,file=paste0(prefix,".geneactivity.dend.rds")) 
-    side_ha_rna<-data.frame(ga_motif=tf_markers[get_order(o,1),]$RNA.auc)
-    colfun_rna=colorRamp2(quantile(unlist(tf_rna), probs=c(0.5,0.80,0.95)),plasma(3))
-
-  if(CHROMVAR){
-    side_ha_motif<-data.frame(chromvar_motif=tf_markers[get_order(o,1),]$chromvar.auc)
-    colfun_motif=colorRamp2(quantile(unlist(tf_motif), probs=c(0.5,0.80,0.95)),cividis(3))
-    #Plot motifs alongside chromvar plot, to be added to the side with illustrator later
-    motif_list<-tf_markers[tf_markers$gene %in% row.names(tf_motif),]$chromvar.feature
-    plt<-MotifPlot(object = x,assay="ATAC",motifs = motif_list[get_order(o,1)],ncol=1)+theme_void()+theme(strip.text = element_blank())
-    ggsave(plt,file=paste0(prefix,".tf.heatmap.motif.pdf"),height=100,width=2,limitsize=F)
-
-  }
-  if(GA){
-    side_ha_ga<-data.frame(ga_auc=tf_markers[get_order(o,1),]$GeneActivity.auc)
-    colfun_ga=colorRamp2(quantile(unlist(tf_ga), probs=c(0.5,0.80,0.95)),magma(3))
-
-  }
-
-    side_ha_col<-colorRamp2(c(0,1),c("white","black"))
-    gene_ha = rowAnnotation(foo = anno_mark(at = c(1:nrow(tf_rna)), labels =row.names(tf_rna),labels_gp=gpar(fontsize=6)))
-
-
-    rna_auc<-Heatmap(side_ha_rna,
-        row_order = get_order(o,1),
-        col=side_ha_col,
-        show_column_names=FALSE,
-        row_names_gp=gpar(fontsize=7))
-
-    rna_plot<-Heatmap(tf_rna,
-        row_order = get_order(o,1),
-        column_order = get_order(o,2),
-        name="RNA",
-        column_title="RNA",
-        col=colfun_rna,
-        column_names_gp = gpar(fontsize = 8),
-        show_row_names=FALSE,
-        column_names_rot=90)
-
-  if(GA){
-      ga_auc<-Heatmap(side_ha_ga,
-          row_order = get_order(o,1),
-          col=side_ha_col,
-          show_column_names=FALSE,
-          row_names_gp=gpar(fontsize=7))
-
-      ga_plot<-Heatmap(tf_ga,
-          row_order = get_order(o,1),
-          column_order = get_order(o,2),
-          name="Gene Activity",
-          column_title="Gene Activity",
-          col=colfun_ga,
-          column_names_gp = gpar(fontsize = 8),
-          show_row_names=FALSE,
-          column_names_rot=90)
-  }
-  if(CHROMVAR){
-      motif_auc<-Heatmap(side_ha_motif,
-          row_order = get_order(o,1),
-          col=side_ha_col,
-          show_row_names=FALSE,
-          show_column_names=FALSE,
-          row_names_gp=gpar(fontsize=7))
-
-      motif_plot<-Heatmap(tf_motif,
-          row_order = get_order(o,1),
-          column_order = get_order(o,2),
-          name="TF Motif",
-          column_title="TF Motif",
-          col=colfun_motif,
-          #top_annotation=top_ha,
-          column_names_gp = gpar(fontsize = 8),
-          show_row_names=FALSE,
-          column_names_rot=90,
-          right_annotation=gene_ha)
-  }
-
-  if(all(CHROMVAR,GA)){
-      plt1<-draw(ga_auc+ga_plot+rna_auc+rna_plot+motif_auc+motif_plot)
-  } else if(CHROMVAR){
-      plt1<-draw(rna_auc+rna_plot+motif_auc+motif_plot)
-  } else {
-      plt1<-draw(ga_auc+ga_plot+rna_auc+rna_plot)
-  }
-
-
-    pdf(paste0(prefix,".tf.heatmap.pdf"))
-    print(plt1)
-    dev.off()
-
-    system(paste0("slack -F ",prefix,".tf.heatmap.pdf ryan_todo"))
-    system(paste0("slack -F ",prefix,".tf.heatmap.motif.pdf ryan_todo"))
-}
-
-#Final wrapper function
-run_top_TFs<-function(obj=stromal,prefix="stromal",i="predicted.id"){
-  markers<-lapply(c("RNA","GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=obj,group_by.=i,assay.=assay,prefix.=prefix))
-  names(markers)<-c("RNA","GeneActivity","chromvar")
-  markers_out<-do.call("rbind",lapply(unique(obj@meta.data[,i]),function(x) head(topTFs(markers_list=markers,celltype=x,rna=markers$RNA,ga=markers$GeneActivity,motifs=markers$chromvar),n=10))) #grab top 5 TF markers per celltype
-  dim(markers_out)
-  markers_out<-markers_out[!duplicated(markers_out$gene),]
-  dim(markers_out)
-  saveRDS(markers_out,file=paste0(prefix,"_celltype_TF_markers.RDS"))
-  da_tf_markers<-readRDS(paste0(prefix,"_celltype_TF_markers.RDS"))
-  plot_top_TFs(x=obj,tf_markers=da_tf_markers,prefix=prefix,group_by.=i,CHROMVAR=TRUE,GA=TRUE)
-}
-
-
-#all cells celltypes
-dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
-run_top_TFs(obj=dat,prefix="dat",i="EMBO_predicted.id")
-
-#Per cell type, run diagnosis differences
-#Removing ILC cells first just because we don't have enough samples for comparison
-dat<-subset(dat,diagnosis!="ILC")
-
-for(k in unique(dat$predicted.id)){
-  dat_sub<-subset(dat,predicted.id==k)
-  run_top_TFs(obj=dat_sub,prefix=paste0(k,"_diagnosis"),i="diagnosis")
-  print(paste("Done with",k))
-}
-
-
-
 ```
 
 ## Epithelial Subtyping
@@ -4173,7 +3917,7 @@ lapply(c(da_tf_markers$gene),function(y){
 ```
 
 ## Subclustering Per Celltype
-<!-- Running -->
+<!-- Done -->
 
 ### Epithelial Clustering
 ```R
@@ -4206,6 +3950,7 @@ type_cols<-c(
 "B-cells" ="#089099", "T-cells" ="#003147", #other
 "CAFs" ="#E31A1C", "Endothelial"="#EEB479", "Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", "PVL" ="#F2ACCA")
 diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
+embo_cell_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
 molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
 ########################################
 alpha_val=0.33
@@ -4279,14 +4024,14 @@ celltype_clustering<-function(x,outname){
   dat <- RunTFIDF(dat)
   dat <- RunSVD(dat)
   dat<- RunUMAP(object = dat, reduction.name="atac_umap", reduction="lsi", assay = "peaks", verbose = TRUE, dims=2:40 )
-  p2<-DimPlot(dat,reduction="atac_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("ATAC UMAP")+theme(legend.position="none")
+  p2<-DimPlot(dat,reduction="atac_umap",group.by="EMBO_predicted.id",cols=alpha(embo_cell_cols,alpha_val))+ggtitle("ATAC UMAP")+theme(legend.position="none")
 
 
   # build a joint neighbor graph using both assays (ATAC LSI)
     dat <- FindMultiModalNeighbors(object = dat, reduction.list = list("pca", "lsi"), dims.list = list(1:50, 2:40),modality.weight.name = "RNA.weight", verbose = TRUE )
     # build a joint UMAP visualization
     dat <- RunUMAP(object = dat, nn.name = "weighted.nn", reduction.name="multimodal_umap", assay = "SoupXRNA", verbose = TRUE ) 
-    p3<-DimPlot(dat,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Multimodal UMAP Doublets")+theme(legend.position="none")
+    p3<-DimPlot(dat,reduction="multimodal_umap",group.by="EMBO_predicted.id",cols=alpha(embo_cell_cols,alpha_val))+ggtitle("Multimodal UMAP Doublets")+theme(legend.position="none")
 
   #Try multimodal with cistopic
     dat <- RunUMAP(object = dat, reduction="cistopic", reduction.name="cistopic_umap", dims=1:ncol(dat@reductions$cistopic), assay = "peaks", verbose = TRUE )
@@ -4296,8 +4041,8 @@ celltype_clustering<-function(x,outname){
     dat <- RunUMAP(object = dat, nn.name = "weighted.nn", reduction.name="multimodal_umap", assay = "SoupXRNA", verbose = TRUE )
 
   #plot cistopic umap too
-  p4<-DimPlot(dat,reduction="multimodal_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
-  p5<-DimPlot(dat,reduction="cistopic_umap",group.by="predicted.id",cols=alpha(type_cols,alpha_val))+ggtitle("Cistopic UMAP")+theme(legend.position="none")
+  p4<-DimPlot(dat,reduction="multimodal_umap",group.by="EMBO_predicted.id",cols=alpha(embo_cell_cols,alpha_val))+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
+  p5<-DimPlot(dat,reduction="cistopic_umap",group.by="EMBO_predicted.id",cols=alpha(embo_cell_cols,alpha_val))+ggtitle("Cistopic UMAP")+theme(legend.position="none")
   p6<-DimPlot(dat,reduction="multimodal_umap",group.by="sample")+ggtitle("Multimodal UMAP (Cistopic)")+theme(legend.position="none")
   #Cluster on multimodal graph
 
@@ -4313,6 +4058,10 @@ celltype_clustering<-function(x,outname){
  
 #Epithelial Cells
 celltype_cistopic_generation(celltype_list=c("epithelial","cycling.epithelial"),outname="epithelial")
+
+#Normal Epithelial Cells
+dat<-subset(dat,diagnosis=="NAT")
+celltype_cistopic_generation(celltype_list=c("epithelial","cycling.epithelial"),outname="normalepithelial")
 
 #Myeloid
 celltype_cistopic_generation(celltype_list=c("TAMs","TAMs_2","Myeloid"),outname="myeloid")
@@ -4339,7 +4088,7 @@ celltype_cistopic_generation(celltype_list=c("Pericytes"),outname="pericyte")
 ```
 
 ### Integration: Now Clustering together on RNA profiles using harmony to integrate
-<!-- Rerun -->
+<!-- Done -->
 
 ```R
 library(harmony)
@@ -4351,6 +4100,7 @@ library(ggplot2)
 set.seed(1234)
 library(EnsDb.Hsapiens.v86)
 library(Matrix)
+library(patchwork)
 
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
@@ -4363,12 +4113,13 @@ type_cols<-c(
 "CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
 
 diag_cols<-c("IDC"="red", "DCIS"="grey","NAT"="lightblue","ILC"="green")
+embo_cell_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
 
 molecular_type_cols<-c("DCIS"="grey", "ER+/PR-/HER2-"="#EBC258", "ER+/PR-/HER2+"="#F7B7BB","ER+/PR+/HER2-"="#ff6699","NA"="lightblue")
 ########################################
 
 
-harmony_sample_integration<-function(x,outname){
+harmony_sample_integration<-function(x,outname,res=0.1){
   dat<-readRDS(x)
   dat<-RunHarmony(dat,group.by.vars="sample",reduction.save="harmony_atac",assay.use="ATAC",reduction="cistopic",project.dim=F)
   dat<-RunHarmony(dat,group.by.vars="sample",reduction.save="harmony_rna",assay.use="RNA",reduction="pca",project.dim=F)
@@ -4385,33 +4136,482 @@ harmony_sample_integration<-function(x,outname){
     weighted.nn.name="multimodal_harmony.nn",
     verbose = TRUE
   )
+  dat <- FindClusters(dat, graph.name="wknn",verbose = FALSE,resolution=res)
   # build a joint UMAP Harmony visualization
   dat <- RunUMAP(object = dat, nn.name = "multimodal_harmony.nn",reduction.name="multimodal_harmony_umap", assay = "SoupXRNA", verbose = TRUE ) 
 
-  i="predicted.id"
-  plt1<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=type_cols)
-  ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
+  i="EMBO_predicted.id"
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i,cols=embo_cell_cols)+ggtitle("Unintegrated")
+  plt2<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=embo_cell_cols)+ggtitle("Integrated")
+  plt<-plt1+plt2
+  ggsave(plt,file=paste0(outname,".",i,".pdf"),width=20,height=10)
   system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
 
   i="diagnosis"
-  plt1<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=diag_cols)
-  ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i,cols=diag_cols)+ggtitle("Unintegrated")
+  plt2<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=diag_cols)+ggtitle("Integrated")
+  plt<-plt1+plt2
+  ggsave(plt,file=paste0(outname,".",i,".pdf"),width=20,height=10)
   system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
 
   i="sample"
-  plt1<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i)
-  ggsave(plt1,file=paste0(outname,".",i,".pdf"),width=10,height=10)
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i)+ggtitle("Unintegrated")
+  plt2<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i)+ggtitle("Integrated")
+  plt<-plt1+plt2
+  ggsave(plt,file=paste0(outname,".",i,".pdf"),width=20,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
+
+  i="seurat_clusters"
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i)+ggtitle("Unintegrated")
+  plt2<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i)+ggtitle("Integrated")
+  plt<-plt1+plt2
+  ggsave(plt,file=paste0(outname,".",i,".pdf"),width=20,height=10)
   system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
 
   saveRDS(dat,file=x)
 }
 
-harmony_sample_integration(x="stromal.SeuratObject.rds",outname="stromal")
-harmony_sample_integration(x="immune.SeuratObject.rds",outname="immune")
-harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial")
-harmony_sample_integration(x="phase2.QC.SeuratObject.rds",outname="all_cells")
+harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial",res=0.1)
+harmony_sample_integration(x="myeloid.SeuratObject.rds",outname="myeloid",res=0.2)
+harmony_sample_integration(x="tcell.SeuratObject.rds",outname="tcell",res=0.5)
+harmony_sample_integration(x="plasmacell.SeuratObject.rds",outname="plasmacell",res=0.1)
+harmony_sample_integration(x="fibroblast.SeuratObject.rds",outname="fibroblast",res=0.3)
+harmony_sample_integration(x="bcell.SeuratObject.rds",outname="bcell",res=0.2)
+harmony_sample_integration(x="endothelial.SeuratObject.rds",outname="endothelial",res=0.1)
+harmony_sample_integration(x="pericyte.SeuratObject.rds",outname="pericyte",res=0.1)
+harmony_sample_integration(x="phase2.QC.filt.SeuratObject.rds",outname="all_cells",res=0.1)
+harmony_sample_integration(x="normalepithelial.SeuratObject.rds",outname="normalepithelial",res=0.1)
 
 ```
+
+
+## Transcription Factor Expression Markers
+<!-- Rerun -->
+Based on seurat tutorial https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html#wnn-analysis-of-10x-multiome-rna-atac-1
+Using average AUC to define markers that work across modalities (RNA, Gene Activity, and TF motifs). Doing this across cell types, and then within cell types across diagnoses.
+
+```R
+library(Signac)
+library(Seurat)
+library(tidyverse)
+library(ComplexHeatmap)
+library(seriation)
+library(viridis)
+library(circlize)
+library(chromVAR)
+library(JASPAR2020)
+library(TFBSTools)
+library(motifmatchr)
+library(grid)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(patchwork)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+
+
+
+###########Color Schema#################
+type_cols<-c(
+#epithelial
+"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+"B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
+"CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
+
+embo_cell_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
+       
+
+diag_cols<-c("IDC"="red", "DCIS"="grey","NAT"="lightblue","ILC"="green")
+
+molecular_type_cols<-c("DCIS"="grey", "ER+/PR-/HER2-"="#EBC258", "ER+/PR-/HER2+"="#F7B7BB","ER+/PR+/HER2-"="#ff6699","NA"="lightblue")
+########################################
+
+
+#Grab top overlapping TFs
+topTFs <- function(markers_list,celltype, padj.cutoff = 1e-2,rna=NA,ga=NA,motifs=NA) {
+  ctmarkers_rna <- dplyr::filter(
+    rna, RNA.group == celltype) %>% 
+    arrange(-RNA.auc)
+
+    if(is.data.frame(motifs)) {
+    ctmarkers_motif <- dplyr::filter(
+      motifs, chromvar.group == celltype) %>% 
+      arrange(-chromvar.auc)
+    }
+
+    if(is.data.frame(ga)) {
+    ctmarkers_ga<- dplyr::filter(
+      ga, GeneActivity.group == celltype) %>% 
+      arrange(-GeneActivity.auc)
+    }
+
+    if(is.data.frame(motifs) && is.data.frame(ga)){    
+      top_tfs <- inner_join(
+        x = ctmarkers_rna[, c(2, 11, 6, 7)], 
+        y = ctmarkers_motif[, c(2, 1, 11, 6, 7)], by = "gene"
+      )
+      top_tfs <- inner_join(
+        x = top_tfs ,
+        y = ctmarkers_ga [,c(2, 11, 6, 7)], by = "gene"
+      )
+    }else if(is.data.frame(motifs)) {
+      top_tfs <- inner_join(
+        x = ctmarkers_rna[, c(2, 11, 6, 7)], 
+        y = ctmarkers_motif[, c(2, 1, 11, 6, 7)], by = "gene"
+      )
+    } else if (is.data.frame(ga)) {
+      top_tfs <- inner_join(
+        x = ctmarkers_rna[, c(2, 11, 6, 7)], 
+        y = ctmarkers_ga[,c(2, 11, 6, 7)], by = "gene"
+      )
+    } 
+  auc_colnames<-grep(".auc$",colnames(top_tfs))
+  top_tfs$avg_auc <-  rowMeans(top_tfs[auc_colnames])
+  top_tfs <- arrange(top_tfs, -avg_auc)
+  top_tfs$celltype<-celltype
+  return(top_tfs)
+}
+
+
+#Make volcano plot per modality
+plot_volcano<-function(markers.=markers,prefix,assay){
+  markers.$sig<-ifelse(markers.$padj<=0.05,"sig","non_sig")
+  markers.<-markers.[!duplicated(markers.$feature),]
+  markers.<-markers.[is.finite(markers.$pval),]
+  markers.$label<-""
+  markers.<-markers.[order(markers.$padj),]
+  ident_1_labels<- row.names(head(markers.[which((markers.$sig=="sig") & (markers.$logFC>0)),] ,n=10))#significant, is ident1 specific, is top 10
+  ident_2_labels<- row.names(head(markers.[which((markers.$sig=="sig") & (markers.$logFC<0)),] ,n=10))#significant, is ident1 specific, is top 10
+  markers.[c(ident_1_labels,ident_2_labels),]$label<-markers.[c(ident_1_labels,ident_2_labels),]$feature
+  x_scale<-max(abs(markers.$logFC))*1.1 #find proper scaling for x axis
+  plt<-ggplot(markers.,aes(x=logFC,y=-log10(padj),color=sig,label=label,alpha=0.1))+
+    geom_point(size=0.5)+
+    theme_bw()+
+    scale_fill_manual(values=c("non_sig"="#999999", "sig"="#FF0000"))+
+    xlim(c(-x_scale,x_scale))+
+    geom_vline(xintercept=0)+
+    geom_hline(yintercept=-log10(0.05))+
+    geom_text_repel(size=2,segment.size=0.1,max.overlaps=Inf,min.segment.length = 0, nudge_y = 1, segment.angle = 20,color="black") +
+    theme(legend.position = "none",axis.title.x = element_blank(),axis.title.y = element_blank())
+    ggsave(plt,file=paste0(prefix,"_",assay,"_DE_volcano.pdf"),width=5,units="in",height=5)
+  system(paste0("slack -F ",prefix,"_",assay,"_DE_volcano.pdf"," ryan_todo"))
+}
+
+#Identify top markers
+Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA",prefix.){
+    markers <- presto:::wilcoxauc.Seurat(X = x, group_by = group_by., 
+      groups_use=unname(unlist(unique(x@meta.data[group_by.]))),
+      y=unname(unlist(unique(x@meta.data[group_by.]))), 
+      assay = 'data', seurat_assay = assay.)
+    write.table(markers,file=paste0(prefix.,"_",assay.,"_DE_table.tsv"),sep="\t",row.names=F,col.names=T,quote=F)
+    plot_volcano(markers.=markers,prefix=prefix.,assay=assay.)
+    colnames(markers) <- paste(assay., colnames(markers),sep=".")
+    if (assay. == "chromvar") {
+      motif.names <- markers[,paste0(assay.,".feature")]
+      markers$gene <- ConvertMotifID(x, id = motif.names,assay="ATAC")
+    } else {
+    markers$gene <- markers[,paste0(assay.,".feature")]
+    }
+    return(markers) 
+}
+
+#Average markers across groups
+average_features<-function(x=hg38_atac,features=da_tf_markers$motif.feature,assay="chromvar",group_by.="predicted.id"){
+    #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
+    dat_motif<-x[[assay]]@data[features,]
+    dat_motif<-as.data.frame(t(as.data.frame(dat_motif)))
+    sum_motif<-split(dat_motif,x@meta.data[,group_by.]) #group by rows to seurat clusters
+    sum_motif<-lapply(sum_motif,function(x) apply(x,2,mean,na.rm=T)) #take average across group
+    sum_motif<-do.call("rbind",sum_motif) #condense to smaller data frame
+
+    sum_motif<-t(scale(sum_motif))
+    sum_motif<-sum_motif[row.names(sum_motif)%in%features,]
+    sum_motif<-sum_motif[complete.cases(sum_motif),]
+    return(sum_motif)
+}
+
+#Make a heatmap of aligned multiple modalities
+plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group_by.="predicted.id",CHROMVAR=TRUE,GA=TRUE,height.){
+    tf_rna<-average_features(x=x,features=tf_markers$gene,assay="RNA",group_by.=group_by.)
+    tf_rna<-tf_rna[row.names(tf_rna) %in% tf_markers$gene,]
+
+  if(CHROMVAR){
+    tf_motif<-average_features(x=x,features=tf_markers$chromvar.feature,assay="chromvar",group_by.=group_by.)
+    tf_motif<-tf_motif[row.names(tf_motif) %in% tf_markers$chromvar.feature,]
+    row.names(tf_motif)<-tf_markers[tf_markers$chromvar.feature %in% row.names(tf_motif),]$gene
+    markers_list<-Reduce(intersect, list(row.names(tf_rna),row.names(tf_motif)))
+    tf_rna<-tf_rna[markers_list,]
+    tf_motif<-tf_motif[markers_list,]
+  }
+
+  if(GA){
+    tf_ga<-average_features(x=x,features=tf_markers$gene,assay="GeneActivity",group_by.=group_by.)
+    tf_ga<-tf_ga[row.names(tf_ga) %in% tf_markers$gene,]
+    markers_list<-Reduce(intersect, list(row.names(tf_rna),row.names(tf_ga)))
+    tf_rna<-tf_rna[markers_list,]
+    tf_ga<-tf_ga[markers_list,]
+
+  }
+  if(GA&&CHROMVAR){
+    markers_list<-Reduce(intersect, list(row.names(tf_rna),row.names(tf_motif),row.names(tf_ga)))
+    tf_rna<-tf_rna[markers_list,]
+    tf_motif<-tf_motif[markers_list,]
+    tf_ga<-tf_ga[markers_list,]
+  }
+
+    #set up heatmap seriation and order by RNA
+    o = seriate(max(tf_rna) - tf_rna, method = "BEA_TSP")
+    saveRDS(o,file=paste0(prefix,".geneactivity.dend.rds")) 
+    side_ha_rna<-data.frame(ga_motif=tf_markers[get_order(o,1),]$RNA.auc)
+    colfun_rna=colorRamp2(quantile(unlist(tf_rna), probs=c(0.5,0.80,0.95)),plasma(3))
+
+  if(CHROMVAR){
+    side_ha_motif<-data.frame(chromvar_motif=tf_markers[get_order(o,1),]$chromvar.auc)
+    colfun_motif=colorRamp2(quantile(unlist(tf_motif), probs=c(0.5,0.80,0.95)),cividis(3))
+    #Plot motifs alongside chromvar plot, to be added to the side with illustrator later
+    motif_list<-tf_markers[tf_markers$gene %in% row.names(tf_motif),]$chromvar.feature
+    plt<-MotifPlot(object = x,assay="ATAC",motifs = motif_list[get_order(o,1)],ncol=1)+theme_void()+theme(strip.text = element_blank())
+    ggsave(plt,file=paste0(prefix,".tf.heatmap.motif.pdf"),height=100,width=2,limitsize=F)
+
+  }
+  if(GA){
+    side_ha_ga<-data.frame(ga_auc=tf_markers[get_order(o,1),]$GeneActivity.auc)
+    colfun_ga=colorRamp2(quantile(unlist(tf_ga), probs=c(0.5,0.80,0.95)),magma(3))
+
+  }
+
+    side_ha_col<-colorRamp2(c(0,1),c("white","black"))
+    gene_ha = rowAnnotation(foo = anno_mark(at = c(1:nrow(tf_rna)), labels =row.names(tf_rna),labels_gp=gpar(fontsize=6)))
+
+
+    rna_auc<-Heatmap(side_ha_rna,
+        row_order = get_order(o,1),
+        col=side_ha_col,
+        show_column_names=FALSE,
+        row_names_gp=gpar(fontsize=7))
+    if(!CHROMVAR){
+    rna_plot<-Heatmap(tf_rna,
+        row_order = get_order(o,1),
+        column_order = get_order(o,2),
+        name="RNA",
+        column_title="RNA",
+        col=colfun_rna,
+        column_names_gp = gpar(fontsize = 8),
+        show_row_names=FALSE,
+        column_names_rot=90,right_annotation=gene_ha)
+    } else {
+    rna_plot<-Heatmap(tf_rna,
+        row_order = get_order(o,1),
+        column_order = get_order(o,2),
+        name="RNA",
+        column_title="RNA",
+        col=colfun_rna,
+        column_names_gp = gpar(fontsize = 8),
+        show_row_names=FALSE,
+        column_names_rot=90)
+  }
+  if(GA){
+      ga_auc<-Heatmap(side_ha_ga,
+          row_order = get_order(o,1),
+          col=side_ha_col,
+          show_column_names=FALSE,
+          row_names_gp=gpar(fontsize=7))
+
+      ga_plot<-Heatmap(tf_ga,
+          row_order = get_order(o,1),
+          column_order = get_order(o,2),
+          name="Gene Activity",
+          column_title="Gene Activity",
+          col=colfun_ga,
+          column_names_gp = gpar(fontsize = 8),
+          show_row_names=FALSE,
+          column_names_rot=90)
+
+  }
+  if(CHROMVAR){
+      motif_auc<-Heatmap(side_ha_motif,
+          row_order = get_order(o,1),
+          col=side_ha_col,
+          show_row_names=FALSE,
+          show_column_names=FALSE,
+          row_names_gp=gpar(fontsize=7))
+
+      motif_plot<-Heatmap(tf_motif,
+          row_order = get_order(o,1),
+          column_order = get_order(o,2),
+          name="TF Motif",
+          column_title="TF Motif",
+          col=colfun_motif,
+          #top_annotation=top_ha,
+          column_names_gp = gpar(fontsize = 8),
+          show_row_names=FALSE,
+          column_names_rot=90,
+          right_annotation=gene_ha)
+  }
+
+  if(all(CHROMVAR,GA)){
+      plt1<-draw(ga_auc+ga_plot+rna_auc+rna_plot+motif_auc+motif_plot)
+  } else if(CHROMVAR){
+      plt1<-draw(rna_auc+rna_plot+motif_auc+motif_plot)
+  } else {
+      plt1<-draw(ga_auc+ga_plot+rna_auc+rna_plot)
+  }
+
+
+    pdf(paste0(prefix,".tf.heatmap.pdf"),height=height.)
+    print(plt1)
+    dev.off()
+
+    system(paste0("slack -F ",prefix,".tf.heatmap.pdf ryan_todo"))
+    system(paste0("slack -F ",prefix,".tf.heatmap.motif.pdf ryan_todo"))
+}
+
+#Final wrapper function
+run_top_TFs<-function(obj=stromal,prefix="stromal",i="predicted.id",n_markers=5,CHROMVAR=TRUE,plot_height=10){
+  if(CHROMVAR){
+  markers<-lapply(c("RNA","GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=obj,group_by.=i,assay.=assay,prefix.=prefix))
+  names(markers)<-c("RNA","GeneActivity","chromvar")
+  markers_out<-do.call("rbind",lapply(unique(obj@meta.data[,i]),function(x) head(topTFs(markers_list=markers,celltype=x,rna=markers$RNA,ga=markers$GeneActivity,motifs=markers$chromvar),n=n_markers))) #grab top 5 TF markers per celltype
+  dim(markers_out)
+  markers_out<-markers_out[!duplicated(markers_out$gene),]
+  dim(markers_out)
+  saveRDS(markers_out,file=paste0(prefix,"_celltype_TF_markers.RDS"))
+  da_tf_markers<-readRDS(paste0(prefix,"_celltype_TF_markers.RDS"))
+  plot_top_TFs(x=obj,tf_markers=da_tf_markers,prefix=prefix,group_by.=i,CHROMVAR=TRUE,GA=TRUE)
+  } else{
+  markers<-lapply(c("RNA","GeneActivity"),function(assay) Identify_Marker_TFs(x=obj,group_by.=i,assay.=assay,prefix.=prefix))
+  names(markers)<-c("RNA","GeneActivity")
+  markers_out<-do.call("rbind",lapply(unique(obj@meta.data[,i]),function(x) head(topTFs(markers_list=markers,celltype=x,rna=markers$RNA,ga=markers$GeneActivity),n=n_markers))) #grab top 5 TF markers per celltype
+  dim(markers_out)
+  markers_out<-markers_out[!duplicated(markers_out$gene),]
+  dim(markers_out)
+  saveRDS(markers_out,file=paste0(prefix,"_celltype_markers.RDS"))
+  da_tf_markers<-readRDS(paste0(prefix,"_celltype_markers.RDS"))
+  plot_top_TFs(x=obj,tf_markers=da_tf_markers,prefix=prefix,group_by.=i,CHROMVAR=FALSE,GA=TRUE,height.=plot_height)
+}
+}
+
+
+#all cells celltypes
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+dat<-subset(dat,EMBO_predicted.id!="NA")
+run_top_TFs(obj=dat,prefix="dat",i="EMBO_predicted.id",n_markers=8,CHROMVAR=FALSE,plot_height=15)
+run_top_TFs(obj=dat,prefix="dat",i="EMBO_predicted.id",n_markers=8,CHROMVAR=TRUE,plot_height=15)
+
+for (k in c("epithelial.SeuratObject.rds","myeloid.SeuratObject.rds","tcell.SeuratObject.rds","plasmacell.SeuratObject.rds","fibroblast.SeuratObject.rds","bcell.SeuratObject.rds","endothelial.SeuratObject.rds","pericyte.SeuratObject.rds","normalepithelial.SeuratObject.rds")) {
+  dat_sub<-readRDS(k)
+  dat_prefix<-gsub("rds$","",gsub(".SeuratObject.","",basename(k)))
+  run_top_TFs(obj=dat_sub,prefix=paste0(dat_prefix,"_subcluster"),i="seurat_clusters")
+  run_top_TFs(obj=dat_sub,prefix=paste0(dat_prefix,"_subcluster"),i="seurat_clusters",CHROMVAR=FALSE,n_markers=15)
+}
+
+```
+
+## Cell Subtyping
+
+### Normal epithelial cell subtyping.
+```R
+library(Signac)
+library(Seurat)
+library(tidyverse)
+library(ComplexHeatmap)
+library(seriation)
+library(viridis)
+library(circlize)
+library(chromVAR)
+library(JASPAR2020)
+library(TFBSTools)
+library(motifmatchr)
+library(grid)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(patchwork)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+
+cov_plots<-function(atac_sub=atac_sub,gene_name,idents_in){
+  plt_cov <- CoveragePlot(
+    object = atac_sub,
+    region = gene_name,
+    features = gene_name,
+    assay="ATAC",
+    expression.assay = "SoupXRNA",
+    extend.upstream = 10000,
+    extend.downstream = 10000,
+    idents=idents_in)
+  plt_feat <- FeaturePlot(
+    object = atac_sub,
+    features = gene_name,
+    raster=F,
+    reduction="multimodal_harmony_umap",
+    order=T)
+  return((plt_feat|plt_cov)+ggtitle(gene_name))
+}
+
+#Plotting Normal Epithelial Marker genes
+  normal_epithelial_marker_genes<-c("KRT5", "ACTA2", "MYLK", "SNAI2", "NOTCH4", "DKK3", "ESR1", "PGR", "FOXA1", "TNFRSF11A", "KIT", "SOX10")
+  atac_sub<-readRDS("normalepithelial.SeuratObject.rds")
+  DefaultAssay(atac_sub)<-"SoupXRNA"
+  Idents(atac_sub)<-atac_sub$seurat_clusters
+  for (i in normal_epithelial_marker_genes){
+    plt<-cov_plots(atac_sub=atac_sub,gene_name=i,idents_in=c("0","1","2"))
+    ggsave(plt,file=paste0("NormEpi_",i,".featureplots.pdf"),limitsize=F)
+    system(paste0("slack -F ","NormEpi_",i,".featureplots.pdf ryan_todo"))
+  }
+  #Plotting EMBO paper defined marker sets of epithelial subtypes
+  feature_set<-c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str")
+  plt1<-VlnPlot(atac_sub, features = feature_set)
+  plt2<-FeaturePlot(atac_sub, features = feature_set,order=T,reduction="multimodal_harmony_umap",)
+  plt<-plt1/plt2
+  ggsave(plt,file="NormEpi_EMBOfeaturesets.pdf")
+  system("slack -F NormEpi_EMBOfeaturesets.pdf ryan_todo")
+
+```
+
+### T cell Subtyping
+Continued session. Analyzing T cells using marker genes and label transfer of T cell subtypes.
+
+```R
+#Plotting T cell marker genes
+  tcell_marker_genes<-c("CD4","CD8A","ITGAE","NCR1","IL2RA","PDCD1","CCR7","IL7R","FOXP3","CXCL13","ZFP36","GZMK","IFIT1","MKI67")
+  atac_sub<-readRDS("tcell.SeuratObject.rds")
+  DefaultAssay(atac_sub)<-"SoupXRNA"
+  Idents(atac_sub)<-atac_sub$seurat_clusters
+  for (i in tcell_marker_genes){
+    plt<-cov_plots(atac_sub=atac_sub,gene_name=i,idents_in=c("0","1","2","3","4","5"))
+    ggsave(plt,file=paste0("tcell_",i,".featureplots.pdf"),limitsize=F)
+    system(paste0("slack -F ","tcell_",i,".featureplots.pdf ryan_todo"))
+  }
+```
+
+### B Cell Subtyping
+Continued session. Analyzying B cells using marker genes.
+```R
+#Plotting B cell marker genes
+  bcell_marker_genes<-c("IGHM","CD27","MS4A1","CD19","CD27","CD38","CD14") #"IGHM",#,"IGHG", #IGHD
+  atac_sub<-readRDS("bcell.SeuratObject.rds")
+  DefaultAssay(atac_sub)<-"SoupXRNA"
+  Idents(atac_sub)<-atac_sub$seurat_clusters
+  for (i in bcell_marker_genes){
+    plt<-cov_plots(atac_sub=atac_sub,gene_name=i,idents_in=c("0","1","2"))
+    ggsave(plt,file=paste0("bcell_",i,".featureplots.pdf"),limitsize=F)
+    system(paste0("slack -F ","bcell_",i,".featureplots.pdf ryan_todo"))
+  }
+
+
+
+```
+
+
+### TBD
+"myeloid.SeuratObject.rds"
+"plasmacell.SeuratObject.rds"
+"fibroblast.SeuratObject.rds"
+"bcell.SeuratObject.rds"
+"endothelial.SeuratObject.rds"
+"pericyte.SeuratObject.rds"
 
 
 
@@ -4437,6 +4637,8 @@ library(AUCell)
 library(rtracklayer)
 library(parallel)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+
 
 atac_sub<-readRDS("epithelial.SeuratObject.rds")
 Idents(atac_sub)<-atac_sub$diagnosis

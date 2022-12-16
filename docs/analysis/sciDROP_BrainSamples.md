@@ -189,7 +189,7 @@ $dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_dem
         
         dat<-merge(dat,idx_pcr,by.x="pcr_idx",by.y="i7_idx_sequence") #add pcr i7 index, defining 10% or 90% pool
 
-        table(dat$i7_idx_namez`)
+        table(dat$i7_idx_name)
         #PCR_i7_P7.S707 PCR_i7_P7.S708
         #  6460          54928
 
@@ -1558,7 +1558,7 @@ saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
 
 ### Integration of ATAC and RNA for cell type identification
 
-#Follow this https://satijalab.org/seurat/articles/atacseq_integration_vignette.html#co-embedding-scrna-seq-and-scatac-seq-datasets-1
+Follow this https://satijalab.org/seurat/articles/atacseq_integration_vignette.html#co-embedding-scrna-seq-and-scatac-seq-datasets-1
 
 Retry mouse cluster id just straight up following https://satijalab.org/signac/articles/mouse_brain_vignette.html?
 
@@ -2112,14 +2112,13 @@ da_one_v_rest<-function(i,obj,group,assay.="GeneActivity",latent.vars.="nCount_G
 
 #Gene Activity
 da_ga<-list() #set up an empty list for looping through
-n.cores=10 #Perform parallel application of DA test
-da_ga<-mclapply(
+n.cores=8 #Perform parallel application of DA test
+da_ga<-lapply(
     cluster_to_test,
     FUN=da_one_v_rest,
     obj=hg38_atac,
     group="seurat_clusters",
-    assay.="GeneActivity",
-    mc.cores=n.cores)
+    assay.="GeneActivity")
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
 write.table(da_ga_df,file="hg38.onevrest.da_ga.txt",sep="\t",col.names=T,row.names=T,quote=F)
 
@@ -2142,10 +2141,6 @@ write.table(da_ga_df,file="hg38.onevrest.da_chromvar.txt",sep="\t",col.names=T,r
 da_ga<-read.csv(file="hg38.onevrest.da_ga.txt",head=T,sep="\t",row.names=NULL)
 da_ga$gene_name<-da_ga$da_region
 da_ga<-da_ga[complete.cases(da_ga),]
-da_ga<-da_ga[!endsWith(da_ga$enriched_group,"NA"),]
-
-########## RUNNING #########
-
 
 da_ga$label<-""
 for (x in unique(da_ga$enriched_group)){
@@ -2155,7 +2150,7 @@ da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$label<- da_ga[
 
 #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
 dat_ga<-as.data.frame(t(as.data.frame(hg38_atac[["GeneActivity"]]@data)))
-sum_ga<-split(dat_ga,hg38_atac$cluster_ID) #group by rows to seurat clusters
+sum_ga<-split(dat_ga,hg38_atac$seurat_clusters) #group by rows to seurat clusters
 sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
 sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
 
@@ -2166,23 +2161,24 @@ sum_ga<-sum_ga[,!endsWith(colnames(sum_ga),"NA")] #remove NA (doublet cells)
 sum_da_dend <- t(sum_ga) %>% dist() %>% hclust %>% as.dendrogram %>% ladderize  %>% set("branches_k_color", k = 8)
 saveRDS(sum_da_dend,file="hg38.geneactivity.dend.rds") 
 
+########## RUNNING #########
 
 sum_ga<-sum_ga[row.names(sum_ga) %in% unique(da_ga$label),]
 
-annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
+annot<-hg38_atac@meta.data[,c("celltype","seurat_clusters","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
 annot<-annot[!(annot$subcluster_col=="NA"),]
-annot<-annot[!duplicated(annot$cluster_ID),]
-annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
-annot<-annot[match(colnames(sum_ga),annot$cluster_ID),]
+annot<-annot[!duplicated(annot$seurat_clusters),]
+annot<-annot[annot$seurat_clusters %in% colnames(sum_ga),]
+annot<-annot[match(colnames(sum_ga),annot$seurat_clusters),]
 sum_ga_plot<-t(sum_ga)
 
-annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+annot_clus_col<-annot[!duplicated(annot$seurat_clusters),]
 
-side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$seurat_clusters),
                 col=list(
                     celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
                     cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
-                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$seurat_clusters) #due to nonunique colors present
                         ))
 
 bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga_plot), labels = colnames(sum_ga_plot)))
@@ -2237,7 +2233,6 @@ sum_ga<-split(dat_ga,hg38_atac$seurat_clusters) #group by rows to seurat cluster
 sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
 sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
 sum_ga<-t(sum_ga)
-sum_ga<-sum_ga[,!endsWith(colnames(sum_ga),"NA")] #remove NA (doublet cells)
 
 markers_limited<-   as.data.frame(rbind(
     c("Mark","L1-6","GABAergic","GAD1"),
@@ -2283,7 +2278,7 @@ markers_limited<-markers_limited[match(row.names(sum_ga_sub),markers_limited$mar
 
 sum_ga_sub<-t(scale(t(sum_ga_sub),center=F,scale=T))
 
-annot<-hg38_atac@meta.data[,c("celltype","cluster_ID","cluster_col","seurat_clusters","celltype_col")] 
+annot<-hg38_atac@meta.data[,c("celltype","cluster_col","seurat_clusters","celltype_col")] 
 annot<-annot[!duplicated(annot$seurat_clusters),]
 annot<-annot[annot$seurat_clusters %in% colnames(sum_ga),]
 annot<-annot[match(colnames(sum_ga),annot$seurat_clusters),]
@@ -2437,8 +2432,9 @@ mm10_atac@meta.data[mm10_atac@meta.data$celltype=="Gran",]$celltype_col<-"#4B008
 
 saveRDS(mm10_atac,"mm10_SeuratObject.PF.Rds")
 
+
 #Clusters to test
-cluster_to_test<-unique(mm10_atac$cluster_ID)
+cluster_to_test<-unique(mm10_atac$seurat_clusters)
 #define DA functions for parallelization
 #Use LR test for atac data
 da_one_v_rest<-function(i,obj,group,assay.="GeneActivity",latent.vars.="nCount_GeneActivity"){
@@ -2464,12 +2460,13 @@ da_ga<-mclapply(
     cluster_to_test,
     FUN=da_one_v_rest,
     obj=mm10_atac,
-    group="cluster_ID",
+    group="seurat_clusters",
     assay.="GeneActivity",
     mc.cores=n.cores)
 
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
 write.table(da_ga_df,file="mm10.onevrest.da_ga.txt",sep="\t",col.names=T,row.names=T,quote=F)
+
 
 da_ga<-list() #set up an empty list for looping through
 
@@ -2478,10 +2475,9 @@ da_ga<-mclapply(
     cluster_to_test,
     FUN=da_one_v_rest,
     obj=mm10_atac,
-    group="cluster_ID",
+    group="seurat_cluster",
     assay.="chromvar", latent.vars.="nCount_peaks",
     mc.cores=n.cores)
-
 
 da_ga_df<-do.call("rbind",da_ga) #Merge the final data frame from the list for 1vrest DA
 #To convert JASPAR ID TO TF NAME
@@ -2504,7 +2500,7 @@ da_ga[da_ga$da_region %in% selc_genes & da_ga$enriched_group==x,]$label<- da_ga[
 
 #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)
 dat_ga<-as.data.frame(t(as.data.frame(mm10_atac[["GeneActivity"]]@data)))
-sum_ga<-split(dat_ga,mm10_atac$cluster_ID) #group by rows to seurat clusters
+sum_ga<-split(dat_ga,mm10_atac$seurat_clusters) #group by rows to seurat clusters
 sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
 sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
 
@@ -2518,20 +2514,19 @@ saveRDS(sum_da_dend,file="mm10.geneactivity.dend.rds")
 
 sum_ga<-sum_ga[row.names(sum_ga) %in% unique(da_ga$label),]
 
-annot<-mm10_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
-annot<-annot[!(annot$subcluster_col=="NA"),]
-annot<-annot[!duplicated(annot$cluster_ID),]
-annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
-annot<-annot[match(colnames(sum_ga),annot$cluster_ID),]
+annot<-mm10_atac@meta.data[,c("celltype","cluster_col","seurat_clusters","celltype_col")]
+annot<-annot[!is.na(annot$cluster_col),]
+annot<-annot[!duplicated(annot$seurat_clusters),]
+annot<-annot[annot$seurat_clusters %in% colnames(sum_ga),]
+annot<-annot[match(colnames(sum_ga),annot$seurat_clusters),]
 sum_ga_plot<-t(sum_ga)
 
-annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+annot_clus_col<-annot[!duplicated(annot$seurat_clusters),]
 
-side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+side_ha<-rowAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters),
                 col=list(
                     celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
-                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
-                    subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                    cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters)))
                         ))
 
 bottom_ha<-columnAnnotation(foo = anno_mark(at = 1:ncol(sum_ga_plot), labels = colnames(sum_ga_plot)))
@@ -2556,7 +2551,7 @@ system("slack -F mm10.geneactivity.heatmap.pdf ryan_todo")
 #genes from brain map and https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7918299/
 sum_da_dend<-readRDS(file="mm10.geneactivity.dend.rds")
 dat_ga<-as.data.frame(t(as.data.frame(mm10_atac[["GeneActivity"]]@data)))
-sum_ga<-split(dat_ga,mm10_atac$cluster_ID) #group by rows to seurat clusters 
+sum_ga<-split(dat_ga,mm10_atac$seurat_clusters) #group by rows to seurat clusters 
 sum_ga<-lapply(sum_ga,function(x) apply(x,2,mean)) #take average across group
 sum_ga<-do.call("rbind",sum_ga) #condense to smaller data frame
 sum_ga<-t(sum_ga)
@@ -2618,25 +2613,23 @@ markers_limited<-markers_limited[match(row.names(sum_ga_sub),markers_limited$mar
 sum_ga_sub<-t(scale(t(sum_ga_sub),center=F,scale=T))
 
 
-annot<-mm10_atac@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
-annot<-annot[!(annot$subcluster_col=="NA"),]
-annot<-annot[!duplicated(annot$cluster_ID),]
-annot<-annot[annot$cluster_ID %in% colnames(sum_ga),]
-annot<-annot[match(colnames(sum_ga),annot$cluster_ID,nomatch=0),]
-annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+annot<-mm10_atac@meta.data[,c("celltype","cluster_col","seurat_clusters","celltype_col")]
+annot<-annot[!(annot$cluster_col=="NA"),]
+annot<-annot[!duplicated(annot$seurat_clusters),]
+annot<-annot[annot$seurat_clusters %in% colnames(sum_ga),]
+annot<-annot[match(colnames(sum_ga),annot$seurat_clusters,nomatch=0),]
+annot_clus_col<-annot[!duplicated(annot$seurat_clusters),]
 annot_clus_col<-annot_clus_col[complete.cases(annot_clus_col),]
-sum_ga_sub<-sum_ga_sub[,colnames(sum_ga_sub) %in% annot$cluster_ID]
+sum_ga_sub<-sum_ga_sub[,colnames(sum_ga_sub) %in% annot$seurat_clusters]
 
 celltype=setNames(unique(annot$celltype_col),unique(annot$celltype))
 cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters)))
-subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID)
 celltype<-celltype[!is.na(celltype)]
 cluster<-cluster[!is.na(cluster)]
-subcluster<-subcluster[!is.na(subcluster)]
 cluster<-cluster[!is.na(names(cluster))]
-top_ha<-columnAnnotation(df= data.frame(cluster=annot$seurat_clusters, celltype=annot$celltype, subcluster=annot$cluster_ID), 
-                col=list(celltype=celltype,cluster=cluster,subcluster=subcluster),
-                    show_legend = c(TRUE, TRUE,FALSE))  
+top_ha<-columnAnnotation(df= data.frame(cluster=annot$seurat_clusters, celltype=annot$celltype), 
+                col=list(celltype=celltype,cluster=cluster),
+                    show_legend = c(TRUE, TRUE))
 
 colfun=colorRamp2(quantile(unlist(sum_ga_sub), probs=c(0.5,0.90,0.95)),magma(3))
 
@@ -3044,18 +3037,15 @@ plot_top_TFs<-function(x=stromal,tf_markers=da_tf_markers,prefix="stromal",group
     side_ha_col<-colorRamp2(c(0,1),c("white","black"))
     gene_ha = rowAnnotation(foo = anno_mark(at = c(1:nrow(tf_ga)), labels =row.names(tf_ga),labels_gp=gpar(fontsize=6)))
 
-    annot<-x@meta.data[,c("celltype","cluster_ID","subcluster_col","cluster_col","seurat_clusters","seurat_subcluster","celltype_col")]
-    annot<-annot[!(annot$subcluster_col=="NA"),]
-    annot<-annot[!duplicated(annot$cluster_ID),]
-    annot<-annot[annot$cluster_ID %in% colnames(tf_ga),]
-    annot<-annot[match(colnames(tf_ga),annot$cluster_ID),]
-    annot_clus_col<-annot[!duplicated(annot$cluster_ID),]
+    annot<-x@meta.data[,c("celltype","cluster_col","seurat_clusters","celltype_col")]
+    annot<-annot[!duplicated(annot$seurat_clusters),]
+    annot<-annot[annot$seurat_clusters%in% colnames(tf_ga),]
+    annot<-annot[match(colnames(tf_ga),annot$seurat_clusters),]
 
-    col_ha<-columnAnnotation(df= data.frame(celltype=annot$celltype, cluster=annot$seurat_clusters, subcluster=annot$cluster_ID),
+    col_ha<-columnAnnotation(df= data.frame(cluster=annot$seurat_clusters,celltype=annot$celltype),
                     col=list(
-                        celltype=setNames(unique(annot$celltype_col),unique(annot$celltype)),
                         cluster=setNames(unique(annot$cluster_col),unique(as.character(annot$seurat_clusters))),
-                        subcluster=setNames(annot_clus_col$subcluster_col,annot_clus_col$cluster_ID) #due to nonunique colors present
+                        celltype=setNames(unique(annot$celltype_col),unique(as.character(annot$celltype)))
                             ))
 
   if(GA==TRUE ){
@@ -3135,12 +3125,12 @@ run_top_TFs<-function(obj=hg38_atac,prefix="hg38_atac",i="cluster_ID",marker_num
     if(CHROMVAR.==TRUE){
         markers<-lapply(c("GeneActivity","chromvar"),function(assay) Identify_Marker_TFs(x=obj,group_by.=i,assay.=assay))
         names(markers)<-c("GeneActivity","chromvar")
-        clusters<-unique(obj@meta.data[,i])[which(!endsWith(unique(obj@meta.data[,i]),"NA"))] 
+        clusters<-unique(obj@meta.data[,i])
         markers_out<-do.call("rbind",lapply(clusters, function(j) head(topTFs(markers_list=markers,celltype=j,ga=markers$GeneActivity,motifs=markers$chromvar),n=marker_number))) #grab top 5 TF markers per celltype
     } else {
         markers<-lapply(c("GeneActivity"),function(assay) Identify_Marker_TFs(x=obj,group_by.=i,assay.=assay))
         names(markers)<-c("GeneActivity")
-        clusters<-unique(obj@meta.data[,i])[which(!endsWith(unique(obj@meta.data[,i]),"NA"))] 
+        clusters<-unique(obj@meta.data[,i])
         markers_out<-do.call("rbind",lapply(clusters, function(j) head(topTFs(markers_list=markers,celltype=j,ga=markers$GeneActivity),n=marker_number))) #grab top 5 TF markers per celltype
     }
     dim(markers_out)
@@ -3155,28 +3145,29 @@ run_top_TFs<-function(obj=hg38_atac,prefix="hg38_atac",i="cluster_ID",marker_num
 #hg38 TF markers
 hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
 hg38_atac<-subset(hg38_atac,subcluster_x!="NA")
-run_top_TFs(obj=hg38_atac,prefix="hg38_TF",i="cluster_ID",marker_number=5)
+run_top_TFs(obj=hg38_atac,prefix="hg38_TF",i="seurat_clusters",marker_number=10)
 
 #Marker Genes per celltype
-for(j in unique(hg38_atac$celltype)){
-    hg38_sub<-subset(hg38_atac,celltype==j)
-    if(length(unique(hg38_sub$cluster_ID))>1){
-    run_top_TFs(obj=hg38_sub,prefix=paste0("hg38_markergenes_",j),i="cluster_ID",marker_number=25,CHROMVAR.=FALSE)
-    }
-}
+#for(j in unique(hg38_atac$celltype)){
+#    hg38_sub<-subset(hg38_atac,celltype==j)
+#    if(length(unique(hg38_sub$cluster_ID))>1){
+#    run_top_TFs(obj=hg38_sub,prefix=paste0("hg38_markergenes_",j),i="cluster_ID",marker_number=25,CHROMVAR.=FALSE)
+#    }
+#}
 
 #mm10 markers
 mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
 mm10_atac<-subset(mm10_atac,subcluster_x!="NA")
-run_top_TFs(obj=mm10_atac,prefix="mm10_TF",i="cluster_ID",marker_number=5)
+run_top_TFs(obj=mm10_atac,prefix="mm10_TF",i="seurat_clusters",marker_number=10)
 
 #Marker Genes per celltype
-for(j in unique(mm10_atac$celltype)){
-    mm10_sub<-subset(mm10_atac,celltype==j)
-    if(length(unique(mm10_sub$cluster_ID))>1){
-    run_top_TFs(obj=mm10_sub,prefix=paste0("mm10_markergenes_",j),i="cluster_ID",marker_number=10,CHROMVAR.=FALSE)
-    }
-}
+#for(j in unique(mm10_atac$celltype)){
+#    mm10_sub<-subset(mm10_atac,celltype==j)
+#    if(length(unique(mm10_sub$cluster_ID))>1){
+#    run_top_TFs(obj=mm10_sub,prefix=paste0("mm10_markergenes_",j),i="cluster_ID",marker_number=10,CHROMVAR.=FALSE)
+#    }
+#}
+
 
 
 ```
@@ -3275,6 +3266,22 @@ gene_list<-gene_list[unlist(lapply(gene_list,function(x) x %in% row.names(hg38_a
 lapply(gene_list,function(x) plot_markers(obj=hg38_atac,gene_name=x))
 ```
 
+## Output final metadata tables
+```R
+library(Signac)
+library(Seurat)
+library(patchwork)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
+
+hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
+mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
+
+write.table(as.data.frame(mm10_atac@meta.data),file="mm10_PF.metadata.tsv",sep="\t",quote=F,col.names=T,row.names=T)
+system("slack -F mm10_PF.metadata.tsv ryan_todo")
+
+write.table(as.data.frame(hg38_atac@meta.data),file="hg38_PF.metadata.tsv",sep="\t",quote=F,col.names=T,row.names=T)
+system("slack -F hg38_PF.metadata.tsv ryan_todo")
+```
 
 ## Output Tab separated 3D clustering for Blender Plot
 ```R
@@ -4007,7 +4014,7 @@ bgzip="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda
 
 #mouse processing
 input_bam=${ref_outdir}/all_methods_merged_mm10.bbrd.q10.bam
-$scitools bam-tssenrich -X $input_bam mm10 
+$scitools bam-tssenrich -X all_methods_merged_mm10.bbrd.q10.bam mm10 &
 
 
 output_name=${input_bam::-4}
@@ -4190,6 +4197,78 @@ frip<-read.table("all_methods_merged_mm10.bbrd.q10.500.fracOnTarget.values",col.
 frip_in<-setNames(nm=frip$cellID,frip$FRIP)
 mm10_atac<-AddMetaData(mm10_atac,frip_in,col.name="FRIP")
 saveRDS(mm10_atac,file="allmethods_merged_SeuratObject.Rds")
+
+
+#Add FRIP based on the merged data peakset
+tss<-read.table("all_methods_merged_mm10.bbrd.q10.TSSenrich.value",col.names=c("cellID","TSSEnrichment"))
+tss_in<-setNames(nm=tss$cellID,tss$TSSEnrichment)
+mm10_atac<-AddMetaData(mm10_atac,tss_in,col.name="TSSenrichment")
+saveRDS(mm10_atac,file="allmethods_merged_SeuratObject.Rds")
+```
+Generate library complexity per technology from cell projections
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Mmusculus.v79)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+library(Matrix)
+library(patchwork)
+library(palettetown)
+library(plyr)
+library(dplyr)
+setwd("/home/groups/CEDAR/mulqueen/mouse_brain_ref")
+mm10_atac<-readRDS("allmethods_merged_SeuratObject.Rds")
+
+tech_col<-c("snATAC"="grey","sciATAC"="lightcyan4","ddscATAC"="honeydew4","sciMAP"="lightslategrey","sciDROP"="red","s3ATAC"="azure3","tenxv1"="cadetblue","tenxv2"="cadetblue2")
+tech_order<-c("snATAC","sciATAC","tenxv1","tenxv2","ddscATAC","sciMAP","s3ATAC","sciDROP")
+
+#Projected complexity models per cell formatted as #cellid int slope
+#Vmax=1/V2 ;Km=V3/V2
+#test_uniq = (($Vmax*$test_count)/($Km+$test_count))
+
+tenxv1<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1/tenxv1_mus.RG.read_projections/model.txt"),tech="tenxv1")
+tenxv2<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2/tenxv2_mus.RG.read_projections/model.txt"),tech="tenxv2")
+sciatac<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232/sciATAC_mus.RG.nsrt.read_projections/model.txt"),tech="sciATAC")
+scimap<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233/sciMAP_mus.RG.nsrt.read_projections/model.txt"),tech="sciMAP")
+snatac<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/snATAC/SRR6768122/SRR6768122/snATAC_mus.cellidfilt.filt.read_projections/model.txt"),tech="snATAC")
+s3atac<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/s3atac/s3atac.mm10.read_projections/model.txt"),tech="s3ATAC")
+scidrop<-cbind(do.call("rbind", 
+    lapply(c('CAGAGAGGAA', 'CAGAGAGGAC', 'CAGAGAGGAG', 'CAGAGAGGAT', 'CAGAGAGGCA', 'CAGAGAGGCC', 'CAGAGAGGCG', 'CAGAGAGGCT', 'CAGAGAGGGA', 'CAGAGAGGGC', 'CAGAGAGGGG', 'CAGAGAGGGT', 'CAGAGAGGTA', 'CAGAGAGGTC', 'CAGAGAGGTG', 'CAGAGAGGTT', 'CTCTCTACAA', 'CTCTCTACAC', 'CTCTCTACAG', 'CTCTCTACAT', 'CTCTCTACCA', 'CTCTCTACCC', 'CTCTCTACCG', 'CTCTCTACCT', 'CTCTCTACGA', 'CTCTCTACGC', 'CTCTCTACGG', 'CTCTCTACGT', 'CTCTCTACTA', 'CTCTCTACTC', 'CTCTCTACTG', 'CTCTCTACTT'), function(x) read.table(paste0("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_70k/mm10.",x,".read_projections/model.txt")))),tech="sciDROP")
+ddscatac<-cbind(do.call("rbind",
+    lapply(1:8,function(x) read.table(paste0("/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/ddscATAC_mus_SRR831066",x,".nsrt.RG.read_projections/model.txt")))),tech="ddscATAC")
+compl<-rbind(tenxv1,tenxv2,sciatac,scimap,snatac,s3atac,scidrop,ddscatac)
+compl<-compl[!duplicated(compl$V1),]
+compl<-compl[compl$V1 %in% row.names(dat),]
+f<-function(x,V2,V3) ((1/V2)*x)/((V3/V2)+x) #determine unique read count given a x read effort, using modelled projection
+
+f_read_in<-function(i){
+return(cbind(cellid=compl$V1,tech=compl$tech,read_effort=i,read_uniq=unlist(lapply(1:nrow(compl), function(j) f(x=i,V2=compl$V2[j],V3=compl$V3[j])))))
+}
+
+out<-lapply(c(5000,10000,20000,50000,100000), f_read_in)
+out<-as.data.frame(do.call("rbind",out))
+out$read_uniq<-as.numeric(out$read_uniq)
+out$tech <- factor(out$tech, levels=tech_order)
+out$read_effort <- factor(out$read_effort, levels=c(5000,10000,20000,50000,100000))
+
+plt<-ggplot(out,aes(x=read_effort,color=tech,fill=tech,y=read_uniq))+geom_boxplot(alpha=0.8,fill="white",outlier.shape=NA)+scale_color_manual(values=tech_col)+theme_minimal()+scale_y_continuous(breaks=c(seq(0,120000,10000),c(5000,10000,20000,50000,100000)),limits=c(0,120000))
+ggsave(plt,file="complexity_tech.pdf")
+system("slack -F complexity_tech.pdf ryan_todo")
+
+
+#Adding projected read counts per cell to metadata
+out_df<-as.data.frame(do.call("cbind",lapply(unique(out$read_effort), function(x) as.data.frame(cbind(out[out$read_effort==x,]$cellid,out[out$read_effort==x,]$read_uniq)))))
+out_df<-out_df[,c(1,which(seq(1,ncol(out_df)) %% 2 == 0))]
+colnames(out_df)<-c("cellid",paste0("effort_",unique(out$read_effort)))
+out_df<-out_df[out_df$cellid %in% row.names(dat),]
+row.names(out_df)<-out_df$cellid
+mm10_atac<-AddMetaData(mm10_atac,out_df)
+saveRDS(mm10_atac,file="allmethods_merged_SeuratObject.Rds")
+
 ```
 QC Plot comparisons
 
@@ -4220,7 +4299,7 @@ plt<-DimPlot(mm10_atac,group.by = 'tech', pt.size = 0.1)+scale_fill_manual(value
 ggsave(plt,file="all_methods.tech.harmony.pdf")
 system(paste0("slack -F ","all_methods.tech.harmony.pdf"," ryan_todo"))
 
-#FRIP histogram
+#FRIP boxplot
 Idents(mm10_atac)<-"tech"
 dat<-as.data.frame(mm10_atac@meta.data)
 dat$tech <- factor(dat$tech, levels=tech_order)
@@ -4228,64 +4307,67 @@ plt<-ggplot(dat,aes(x=tech,y=FRIP,color=tech))+geom_boxplot(alpha=0.8,fill="whit
 ggsave(plt,file="frip_tech.pdf")
 system("slack -F frip_tech.pdf ryan_todo")
 
- 
-#Projected complexity models per cell formatted as #cellid int slope
-#Vmax=1/V2 ;Km=V3/V2
-#test_uniq = (($Vmax*$test_count)/($Km+$test_count))
+#TSS boxplot
+Idents(mm10_atac)<-"tech"
+dat<-as.data.frame(mm10_atac@meta.data)
+dat$tech <- factor(dat$tech, levels=tech_order)
+plt<-ggplot(dat,aes(x=tech,y=TSSenrichment,color=tech))+geom_boxplot(alpha=0.8,fill="white",outlier.shape=NA)+ylim(c(0,25))+scale_color_manual(values=tech_col)+theme_minimal() #+geom_jitter(alpha=0.1,size=0.1)
+ggsave(plt,file="tss_tech.pdf")
+system("slack -F tss_tech.pdf ryan_todo")
 
-tenxv1<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v1/tenxv1_mus.RG.read_projections/model.txt"),tech="tenxv1")
-tenxv2<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/10x_atac_v2/tenxv2_mus.RG.read_projections/model.txt"),tech="tenxv2")
-sciatac<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciATAC/SRR13437232/sciATAC_mus.RG.nsrt.read_projections/model.txt"),tech="sciATAC")
-scimap<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/sciMAP/SRR13437233/sciMAP_mus.RG.nsrt.read_projections/model.txt"),tech="sciMAP")
-snatac<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/snATAC/SRR6768122/SRR6768122/snATAC_mus.cellidfilt.filt.read_projections/model.txt"),tech="snATAC")
-s3atac<-cbind(read.table("/home/groups/CEDAR/mulqueen/mouse_brain_ref/s3atac/s3atac.mm10.read_projections/model.txt"),tech="s3ATAC")
-scidrop<-cbind(do.call("rbind", 
-    lapply(c('CAGAGAGGAA', 'CAGAGAGGAC', 'CAGAGAGGAG', 'CAGAGAGGAT', 'CAGAGAGGCA', 'CAGAGAGGCC', 'CAGAGAGGCG', 'CAGAGAGGCT', 'CAGAGAGGGA', 'CAGAGAGGGC', 'CAGAGAGGGG', 'CAGAGAGGGT', 'CAGAGAGGTA', 'CAGAGAGGTC', 'CAGAGAGGTG', 'CAGAGAGGTT', 'CTCTCTACAA', 'CTCTCTACAC', 'CTCTCTACAG', 'CTCTCTACAT', 'CTCTCTACCA', 'CTCTCTACCC', 'CTCTCTACCG', 'CTCTCTACCT', 'CTCTCTACGA', 'CTCTCTACGC', 'CTCTCTACGG', 'CTCTCTACGT', 'CTCTCTACTA', 'CTCTCTACTC', 'CTCTCTACTG', 'CTCTCTACTT'), function(x) read.table(paste0("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_70k/mm10.",x,".read_projections/model.txt")))),tech="sciDROP")
-ddscatac<-cbind(do.call("rbind",
-    lapply(1:8,function(x) read.table(paste0("/home/groups/CEDAR/mulqueen/mouse_brain_ref/ddscATAC/ddscATAC_mus_SRR831066",x,".nsrt.RG.read_projections/model.txt")))),tech="ddscATAC")
-compl<-rbind(tenxv1,tenxv2,sciatac,scimap,snatac,s3atac,scidrop,ddscatac)
-f<-function(x,V2,V3) ((1/V2)*x)/((V3/V2)+x) #determine unique read count given a x read effort, using modelled projection
+#Stats
+library(dplyr)
+detach(package:plyr)
+dat<-data.frame(mm10_atac@meta.data)
+out<-as.data.frame(dat %>% group_by(tech) %>% summarize(mean_tss=mean(TSSenrichment),median_tss=median(TSSenrichment),sd_tss=sd(TSSenrichment),mean_frip=mean(FRIP),median_frip=median(FRIP),sd_frip=sd(FRIP),count=n()))
+row.names(out)<-out$tech
+out<-out[tech_order,]
+out$median_tss/out[out$tech=="sciDROP",]$median_tss
+out$median_frip/out[out$tech=="sciDROP",]$median_frip
 
-f_read_in<-function(i){
-return(cbind(cellid=compl$V1,tech=compl$tech,read_effort=i,read_uniq=unlist(lapply(1:nrow(compl), function(j) f(x=i,V2=compl$V2[j],V3=compl$V3[j])))))
-}
-
-out<-lapply(c(500,1000,2500,5000,10000,20000,50000,100000), f_read_in)
-out<-as.data.frame(do.call("rbind",out))
-out$read_uniq<-as.numeric(out$read_uniq)
-out$tech <- factor(out$tech, levels=tech_order)
-out$read_effort <- factor(out$read_effort, levels=c(500,1000,2500,5000,10000,20000,50000,100000))
-
-plt<-ggplot(out,aes(x=read_effort,color=tech,fill=tech,y=read_uniq))+geom_boxplot(alpha=0.8,fill="white",outlier.shape=NA)+scale_color_manual(values=tech_col)+theme_minimal()+ylim(c(0,100000))
-ggsave(plt,file="complexity_tech.pdf")
-system("slack -F complexity_tech.pdf ryan_todo")
-
-#Alternative approach: mean projection
-f_sum<-function(x,vmax,km) (vmax*x)/(km+x) #determine unique read count given a x read effort, using modelled projection
-
-f_sum_read_in<-function(i){
-return(cbind(tech=sum_complexity$tech,read_effort=i,read_uniq=unlist(lapply(1:nrow(sum_complexity), function(j) f_sum(x=i,vmax=sum_complexity$vmax[j],km=sum_complexity$km[j])))))
-}
-sum_complexity<-as.data.frame(compl %>% group_by(tech) %>% summarize(vmax=1/mean(V2),km=mean(V3)/mean(V2)))
-out<-lapply(seq(1,10000000,1000), f_sum_read_in)
-out<-as.data.frame(do.call("rbind",out))
-out$read_effort<-as.numeric(out$read_effort)
-out$read_uniq<-as.numeric(out$read_uniq)
-
-plt<-ggplot(out,aes(x=read_uniq/read_effort,y=read_uniq,color=tech,group=tech))+geom_line()+scale_color_manual(values=tech_col)+theme_minimal()
-ggsave(plt,file="complexity_tech_sum.pdf")
-system("slack -F complexity_tech_sum.pdf ryan_todo")
-
-#plot isize
-isize<-read.table("all_methods_merged_mm10.bbrd.q10.isize.values",header=F,sep="\t")
-colnames(isize)<-c("tech","frag")
-plt<-ggplot(isize,aes(x=frag,color=tech,fill=tech))+geom_density()+theme_minimal()+scale_color_manual(values=tech_col)+scale_fill_manual(values=tech_col)+facet_grid(tech~.)
-ggsave(plt,file="isize_tech.pdf")
-system("slack -F isize_tech.pdf ryan_todo")
+# tech     mean_tss median_tss sd_tss mean_frip median_frip sd_frip count
+#  <chr>       <dbl>      <dbl>  <dbl>     <dbl>       <dbl>   <dbl> <int>
+#1 ddscATAC     5.33       5.04   1.70     0.577       0.583  0.0846  6611
+#2 s3ATAC       4.17       4.00   1.42     0.411       0.41   0.0744   920
+#3 sciATAC      8.95       8.15   4.42     0.591       0.595  0.152   4638
+#4 sciDROP      6.03       5.92   1.86     0.549       0.575  0.0902 38606
+#5 sciMAP       3.04       2.70   1.42     0.293       0.285  0.0783  8206
+#6 snATAC       6.33       6.02   2.10     0.493       0.492  0.0987  3034
+#7 tenxv1       9.06       7.96   3.72     0.715       0.721  0.0868  4663
+#8 tenxv2       6.12       5.73   3.39     0.488       0.521  0.174   9167
 
 
-#TSS Enrichment
-mm10_atac<-TSSEnrichment(mm10_atac)
+#frip
+test_out<-lapply(unique(dat$tech), function(i) setNames(wilcox.test(dat[dat$tech=="sciDROP",]$FRIP,dat[dat$tech==i,]$FRIP)$p.value,nm=i))
+names(test_out)<-unique(dat$tech)
+
+#tss
+kruskal.test(TSSenrichment ~ tech, data = dat)
+pairwise.wilcox.test(dat$TSSenrichment, dat$tech,
+                 p.adjust.method = "bonferroni")
+
+#Pairwise comparisons using Wilcoxon rank sum test with continuity correction
+
+#data:  dat$TSSenrichment and dat$tech
+
+#        ddscATAC s3ATAC  sciATAC sciDROP sciMAP  snATAC  tenxv1
+#s3ATAC  < 2e-16  -       -       -       -       -       -
+#sciATAC < 2e-16  < 2e-16 -       -       -       -       -
+#sciDROP < 2e-16  < 2e-16 < 2e-16 -       -       -       -
+#sciMAP  < 2e-16  < 2e-16 < 2e-16 < 2e-16 -       -       -
+#snATAC  < 2e-16  < 2e-16 < 2e-16 4.1e-06 < 2e-16 -       -
+#tenxv1  < 2e-16  < 2e-16 0.018   < 2e-16 < 2e-16 < 2e-16 -
+#tenxv2  < 2e-16  < 2e-16 < 2e-16 4.1e-14 < 2e-16 5.4e-14 < 2e-16
+
+#P value adjustment method: bonferroni
+
+pairwise.wilcox.test(dat$FRIP, dat$tech,
+                 p.adjust.method = "bonferroni")
+
+#effort_5000
+dat$effort_5000<-as.numeric(dat$effort_5000)
+pairwise.wilcox.test(dat$effort_5000, dat$tech,
+                 p.adjust.method = "bonferroni",alternative="greater")
 ```
 
 
