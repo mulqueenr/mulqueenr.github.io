@@ -1340,7 +1340,7 @@ ggsave(plt,file="ERTotalSub.umap.pdf")
 system("slack -F ERTotalSub.umap.pdf ryan_todo")
 saveRDS(dat,file="SeuratObject_ERTotalSub.rds") #overwrite with cell types added to metadata
 
-#match suerat clusters to assigned cell types in Fig EV4
+#match seurat clusters to assigned cell types in Fig EV4
 dat<-readRDS("SeuratObject_ERTotalTC.rds") #ER+ tumor T-cells
 er_nonepi_tcells<-setNames(
   seq(0,max(as.numeric(unique(dat$seurat_clusters))))
@@ -3372,6 +3372,11 @@ cd /home/groups/CEDAR/mulqueen/ref/embo
 ```
 
 ### Use EMBO and Swarbrick Paper Cell Types to Define Signatures
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4365540/pdf/13058_2015_Article_520.pdf
+
+```
+For calling molecular subtypes using the PAM50 method3, we processed “pseudo-bulk” expression profiles for each tumor, named “Allcells-Pseudobulk”, in a similar manner to any bulk RNA-Seq sample (i.e. upper quartile normalized-log transformed). Prior to PAM50 subtyping, we adjusted a new sample set relative to the PAM50 training set according to their ER and HER2 status as detailed by Zhao et al. 63. We performed whole-transcriptome RNA-Seq using Ribosomal Depletion (Illumina TruSeq Total RNA) on 24 matching tumor samples from our single-cell dataset. RNA was extracted from diagnostic FFPE blocks using the High Pure RNA Paraffin Kit (Roche #03 270 289 001). Libraries were sequenced on the HiSeq 2500 platform (Illumina) with 50 bp paired end reads. Transcript quantification was performed using Salmon64. We then called PAM50 on each bulk tumor using Zhao et al. 63 normalization and then the PAM50 centroid predictor (Supplementary Table 3) 
+```
 <!-- Done -->
 
 ```R
@@ -4550,6 +4555,26 @@ cov_plots<-function(atac_sub=atac_sub,gene_name,idents_in){
   return((plt_feat|plt_cov)+ggtitle(gene_name))
 }
 
+sample_label_transfer<-function(in_dat,ref_dat,prefix="Tcell_"){
+  transfer.anchors <- FindTransferAnchors(
+    reference = ref_dat,
+    reference.assay="RNA",
+    query = in_dat,
+    query.assay="SoupXRNA",
+    verbose=T
+  )
+
+  predictions<- TransferData(
+    anchorset = transfer.anchors,
+    refdata = ref_dat$celltype,
+  )
+  colnames(predictions)<-paste0(prefix,colnames(predictions))
+
+  in_dat<-AddMetaData(in_dat,metadata=predictions)
+  return(in_dat)
+  }
+
+
 #Plotting Normal Epithelial Marker genes
   normal_epithelial_marker_genes<-c("KRT5", "ACTA2", "MYLK", "SNAI2", "NOTCH4", "DKK3", "ESR1", "PGR", "FOXA1", "TNFRSF11A", "KIT", "SOX10")
   atac_sub<-readRDS("normalepithelial.SeuratObject.rds")
@@ -4560,7 +4585,7 @@ cov_plots<-function(atac_sub=atac_sub,gene_name,idents_in){
     ggsave(plt,file=paste0("NormEpi_",i,".featureplots.pdf"),limitsize=F)
     system(paste0("slack -F ","NormEpi_",i,".featureplots.pdf ryan_todo"))
   }
-  #Plotting EMBO paper defined marker sets of epithelial subtypes
+#Plotting EMBO paper defined marker sets of epithelial subtypes (pretransferred on bulk data above)
   feature_set<-c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str")
   plt1<-VlnPlot(atac_sub, features = feature_set)
   plt2<-FeaturePlot(atac_sub, features = feature_set,order=T,reduction="multimodal_harmony_umap",)
@@ -4576,21 +4601,56 @@ Continued session. Analyzing T cells using marker genes and label transfer of T 
 ```R
 #Plotting T cell marker genes
   tcell_marker_genes<-c("CD4","CD8A","ITGAE","NCR1","IL2RA","PDCD1","CCR7","IL7R","FOXP3","CXCL13","ZFP36","GZMK","IFIT1","MKI67")
+#T cell RNA reference data 
+  tcell_reference_rds<-readRDS("/home/groups/CEDAR/mulqueen/ref/embo/SeuratObject_ERTotalTC.rds") #ER+ tumor T-cells
+  DefaultAssay(tcell_reference_rds)<-"RNA"
+  tcell_reference_rds<-NormalizeData(tcell_reference_rds)
+  tcell_reference_rds<-FindVariableFeatures(tcell_reference_rds)
+  tcell_reference_rds<-ScaleData(tcell_reference_rds)
+
   atac_sub<-readRDS("tcell.SeuratObject.rds")
   DefaultAssay(atac_sub)<-"SoupXRNA"
   Idents(atac_sub)<-atac_sub$seurat_clusters
+  atac_sub<-sample_label_transfer(in_dat=atac_sub,ref_dat=tcell_reference_rds,prefix="tcell_")
+
+#Plotting transferred cell labels
+  feature_set<-colnames(atac_sub@meta.data)[startsWith(colnames(atac_sub@meta.data),prefix="tcell_prediction.score.")]
+  plt1<-VlnPlot(atac_sub, features = feature_set)
+  plt2<-FeaturePlot(atac_sub, features = feature_set,order=T,reduction="multimodal_harmony_umap",)
+  plt<-plt1/plt2
+  ggsave(plt,file="tcell_EMBOfeaturesets.pdf",height=20,width=20)
+  system("slack -F tcell_EMBOfeaturesets.pdf ryan_todo")
+
+#Plot marker genes also
   for (i in tcell_marker_genes){
     plt<-cov_plots(atac_sub=atac_sub,gene_name=i,idents_in=c("0","1","2","3","4","5"))
     ggsave(plt,file=paste0("tcell_",i,".featureplots.pdf"),limitsize=F)
     system(paste0("slack -F ","tcell_",i,".featureplots.pdf ryan_todo"))
   }
+
+#Save RDS now that there are label transfer metadata columns
+saveRDS(atac_sub,"tcell.SeuratObject.rds")
 ```
 
 ### B Cell Subtyping
-Continued session. Analyzying B cells using marker genes.
+Continued session. Analyzying B cells using marker genes. Marker gene list from https://static-content.springer.com/esm/art%3A10.1038%2Fs41467-021-22300-2/MediaObjects/41467_2021_22300_MOESM5_ESM.xlsx
 ```R
 #Plotting B cell marker genes
   bcell_marker_genes<-c("IGHM","CD27","MS4A1","CD19","CD27","CD38","CD14") #"IGHM",#,"IGHG", #IGHD
+
+#B cell RNA reference data 
+  bcell_reference_rds<-readRDS("/home/groups/CEDAR/mulqueen/ref/embo/SeuratObject_ERTotalSub.rds") #ER+ tumor T-cells
+
+  DefaultAssay(bcell_reference_rds)<-"RNA"
+  bcell_reference_rds<-NormalizeData(bcell_reference_rds)
+  bcell_reference_rds<-FindVariableFeatures(bcell_reference_rds)
+  bcell_reference_rds<-ScaleData(bcell_reference_rds)
+
+  atac_sub<-readRDS("tcell.SeuratObject.rds")
+  DefaultAssay(atac_sub)<-"SoupXRNA"
+  Idents(atac_sub)<-atac_sub$seurat_clusters
+  atac_sub<-sample_label_transfer(in_dat=atac_sub,ref_dat=tcell_reference_rds,prefix="tcell_")
+
   atac_sub<-readRDS("bcell.SeuratObject.rds")
   DefaultAssay(atac_sub)<-"SoupXRNA"
   Idents(atac_sub)<-atac_sub$seurat_clusters
@@ -4599,6 +4659,22 @@ Continued session. Analyzying B cells using marker genes.
     ggsave(plt,file=paste0("bcell_",i,".featureplots.pdf"),limitsize=F)
     system(paste0("slack -F ","bcell_",i,".featureplots.pdf ryan_todo"))
   }
+
+bcell_list<-list()
+bcell_list[["bcell_memory"]]<-c(
+  'CRIP1', 'TNFRSF13B', 'CD82', 'COTL1', 'B2M', 'RPS14', 'AIM2', 'RP11-731F5.2', 'CD27', 'GAPDH', 'CLECL1', 'LGALS1', 'VIM', 'MALAT1', 'HSPA8', 'ACP5', 'S100A6', 'HLA-A', 'ITGB1', 'C1orf186', 'LSP1', 'PSMB9', 'RP5-887A10.1', 'S100A4', 'TOMM7', 'PLP2', 'ACTG1', 'KLK1', 'CD99', 'LTB', 'CAPG', 'CAPN2', 'CHCHD10', 'CD24', 'CCDC50', 'CLIC1', 'CD70', 'GPR183', 'ARHGAP24', 'SSPN', 'CIB1', 'RAC2', 'SMARCB1', 'PVT1', 'RPS29', 'NLRC5', 'CD1C', 'LDHB', 'CTSH', 'MS4A1', 'CDC42EP3', 'NEK6', 'KCNN4', 'BANK1', 'TLR10', 'GSTK1', 'ARL6IP5', 'HIGD2A', 'ARPC1B', 'VOPP1', 'AC079767.4', 'PKM', 'NCR3', 'CNPY3', 'SCIMP', 'CD48', 'FAM102A', 'RAB31', 'SOD1', 'IFITM2', 'RP5-1171I10.5', 'KIAA1551', 'SAMSN1', 'IFITM1', 'RILPL2', 'FCRL2', 'DOK3', 'NCF4', 'S100A10', 'HSPA1B', 'CPNE5', 'AHNAK', 'TCF4', 'DYNLL1', 'SMIM14', 'ID3', 'KLF6', 'TNF', 'HSPB1', 'RHOB', 'DNAJB1')
+
+bcell_list[["bcell_naive"]]<-c('TCL1A','IL4R', 'PLPP5', 'FCER2', 'BACH2', 'CXCR4', 'CD69', 'YBX3', 'IGHD', 'BTG1', 'RPL18A', 'LAPTM5', 'CD200', 'CD37', 'CD83', 'LINC00926', 'SKAP1', 'FOXP1', 'TMEM123', 'CAMK2D', 'IL21R', 'HVCN1', 'COL19A1', 'IGLL5', 'CCR7', 'APLP2', 'SARAF', 'CLEC2B', 'TSPAN13', 'CD72', 'RP11-231C14.7', 'BCL7A', 'TAGAP', 'CLEC2D', 'SATB1', 'C1orf162', 'SNX29', 'FCRL1', 'AFF3', 'ZNF318', 'RAB30', 'CD55', 'PLEKHA2', 'HLA-DQA1', 'ADK', 'FAM129C', 'PCDH9', 'RHOH', 'ZCCHC7', 'CD79A', 'MEF2C', 'NCF1', 'SNX9', 'CDCA7L', 'REL', 'EIF1B', 'EIF2AK3', 'CD22', 'SSBP2', '43527', 'LYST', 'FOS', 'C16orf74', 'FAM26F', 'RFTN1', 'DDIT3', 'KIAA0226L', 'LAIR1', 'DGKD', 'NFKB1', 'GABPB1', 'PHACTR1', 'ATF7IP', 'SMAP2', 'SLC38A1', 'SNX2', 'SESN1', 'HIF1A', 'PNRC1', 'FCMR', 'RBM38', 'BEX4', 'LYN', 'ITPR1', 'C12orf57', 'WHSC1L1', 'BZW1', 'STK17A', 'GALNT2', 'SESTD1', 'ZFP36L1', 'DUSP1', 'HNRNPA3', 'KHDRBS2', 'BTLA', 'ABCG1', 'ITM2B', 'RNASE6', 'WDR74', 'CCND3', 'BLOC1S2', 'EAF2', 'SELL', 'RCSD1', 'TCTN1', 'IRF8', 'PIK3IP1', 'IGLC3', 'VPS37B', 'AES', 'PIM3', 'AC241585.2', 'CD79B', 'ARL4A', 'DTNBP1', 'GABPB1-AS1', 'AC245100.1', 'NUP58', 'SSH2', 'ARRDC2', 'LINC01215', 'BIRC3', 'SEC62', 'H1FX', 'LTA4H', 'PLEKHG1', '43723', 'NFKBID', 'SIPA1L1', 'FAM3C', 'TUBA1A', 'RP9', 'RCN2', 'WHAMM', 'CYTIP', 'HLA-DQB1', 'SNHG8', 'DBI', 'SLC2A3', 'ST3GAL1', 'JUN', 'CHPT1', 'PELI1', 'HIST1H1C', 'MARCKSL1', 'ZNF331')
+
+bcell_list[["bcell_plasma"]]<-c('TXNDC5', 'AQP3', 'JSRP1', 'CHPF', 'HRASLS2', 'NT5DC2', 'RP11-290F5.1', 'PRDM1', 'SDC1', 'NUCB2', 'TRIB1', 'BIK', 'SLAMF7', 'ABCB9', 'IGHGP', 'IGHJ4', 'FKBP11', 'IGHG4', 'FNDC3B', 'TNFRSF17', 'SEMA4A', 'MAN1A1', 'SDF2L1', 'CD38', 'GAS6', 'SLC1A4', 'XBP1', 'DERL3', 'RRBP1', 'PRDX4', 'MZB1', 'SPAG4', 'CD59', 'LIME1', 'LGALS3', 'RP11-1070N10.3', 'SIL1', 'ERN1', 'PDIA4', 'HDLBP', 'VIMP', 'FKBP2', 'CLPTM1L', 'LINC00152', 'SEC11C', 'WARS', 'MANF', 'SSR3', 'MYDGF', 'HYOU1', 'TXNDC11', 'SSR4', 'ITM2C', 'SEC61A1', 'HSP90B1', 'SEC24D', 'ERLEC1', 'NANS', 'HM13', 'PDK1', 'SLC44A1', 'AC093818.1', 'SPCS3', 'ELL2', 'SEL1L', 'SPATS2', 'CCDC167', 'LMAN1', 'SEC61B', 'P4HB', 'PREB', 'JCHAIN', 'MLEC', 'PPIB', 'ZBP1', 'SRPRB', 'MYO1D', 'IGLL5', 'DSTN', 'TXNDC15', 'ISOC2', 'HSPA5', 'IGLV3-1', 'FAM46C', 'ANKRD28', 'IGHA2', 'CCPG1', 'OSTC', 'GMPPB', 'MEI1', 'KDELR2', 'DNAJC1', 'ST6GALNAC4', 'SEC61G', 'CRELD2', 'LMAN2', 'DNAJC3', 'TMEM258', 'TMED9', 'SLC17A9', 'ARFGAP3', 'SPCS2', 'SUB1', 'ARSA', 'IGHG1', 'CECR1', 'DNAJB11', 'PHPT1', 'HERPUD1', 'FNDC3A', 'SEC14L1', 'TMEM208', 'IRF4', 'RPN2', 'SRGN', 'EDEM1', 'B4GALT3', 'SURF4', 'KDELR1', 'UBE2J1', 'IDH2', 'TMED10', 'DDOST', 'RPN1', 'TP53INP1', 'KLF13', 'GSTP1', 'RABAC1', 'PDIA6', 'ATF5', 'IGHG3', 'TXN', 'IFI27L2', 'DNAJB9', 'CFLAR', 'SPCS1', 'SLC9A3R1', 'GLRX', 'SRM', 'ATOX1', 'CD27', 'LGALS1', 'GORASP2', 'IGKC', 'IFI6', 'IGHA1', 'DENND1B', 'KRTCAP2', 'CANX', 'ATF4', 'SSR1', 'COX5A', 'TECR', 'COPE', 'IGKV1-12', 'MRPS24', 'SLC3A2', 'C12orf75', 'TRAM1', 'ISG20', 'ACADVL', 'CDK2AP2', 'IGHM', 'UQCRQ', 'IGHG2', 'DAD1', 'GOLGB1', 'SRPRA', 'CALR', 'PIM2', 'PABPC4', 'ROMO1', 'RPS27L', 'DNM2', 'IGKV3-20', 'MIF', 'TMEM59', 'ZNF706', 'H1FX', 'OGT', 'IGLC2', 'HCST', 'IGHV3-7', 'PRDX5', 'NDUFA1', 'IGKV3-15') 
+
+bcell_list[["bcell_cd14"]]<-c('TYROBP', 'LYZ', 'CST3', 'APOC1', 'C1QC', 'FCER1G', 'C1QA', 'C1QB', 'AIF1', 'CCL3L3', 'CCL4L2', 'CD14', 'RNASE1', 'CXCL2', 'MS4A6A', 'CCL2', 'PLAUR', 'FCN1', 'MAFB', 'SERPINA1', 'ANXA1', 'CXCL3', 'C15orf48', 'TMEM176B', 'CTSL', 'CEBPD', 'FCGR2A', 'IL1RN', 'STAB1', 'TMEM176A', 'CFD', 'IGSF6', 'CD163', 'CLEC7A', 'GPNMB', 'TNFAIP2', 'DAB2', 'CPVL', 'TREM2', 'FYB', 'MS4A4A', 'LILRB2', 'CSTA', 'TNFSF13B', 'FCGR3A', 'C5AR1', 'LRP1', 'TGFBI', 'CSF1R', 'CSF3R', 'PILRA', 'HNMT', 'FPR1', 'LINC01272', 'ETS2', 'MSR1', 'PTGS2', 'FCGR1A', 'JAML', 'VSIG4', 'RASSF4', 'MRC1', 'CD36', 'CD4', 'GIMAP4', 'LILRB4', 'NLRP3', 'LGALS2', 'RAB32', 'IL18', 'CD302', 'DMXL2', 'AOAH', 'SERPING1', 'LILRB3', 'PLXDC2', 'FRMD4B', 'CLEC4E', 'NRP1', 'SIGLEC1', 'FPR3', 'TNFRSF1A', 'SLCO2B1', 'C3AR1', 'LILRA5', 'PLA2G7', 'LTBR', 'ADGRE2', 'DAPK1', 'ASGR1', 'HK3', 'C10orf11', 'SPHK1', 'MERTK', 'FCGR1B', 'ACTN1', 'CD33', 'OSCAR', 'SLC8A1', 'PYGL', 'BST1', 'SECTM1', 'ANPEP', 'FN1', 'S100A9', 'TREM1', 'F13A1', 'VCAN', 'MGST2', 'SIRPA', 'A2M', 'PVRL2', 'SPRED1', 'KCTD12', 'PLXND1', 'LGALS3', 'SEPP1', 'IER3', 'NPL', 'SLC31A2', 'PLTP', 'PLAU', 'IL1B', 'ID2', 'LPAR6', 'CXCL8', 'APOE', 'FAM105A', 'CAMK1', 'SPP1', 'PDK4', 'GNA15', 'PHLDA2', 'RAB20', 'TIMP2', 'PLBD1', 'IFITM3', 'TLR4', 'ADM', 'CFP', 'CCL3', 'HAVCR2', 'DBNDD2', 'MPP1', 'MCTP1', 'TTYH3', 'SAMHD1', 'CD300A', 'SLC11A1', 'TIMP1', 'CREG1', 'SULT1A1', 'ENG', 'CCR1', 'DOK2', 'CREB5', 'GIMAP1', 'LST1', 'GIMAP7', 'GLUL', 'TSPAN4', 'PLXNB2', 'UPP1', 'MAF', 'S100A8', 'PTMS', 'CD68', 'HMOX1', 'SMCO4', 'G0S2', 'HBEGF', 'BRI3', 'RP11-670E13.6', 'CCL4', 'FOSL2', 'S100A11', 'RNF130', 'CYFIP1', 'CTSD', 'ADAM9', 'FCGRT', 'GPR34', 'PTPRE', 'ZNF385A', 'NINJ1', 'CTSB', 'ALDH2', 'DUSP6', 'ITGAX', 'PTAFR', 'DUSP3', 'LGALS3BP', 'CXCL16', 'LCP2', 'BLVRB', 'ADAP2', 'LRRC25', 'BLVRA', 'MS4A7', 'STX11', 'FNDC3B', 'RNF19B', 'CMTM3', 'C1orf54', 'SLC15A3', 'KLF4', 'NCF2', 'ACP2', 'GABARAPL1', 'LY96', 'CLEC4A', 'RAB13', 'MCOLN1', 'TRIB1', 'IL6R', 'LMNA', 'FGL2', 'TYMP', 'FOLR2', 'MGLL', 'SGK1', 'PLIN2', 'SRGN', 'TNFSF13', 'HCST', 'FTL', 'TBXAS1', 'NAGA', 'ABCA1', 'CSTB', 'FBP1', 'MIR4435-2HG', 'FABP5', 'CD63', 'IDH1', 'GPR137B', 'ARHGAP18', 'PLD3', 'SLC7A7', 'MNDA', 'EFHD2', 'IFI30', 'STOM', 'GAA', 'SAT1', 'ICAM1', 'NPC2', 'EMILIN2', 'CTSC', 'RENBP', 'AAK1', 'GNS', 'LGMN', 'ATP6V1B2', 'ANXA5', 'LGALS1', 'CEBPB', 'FTH1', 'ZYX', 'RBM47', 'C1orf162', 'AGTRAP', 'S100A10', 'FUCA1', 'ODF3B', 'GPX1', 'GNPDA1', 'GSN', 'S100A4', 'S100A6', 'NAIP', 'IFI6', 'LIMS1', 'SLC37A2', 'H2AFJ', 'CCDC88A', 'RAC1', 'GRN', 'MILR1', 'GBP2', 'VIM', 'SOD2', 'DRAM1', 'SPI1', 'HSPA1A', 'ARRB2', 'GSTP1', 'MT1G', 'ANXA2', 'ITGB2', 'GLIPR2', 'LINC00152', 'RGS10', 'SERPINB6', 'SLC16A3', 'PPT1', 'MYO1F', 'THEMIS2', 'TXN', 'NQO2', 'PTGER4', 'GLRX', 'C19orf38', 'MARCKS', 'SH3BGRL3', 'PSAP', 'PRDM1', 'SCARB2', 'GSTO1', 'MYL6', 'SERF2', 'HSBP1', 'CD151', 'GK', 'ASAH1', 'TSPO', 'GNG10', 'COMT', 'ZFHX3', 'ATF3', 'TUBA1C', 'PFKFB3', 'HEBP1', 'PYCARD', 'CD9', 'ATOX1', 'VAMP8', 'GNG5', 'SDCBP', 'AP2S1', 'LGALS9', 'CYSTM1', 'DPYD', 'SOCS3', 'CTSZ', 'RNF144B', 'MGAT1', 'HCK', 'PLK3', 'ABHD12', 'LAP3', 'H2AFY', 'PLSCR1', 'TMSB10', 'CD59', 'RAP2B', 'CARD16', 'FKBP15', 'CPPED1', 'BHLHE40', 'IQGAP2', 'APLP2', 'ISG15', 'GBP1', 'NANS', 'RHOC', 'TMSB4X', 'JOSD2', 'GAPDH', 'PCBD1', 'DUSP23', 'GLMP', 'NEAT1', 'VAMP5', 'C4orf48', 'LAMP2', 'NABP1', 'GABARAP', 'SH3BP2', 'RRBP1', 'RGCC', 'ABRACL', 'PPIF', 'PGD', '43526', 'BID', 'CTSA', 'GNAI2', 'RTN3', 'ATP5E', 'QKI', 'ATF5', 'STMN1', 'YIF1B', 'OAZ2', 'IL17RA', 'ACSL1', 'C10orf54', 'TIMM8B', 'LAMTOR2', 'ATP6V1F', 'NDUFV3', 'AKR1A1', 'ITM2B', 'PAK1', 'HSPA1B', 'RAB31', 'MGST3', 'TXNDC17', 'AGPAT2', 'ERN1', 'CTSS', 'DSE', 'DYNLL1', 'PDXK', 'BCL2A1', 'TALDO1', 'RNH1', 'SDF2L1', 'PTTG1IP', 'RUNX1', 'TPM4', 'BAG3', 'HN1', 'STXBP2', 'GRINA', 'ZEB2', 'AHR', 'MAFF', 'LACTB2', 'RPPH1', 'MKNK1', 'NOP10', 'MGAT4A', 'HEXB', 'PRDX3', 'UQCR10', 'TFEC', 'CLTA', 'DBI', 'PICALM', 'VMP1', 'RPS27L', 'ARPC5', 'DSTN', 'SRA1', 'TNFAIP3', 'ATP5J2', 'GADD45B', 'CFL1', 'BST2', 'ARF3', 'PHPT1', 'EHD4', 'COX6B1', 'EIF4EBP1', 'NAGK', 'CASP1', 'CKLF', 'ARPC1B', 'SLC3A2', 'RGS1', 'MFSD1', 'HSPB1', 'TMEM167A', 'NAMPT', 'CECR1', 'MTHFD2', 'RTN4', 'CBR1', 'CAPG', 'EHBP1L1', 'SERPINB1', 'GLA', 'KLF10', 'COX8A', 'MXD1', 'TCEB2', 'WARS', 'UBXN11', 'LAIR1', 'DYNLT1', 'ATP6V0C', 'XBP1', 'PLEK', 'NUP214', 'LINC00116', 'RNF181', 'HCFC1R1', 'MPEG1', 'ETV6', 'PLEKHB2', 'RBPJ', 'ATP5H', 'ABI3', 'MRPL41', 'FLOT1', 'SAMSN1', 'CRTAP', 'YWHAH', 'IFIT3', 'COX5B', 'IFNGR1', 'ATP6AP2', 'NEU1', 'P4HB', 'GTF2H5', 'TPI1', 'USMG5', 'ANAPC11', 'UQCR11', 'NDUFB1', 'ARL8B', 'ALDOA', 'CISD2', 'SLC43A2', 'PFN1', 'FKBP1A', 'ATP6AP1', 'GPX4', 'SCO2', 'NFKBIZ', 'SOX4', 'NCOA4', 'ATG3', 'FKBP2', 'ATP5J', 'PPIB', 'FGR', 'MT1E', 'OAZ1', 'ENO1', 'ARAP1', 'GUSB', 'UBL5', 'EPSTI1', 'PLEKHO1', 'HEXA', 'PRDX1', 'TNFRSF1B', 'CTA-29F11.1', 'CLEC2B', 'LDHA', 'GNPTG', 'CYBA', 'MID1IP1', 'SEPW1', 'NDUFS5', 'NDUFB3', 'TMEM14C', 'TUBA1B', 'NDUFA1', 'ATP6V0B', 'CALM3', 'PNP', 'AP1S2', 'MYO9B', 'CD86', 'LINC00936', 'NDUFC1', 'ACTG1', 'LITAF', 'ACTB', 'TNF', 'NDUFB2', 'C14orf2', 'UQCRQ', 'NUCB1', 'CFLAR', 'NDUFA2', 'NENF', 'CITED2', 'PSMA6', 'CD81', 'HEXIM1', 'POLR2L', 'HM13', 'BNIP3L', 'POMP', 'PRELID1', 'RGS2', 'NR4A3', 'YWHAE', 'CAPZB', 'NDUFS6', 'UBE2L6', 'LCP1', 'RBMS1', 'LAMTOR4', 'CYBB', 'IFI27L2', 'TKT', 'NDUFA3', 'PKM', 'SSR3', 'GLIPR1', 'COX7B', 'ATP6V0D1', 'MINOS1', 'CALM2', 'TLN1', 'NBPF19', 'TWF2', 'MYDGF', 'CLIC1', 'GLUD1', 'SEC11A', 'RNASEK', 'FAM46A', 'GMFG', 'C7orf73', 'MYEOV2', 'RNF149', 'SEC61G', 'ATP6V0E1', 'NDUFB7', 'C20orf24', 'TMEM258', 'CAPZA2', 'RAB10', 'RBX1', 'RBKS', 'IVNS1ABP', 'FERMT3', 'PSMB3', 'TMEM219', 'H2AFV', 'FAM96B', 'COX5A', 'NXF1', 'MMP24-AS1', 'RHOG', 'KDELR1', 'PHACTR1', 'OST4', 'NAA38', 'SHFM1', 'ARPC2', 'MIR155HG', 'SNX6', 'SERTAD1', 'TNFSF10', 'LIPA', 'BANF1', 'CALR', 'ENY2', 'CD99', 'COTL1', 'CALM1', 'GNB2', 'ATP5G3', 'SLC38A2', 'ZFAND5', 'GUK1', 'ROMO1', 'RAB5C', 'NDUFB4', 'RNF213', 'MAP3K8', 'DRAP1', 'PGAM1', 'BRK1', 'LAMTOR1', 'MYL12B', 'CTSH', 'PSMA7', 'NDUFA4', 'ATP5C1', 'CDKN1A', 'HSPA5', 'PSME2', 'H3F3A', 'H2AFZ', 'HSP90AA1', 'CKS2', 'COPE', 'MIDN', 'IRF7', 'GNAS', 'FLNA')
+
+
+  module_scores<-AddModuleScore(atac_sub,features=bcell_list,assay="SoupXRNA",search=TRUE,name=names(bcell_list)) #use add module function to add cell scores
+  module_scores<-module_scores@meta.data[seq(ncol(module_scores@meta.data)-(length(module_feats)-1),ncol(module_scores@meta.data))]
+  colnames(module_scores)<-names(module_feats) #it adds a number at the end to each name by default, which I don't like
+  dat_epi<-AddMetaData(dat,metadata=module_scores)
 
 
 
