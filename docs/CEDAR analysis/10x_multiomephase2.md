@@ -3372,10 +3372,109 @@ cd /home/groups/CEDAR/mulqueen/ref/embo
 ```
 
 ### Use EMBO and Swarbrick Paper Cell Types to Define Signatures
-https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4365540/pdf/13058_2015_Article_520.pdf
+Using package genefu for PAM50 pseudobulk assignment.
+https://www.bioconductor.org/packages/release/bioc/vignettes/genefu/inst/doc/genefu.html
+
+
+```R
+library(Signac)
+library(Seurat)
+set.seed(1234)
+library(ggplot2)
+library(genefu)
+library(dplyr)
+library(org.Hs.eg.db)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+#Using genefu per pseudobulked sample
+#data: Matrix of annotations with at least one column named "EntrezGene.ID"
+#'   (for ssp, scm, AIMS, and claudinLow models) or "Gene.Symbol" (for the intClust
+#'   model), dimnames being properly defined.
+#do.mapping TRUE if the mapping through Entrez Gene ids must be performed
+#'   (in case of ambiguities, the most variant probe is kept for each gene), FALSE otherwise.
+
+#CDCA1 KNTC2 ORC6L use different names in our data
+#NUF2, NDC80, ORC6 resp.
+pam50_genes<-c('ACTR3B', 'ANLN', 'BAG1', 'BCL2', 'BIRC5', 'BLVRA', 'CCNB1', 'CCNE1', 'CDC20', 'CDC6', 'NUF2', 'CDH3', 'CENPF', 'CEP55', 'CXXC5', 'EGFR', 'ERBB2', 'ESR1', 'EXO1', 'FGFR4', 'FOXA1', 'FOXC1', 'GPR160', 'GRB7', 'KIF2C', 'NDC80', 'KRT14', 'KRT17', 'KRT5', 'MAPT', 'MDM2', 'MELK', 'MIA', 'MKI67', 'MLPH', 'MMP11', 'MYBL2', 'MYC', 'NAT1', 'ORC6', 'PGR', 'PHGDH', 'PTTG1', 'RRM2', 'SFRP1', 'SLC39A6', 'TMEM45B', 'TYMS', 'UBE2C', 'UBE2T')
+
+dat<-subset(dat,EMBO_predicted.id %in% c("epithelial","cycling.epithelial")) #trying pam50 assignment with epithelial cell subset first
+
+sample_names<-paste(unlist(lapply(strsplit(colnames(dat[["RNA"]]@counts),"_"),"[",c(1))),
+  unlist(lapply(strsplit(colnames(dat[["RNA"]]@counts),"_"),"[",c(2))),sep="_")
+counts<-as.data.frame(t(dat[["RNA"]]@counts)) 
+counts<-cbind(counts,sample_names)
+counts<-as.data.frame(counts %>% group_by(sample_names) %>% summarize_all(funs(sum)))
+row.names(counts)<-counts$sample_name
+counts<-counts[,2:ncol(counts)]
+counts<-counts[,colSums(counts)>0]
+#dat_in<-as.data.frame(t(counts[x,]))
+dat_in<-counts
+dat_in<-dat_in[!(row.names(dat_in) %in% c("RM_4","sample_15","sample_19")),] #exclude NAT samples
+dat_in<-NormalizeData(dat_in,normalization.method="CLR")
+dannot<-as.data.frame(cbind(Gene.Symbol=colnames(dat_in),EntrezGene.ID=mapIds(org.Hs.eg.db, colnames(dat_in), 'ENTREZID', 'SYMBOL'),probe=colnames(dat_in)))
+pam50_out<-molecular.subtyping(sbt.model="pam50",data=dat_in,annot=dannot,do.mapping=TRUE,verbose=T)
+
+#try this as well
+pam50_out_model<-intrinsic.cluster(data=dat_in,annot=dannot,do.mapping=TRUE,std="robust",intrinsicg=pam50$centroids.map[,c("probe","EntrezGene.ID")],verbose=T,mins=0)#,mapping=dannot)
+pam50_out<-intrinsic.cluster.predict(sbt.model=pam50_out_model$model, data=dat_in, annot=dannot, do.mapping=TRUE,do.prediction.strength=TRUE,verbose=TRUE)
+saveRDS(pam50_out,file="pseudobulk_pam50.rds")
+
+
+#tried just epithelial, tried both old method (intrinsic cluster) and updated method (molecular subtyping). maybe play around with normalizing first?
+#limit to epithelial? or maybe read up on proper normalization? our HER2+ isn't being labelled as such
 
 ```
-For calling molecular subtypes using the PAM50 method3, we processed “pseudo-bulk” expression profiles for each tumor, named “Allcells-Pseudobulk”, in a similar manner to any bulk RNA-Seq sample (i.e. upper quartile normalized-log transformed). Prior to PAM50 subtyping, we adjusted a new sample set relative to the PAM50 training set according to their ER and HER2 status as detailed by Zhao et al. 63. We performed whole-transcriptome RNA-Seq using Ribosomal Depletion (Illumina TruSeq Total RNA) on 24 matching tumor samples from our single-cell dataset. RNA was extracted from diagnostic FFPE blocks using the High Pure RNA Paraffin Kit (Roche #03 270 289 001). Libraries were sequenced on the HiSeq 2500 platform (Illumina) with 50 bp paired end reads. Transcript quantification was performed using Salmon64. We then called PAM50 on each bulk tumor using Zhao et al. 63 normalization and then the PAM50 centroid predictor (Supplementary Table 3) 
+
+Trying
+
+Using https://github.com/StaafLab/sspbc/archive/refs/heads/main.zip for multiple classifications
+https://www.nature.com/articles/s41523-022-00465-3#code-availability
+
+
+```R
+#wget https://github.com/StaafLab/sspbc/archive/refs/heads/main.zip
+#file located in /home/groups/CEDAR/mulqueen/src/sspbc/sspbc-main/package
+#R CMD INSTALL sspbc_1.0.tar.gz
+library(Signac)
+library(Seurat)
+set.seed(1234)
+library(ggplot2)
+library(genefu)
+library(dplyr)
+library(org.Hs.eg.db)
+library(sspbc)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+#dat<-subset(dat,EMBO_predicted.id %in% c("epithelial","cycling.epithelial")) #trying pam50 assignment with epithelial cell subset first
+
+sample_names<-paste(unlist(lapply(strsplit(colnames(dat[["RNA"]]@counts),"_"),"[",c(1))),
+  unlist(lapply(strsplit(colnames(dat[["RNA"]]@counts),"_"),"[",c(2))),sep="_")
+counts<-as.data.frame(t(dat[["RNA"]]@counts)) 
+counts<-cbind(counts,sample_names)
+counts<-as.data.frame(counts %>% group_by(sample_names) %>% summarize_all(funs(sum)))
+row.names(counts)<-counts$sample_name
+counts<-counts[,2:ncol(counts)]
+counts<-counts[,colSums(counts)>0]
+dat_in<-counts
+dat_in<-dat_in[!(row.names(dat_in) %in% c("RM_4","sample_15","sample_19")),] #exclude NAT samples
+dat_in<-as.data.frame(t(dat_in))
+
+#set up matrix by unique entrez gene names
+dat_in<-dat_in[!duplicated(mapIds(org.Hs.eg.db, row.names(dat_in), 'ENTREZID', 'SYMBOL')),]
+dat_in<-dat_in[!isNA(mapIds(org.Hs.eg.db, row.names(dat_in), 'ENTREZID', 'SYMBOL')),]
+row.names(dat_in)<-mapIds(org.Hs.eg.db, row.names(dat_in), 'ENTREZID', 'SYMBOL')
+myresults <- applySSP(gex=as.matrix(dat_in), id=row.names(dat_in), ssp.name="ssp.pam50",id.type="EntrezGene",report=TRUE)
+
+
+
+#dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+dat_pam50<-setNames(nm=row.names(dat@meta.data),myresults[match(dat@meta.data$sample,row.names(myresults)),1])
+dat<-AddMetaData(dat,dat_pam50,col.name="sspbc_PAM50")
+
 ```
 <!-- Done -->
 
@@ -3384,6 +3483,7 @@ library(Signac)
 library(Seurat)
 set.seed(1234)
 library(ggplot2)
+library(genefu)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
 
@@ -3404,6 +3504,7 @@ dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
   names(PAM50_in)<-paste0("PAM50_",names(PAM50_in))
   features_in=c(immune_in,PAM50_in)   
 
+molecular.subtyping(sbt.model="pam50")
 #SCSubtype Features determined by Swarbrick manuscript (Supp Table 4)
   module_feats<-list()
   module_feats[["Basal_SC"]]=c('EMP1', 'TAGLN', 'TTYH1', 'RTN4', 'TK1', 'BUB3', 'IGLV3.25', 'FAM3C', 'TMEM123', 'KDM5B', 'KRT14', 'ALG3', 'KLK6', 'EEF2', 'NSMCE4A', 'LYST', 'DEDD', 'HLA.DRA', 'PAPOLA', 'SOX4', 'ACTR3B', 'EIF3D', 'CACYBP', 'RARRES1', 'STRA13', 'MFGE8', 'FRZB', 'SDHD', 'UCHL1', 'TMEM176A', 'CAV2', 'MARCO', 'P4HB', 'CHI3L2', 'APOE', 'ATP1B1', 'C6orf15', 'KRT6B', 'TAF1D', 'ACTA2', 'LY6D', 'SAA2', 'CYP27A1', 'DLK1', 'IGKV1.5', 'CENPW', 'RAB18', 'TNFRSF11B', 'VPS28', 'HULC', 'KRT16', 'CDKN2A', 'AHNAK2', 'SEC22B', 'CDC42EP1', 'HMGA1', 'CAV1', 'BAMBI', 'TOMM22', 'ATP6V0E2', 'MTCH2', 'PRSS21', 'HDAC2', 'ZG16B', 'GAL', 'SCGB1D2', 'S100A2', 'GSPT1', 'ARPC1B', 'NIT1', 'NEAT1', 'DSC2', 'RP1.60O19.1', 'MAL2', 'TMEM176B', 'CYP1B1', 'EIF3L', 'FKBP4', 'WFDC2', 'SAA1', 'CXCL17', 'PFDN2', 'UCP2', 'RAB11B', 'FDCSP', 'HLA.DPB1', 'PCSK1N', 'C4orf48', 'CTSC')
