@@ -2596,8 +2596,10 @@ library(Seurat)
 library(Signac)
 library(CopyscAT)
 library(BSgenome.Hsapiens.UCSC.hg38)
+library(parallel)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 args = commandArgs(trailingOnly=TRUE)
+
 
 #initialize the environment
 initialiseEnvironment(genomeFile="/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_chrom_sizes.tsv",
@@ -2610,7 +2612,7 @@ initialiseEnvironment(genomeFile="/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_
                       upperTrim=0.8)
 
 #Set up copyscAT Loop per sample
-copyscAT_per_sample<-function(x,prediction="EMBO"){
+copyscAT_per_sample<-function(x,prediction="EMBO",knn_in=FALSE,cores=1){
   if(x %in% 1:12){
     sample_name<-paste0("sample_",x)
     wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
@@ -2627,12 +2629,21 @@ copyscAT_per_sample<-function(x,prediction="EMBO"){
     outname<-x
     file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
   }
+  if (knn_in==TRUE){
+  knn_list<-read.table(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/WGS_eval/knn/",sample_name,"_knn5_neighbors.csv"),
+    sep=",",header=T)
+  knn_list<-as.data.frame(apply(knn_list, 2, function(y) gsub("[.]", "-", y)))
+  #knn list is csv format <rowid><cell><neighbor1><neighbor2><neighbor3><neighbor4>
+  }
   dat<-readRDS("phase2.QC.filt.SeuratObject.rds") #use QC controlled bulk seurat object as input
   dat<-subset(dat,sample==outname) #subset data to sample specified by x and outname
-
   obj_name=basename(file_in)
   dir_in=dirname(file_in)
+  if (knn_in == TRUE){
+  system(paste0("mkdir ",dir_in,"/copyscat_knn"))
+  } else {
   system(paste0("mkdir ",dir_in,"/copyscat"))
+  }
   #do python script preprocessing (basically just count fragments per window per cell)
   system(paste0("python /home/groups/CEDAR/mulqueen/ref/copyscat/process_fragment_file.py ",
   " -i ",dir_in,"/atac_fragments.tsv.gz",
@@ -2641,9 +2652,21 @@ copyscAT_per_sample<-function(x,prediction="EMBO"){
   " -f ","500",
   " -g ","/home/groups/CEDAR/mulqueen/ref/copyscat/hg38_chrom_sizes.tsv",
   " -c ",dir_in,"/metadata.tsv")) #modification takes in metadata table to filter cells by name, ignores -f flag
+  if (knn_in==TRUE){
+  setOutputFile(paste0(dir_in,"/copyscat_knn"),"copyscat_out_knn")
+  } else {
   setOutputFile(paste0(dir_in,"/copyscat"),"copyscat_out")
+  }
+
   #PART 1: INITIAL DATA NORMALIZATION
   scData<-readInputTable(paste0(dir_in,"/copyscat/copyscat.1mb.tsv"))
+  #here is an if else, one python script also accounts for metacell merged cells, other is strictly single cell
+  if(knn_in==TRUE){
+    scData2<-as.data.frame(do.call("rbind",mclapply(1:nrow(knn_list), function(x){colSums(scData[row.names(scData) %in% unlist(knn_list[x,]),])},mc.cores=cores)))
+    row.names(scData2)<-knn_list$cell
+    scData<-scData2
+  }
+
   #collapse into chromosome arm level
   summaryFunction<-cutAverage
   scData_k_norm <- normalizeMatrixN(scData,logNorm = FALSE,maxZero=2000,imputeZeros = FALSE,blacklistProp = 0.8,blacklistCutoff=125,dividingFactor=1,upperFilterQuantile = 0.95)
@@ -2652,7 +2675,6 @@ copyscAT_per_sample<-function(x,prediction="EMBO"){
   #PART 2: ASSESSMENT OF CHROMOSOME-LEVEL CNVs 
   #ALTERNATE METHOD FOR CNV CALLING (with normal cells as background)
   #Using same normal cell selection as used for CASPER and InferCNV
-  DefaultAssay(dat)<-"RNA"
   dat$cnv_ref<-"FALSE"
   if(prediction=="EMBO"){
   dat@meta.data[!(dat$EMBO_predicted.id %in% c("epithelial")),]$cnv_ref<-"TRUE" #set cnv ref by cell type
@@ -2661,6 +2683,7 @@ copyscAT_per_sample<-function(x,prediction="EMBO"){
   dat<-subset(dat,predicted.id %in% c("Cancer Epithelial","Normal Epithelial","Endothelial","T-cells","B-cells","Myeloid","Plasmablasts","PVL","CAFs"))
   } 
   control<-names(dat$cnv_ref == "TRUE") #pulling this from the inferCNV function
+
   #compute central tendencies based on normal cells only
   colnames(scData_collapse)<-gsub(outname,"",colnames(scData_collapse))
   control<-gsub(paste0(outname,"_"),"",control)
@@ -2684,18 +2707,27 @@ copyscAT_per_sample<-function(x,prediction="EMBO"){
     medianQuantileCutoff = -1,
     normalCells=control) 
   candidate_cnvs_clean<-clusterCNV(initialResultList = candidate_cnvs,medianIQR = candidate_cnvs[[3]],minDiff=1.0) #= 1.5)
-  saveRDS(candidate_cnvs_clean,file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs_matrix.rds"))
+
+  if(knn_in==TRUE){
+  saveRDS(candidate_cnvs_clean,file=paste0(dir_in,"/copyscat_knn/",sample_name,"copyscat_cnvs_matrix_knn.rds"))
+  }else{saveRDS(candidate_cnvs_clean,file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs_matrix.rds"))}
 
   #to save this data you can use annotateCNV4 as per usual, using normal barcodes
   final_cnv_list<-annotateCNV4B(candidate_cnvs_clean, expectedNormals=control, saveOutput=TRUE,
     outputSuffix = "clean_cnv_b2",sdCNV = 0.6,filterResults=FALSE,filterRange=0.4,minAlteredCellProp = 0.5)
-  saveRDS(final_cnv_list,file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs.rds"))
+
+  if(knn_in==TRUE){
+  saveRDS(final_cnv_list,file=paste0(dir_in,"/copyscat_knn/",sample_name,"copyscat_cnvs_knn.rds"))
+  }else{saveRDS(final_cnv_list,file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs.rds"))}
+
   print(paste("Finished sample",sample_name))
 }
 
-copyscAT_per_sample(x=as.character(args[1]))
+copyscAT_per_sample(x=as.character(args[1]),knn=FALSE)
+copyscAT_per_sample(x=as.character(args[1]),knn=TRUE)
 
 #lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2", "RM_3","RM_4",4,10,12),copyscAT_per_sample)
+#lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2", "RM_3","RM_4",4,10,12),function(x) copyscAT_per_sample(x,knn_in=TRUE,cores=5))
 #copyscat_dat<-readRDS(file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs_matrix.rds"))
 
 ```
@@ -3399,7 +3431,7 @@ dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
 #NUF2, NDC80, ORC6 resp.
 pam50_genes<-c('ACTR3B', 'ANLN', 'BAG1', 'BCL2', 'BIRC5', 'BLVRA', 'CCNB1', 'CCNE1', 'CDC20', 'CDC6', 'NUF2', 'CDH3', 'CENPF', 'CEP55', 'CXXC5', 'EGFR', 'ERBB2', 'ESR1', 'EXO1', 'FGFR4', 'FOXA1', 'FOXC1', 'GPR160', 'GRB7', 'KIF2C', 'NDC80', 'KRT14', 'KRT17', 'KRT5', 'MAPT', 'MDM2', 'MELK', 'MIA', 'MKI67', 'MLPH', 'MMP11', 'MYBL2', 'MYC', 'NAT1', 'ORC6', 'PGR', 'PHGDH', 'PTTG1', 'RRM2', 'SFRP1', 'SLC39A6', 'TMEM45B', 'TYMS', 'UBE2C', 'UBE2T')
 
-dat<-subset(dat,EMBO_predicted.id %in% c("epithelial","cycling.epithelial")) #trying pam50 assignment with epithelial cell subset first
+#dat<-subset(dat,EMBO_predicted.id %in% c("epithelial","cycling.epithelial")) #trying pam50 assignment with epithelial cell subset first
 
 sample_names<-paste(unlist(lapply(strsplit(colnames(dat[["RNA"]]@counts),"_"),"[",c(1))),
   unlist(lapply(strsplit(colnames(dat[["RNA"]]@counts),"_"),"[",c(2))),sep="_")
@@ -3417,17 +3449,20 @@ dannot<-as.data.frame(cbind(Gene.Symbol=colnames(dat_in),EntrezGene.ID=mapIds(or
 pam50_out<-molecular.subtyping(sbt.model="pam50",data=dat_in,annot=dannot,do.mapping=TRUE,verbose=T)
 
 #try this as well
-pam50_out_model<-intrinsic.cluster(data=dat_in,annot=dannot,do.mapping=TRUE,std="robust",intrinsicg=pam50$centroids.map[,c("probe","EntrezGene.ID")],verbose=T,mins=0)#,mapping=dannot)
-pam50_out<-intrinsic.cluster.predict(sbt.model=pam50_out_model$model, data=dat_in, annot=dannot, do.mapping=TRUE,do.prediction.strength=TRUE,verbose=TRUE)
-saveRDS(pam50_out,file="pseudobulk_pam50.rds")
+#pam50_out_model<-intrinsic.cluster(data=dat_in,annot=dannot,do.mapping=TRUE,std="robust",intrinsicg=pam50$centroids.map[,c("probe","EntrezGene.ID")],verbose=T,mins=0)#,mapping=dannot)
+#pam50_out<-intrinsic.cluster.predict(sbt.model=pam50_out_model$model, data=dat_in, annot=dannot, do.mapping=TRUE,do.prediction.strength=TRUE,verbose=TRUE)
+#saveRDS(pam50_out,file="pseudobulk_pam50.rds")
 
+pam50_meta<-setNames(nm=row.names(dat@meta.data),pam50_out$subtype[match(dat$sample, names(pam50_out$subtype))])
+dat<-AddMetaData(dat,pam50_meta,col.name="pseudobulk_genefu_pam50")
+saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
 
 #tried just epithelial, tried both old method (intrinsic cluster) and updated method (molecular subtyping). maybe play around with normalizing first?
 #limit to epithelial? or maybe read up on proper normalization? our HER2+ isn't being labelled as such
 
 ```
 
-Trying
+Running SSpbc method as well
 
 Using https://github.com/StaafLab/sspbc/archive/refs/heads/main.zip for multiple classifications
 https://www.nature.com/articles/s41523-022-00465-3#code-availability
@@ -3473,7 +3508,8 @@ myresults <- applySSP(gex=as.matrix(dat_in), id=row.names(dat_in), ssp.name="ssp
 
 #dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
 dat_pam50<-setNames(nm=row.names(dat@meta.data),myresults[match(dat@meta.data$sample,row.names(myresults)),1])
-dat<-AddMetaData(dat,dat_pam50,col.name="sspbc_PAM50")
+dat<-AddMetaData(dat,dat_pam50,col.name="pseudobulk_sspbc_PAM50")
+saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
 
 ```
 <!-- Done -->
@@ -4277,16 +4313,17 @@ harmony_sample_integration<-function(x,outname,res=0.1){
   saveRDS(dat,file=x)
 }
 
-harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial",res=0.1)
-harmony_sample_integration(x="myeloid.SeuratObject.rds",outname="myeloid",res=0.2)
+harmony_sample_integration(x="phase2.QC.filt.SeuratObject.rds",outname="all_cells",res=0.1) #done
+harmony_sample_integration(x="normalepithelial.SeuratObject.rds",outname="normalepithelial",res=0.1) #done
 harmony_sample_integration(x="tcell.SeuratObject.rds",outname="tcell",res=0.5)
+
+harmony_sample_integration(x="myeloid.SeuratObject.rds",outname="myeloid",res=0.2)
 harmony_sample_integration(x="plasmacell.SeuratObject.rds",outname="plasmacell",res=0.1)
 harmony_sample_integration(x="fibroblast.SeuratObject.rds",outname="fibroblast",res=0.3)
 harmony_sample_integration(x="bcell.SeuratObject.rds",outname="bcell",res=0.2)
 harmony_sample_integration(x="endothelial.SeuratObject.rds",outname="endothelial",res=0.1)
 harmony_sample_integration(x="pericyte.SeuratObject.rds",outname="pericyte",res=0.1)
-harmony_sample_integration(x="phase2.QC.filt.SeuratObject.rds",outname="all_cells",res=0.1)
-harmony_sample_integration(x="normalepithelial.SeuratObject.rds",outname="normalepithelial",res=0.1)
+harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial",res=0.1)
 
 ```
 
@@ -4675,7 +4712,10 @@ sample_label_transfer<-function(in_dat,ref_dat,prefix="Tcell_"){
   return(in_dat)
   }
 
-
+```
+### Epithelial Subtyping
+Continued session. 
+```R
 #Plotting Normal Epithelial Marker genes
   normal_epithelial_marker_genes<-c("KRT5", "ACTA2", "MYLK", "SNAI2", "NOTCH4", "DKK3", "ESR1", "PGR", "FOXA1", "TNFRSF11A", "KIT", "SOX10")
   atac_sub<-readRDS("normalepithelial.SeuratObject.rds")
@@ -4698,6 +4738,7 @@ sample_label_transfer<-function(in_dat,ref_dat,prefix="Tcell_"){
 
 ### T cell Subtyping
 Continued session. Analyzing T cells using marker genes and label transfer of T cell subtypes.
+Using 4 clusters (res 0.3)
 
 ```R
 #Plotting T cell marker genes
@@ -4711,26 +4752,30 @@ Continued session. Analyzing T cells using marker genes and label transfer of T 
 
   atac_sub<-readRDS("tcell.SeuratObject.rds")
   DefaultAssay(atac_sub)<-"SoupXRNA"
+  atac_sub <- FindClusters(atac_sub, graph.name="wknn",verbose = FALSE,resolution=0.3)
   Idents(atac_sub)<-atac_sub$seurat_clusters
   atac_sub<-sample_label_transfer(in_dat=atac_sub,ref_dat=tcell_reference_rds,prefix="tcell_")
 
 #Plotting transferred cell labels
   feature_set<-colnames(atac_sub@meta.data)[startsWith(colnames(atac_sub@meta.data),prefix="tcell_prediction.score.")]
-  plt1<-VlnPlot(atac_sub, features = feature_set)
-  plt2<-FeaturePlot(atac_sub, features = feature_set,order=T,reduction="multimodal_harmony_umap",)
-  plt<-plt1/plt2
+  plt1<-DimPlot(atac_sub,group.by="seurat_clusters",reduction="multimodal_harmony_umap")
+  plt2<-VlnPlot(atac_sub, features = feature_set)
+  plt3<-FeaturePlot(atac_sub, features = feature_set,order=T,reduction="multimodal_harmony_umap")
+  plt<-plt1/plt2/plt3
   ggsave(plt,file="tcell_EMBOfeaturesets.pdf",height=20,width=20)
   system("slack -F tcell_EMBOfeaturesets.pdf ryan_todo")
 
 #Plot marker genes also
   for (i in tcell_marker_genes){
-    plt<-cov_plots(atac_sub=atac_sub,gene_name=i,idents_in=c("0","1","2","3","4","5"))
+    plt<-cov_plots(atac_sub=atac_sub,gene_name=i,idents_in=unique(Idents(atac_sub)))
     ggsave(plt,file=paste0("tcell_",i,".featureplots.pdf"),limitsize=F)
     system(paste0("slack -F ","tcell_",i,".featureplots.pdf ryan_todo"))
   }
 
 #Save RDS now that there are label transfer metadata columns
 saveRDS(atac_sub,"tcell.SeuratObject.rds")
+
+
 ```
 
 ### B Cell Subtyping
@@ -4740,23 +4785,32 @@ Continued session. Analyzying B cells using marker genes. Marker gene list from 
   bcell_marker_genes<-c("IGHM","CD27","MS4A1","CD19","CD27","CD38","CD14") #"IGHM",#,"IGHG", #IGHD
 
 #B cell RNA reference data 
-  bcell_reference_rds<-readRDS("/home/groups/CEDAR/mulqueen/ref/embo/SeuratObject_ERTotalSub.rds") #ER+ tumor T-cells
+  bcell_reference_rds<-readRDS("/home/groups/CEDAR/mulqueen/ref/embo/SeuratObject_ERTotalSub.rds") #ER+ tumor non epithelial cells
 
   DefaultAssay(bcell_reference_rds)<-"RNA"
   bcell_reference_rds<-NormalizeData(bcell_reference_rds)
   bcell_reference_rds<-FindVariableFeatures(bcell_reference_rds)
   bcell_reference_rds<-ScaleData(bcell_reference_rds)
 
-  atac_sub<-readRDS("tcell.SeuratObject.rds")
+  atac_sub<-readRDS("bcell.SeuratObject.rds")
   DefaultAssay(atac_sub)<-"SoupXRNA"
   Idents(atac_sub)<-atac_sub$seurat_clusters
-  atac_sub<-sample_label_transfer(in_dat=atac_sub,ref_dat=tcell_reference_rds,prefix="tcell_")
+  atac_sub <- FindClusters(atac_sub, graph.name="wknn",verbose = FALSE,resolution=0.3)
+  atac_sub<-sample_label_transfer(in_dat=atac_sub,ref_dat=bcell_reference_rds,prefix="bcell_")
+
+  feature_set<-colnames(atac_sub@meta.data)[startsWith(colnames(atac_sub@meta.data),prefix="bcell_prediction.score.")]
+  plt1<-DimPlot(atac_sub,group.by="seurat_clusters",reduction="multimodal_harmony_umap")
+  plt2<-VlnPlot(atac_sub, features = feature_set)
+  plt3<-FeaturePlot(atac_sub, features = feature_set,order=T,reduction="multimodal_harmony_umap")
+  plt<-plt1/plt2/plt3
+  ggsave(plt,file="bcell_EMBOfeaturesets.pdf",height=20,width=20)
+  system("slack -F bcell_EMBOfeaturesets.pdf ryan_todo")
 
   atac_sub<-readRDS("bcell.SeuratObject.rds")
   DefaultAssay(atac_sub)<-"SoupXRNA"
   Idents(atac_sub)<-atac_sub$seurat_clusters
   for (i in bcell_marker_genes){
-    plt<-cov_plots(atac_sub=atac_sub,gene_name=i,idents_in=c("0","1","2"))
+    plt<-cov_plots(atac_sub=atac_sub,gene_name=i,idents_in=unique(Idents(atac_sub)))
     ggsave(plt,file=paste0("bcell_",i,".featureplots.pdf"),limitsize=F)
     system(paste0("slack -F ","bcell_",i,".featureplots.pdf ryan_todo"))
   }
@@ -4781,12 +4835,10 @@ bcell_list[["bcell_cd14"]]<-c('TYROBP', 'LYZ', 'CST3', 'APOC1', 'C1QC', 'FCER1G'
 
 ```
 
-
 ### TBD
 "myeloid.SeuratObject.rds"
 "plasmacell.SeuratObject.rds"
 "fibroblast.SeuratObject.rds"
-"bcell.SeuratObject.rds"
 "endothelial.SeuratObject.rds"
 "pericyte.SeuratObject.rds"
 
