@@ -1374,6 +1374,40 @@ dat<-AddMetaData(dat,dat_tc$celltype,col.name="TCell_Subtype")
 saveRDS(dat,"SeuratObject_ERProcessed.rds")
 ```
 
+### Using PBMC Data set for Immune Cell Subtyping
+Files downloaded from UCSC Cell Browser (https://cells.ucsc.edu/?ds=multimodal-pbmc+sct) and this manuscript https://www.cell.com/cell/fulltext/S0092-8674(21)00583-3
+These will be used later for higher resolution immune cell subtyping.
+
+```bash
+mkdir /home/groups/CEDAR/mulqueen/ref/hao
+```
+
+```R
+library(Seurat)
+library(ggplot2)
+library(data.table)
+
+setwd("/home/groups/CEDAR/mulqueen/ref/hao")
+
+metadata<-fread("https://cells.ucsc.edu/multimodal-pbmc/sct/meta.tsv") #download metadata
+metadata<-as.data.frame(metadata)
+row.names(metadata)<-metadata$V1
+
+mat<-fread("https://cells.ucsc.edu/multimodal-pbmc/sct/exprMatrix.tsv.gz") #download counts
+genes = mat[,1][[1]]
+genes = gsub(".+[|]", "", genes)
+genes_list<-which(!duplicated(genes)) #remove duplicate gene names
+mat = data.frame(mat[genes_list,-1], row.names=genes[genes_list])
+
+hao <- CreateSeuratObject(
+  counts = mat,
+  assay = "RNA"
+)
+hao<-AddMetaData(hao,metadata=metadata)
+
+saveRDS(hao,"hao.SeuratObject.Rds")
+
+```
 ## Swarbrick Paper Label Transfer
 <!-- Done -->
 
@@ -1970,6 +2004,8 @@ ggsave(plt1,file="Embo_barplot_qc_celltype.pdf")
 system("slack -F Embo_barplot_qc_celltype.pdf ryan_todo")
 
 ```
+
+
 ### Vibe check on cell type prediction
 <!-- Done -->
 
@@ -2229,6 +2265,7 @@ infercnv_per_sample<-function(x,prediction="EMBO"){
   write.table(gene_order,file="inferCNV.gene_order.txt",sep="\t",col.names=F,row.names=F,quote=F)
   gene_order<-read.table("inferCNV.gene_order.txt")
 
+  #outname="sample_10redo"
   counts=as.matrix(dat@assays$RNA@counts[,colnames(dat)])
   write.table(counts,file=paste0(wd,"/",outname,"_inferCNV.counts.txt"),sep="\t",col.names=T,row.names=T,quote=F)
   cell_annotation=as.data.frame(cbind(row.names(dat@meta.data),dat@meta.data["cnv_ref"]))
@@ -2249,8 +2286,9 @@ infercnv_per_sample<-function(x,prediction="EMBO"){
                                HMM_report_by="cell",
                                resume_mode=T,
                                HMM_type='i3',
-                               num_threads=30)
+                               num_threads=10)
   saveRDS(infercnv_obj,paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
+  #saveRDS(infercnv_obj,paste0(wd,"/","sample_10_inferCNV/",outname,".inferCNV.Rds"))
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.png"," -T ","\"",outname,"\"" ," ryan_todo") )
   system(paste0("slack -F ",wd,"/",outname,"_inferCNV","/","infercnv.19_HMM_predHMMi3.hmm_mode-samples.Pnorm_0.5.repr_intensities.png"," -T ","\"",outname,"\"" ," ryan_todo") )
 
@@ -2258,7 +2296,7 @@ infercnv_per_sample<-function(x,prediction="EMBO"){
 
 infercnv_per_sample(x=as.character(args[1]),prediction="EMBO")
 
-#lapply(c(4,10),infercnv_per_sample)
+#lapply(c(10,8),infercnv_per_sample)
 
 ```
 
@@ -2272,15 +2310,16 @@ infercnv_slurm.sh
 ```bash
 #!/bin/bash
 #SBATCH --nodes=1 #request 1 node
-#SBATCH --array=0-18
+#SBATCH --array=0
 #SBATCH --tasks-per-node=1 ##we want our node to do N tasks at the same time
-#SBATCH --cpus-per-task=30 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
-#SBATCH --mem-per-cpu=10gb ## request gigabyte per cpu
+#SBATCH --cpus-per-task=40 ##ask for CPUs per task (5 * 8 = 40 total requested CPUs)
+#SBATCH --mem-per-cpu=15gb ## request gigabyte per cpu
 #SBATCH --qos=long_jobs
 #SBATCH --time=120:00:00 ## ask for 1 hour on the node
 #SBATCH --
+array_in=("10")
 
-array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4")
+#array_in=("1" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "15" "16" "19" "20" "RM_1" "RM_2" "RM_3" "RM_4")
 sample_in=${array_in[$SLURM_ARRAY_TASK_ID]}
 multiome_dir="/home/groups/CEDAR/mulqueen/projects/multiome"
 
@@ -2633,6 +2672,7 @@ copyscAT_per_sample<-function(x,prediction="EMBO",knn_in=FALSE,cores=1){
   knn_list<-read.table(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/WGS_eval/knn/",sample_name,"_knn5_neighbors.csv"),
     sep=",",header=T)
   knn_list<-as.data.frame(apply(knn_list, 2, function(y) gsub("[.]", "-", y)))
+  print("Knn_In Found")
   #knn list is csv format <rowid><cell><neighbor1><neighbor2><neighbor3><neighbor4>
   }
   dat<-readRDS("phase2.QC.filt.SeuratObject.rds") #use QC controlled bulk seurat object as input
@@ -2641,6 +2681,7 @@ copyscAT_per_sample<-function(x,prediction="EMBO",knn_in=FALSE,cores=1){
   dir_in=dirname(file_in)
   if (knn_in == TRUE){
   system(paste0("mkdir ",dir_in,"/copyscat_knn"))
+  print("Knn_In Found")
   } else {
   system(paste0("mkdir ",dir_in,"/copyscat"))
   }
@@ -2728,6 +2769,7 @@ copyscAT_per_sample(x=as.character(args[1]),knn=TRUE)
 
 #lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2", "RM_3","RM_4",4,10,12),copyscAT_per_sample)
 #lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,"RM_1","RM_2", "RM_3","RM_4",4,10,12),function(x) copyscAT_per_sample(x,knn_in=TRUE,cores=5))
+lapply(c(4,11,10,12),function(x) copyscAT_per_sample(x,knn_in=TRUE,cores=5))
 #copyscat_dat<-readRDS(file=paste0(dir_in,"/copyscat/",sample_name,"copyscat_cnvs_matrix.rds"))
 
 ```
@@ -2955,7 +2997,7 @@ plot_singlecell_cnvs<-function(dat=dat,cnv=t(infercnv_obj@expr.data),assay="infe
   dat@meta.data[dat$predicted.id %in% c("Endothelial","B-cells","Myeloid","Plasmablasts","PVL","T-cells"),]$cnv_ref<-"TRUE" #this is same as initial run of inferCNV, just didn't save seurat object
   cnv_ref<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="TRUE",]),]
   cnv<-cnv[row.names(cnv) %in% row.names(dat@meta.data[dat@meta.data$cnv_ref=="FALSE",]),]
-  col_fun = colorRamp2(c(min(unlist(cnv)), median(unlist(cnv)), max(unlist(cnv))), c("blue", "white", "red"))
+  #col_fun = colorRamp2(c(min(unlist(cnv)), median(unlist(cnv)), max(unlist(cnv))), c("blue", "white", "red"))
 
   #discretized window calls
   cnv_discrete<-matrix(0,ncol=ncol(cnv),nrow=nrow(cnv))
@@ -3082,7 +3124,7 @@ HMMcopy_comparison<-function(x,file_in="phase2.QC.filt.SeuratObject.rds"){
     counts<-readRDS(file=paste0(wd,"/",outname,"_bulkWGS_HMMcopy.100kb.rds"))
     plt_100kb<-plot_bulk_genome(counts)+ggtitle(paste(outname,"100kb Bins",mean(counts$start-counts$end)))
 
-  #InferCNV
+  # #InferCNV
     assay="InferCNV"
     #3 state model is here (gene by cell name data is in i3_hmm@expr.data)
     i3_hmm<-readRDS(paste0(wd,"/",outname,"_inferCNV","/19_HMM_pred.repr_intensitiesHMMi3.hmm_mode-samples.Pnorm_0.5.infercnv_obj"))
@@ -3124,120 +3166,181 @@ HMMcopy_comparison<-function(x,file_in="phase2.QC.filt.SeuratObject.rds"){
     write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_infercnv,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
     write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_infercnv_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 
-  #CASPER 
-    #casper discretized matrix:
-    dir_in<-wd
-    casper_cnv<-readRDS(paste0(dir_in,"/casper/",outname,".finalgenemat.rds"))
-    #Run different segmentation scales? https://rpubs.com/akdes/673120 (section 3)
-    assay="CASPER"
-    print(paste(outname,"CASPER windows"))
-    casper_obj<-readRDS(paste0(dir_in,"/casper/",outname,".finalobj.rds"))
-    #Format Data
-    casper_bed<-casper_obj@annotation[,c("Chr","start","end")]
-    row.names(casper_bed)<-casper_obj@annotation$Gene
-    casper_bed$Chr<-paste0("chr",casper_bed$Chr)
-    colnames(casper_bed)<-c("chr","start","end")
-    #Summarize Data over WGS
-    refGR<-makeGRangesFromDataFrame(counts)
-    testGR<-makeGRangesFromDataFrame(casper_bed)
-    hits<-findOverlaps(refGR,testGR)
-    overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
-    percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
-    bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
-    hmmcopy_casper_win<-cbind(casper_bed,
-      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(casper_bed),function(x) 
-          mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
-      HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(casper_bed),function(x) 
-          weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
-      HMMcopy_mode_copystate=unlist(lapply(1:nrow(casper_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+  # #CASPER 
+  #   #casper discretized matrix:
+  #   dir_in<-wd
+  #   casper_cnv<-readRDS(paste0(dir_in,"/casper/",outname,".finalgenemat.rds"))
+  #   #Run different segmentation scales? https://rpubs.com/akdes/673120 (section 3)
+  #   assay="CASPER"
+  #   print(paste(outname,"CASPER windows"))
+  #   casper_obj<-readRDS(paste0(dir_in,"/casper/",outname,".finalobj.rds"))
+  #   #Format Data
+  #   casper_bed<-casper_obj@annotation[,c("Chr","start","end")]
+  #   row.names(casper_bed)<-casper_obj@annotation$Gene
+  #   casper_bed$Chr<-paste0("chr",casper_bed$Chr)
+  #   colnames(casper_bed)<-c("chr","start","end")
+  #   #Summarize Data over WGS
+  #   refGR<-makeGRangesFromDataFrame(counts)
+  #   testGR<-makeGRangesFromDataFrame(casper_bed)
+  #   hits<-findOverlaps(refGR,testGR)
+  #   overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
+  #   percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
+  #   bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
+  #   hmmcopy_casper_win<-cbind(casper_bed,
+  #     HMMcopy_mean_copymetric=unlist(lapply(1:nrow(casper_bed),function(x) 
+  #         mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+  #     HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(casper_bed),function(x) 
+  #         weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
+  #     HMMcopy_mode_copystate=unlist(lapply(1:nrow(casper_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
 
-    cnv_in<-t(casper_cnv)
-    cnv_in<-cnv_in[,colnames(cnv_in)%in%casper_obj@annotation.filt$Gene]
-    chr_in<-casper_obj@annotation.filt[casper_obj@annotation.filt$Gene %in% colnames(cnv_in),]
-    chr_in<-paste0("chr",chr_in$Chr)
-    chr_in<-factor(chr_in,levels=unique(chr_in))
-    hmmcopy_casper_win<-hmmcopy_casper_win[colnames(cnv_in),]
-    #Cluster and Plot
-    disc_casper<-plot_singlecell_cnvs(
-        dat=dat,
-        cnv=cnv_in,
-        assay="casper",
-        outname=outname,
-        wd=wd,
-        chr_split=chr_in,
-        bulk_plot=plt_100kb,
-        sum_windows=hmmcopy_casper_win,
-        file_in=file_in,
-        amp_value=1,
-        del_value=-1)
-     write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
-    write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_casper,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
-     write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_casper_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
+  #   cnv_in<-t(casper_cnv)
+  #   cnv_in<-cnv_in[,colnames(cnv_in)%in%casper_obj@annotation.filt$Gene]
+  #   chr_in<-casper_obj@annotation.filt[casper_obj@annotation.filt$Gene %in% colnames(cnv_in),]
+  #   chr_in<-paste0("chr",chr_in$Chr)
+  #   chr_in<-factor(chr_in,levels=unique(chr_in))
+  #   hmmcopy_casper_win<-hmmcopy_casper_win[colnames(cnv_in),]
+  #   #Cluster and Plot
+  #   disc_casper<-plot_singlecell_cnvs(
+  #       dat=dat,
+  #       cnv=cnv_in,
+  #       assay="casper",
+  #       outname=outname,
+  #       wd=wd,
+  #       chr_split=chr_in,
+  #       bulk_plot=plt_100kb,
+  #       sum_windows=hmmcopy_casper_win,
+  #       file_in=file_in,
+  #       amp_value=1,
+  #       del_value=-1)
+  #    write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+  #   write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_casper,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
+  #    write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_casper_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 
-  #CopyKAT 
+  # #CopyKAT 
 
-    assay="CopyKAT"
-    #to set CNV discrete changes, as per correspondence suggetions with Ruli Gao, 1.5x SD threshold, 1.5 absolute distance, or use +/-0.25 as cutoff
-    print(paste(outname,"CopyKat windows"))
-    copykat_obj<-readRDS(paste0(dir_in,"/copykat/",outname,".copykat.RDS"))
-    #Format Data
-    copykat_bed<-copykat_obj$CNAmat[1:2]
-    copykat_bed$chrom<-paste0("chr",copykat_bed$chrom)
-    copykat_bed[copykat_bed$chrom=="chr23",]$chrom<-"chrX"
-    bed_split<-split(x=copykat_bed,f=copykat_bed$chrom)
-    copykat_bed<-do.call("rbind",lapply(bed_split,function(x) {
-      print(x[1,1])
-      chrend<-chr_end[chr_end$chr==x[1,1],]$length
-      x$chromend<-c(x$chrompos[1:length(x$chrompos)-1]+diff(x$chrompos),chrend)
-      return(x)}))
-    colnames(copykat_bed)<-c("chr","start","end")
+  #   assay="CopyKAT"
+  #   #to set CNV discrete changes, as per correspondence suggetions with Ruli Gao, 1.5x SD threshold, 1.5 absolute distance, or use +/-0.25 as cutoff
+  #   print(paste(outname,"CopyKat windows"))
+  #   copykat_obj<-readRDS(paste0(dir_in,"/copykat/",outname,".copykat.RDS"))
+  #   #Format Data
+  #   copykat_bed<-copykat_obj$CNAmat[1:2]
+  #   copykat_bed$chrom<-paste0("chr",copykat_bed$chrom)
+  #   copykat_bed[copykat_bed$chrom=="chr23",]$chrom<-"chrX"
+  #   bed_split<-split(x=copykat_bed,f=copykat_bed$chrom)
+  #   copykat_bed<-do.call("rbind",lapply(bed_split,function(x) {
+  #     print(x[1,1])
+  #     chrend<-chr_end[chr_end$chr==x[1,1],]$length
+  #     x$chromend<-c(x$chrompos[1:length(x$chrompos)-1]+diff(x$chrompos),chrend)
+  #     return(x)}))
+  #   colnames(copykat_bed)<-c("chr","start","end")
 
-    #Summarize Data over WGS
-    refGR<-makeGRangesFromDataFrame(counts)
-    testGR<-makeGRangesFromDataFrame(copykat_bed)
-    hits<-findOverlaps(refGR,testGR)
-    overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
-    percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
-    bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
-    hmmcopy_copykat_win<-cbind(copykat_bed,
-      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(copykat_bed),function(x) 
-          mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
-      HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(copykat_bed),function(x) 
-          weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
-      HMMcopy_mode_copystate=unlist(lapply(1:nrow(copykat_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+  #   #Summarize Data over WGS
+  #   refGR<-makeGRangesFromDataFrame(counts)
+  #   testGR<-makeGRangesFromDataFrame(copykat_bed)
+  #   hits<-findOverlaps(refGR,testGR)
+  #   overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
+  #   percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
+  #   bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
+  #   hmmcopy_copykat_win<-cbind(copykat_bed,
+  #     HMMcopy_mean_copymetric=unlist(lapply(1:nrow(copykat_bed),function(x) 
+  #         mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+  #     HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(copykat_bed),function(x) 
+  #         weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
+  #     HMMcopy_mode_copystate=unlist(lapply(1:nrow(copykat_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
 
 
-    row.names(hmmcopy_copykat_win)<-row.names(1:nrow(hmmcopy_copykat_win))
-    cnv_in<-t(copykat_obj$CNAmat[,4:ncol(copykat_obj$CNAmat)])
-    row.names(cnv_in)<-gsub("\\.","-",row.names(cnv_in))
-    chr_in<-paste0("chr",copykat_obj$CNAmat[,1])
-    chr_in<-factor(chr_in,levels=unique(chr_in))
-    sd_value<-sd(unlist(cnv_in))
-    norm_value<-mean(unlist(cnv_in))
-    amp_value<-norm_value+(sd_value*1.5)
-    del_value<-norm_value-(sd_value*1.5)
-    #Cluster and Plot
-    disc_copykat<-plot_singlecell_cnvs(
-        dat=dat,
-        cnv=cnv_in,
-        assay="CopyKAT",
-        outname=outname,
-        wd=wd,
-        chr_split=chr_in,
-        bulk_plot=plt_100kb,
-        sum_windows=hmmcopy_copykat_win,
-        file_in=file_in,
-        amp_value=amp_value,
-        del_value=del_value)
-     write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
-    write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copykat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
-     write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_copykat_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
+  #   row.names(hmmcopy_copykat_win)<-row.names(1:nrow(hmmcopy_copykat_win))
+  #   cnv_in<-t(copykat_obj$CNAmat[,4:ncol(copykat_obj$CNAmat)])
+  #   row.names(cnv_in)<-gsub("\\.","-",row.names(cnv_in))
+  #   chr_in<-paste0("chr",copykat_obj$CNAmat[,1])
+  #   chr_in<-factor(chr_in,levels=unique(chr_in))
+  #   sd_value<-sd(unlist(cnv_in))
+  #   norm_value<-mean(unlist(cnv_in))
+  #   amp_value<-norm_value+(sd_value*1.5)
+  #   del_value<-norm_value-(sd_value*1.5)
+  #   #Cluster and Plot
+  #   disc_copykat<-plot_singlecell_cnvs(
+  #       dat=dat,
+  #       cnv=cnv_in,
+  #       assay="CopyKAT",
+  #       outname=outname,
+  #       wd=wd,
+  #       chr_split=chr_in,
+  #       bulk_plot=plt_100kb,
+  #       sum_windows=hmmcopy_copykat_win,
+  #       file_in=file_in,
+  #       amp_value=amp_value,
+  #       del_value=del_value)
+  #    write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+  #   write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copykat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
+  #    write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_copykat_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 
-  #COPYSCAT
-    assay="copyscat"
-    copyscat_dat<-readRDS(file=paste0(dir_in,"/copyscat/",outname,"copyscat_cnvs_matrix.rds"))
+  # #COPYSCAT
+  #   assay="copyscat"
+  #   copyscat_dat<-readRDS(file=paste0(dir_in,"/copyscat/",outname,"copyscat_cnvs_matrix.rds"))
+  #   print(paste(outname,"Copyscat windows"))
+  #   copyscat_obj<-readRDS(file=paste0(dir_in,"/copyscat/",outname,"copyscat_cnvs.rds"))
+  #   #Format Data
+  #   copyscat_dat<-copyscat_dat[[1]]
+  #   row.names(copyscat_dat)<-copyscat_dat[,1]
+  #   copyscat_dat<-t(copyscat_dat[,2:ncol(copyscat_dat)])
+  #   copyscat_chr<-unique(copyscat_obj[[1]]$Chrom[!(copyscat_obj[[1]]$Chrom %in% row.names(copyscat_dat))])
+  #   copyscat_cellid<-colnames(copyscat_dat)
+  #   copyscat_cellid<-paste(outname,colnames(copyscat_dat),sep="_")
+  #   copyscat_cellid[length(copyscat_cellid)]<-"medianNorm"
+  #   copyscat_unreported <- data.frame(matrix(ncol = length(copyscat_cellid), nrow = length(copyscat_chr),data=2))
+  #   row.names(copyscat_unreported)<-copyscat_chr
+  #   colnames(copyscat_unreported)<-copyscat_cellid
+  #   colnames(copyscat_dat)<-copyscat_cellid
+  #   copyscat_dat<-rbind(copyscat_dat,copyscat_unreported)
+  #   copyscat_dat<-copyscat_dat[match(cytoband$chr,row.names(copyscat_dat)),]
+  #   copyscat_dat<-copyscat_dat[!startsWith(prefix="NA",row.names(copyscat_dat)),]
+  #   copyscat_bed<-cytoband[cytoband$chr %in% row.names(copyscat_dat),]
+  #   copyscat_bed$chr<-paste0("chr",copyscat_bed$chrom)
+  #   copyscat_bed<-copyscat_bed[,c("chr","start","end")]
+
+  #   #Summarize Data over WGS
+  #   refGR<-makeGRangesFromDataFrame(counts)
+  #   testGR<-makeGRangesFromDataFrame(copyscat_bed)
+  #   hits<-findOverlaps(refGR,testGR)
+  #   overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
+  #   percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
+  #   bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
+  #   hmmcopy_copyscat_win<-cbind(copyscat_bed,
+  #     HMMcopy_mean_copymetric=unlist(lapply(1:nrow(copyscat_bed),function(x) 
+  #         mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+  #     HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(copyscat_bed),function(x) 
+  #         weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
+  #     HMMcopy_mode_copystate=unlist(lapply(1:nrow(copyscat_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+
+  #   cnv_in<-t(copyscat_dat)
+  #   chr_in<-substr(colnames(cnv_in),1,nchar(colnames(cnv_in))-1)
+  #   chr_in<-factor(chr_in,levels=unique(chr_in))
+  #   cnv_in<-cnv_in[1:nrow(cnv_in)-1,]#remove median norm measure
+  #   row.names(hmmcopy_copyscat_win)<-colnames(cnv_in)
+  #   #Cluster and Plot
+  #   disc_copyscat<-plot_singlecell_cnvs(
+  #       dat=dat,
+  #       cnv=cnv_in,
+  #       assay="CopySCAT",
+  #       outname=outname,
+  #       wd=wd,
+  #       chr_split=chr_in,
+  #       bulk_plot=plt_100kb,
+  #       sum_windows=hmmcopy_copyscat_win,
+  #       file_in=file_in,
+  #       amp_value=2,
+  #       del_value=0)
+  #    write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+  #   write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_copyscat,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
+  #    write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_copyscat_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
+
+
+  #COPYSCAT KNN
+    assay="copyscat_knn"
+    copyscat_dat<-readRDS(paste0(wd,"/copyscat_knn/",sample_name,"copyscat_cnvs_matrix_knn.rds"))
     print(paste(outname,"Copyscat windows"))
-    copyscat_obj<-readRDS(file=paste0(dir_in,"/copyscat/",outname,"copyscat_cnvs.rds"))
+    copyscat_obj<-readRDS(file=paste0(wd,"/copyscat_knn/",sample_name,"copyscat_cnvs_knn.rds"))
     #Format Data
     copyscat_dat<-copyscat_dat[[1]]
     row.names(copyscat_dat)<-copyscat_dat[,1]
@@ -3264,12 +3367,17 @@ HMMcopy_comparison<-function(x,file_in="phase2.QC.filt.SeuratObject.rds"){
     overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
     percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
     bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
-    hmmcopy_copyscat_win<-cbind(copyscat_bed,
-      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(copyscat_bed),function(x) 
-          mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
-      HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(copyscat_bed),function(x) 
-          weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
-      HMMcopy_mode_copystate=unlist(lapply(1:nrow(copyscat_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+    
+    HMMcopy_mean_copymetric=unlist(lapply(1:nrow(copyscat_bed),
+      function(x) mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE)))
+    
+    HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(copyscat_bed),
+      function(x) weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap)))
+    
+    HMMcopy_mode_copystate=unlist(lapply(1:nrow(copyscat_bed),
+      function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1]))
+
+    hmmcopy_copyscat_win<-cbind(copyscat_bed,HMMcopy_mean_copymetric,HMMcopy_weightedmean_copymetric,HMMcopy_mode_copystate)
 
     cnv_in<-t(copyscat_dat)
     chr_in<-substr(colnames(cnv_in),1,nchar(colnames(cnv_in))-1)
@@ -3294,55 +3402,55 @@ HMMcopy_comparison<-function(x,file_in="phase2.QC.filt.SeuratObject.rds"){
      write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_copyscat_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 
 
-  #RobustCNV
-    assay="RobustCNV"
-    robustcnv_obj<-read.csv(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/",outname,"_1MB_robustCNV.csv"))
-    #robustcnv_obj<-as.data.frame(t(read.table(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/","sample_4_scCNV_discrete_RobustCNV.tsv")))) for sample 4
-    colnames(robustcnv_obj)<-paste(outname,colnames(robustcnv_obj),sep="_")
-    #Format Data
-    colnames(robustcnv_obj)<-gsub(colnames(robustcnv_obj),pattern="\\.",replacement="-")
-    robustcnv_bed<-read.table(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/","window_1MB.bed"))
-    colnames(robustcnv_bed)<-c("chr","start","end","win")
-    robustcnv_bed<-robustcnv_bed[!robustcnv_bed$chr %in% c("chrX","chrY"),]
+  # #RobustCNV
+  #   assay="RobustCNV"
+  #   robustcnv_obj<-read.csv(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/",outname,"_1MB_robustCNV.csv"))
+  #   #robustcnv_obj<-as.data.frame(t(read.table(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/","sample_4_scCNV_discrete_RobustCNV.tsv")))) for sample 4
+  #   colnames(robustcnv_obj)<-paste(outname,colnames(robustcnv_obj),sep="_")
+  #   #Format Data
+  #   colnames(robustcnv_obj)<-gsub(colnames(robustcnv_obj),pattern="\\.",replacement="-")
+  #   robustcnv_bed<-read.table(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/bed_files/1MB/","window_1MB.bed"))
+  #   colnames(robustcnv_bed)<-c("chr","start","end","win")
+  #   robustcnv_bed<-robustcnv_bed[!robustcnv_bed$chr %in% c("chrX","chrY"),]
 
-    #Summarize Data over WGS
-    refGR<-makeGRangesFromDataFrame(counts)
-    testGR<-makeGRangesFromDataFrame(robustcnv_bed)
-    hits<-findOverlaps(refGR,testGR)
-    overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
-    percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
-    bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
-    hmmcopy_robustcnv_win<-cbind(robustcnv_bed,
-      HMMcopy_mean_copymetric=unlist(lapply(1:nrow(robustcnv_bed),function(x) 
-          mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
-      HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(robustcnv_bed),function(x) 
-          weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
-      HMMcopy_mode_copystate=unlist(lapply(1:nrow(robustcnv_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
+  #   #Summarize Data over WGS
+  #   refGR<-makeGRangesFromDataFrame(counts)
+  #   testGR<-makeGRangesFromDataFrame(robustcnv_bed)
+  #   hits<-findOverlaps(refGR,testGR)
+  #   overlaps <- pintersect(refGR[queryHits(hits)], testGR[subjectHits(hits)])
+  #   percentOverlap <- width(overlaps) / width(testGR[subjectHits(hits)])
+  #   bed_overlaps<-as.data.frame(cbind(as.data.frame(hits),percentOverlap))
+  #   hmmcopy_robustcnv_win<-cbind(robustcnv_bed,
+  #     HMMcopy_mean_copymetric=unlist(lapply(1:nrow(robustcnv_bed),function(x) 
+  #         mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE))),
+  #     HMMcopy_weightedmean_copymetric=unlist(lapply(1:nrow(robustcnv_bed),function(x) 
+  #         weighted.mean(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$copy,na.rm=TRUE,w=bed_overlaps[bed_overlaps$subjectHits==x,]$percentOverlap))),
+  #     HMMcopy_mode_copystate=unlist(lapply(1:nrow(robustcnv_bed),function(x) names(sort(-table(counts[bed_overlaps[bed_overlaps$subjectHits==x,]$queryHits,]$state)))[1])))
 
-    cnv_in<-t(robustcnv_obj)
-    colnames(cnv_in)<-robustcnv_bed$win
-    row.names(hmmcopy_robustcnv_win)<-colnames(cnv_in)
-    chr_in<-hmmcopy_robustcnv_win$chr
-    sd_value<-sd(unlist(cnv_in))
-    norm_value<-mean(unlist(cnv_in))
-    amp_value<-norm_value+(sd_value*1.5)
-    del_value<-norm_value-(sd_value*1.5)
-    #Cluster and Plot
-    disc_robustcnv<-plot_singlecell_cnvs(
-        dat=dat,
-        cnv=cnv_in,
-        assay="RobustCNV",
-        outname=outname,
-        wd=wd,
-        chr_split=chr_in,
-        bulk_plot=plt_100kb,
-        sum_windows=hmmcopy_robustcnv_win,
-        file_in=file_in,
-        amp_value=amp_value,
-        del_value=del_value)
-    write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
-    write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_robustcnv,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
-    write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_robustcnv_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
+  #   cnv_in<-t(robustcnv_obj)
+  #   colnames(cnv_in)<-robustcnv_bed$win
+  #   row.names(hmmcopy_robustcnv_win)<-colnames(cnv_in)
+  #   chr_in<-hmmcopy_robustcnv_win$chr
+  #   sd_value<-sd(unlist(cnv_in))
+  #   norm_value<-mean(unlist(cnv_in))
+  #   amp_value<-norm_value+(sd_value*1.5)
+  #   del_value<-norm_value-(sd_value*1.5)
+  #   #Cluster and Plot
+  #   disc_robustcnv<-plot_singlecell_cnvs(
+  #       dat=dat,
+  #       cnv=cnv_in,
+  #       assay="RobustCNV",
+  #       outname=outname,
+  #       wd=wd,
+  #       chr_split=chr_in,
+  #       bulk_plot=plt_100kb,
+  #       sum_windows=hmmcopy_robustcnv_win,
+  #       file_in=file_in,
+  #       amp_value=amp_value,
+  #       del_value=del_value)
+  #   write.table(sep="\t",col.names=T,row.names=T,quote=F,cnv_in,file=paste0(out_dir,"/",outname,"_scCNV_",assay,".tsv"))
+  #   write.table(sep="\t",col.names=T,row.names=T,quote=F,disc_robustcnv,file=paste0(out_dir,"/",outname,"_scCNV_discrete_",assay,".tsv"))
+  #   write.table(sep="\t",col.names=T,row.names=T,quote=F,hmmcopy_robustcnv_win,file=paste0(out_dir,"/",outname,"_bulkWGS_",assay,"_bins.tsv"))
 }
 
 bamfolder <- "/home/groups/CEDAR/mulqueen/projects/multiome/221004_wgs/EXP220921HM/220929_A01058_0265_AHNGVCDRX2/EXP220921HM"
@@ -3358,8 +3466,9 @@ genome <- BSgenome.Hsapiens.UCSC.hg38
 out_dir="/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/cnv_comparison"
 system(paste("mkdir",out_dir))
 HMMcopy_comparison(x)
-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20),HMMcopy_comparison) 
-
+#lapply(c(6,8,15),HMMcopy_comparison) 
+#lapply(c(1,3,5,6,7,8,9,11,15,16,19,20,4,10,12),HMMcopy_comparison)
+#copyscat_knn rerun on 6 and 8 15 
 ```
 
 Writing out as a batch script for slurm job submission
@@ -3828,13 +3937,20 @@ system("slack -F sample_epithelial_type_assignment.tsv ryan_todo") #note this wa
 
 <!-- Rerun -->
 ## ER binding poor and good outcome from patients, overlap with ATAC data
-```bash
-cd /home/groups/CEDAR/mulqueen/ref
-wget http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Poor%20outcome%20ER%20regions.bed.gz
-wget http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Good%20outcome%20ER%20regions.bed.gz
-mv "Good outcome ER regions.bed.gz" goodoutcome_ER_regions.bed.gz
-mv "Poor outcome ER regions.bed.gz" pooroutcome_ER_regions.bed.gz 
+```R
+library(Signac)
+library(Seurat)
+library(data.table)
+library(GenomicRanges)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
 
+poor_er<-makeGRangesFromDataFrame(fread("http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Poor%20outcome%20ER%20regions.bed.gz",col.names=c("chr","start","end")))
+good_er<-makeGRangesFromDataFrame(fread("http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Good%20outcome%20ER%20regions.bed.gz",col.names=c("chr","start","end")))
+
+ClosestFeature
+RegionMatrix
+RegionHeatmap
 ```
 ### Files for Travis
 <!-- Rerun -->
@@ -3907,6 +4023,7 @@ for i in 1 3 4 5 6 7 8 9 10 11 12; do
   cp -r ${in_dir}"/casper" ${out_dir}"/sample_"${i} &
   cp -r ${in_dir}"/copykat" ${out_dir}"/sample_"${i} &
   cp -r ${in_dir}"/copyscat" ${out_dir}"/sample_"${i} &
+  cp -r ${in_dir}"/copyscat_knn" ${out_dir}"/sample_"${i} &
   cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/sample_"${i} & 
   cp ${in_dir}"/"${sample}".QC.filt.SeuratObject.rds" ${out_dir}"/sample_"${i} &
   echo "Finished ${sample}" & done &
@@ -3923,6 +4040,7 @@ for i in 15 16 19 20; do
   cp -r ${in_dir}"/casper" ${out_dir}"/sample_"${i} &
   cp -r ${in_dir}"/copykat" ${out_dir}"/sample_"${i} &
   cp -r ${in_dir}"/copyscat" ${out_dir}"/sample_"${i} &
+  cp -r ${in_dir}"/copyscat_knn" ${out_dir}"/sample_"${i} &
   cp ${in_dir}"/atac_possorted_bam.bam" ${out_dir}"/sample_"${i} &
   cp ${in_dir}"/"${sample}".QC.filt.SeuratObject.rds" ${out_dir}"/sample_"${i} &
   echo "Finished ${sample}" & done 
@@ -4061,7 +4179,6 @@ lapply(c(da_tf_markers$gene),function(y){
 ## Subclustering Per Celltype
 <!-- Done -->
 
-### Epithelial Clustering
 ```R
 library(Signac)
 library(Seurat)
@@ -4205,32 +4322,27 @@ celltype_cistopic_generation(celltype_list=c("epithelial","cycling.epithelial"),
 dat<-subset(dat,diagnosis=="NAT")
 celltype_cistopic_generation(celltype_list=c("epithelial","cycling.epithelial"),outname="normalepithelial")
 
-#Myeloid
-celltype_cistopic_generation(celltype_list=c("TAMs","TAMs_2","Myeloid"),outname="myeloid")
+# Immune Cells
+celltype_cistopic_generation(celltype_list=c("TAMs","TAMs_2","Myeloid","T.cells","Plasma.cells","B.cells"),outname="immune")
 
-#T Cells
-celltype_cistopic_generation(celltype_list=c("T.cells"),outname="tcell")
+# Mesenchymal Cells
+celltype_cistopic_generation(celltype_list=c("CAFs","Endothelial","Pericytes"),outname="mesenchymal")
 
-#Plasma cells
-celltype_cistopic_generation(celltype_list=c("Plasma.cells"),outname="plasmacell")
+#Single cell type reclusters (deprecated)
+#celltype_cistopic_generation(celltype_list=c("TAMs","TAMs_2","Myeloid"),outname="myeloid")#Myeloid
+#celltype_cistopic_generation(celltype_list=c("T.cells"),outname="tcell")#T Cells
+#celltype_cistopic_generation(celltype_list=c("Plasma.cells"),outname="plasmacell")#Plasma cells
+#celltype_cistopic_generation(celltype_list=c("CAFs"),outname="fibroblast")#Fibroblasts
+#celltype_cistopic_generation(celltype_list=c("B.cells"),outname="bcell")#B cells
+#celltype_cistopic_generation(celltype_list=c("Endothelial"),outname="endothelial")#Endothelial
+#celltype_cistopic_generation(celltype_list=c("Pericytes"),outname="pericyte")#Pericytes
 
-#Fibroblasts
-celltype_cistopic_generation(celltype_list=c("CAFs"),outname="fibroblast")
-
-#B cells
-celltype_cistopic_generation(celltype_list=c("B.cells"),outname="bcell")
-
-#Endothelial
-celltype_cistopic_generation(celltype_list=c("Endothelial"),outname="endothelial")
-
-#Pericytes
-celltype_cistopic_generation(celltype_list=c("Pericytes"),outname="pericyte")
 
 
 ```
 
 ### Integration: Now Clustering together on RNA profiles using harmony to integrate
-<!-- Done -->
+<!-- DONE -->
 
 ```R
 library(harmony)
@@ -4315,22 +4427,28 @@ harmony_sample_integration<-function(x,outname,res=0.1){
 
 harmony_sample_integration(x="phase2.QC.filt.SeuratObject.rds",outname="all_cells",res=0.1) #done
 harmony_sample_integration(x="normalepithelial.SeuratObject.rds",outname="normalepithelial",res=0.1) #done
-harmony_sample_integration(x="tcell.SeuratObject.rds",outname="tcell",res=0.5)
 
-harmony_sample_integration(x="myeloid.SeuratObject.rds",outname="myeloid",res=0.2)
-harmony_sample_integration(x="plasmacell.SeuratObject.rds",outname="plasmacell",res=0.1)
-harmony_sample_integration(x="fibroblast.SeuratObject.rds",outname="fibroblast",res=0.3)
-harmony_sample_integration(x="bcell.SeuratObject.rds",outname="bcell",res=0.2)
-harmony_sample_integration(x="endothelial.SeuratObject.rds",outname="endothelial",res=0.1)
-harmony_sample_integration(x="pericyte.SeuratObject.rds",outname="pericyte",res=0.1)
-harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial",res=0.1)
+harmony_sample_integration(x="mesenchymal.SeuratObject.rds",outname="mesenchymal",res=0.1) 
+harmony_sample_integration(x="immune.SeuratObject.rds",outname="immune",res=0.1) 
+
+
+#deprecated
+#harmony_sample_integration(x="tcell.SeuratObject.rds",outname="tcell",res=0.5)
+#harmony_sample_integration(x="myeloid.SeuratObject.rds",outname="myeloid",res=0.2)
+#harmony_sample_integration(x="plasmacell.SeuratObject.rds",outname="plasmacell",res=0.1)
+#harmony_sample_integration(x="fibroblast.SeuratObject.rds",outname="fibroblast",res=0.3)
+#harmony_sample_integration(x="bcell.SeuratObject.rds",outname="bcell",res=0.2)
+#harmony_sample_integration(x="endothelial.SeuratObject.rds",outname="endothelial",res=0.1)
+#harmony_sample_integration(x="pericyte.SeuratObject.rds",outname="pericyte",res=0.1)
+#harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial",res=0.1)
 
 ```
 
+## Cell Subtyping
+<!-- RUNNING -->
 
-## Transcription Factor Expression Markers
-<!-- Rerun -->
-Based on seurat tutorial https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html#wnn-analysis-of-10x-multiome-rna-atac-1
+Functions used for all cell subtyping.
+Transcription Factor Expression Markers are Based on seurat tutorial https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html#wnn-analysis-of-10x-multiome-rna-atac-1
 Using average AUC to define markers that work across modalities (RNA, Gene Activity, and TF motifs). Doing this across cell types, and then within cell types across diagnoses.
 
 ```R
@@ -4352,9 +4470,6 @@ library(ggrepel)
 library(patchwork)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
-
-
-
 ###########Color Schema#################
 type_cols<-c(
 #epithelial
@@ -4369,6 +4484,48 @@ diag_cols<-c("IDC"="red", "DCIS"="grey","NAT"="lightblue","ILC"="green")
 
 molecular_type_cols<-c("DCIS"="grey", "ER+/PR-/HER2-"="#EBC258", "ER+/PR-/HER2+"="#F7B7BB","ER+/PR+/HER2-"="#ff6699","NA"="lightblue")
 ########################################
+
+cov_plots<-function(atac_sub=atac_sub,gene_name,idents_in){
+  plt_cov <- CoveragePlot(
+    object = atac_sub,
+    region = gene_name,
+    features = gene_name,
+    assay="ATAC",
+    expression.assay = "SoupXRNA",
+    extend.upstream = 10000,
+    extend.downstream = 10000,
+    idents=idents_in)
+  plt_clus<- DimPlot(
+    object= atac_sub,
+    group.by="seurat_clusters",
+    reduction="multimodal_harmony_umap")
+  plt_feat <- FeaturePlot(
+    object = atac_sub,
+    features = gene_name,
+    raster=F,
+    reduction="multimodal_harmony_umap",
+    order=T)
+  return((plt_clus/plt_feat|plt_cov)+ggtitle(gene_name))
+}
+
+sample_label_transfer<-function(in_dat,ref_dat,prefix="Tcell_",transfer_label="celltype"){
+  transfer.anchors <- FindTransferAnchors(
+    reference = ref_dat,
+    reference.assay="RNA",
+    query = in_dat,
+    query.assay="SoupXRNA",
+    verbose=T
+  )
+
+  predictions<- TransferData(
+    anchorset = transfer.anchors,
+    refdata = ref_dat@meta.data[,transfer_label],
+  )
+  colnames(predictions)<-paste0(prefix,colnames(predictions))
+
+  in_dat<-AddMetaData(in_dat,metadata=predictions)
+  return(in_dat)
+  }
 
 
 #Grab top overlapping TFs
@@ -4632,88 +4789,60 @@ run_top_TFs<-function(obj=stromal,prefix="stromal",i="predicted.id",n_markers=5,
   saveRDS(markers_out,file=paste0(prefix,"_celltype_markers.RDS"))
   da_tf_markers<-readRDS(paste0(prefix,"_celltype_markers.RDS"))
   plot_top_TFs(x=obj,tf_markers=da_tf_markers,prefix=prefix,group_by.=i,CHROMVAR=FALSE,GA=TRUE,height.=plot_height)
-}
-}
-
-
-#all cells celltypes
-dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
-dat<-subset(dat,EMBO_predicted.id!="NA")
-run_top_TFs(obj=dat,prefix="dat",i="EMBO_predicted.id",n_markers=8,CHROMVAR=FALSE,plot_height=15)
-run_top_TFs(obj=dat,prefix="dat",i="EMBO_predicted.id",n_markers=8,CHROMVAR=TRUE,plot_height=15)
-
-for (k in c("epithelial.SeuratObject.rds","myeloid.SeuratObject.rds","tcell.SeuratObject.rds","plasmacell.SeuratObject.rds","fibroblast.SeuratObject.rds","bcell.SeuratObject.rds","endothelial.SeuratObject.rds","pericyte.SeuratObject.rds","normalepithelial.SeuratObject.rds")) {
-  dat_sub<-readRDS(k)
-  dat_prefix<-gsub("rds$","",gsub(".SeuratObject.","",basename(k)))
-  run_top_TFs(obj=dat_sub,prefix=paste0(dat_prefix,"_subcluster"),i="seurat_clusters")
-  run_top_TFs(obj=dat_sub,prefix=paste0(dat_prefix,"_subcluster"),i="seurat_clusters",CHROMVAR=FALSE,n_markers=15)
-}
-
-```
-
-## Cell Subtyping
-
-### Normal epithelial cell subtyping.
-```R
-library(Signac)
-library(Seurat)
-library(tidyverse)
-library(ComplexHeatmap)
-library(seriation)
-library(viridis)
-library(circlize)
-library(chromVAR)
-library(JASPAR2020)
-library(TFBSTools)
-library(motifmatchr)
-library(grid)
-library(dplyr)
-library(ggplot2)
-library(ggrepel)
-library(patchwork)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
-
-
-cov_plots<-function(atac_sub=atac_sub,gene_name,idents_in){
-  plt_cov <- CoveragePlot(
-    object = atac_sub,
-    region = gene_name,
-    features = gene_name,
-    assay="ATAC",
-    expression.assay = "SoupXRNA",
-    extend.upstream = 10000,
-    extend.downstream = 10000,
-    idents=idents_in)
-  plt_feat <- FeaturePlot(
-    object = atac_sub,
-    features = gene_name,
-    raster=F,
-    reduction="multimodal_harmony_umap",
-    order=T)
-  return((plt_feat|plt_cov)+ggtitle(gene_name))
-}
-
-sample_label_transfer<-function(in_dat,ref_dat,prefix="Tcell_"){
-  transfer.anchors <- FindTransferAnchors(
-    reference = ref_dat,
-    reference.assay="RNA",
-    query = in_dat,
-    query.assay="SoupXRNA",
-    verbose=T
-  )
-
-  predictions<- TransferData(
-    anchorset = transfer.anchors,
-    refdata = ref_dat$celltype,
-  )
-  colnames(predictions)<-paste0(prefix,colnames(predictions))
-
-  in_dat<-AddMetaData(in_dat,metadata=predictions)
-  return(in_dat)
   }
+}
 
+#Make nice UMAP plots
+umap_sample_integration<-function(dat,outname){
+  i="EMBO_predicted.id"
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i,cols=embo_cell_cols)+ggtitle("Unintegrated")
+  plt2<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=embo_cell_cols)+ggtitle("Integrated")
+  plt<-plt1+plt2
+  ggsave(plt,file=paste0(outname,".",i,".pdf"),width=20,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
+
+  i="diagnosis"
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i,cols=diag_cols)+ggtitle("Unintegrated")
+  plt2<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=diag_cols)+ggtitle("Integrated")
+  plt<-plt1+plt2
+  ggsave(plt,file=paste0(outname,".",i,".pdf"),width=20,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
+
+  i="molecular_type"
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i,cols=molecular_type_cols)+ggtitle("Unintegrated")
+  plt2<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i,cols=molecular_type_cols)+ggtitle("Integrated")
+  plt<-plt1+plt2
+  ggsave(plt,file=paste0(outname,".",i,".pdf"),width=20,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
+
+  i="sample"
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i)+ggtitle("Unintegrated")
+  plt2<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i)+ggtitle("Integrated")
+  plt<-plt1+plt2
+  ggsave(plt,file=paste0(outname,".",i,".pdf"),width=20,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
+
+  i="seurat_subcluster"
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i)+ggtitle("Unintegrated")
+  plt2<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i)+ggtitle("Integrated")
+  plt<-plt1+plt2
+  ggsave(plt,file=paste0(outname,".",i,".pdf"),width=20,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
+
+  i="assigned_subtype"
+  plt1<-DimPlot(dat,reduction="multimodal_umap",group.by=i)+ggtitle("Unintegrated")
+  plt2<-DimPlot(dat,reduction="multimodal_harmony_umap",group.by=i)+ggtitle("Integrated")
+  plt<-plt1+plt2
+  ggsave(plt,file=paste0(outname,".",i,".pdf"),width=20,height=10)
+  system(paste0("slack -F ",outname,".",i,".pdf ryan_todo"))
+}
 ```
-### Epithelial Subtyping
+
+### Across all cell types
+
+
+
+### Normal Epithelial Subtyping
 Continued session. 
 ```R
 #Plotting Normal Epithelial Marker genes
@@ -4726,6 +4855,7 @@ Continued session.
     ggsave(plt,file=paste0("NormEpi_",i,".featureplots.pdf"),limitsize=F)
     system(paste0("slack -F ","NormEpi_",i,".featureplots.pdf ryan_todo"))
   }
+
 #Plotting EMBO paper defined marker sets of epithelial subtypes (pretransferred on bulk data above)
   feature_set<-c("EMBO_Basal","EMBO_LP","EMBO_ML","EMBO_Str")
   plt1<-VlnPlot(atac_sub, features = feature_set)
@@ -4734,26 +4864,76 @@ Continued session.
   ggsave(plt,file="NormEpi_EMBOfeaturesets.pdf")
   system("slack -F NormEpi_EMBOfeaturesets.pdf ryan_todo")
 
+#Assigning Cell types in the Seurat Object.
+  subclus_subcelltype<-data.frame(seurat_subcluster=atac_sub$wknn_res.0.1)
+  subclus_subcelltype$assigned_subtype<-"LP"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="1",]$assigned_subtype<-"ML"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="2",]$assigned_subtype<-"Basal"
+  atac_sub<-AddMetaData(atac_sub,subclus_subcelltype)
+  saveRDS(atac_sub,file="normalepithelial.SeuratObject.rds")
+
+#Plotting Marker Differences across subtypes
+  run_top_TFs(obj=atac_sub,prefix="normalepithelial_subtype",i="assigned_subtype",n_markers=8,CHROMVAR=FALSE,plot_height=15) #limit to TFs
+  run_top_TFs(obj=atac_sub,prefix="normalepithelial_subtype",i="assigned_subtype",n_markers=8,CHROMVAR=TRUE,plot_height=15) #all RNA/ATAC
+
+#Plotting Marker Differences across subtypes and diagnosis (not meaningful for this set of cells since they are limited to NAT)
+  atac_sub$subtype_diagnosis<-paste(atac_sub$assigned_subtype,atac_sub$diagnosis)
+  run_top_TFs(obj=atac_sub,prefix="normalepithelial_subtype_diagnosis",i="subtype_diagnosis",n_markers=8,CHROMVAR=FALSE,plot_height=15) #limit to TFs
+  run_top_TFs(obj=atac_sub,prefix="normalepithelial_subtype_diagnosis",i="subtype_diagnosis",n_markers=8,CHROMVAR=TRUE,plot_height=15) #all RNA/ATAC
 ```
 
-### T cell Subtyping
-Continued session. Analyzing T cells using marker genes and label transfer of T cell subtypes.
-Using 4 clusters (res 0.3)
+### Immune cell subtyping
 
 ```R
-#Plotting T cell marker genes
-  tcell_marker_genes<-c("CD4","CD8A","ITGAE","NCR1","IL2RA","PDCD1","CCR7","IL7R","FOXP3","CXCL13","ZFP36","GZMK","IFIT1","MKI67")
-#T cell RNA reference data 
+#Immune cells reference data
+  ref_rds<-readRDS("/home/groups/CEDAR/mulqueen/ref/hao/hao.SeuratObject.Rds")
+  DefaultAssay(ref_rds)<-"RNA"
+  ref_rds<-NormalizeData(ref_rds)
+  ref_rds<-FindVariableFeatures(ref_rds)
+  ref_rds<-ScaleData(ref_rds)
+
+#Label transfer of immune cells
+  atac_sub<-readRDS("immune.SeuratObject.rds")
+  DefaultAssay(atac_sub)<-"SoupXRNA"
+  atac_sub <- FindClusters(atac_sub, graph.name="wknn",verbose = FALSE,resolution=0.5)
+  Idents(atac_sub)<-atac_sub$seurat_clusters
+  atac_sub<-sample_label_transfer(in_dat=atac_sub,ref_dat=ref_rds,prefix="immune_l1_",transfer_label="celltype.l1")
+  atac_sub<-sample_label_transfer(in_dat=atac_sub,ref_dat=ref_rds,prefix="immune_l2_",transfer_label="celltype.l2")
+  atac_sub<-sample_label_transfer(in_dat=atac_sub,ref_dat=ref_rds,prefix="immune_l3_",transfer_label="celltype.l3")
+
+#Plotting transferred cell labels
+  atac_sub <- FindClusters(atac_sub, graph.name="wknn",verbose = FALSE,resolution=1.2)
+  feature_set<-colnames(atac_sub@meta.data)[startsWith(colnames(atac_sub@meta.data),prefix="immune_l1_prediction.score.")]
+  plt1<-DimPlot(atac_sub,group.by="seurat_clusters",reduction="multimodal_harmony_umap")
+  plt2<-VlnPlot(atac_sub, features = feature_set)
+  plt3<-FeaturePlot(atac_sub, features = feature_set,order=T,reduction="multimodal_harmony_umap")
+  plt<-plt1/plt2/plt3
+  ggsave(plt,file="immune_haol1_featuresets.pdf",height=20,width=20)
+  system("slack -F immune_haol1_featuresets.pdf ryan_todo")
+
+  feature_set<-colnames(atac_sub@meta.data)[startsWith(colnames(atac_sub@meta.data),prefix="immune_l2_prediction.score.")]
+  plt1<-DimPlot(atac_sub,group.by="seurat_clusters",reduction="multimodal_harmony_umap")
+  plt2<-VlnPlot(atac_sub, features = feature_set)
+  plt3<-FeaturePlot(atac_sub, features = feature_set,order=T,reduction="multimodal_harmony_umap")
+  plt<-plt1/plt2/plt3
+  ggsave(plt,file="immune_haol2_featuresets.pdf",height=50,width=20,limitsize=FALSE)
+  system("slack -F immune_haol2_featuresets.pdf ryan_todo")
+
+  feature_set<-colnames(atac_sub@meta.data)[startsWith(colnames(atac_sub@meta.data),prefix="immune_l3_prediction.score.")]
+  plt1<-DimPlot(atac_sub,group.by="seurat_clusters",reduction="multimodal_harmony_umap")
+  plt2<-VlnPlot(atac_sub, features = feature_set)
+  plt3<-FeaturePlot(atac_sub, features = feature_set,order=T,reduction="multimodal_harmony_umap")
+  plt<-plt1/plt2/plt3
+  ggsave(plt,file="immune_haol3_featuresets.pdf",height=100,width=20,limitsize=FALSE)
+  system("slack -F immune_haol3_featuresets.pdf ryan_todo")
+
+
+#T cell RNA reference data since many CD4/CD8+ cell clusters are persisting
   tcell_reference_rds<-readRDS("/home/groups/CEDAR/mulqueen/ref/embo/SeuratObject_ERTotalTC.rds") #ER+ tumor T-cells
   DefaultAssay(tcell_reference_rds)<-"RNA"
   tcell_reference_rds<-NormalizeData(tcell_reference_rds)
   tcell_reference_rds<-FindVariableFeatures(tcell_reference_rds)
   tcell_reference_rds<-ScaleData(tcell_reference_rds)
-
-  atac_sub<-readRDS("tcell.SeuratObject.rds")
-  DefaultAssay(atac_sub)<-"SoupXRNA"
-  atac_sub <- FindClusters(atac_sub, graph.name="wknn",verbose = FALSE,resolution=0.3)
-  Idents(atac_sub)<-atac_sub$seurat_clusters
   atac_sub<-sample_label_transfer(in_dat=atac_sub,ref_dat=tcell_reference_rds,prefix="tcell_")
 
 #Plotting transferred cell labels
@@ -4765,84 +4945,261 @@ Using 4 clusters (res 0.3)
   ggsave(plt,file="tcell_EMBOfeaturesets.pdf",height=20,width=20)
   system("slack -F tcell_EMBOfeaturesets.pdf ryan_todo")
 
-#Plot marker genes also
-  for (i in tcell_marker_genes){
-    plt<-cov_plots(atac_sub=atac_sub,gene_name=i,idents_in=unique(Idents(atac_sub)))
-    ggsave(plt,file=paste0("tcell_",i,".featureplots.pdf"),limitsize=F)
-    system(paste0("slack -F ","tcell_",i,".featureplots.pdf ryan_todo"))
-  }
 
-#Save RDS now that there are label transfer metadata columns
-saveRDS(atac_sub,"tcell.SeuratObject.rds")
+#Assigning Cell types in the Seurat Object.
+  subclus_subcelltype<-data.frame(seurat_subcluster=atac_sub$wknn_res.1.2)
+  subclus_subcelltype$assigned_subtype<-"CD14+Mono_1"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="1",]$assigned_subtype<-"CD4+Tcell_1"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="2",]$assigned_subtype<-"CD4+Tcell_2"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="3",]$assigned_subtype<-"Bcell"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="4",]$assigned_subtype<-"CD14+Mono_2"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="5",]$assigned_subtype<-"Plasmablast"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="6",]$assigned_subtype<-"Treg"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="7",]$assigned_subtype<-"NK"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="8",]$assigned_subtype<-"CD14+Mono_3"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="9",]$assigned_subtype<-"CD8+Naive"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="10",]$assigned_subtype<-"DC"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="11",]$assigned_subtype<-"Tcell_3"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="12",]$assigned_subtype<-"Tcell_4"
 
+  atac_sub<-AddMetaData(atac_sub,subclus_subcelltype)
+  saveRDS(atac_sub,file="immune.SeuratObject.rds")
+
+#Make nicer UMAPs
+umap_sample_integration(dat=atac_sub,outname="immune")
+
+#Make Nicer violin plots
+Idents(atac_sub)<-atac_sub$assigned_subtype
+feature_set<-colnames(atac_sub@meta.data)[startsWith(colnames(atac_sub@meta.data),prefix="immune_l2_prediction.score.")]
+plt2<-VlnPlot(atac_sub, features = feature_set,pt.size=0)
+plt<-plt2
+ggsave(plt,file="immune_haol2_violin.pdf",height=50,width=20,limitsize=FALSE)
+system("slack -F immune_haol2_violin.pdf ryan_todo")
+
+#Plotting Marker Differences across subtypes
+  run_top_TFs(obj=atac_sub,prefix="immune_subtype",i="assigned_subtype",n_markers=3,CHROMVAR=FALSE,plot_height=15) #all RNA/ATAC
+  run_top_TFs(obj=atac_sub,prefix="immune_subtype",i="assigned_subtype",n_markers=3,CHROMVAR=TRUE,plot_height=15) #limit to TFs
 
 ```
 
-### B Cell Subtyping
-Continued session. Analyzying B cells using marker genes. Marker gene list from https://static-content.springer.com/esm/art%3A10.1038%2Fs41467-021-22300-2/MediaObjects/41467_2021_22300_MOESM5_ESM.xlsx
+
+### Mesenchymal cell subtyping
 ```R
-#Plotting B cell marker genes
-  bcell_marker_genes<-c("IGHM","CD27","MS4A1","CD19","CD27","CD38","CD14") #"IGHM",#,"IGHG", #IGHD
+atac_sub<-readRDS("mesenchymal.SeuratObject.rds")
+atac_sub <- FindClusters(atac_sub, graph.name="wknn",verbose = FALSE,resolution=0.5)
+atac_sub$seurat_subcluster<-atac_sub$seurat_clusters
+#Make nicer UMAPs
+umap_sample_integration(dat=atac_sub,outname="mesenchymal")
+saveRDS(atac_sub,file="mesenchymal.SeuratObject.rds")
 
-#B cell RNA reference data 
-  bcell_reference_rds<-readRDS("/home/groups/CEDAR/mulqueen/ref/embo/SeuratObject_ERTotalSub.rds") #ER+ tumor non epithelial cells
+DefaultAssay(atac_sub)<-"SoupXRNA"
+plt<-FeaturePlot(atac_sub,order=T,cols=c("white","red"),features=c("PDGFRA","COL1A1","ACTA2","PDGFRB","MCAM","PECAM1","CD34","VWF","CXCL12","DLK1","RGS5","FAP","CD36","MYH11","ACKR1","RGS5","DLL4","PDPN",""),reduction="multimodal_harmony_umap",keep.scale="all")
+plt<-plt
+ggsave(plt,file="mesenchymal_featureplot.pdf",height=20,width=20,limitsize=FALSE)
+system("slack -F mesenchymal_featureplot.pdf ryan_todo")
 
-  DefaultAssay(bcell_reference_rds)<-"RNA"
-  bcell_reference_rds<-NormalizeData(bcell_reference_rds)
-  bcell_reference_rds<-FindVariableFeatures(bcell_reference_rds)
-  bcell_reference_rds<-ScaleData(bcell_reference_rds)
+#Assigning Cell types in the Seurat Object.
+  subclus_subcelltype<-data.frame(seurat_subcluster=atac_sub$wknn_res.0.5)
+  subclus_subcelltype$assigned_subtype<-"CAF_1"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="1",]$assigned_subtype<-"Endothelial_1"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="2",]$assigned_subtype<-"Pericytes_1"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="3",]$assigned_subtype<-"Fibroblast"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="4",]$assigned_subtype<-"Pericytes_2"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="5",]$assigned_subtype<-"Endothelial_2"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="6",]$assigned_subtype<-"Endothelial_3"
+  subclus_subcelltype[subclus_subcelltype$seurat_subcluster=="7",]$assigned_subtype<-"CAF_2"
 
-  atac_sub<-readRDS("bcell.SeuratObject.rds")
-  DefaultAssay(atac_sub)<-"SoupXRNA"
-  Idents(atac_sub)<-atac_sub$seurat_clusters
-  atac_sub <- FindClusters(atac_sub, graph.name="wknn",verbose = FALSE,resolution=0.3)
-  atac_sub<-sample_label_transfer(in_dat=atac_sub,ref_dat=bcell_reference_rds,prefix="bcell_")
+  atac_sub<-AddMetaData(atac_sub,subclus_subcelltype)
+  saveRDS(atac_sub,file="mesenchymal.SeuratObject.rds")
 
-  feature_set<-colnames(atac_sub@meta.data)[startsWith(colnames(atac_sub@meta.data),prefix="bcell_prediction.score.")]
-  plt1<-DimPlot(atac_sub,group.by="seurat_clusters",reduction="multimodal_harmony_umap")
-  plt2<-VlnPlot(atac_sub, features = feature_set)
-  plt3<-FeaturePlot(atac_sub, features = feature_set,order=T,reduction="multimodal_harmony_umap")
-  plt<-plt1/plt2/plt3
-  ggsave(plt,file="bcell_EMBOfeaturesets.pdf",height=20,width=20)
-  system("slack -F bcell_EMBOfeaturesets.pdf ryan_todo")
-
-  atac_sub<-readRDS("bcell.SeuratObject.rds")
-  DefaultAssay(atac_sub)<-"SoupXRNA"
-  Idents(atac_sub)<-atac_sub$seurat_clusters
-  for (i in bcell_marker_genes){
-    plt<-cov_plots(atac_sub=atac_sub,gene_name=i,idents_in=unique(Idents(atac_sub)))
-    ggsave(plt,file=paste0("bcell_",i,".featureplots.pdf"),limitsize=F)
-    system(paste0("slack -F ","bcell_",i,".featureplots.pdf ryan_todo"))
-  }
-
-bcell_list<-list()
-bcell_list[["bcell_memory"]]<-c(
-  'CRIP1', 'TNFRSF13B', 'CD82', 'COTL1', 'B2M', 'RPS14', 'AIM2', 'RP11-731F5.2', 'CD27', 'GAPDH', 'CLECL1', 'LGALS1', 'VIM', 'MALAT1', 'HSPA8', 'ACP5', 'S100A6', 'HLA-A', 'ITGB1', 'C1orf186', 'LSP1', 'PSMB9', 'RP5-887A10.1', 'S100A4', 'TOMM7', 'PLP2', 'ACTG1', 'KLK1', 'CD99', 'LTB', 'CAPG', 'CAPN2', 'CHCHD10', 'CD24', 'CCDC50', 'CLIC1', 'CD70', 'GPR183', 'ARHGAP24', 'SSPN', 'CIB1', 'RAC2', 'SMARCB1', 'PVT1', 'RPS29', 'NLRC5', 'CD1C', 'LDHB', 'CTSH', 'MS4A1', 'CDC42EP3', 'NEK6', 'KCNN4', 'BANK1', 'TLR10', 'GSTK1', 'ARL6IP5', 'HIGD2A', 'ARPC1B', 'VOPP1', 'AC079767.4', 'PKM', 'NCR3', 'CNPY3', 'SCIMP', 'CD48', 'FAM102A', 'RAB31', 'SOD1', 'IFITM2', 'RP5-1171I10.5', 'KIAA1551', 'SAMSN1', 'IFITM1', 'RILPL2', 'FCRL2', 'DOK3', 'NCF4', 'S100A10', 'HSPA1B', 'CPNE5', 'AHNAK', 'TCF4', 'DYNLL1', 'SMIM14', 'ID3', 'KLF6', 'TNF', 'HSPB1', 'RHOB', 'DNAJB1')
-
-bcell_list[["bcell_naive"]]<-c('TCL1A','IL4R', 'PLPP5', 'FCER2', 'BACH2', 'CXCR4', 'CD69', 'YBX3', 'IGHD', 'BTG1', 'RPL18A', 'LAPTM5', 'CD200', 'CD37', 'CD83', 'LINC00926', 'SKAP1', 'FOXP1', 'TMEM123', 'CAMK2D', 'IL21R', 'HVCN1', 'COL19A1', 'IGLL5', 'CCR7', 'APLP2', 'SARAF', 'CLEC2B', 'TSPAN13', 'CD72', 'RP11-231C14.7', 'BCL7A', 'TAGAP', 'CLEC2D', 'SATB1', 'C1orf162', 'SNX29', 'FCRL1', 'AFF3', 'ZNF318', 'RAB30', 'CD55', 'PLEKHA2', 'HLA-DQA1', 'ADK', 'FAM129C', 'PCDH9', 'RHOH', 'ZCCHC7', 'CD79A', 'MEF2C', 'NCF1', 'SNX9', 'CDCA7L', 'REL', 'EIF1B', 'EIF2AK3', 'CD22', 'SSBP2', '43527', 'LYST', 'FOS', 'C16orf74', 'FAM26F', 'RFTN1', 'DDIT3', 'KIAA0226L', 'LAIR1', 'DGKD', 'NFKB1', 'GABPB1', 'PHACTR1', 'ATF7IP', 'SMAP2', 'SLC38A1', 'SNX2', 'SESN1', 'HIF1A', 'PNRC1', 'FCMR', 'RBM38', 'BEX4', 'LYN', 'ITPR1', 'C12orf57', 'WHSC1L1', 'BZW1', 'STK17A', 'GALNT2', 'SESTD1', 'ZFP36L1', 'DUSP1', 'HNRNPA3', 'KHDRBS2', 'BTLA', 'ABCG1', 'ITM2B', 'RNASE6', 'WDR74', 'CCND3', 'BLOC1S2', 'EAF2', 'SELL', 'RCSD1', 'TCTN1', 'IRF8', 'PIK3IP1', 'IGLC3', 'VPS37B', 'AES', 'PIM3', 'AC241585.2', 'CD79B', 'ARL4A', 'DTNBP1', 'GABPB1-AS1', 'AC245100.1', 'NUP58', 'SSH2', 'ARRDC2', 'LINC01215', 'BIRC3', 'SEC62', 'H1FX', 'LTA4H', 'PLEKHG1', '43723', 'NFKBID', 'SIPA1L1', 'FAM3C', 'TUBA1A', 'RP9', 'RCN2', 'WHAMM', 'CYTIP', 'HLA-DQB1', 'SNHG8', 'DBI', 'SLC2A3', 'ST3GAL1', 'JUN', 'CHPT1', 'PELI1', 'HIST1H1C', 'MARCKSL1', 'ZNF331')
-
-bcell_list[["bcell_plasma"]]<-c('TXNDC5', 'AQP3', 'JSRP1', 'CHPF', 'HRASLS2', 'NT5DC2', 'RP11-290F5.1', 'PRDM1', 'SDC1', 'NUCB2', 'TRIB1', 'BIK', 'SLAMF7', 'ABCB9', 'IGHGP', 'IGHJ4', 'FKBP11', 'IGHG4', 'FNDC3B', 'TNFRSF17', 'SEMA4A', 'MAN1A1', 'SDF2L1', 'CD38', 'GAS6', 'SLC1A4', 'XBP1', 'DERL3', 'RRBP1', 'PRDX4', 'MZB1', 'SPAG4', 'CD59', 'LIME1', 'LGALS3', 'RP11-1070N10.3', 'SIL1', 'ERN1', 'PDIA4', 'HDLBP', 'VIMP', 'FKBP2', 'CLPTM1L', 'LINC00152', 'SEC11C', 'WARS', 'MANF', 'SSR3', 'MYDGF', 'HYOU1', 'TXNDC11', 'SSR4', 'ITM2C', 'SEC61A1', 'HSP90B1', 'SEC24D', 'ERLEC1', 'NANS', 'HM13', 'PDK1', 'SLC44A1', 'AC093818.1', 'SPCS3', 'ELL2', 'SEL1L', 'SPATS2', 'CCDC167', 'LMAN1', 'SEC61B', 'P4HB', 'PREB', 'JCHAIN', 'MLEC', 'PPIB', 'ZBP1', 'SRPRB', 'MYO1D', 'IGLL5', 'DSTN', 'TXNDC15', 'ISOC2', 'HSPA5', 'IGLV3-1', 'FAM46C', 'ANKRD28', 'IGHA2', 'CCPG1', 'OSTC', 'GMPPB', 'MEI1', 'KDELR2', 'DNAJC1', 'ST6GALNAC4', 'SEC61G', 'CRELD2', 'LMAN2', 'DNAJC3', 'TMEM258', 'TMED9', 'SLC17A9', 'ARFGAP3', 'SPCS2', 'SUB1', 'ARSA', 'IGHG1', 'CECR1', 'DNAJB11', 'PHPT1', 'HERPUD1', 'FNDC3A', 'SEC14L1', 'TMEM208', 'IRF4', 'RPN2', 'SRGN', 'EDEM1', 'B4GALT3', 'SURF4', 'KDELR1', 'UBE2J1', 'IDH2', 'TMED10', 'DDOST', 'RPN1', 'TP53INP1', 'KLF13', 'GSTP1', 'RABAC1', 'PDIA6', 'ATF5', 'IGHG3', 'TXN', 'IFI27L2', 'DNAJB9', 'CFLAR', 'SPCS1', 'SLC9A3R1', 'GLRX', 'SRM', 'ATOX1', 'CD27', 'LGALS1', 'GORASP2', 'IGKC', 'IFI6', 'IGHA1', 'DENND1B', 'KRTCAP2', 'CANX', 'ATF4', 'SSR1', 'COX5A', 'TECR', 'COPE', 'IGKV1-12', 'MRPS24', 'SLC3A2', 'C12orf75', 'TRAM1', 'ISG20', 'ACADVL', 'CDK2AP2', 'IGHM', 'UQCRQ', 'IGHG2', 'DAD1', 'GOLGB1', 'SRPRA', 'CALR', 'PIM2', 'PABPC4', 'ROMO1', 'RPS27L', 'DNM2', 'IGKV3-20', 'MIF', 'TMEM59', 'ZNF706', 'H1FX', 'OGT', 'IGLC2', 'HCST', 'IGHV3-7', 'PRDX5', 'NDUFA1', 'IGKV3-15') 
-
-bcell_list[["bcell_cd14"]]<-c('TYROBP', 'LYZ', 'CST3', 'APOC1', 'C1QC', 'FCER1G', 'C1QA', 'C1QB', 'AIF1', 'CCL3L3', 'CCL4L2', 'CD14', 'RNASE1', 'CXCL2', 'MS4A6A', 'CCL2', 'PLAUR', 'FCN1', 'MAFB', 'SERPINA1', 'ANXA1', 'CXCL3', 'C15orf48', 'TMEM176B', 'CTSL', 'CEBPD', 'FCGR2A', 'IL1RN', 'STAB1', 'TMEM176A', 'CFD', 'IGSF6', 'CD163', 'CLEC7A', 'GPNMB', 'TNFAIP2', 'DAB2', 'CPVL', 'TREM2', 'FYB', 'MS4A4A', 'LILRB2', 'CSTA', 'TNFSF13B', 'FCGR3A', 'C5AR1', 'LRP1', 'TGFBI', 'CSF1R', 'CSF3R', 'PILRA', 'HNMT', 'FPR1', 'LINC01272', 'ETS2', 'MSR1', 'PTGS2', 'FCGR1A', 'JAML', 'VSIG4', 'RASSF4', 'MRC1', 'CD36', 'CD4', 'GIMAP4', 'LILRB4', 'NLRP3', 'LGALS2', 'RAB32', 'IL18', 'CD302', 'DMXL2', 'AOAH', 'SERPING1', 'LILRB3', 'PLXDC2', 'FRMD4B', 'CLEC4E', 'NRP1', 'SIGLEC1', 'FPR3', 'TNFRSF1A', 'SLCO2B1', 'C3AR1', 'LILRA5', 'PLA2G7', 'LTBR', 'ADGRE2', 'DAPK1', 'ASGR1', 'HK3', 'C10orf11', 'SPHK1', 'MERTK', 'FCGR1B', 'ACTN1', 'CD33', 'OSCAR', 'SLC8A1', 'PYGL', 'BST1', 'SECTM1', 'ANPEP', 'FN1', 'S100A9', 'TREM1', 'F13A1', 'VCAN', 'MGST2', 'SIRPA', 'A2M', 'PVRL2', 'SPRED1', 'KCTD12', 'PLXND1', 'LGALS3', 'SEPP1', 'IER3', 'NPL', 'SLC31A2', 'PLTP', 'PLAU', 'IL1B', 'ID2', 'LPAR6', 'CXCL8', 'APOE', 'FAM105A', 'CAMK1', 'SPP1', 'PDK4', 'GNA15', 'PHLDA2', 'RAB20', 'TIMP2', 'PLBD1', 'IFITM3', 'TLR4', 'ADM', 'CFP', 'CCL3', 'HAVCR2', 'DBNDD2', 'MPP1', 'MCTP1', 'TTYH3', 'SAMHD1', 'CD300A', 'SLC11A1', 'TIMP1', 'CREG1', 'SULT1A1', 'ENG', 'CCR1', 'DOK2', 'CREB5', 'GIMAP1', 'LST1', 'GIMAP7', 'GLUL', 'TSPAN4', 'PLXNB2', 'UPP1', 'MAF', 'S100A8', 'PTMS', 'CD68', 'HMOX1', 'SMCO4', 'G0S2', 'HBEGF', 'BRI3', 'RP11-670E13.6', 'CCL4', 'FOSL2', 'S100A11', 'RNF130', 'CYFIP1', 'CTSD', 'ADAM9', 'FCGRT', 'GPR34', 'PTPRE', 'ZNF385A', 'NINJ1', 'CTSB', 'ALDH2', 'DUSP6', 'ITGAX', 'PTAFR', 'DUSP3', 'LGALS3BP', 'CXCL16', 'LCP2', 'BLVRB', 'ADAP2', 'LRRC25', 'BLVRA', 'MS4A7', 'STX11', 'FNDC3B', 'RNF19B', 'CMTM3', 'C1orf54', 'SLC15A3', 'KLF4', 'NCF2', 'ACP2', 'GABARAPL1', 'LY96', 'CLEC4A', 'RAB13', 'MCOLN1', 'TRIB1', 'IL6R', 'LMNA', 'FGL2', 'TYMP', 'FOLR2', 'MGLL', 'SGK1', 'PLIN2', 'SRGN', 'TNFSF13', 'HCST', 'FTL', 'TBXAS1', 'NAGA', 'ABCA1', 'CSTB', 'FBP1', 'MIR4435-2HG', 'FABP5', 'CD63', 'IDH1', 'GPR137B', 'ARHGAP18', 'PLD3', 'SLC7A7', 'MNDA', 'EFHD2', 'IFI30', 'STOM', 'GAA', 'SAT1', 'ICAM1', 'NPC2', 'EMILIN2', 'CTSC', 'RENBP', 'AAK1', 'GNS', 'LGMN', 'ATP6V1B2', 'ANXA5', 'LGALS1', 'CEBPB', 'FTH1', 'ZYX', 'RBM47', 'C1orf162', 'AGTRAP', 'S100A10', 'FUCA1', 'ODF3B', 'GPX1', 'GNPDA1', 'GSN', 'S100A4', 'S100A6', 'NAIP', 'IFI6', 'LIMS1', 'SLC37A2', 'H2AFJ', 'CCDC88A', 'RAC1', 'GRN', 'MILR1', 'GBP2', 'VIM', 'SOD2', 'DRAM1', 'SPI1', 'HSPA1A', 'ARRB2', 'GSTP1', 'MT1G', 'ANXA2', 'ITGB2', 'GLIPR2', 'LINC00152', 'RGS10', 'SERPINB6', 'SLC16A3', 'PPT1', 'MYO1F', 'THEMIS2', 'TXN', 'NQO2', 'PTGER4', 'GLRX', 'C19orf38', 'MARCKS', 'SH3BGRL3', 'PSAP', 'PRDM1', 'SCARB2', 'GSTO1', 'MYL6', 'SERF2', 'HSBP1', 'CD151', 'GK', 'ASAH1', 'TSPO', 'GNG10', 'COMT', 'ZFHX3', 'ATF3', 'TUBA1C', 'PFKFB3', 'HEBP1', 'PYCARD', 'CD9', 'ATOX1', 'VAMP8', 'GNG5', 'SDCBP', 'AP2S1', 'LGALS9', 'CYSTM1', 'DPYD', 'SOCS3', 'CTSZ', 'RNF144B', 'MGAT1', 'HCK', 'PLK3', 'ABHD12', 'LAP3', 'H2AFY', 'PLSCR1', 'TMSB10', 'CD59', 'RAP2B', 'CARD16', 'FKBP15', 'CPPED1', 'BHLHE40', 'IQGAP2', 'APLP2', 'ISG15', 'GBP1', 'NANS', 'RHOC', 'TMSB4X', 'JOSD2', 'GAPDH', 'PCBD1', 'DUSP23', 'GLMP', 'NEAT1', 'VAMP5', 'C4orf48', 'LAMP2', 'NABP1', 'GABARAP', 'SH3BP2', 'RRBP1', 'RGCC', 'ABRACL', 'PPIF', 'PGD', '43526', 'BID', 'CTSA', 'GNAI2', 'RTN3', 'ATP5E', 'QKI', 'ATF5', 'STMN1', 'YIF1B', 'OAZ2', 'IL17RA', 'ACSL1', 'C10orf54', 'TIMM8B', 'LAMTOR2', 'ATP6V1F', 'NDUFV3', 'AKR1A1', 'ITM2B', 'PAK1', 'HSPA1B', 'RAB31', 'MGST3', 'TXNDC17', 'AGPAT2', 'ERN1', 'CTSS', 'DSE', 'DYNLL1', 'PDXK', 'BCL2A1', 'TALDO1', 'RNH1', 'SDF2L1', 'PTTG1IP', 'RUNX1', 'TPM4', 'BAG3', 'HN1', 'STXBP2', 'GRINA', 'ZEB2', 'AHR', 'MAFF', 'LACTB2', 'RPPH1', 'MKNK1', 'NOP10', 'MGAT4A', 'HEXB', 'PRDX3', 'UQCR10', 'TFEC', 'CLTA', 'DBI', 'PICALM', 'VMP1', 'RPS27L', 'ARPC5', 'DSTN', 'SRA1', 'TNFAIP3', 'ATP5J2', 'GADD45B', 'CFL1', 'BST2', 'ARF3', 'PHPT1', 'EHD4', 'COX6B1', 'EIF4EBP1', 'NAGK', 'CASP1', 'CKLF', 'ARPC1B', 'SLC3A2', 'RGS1', 'MFSD1', 'HSPB1', 'TMEM167A', 'NAMPT', 'CECR1', 'MTHFD2', 'RTN4', 'CBR1', 'CAPG', 'EHBP1L1', 'SERPINB1', 'GLA', 'KLF10', 'COX8A', 'MXD1', 'TCEB2', 'WARS', 'UBXN11', 'LAIR1', 'DYNLT1', 'ATP6V0C', 'XBP1', 'PLEK', 'NUP214', 'LINC00116', 'RNF181', 'HCFC1R1', 'MPEG1', 'ETV6', 'PLEKHB2', 'RBPJ', 'ATP5H', 'ABI3', 'MRPL41', 'FLOT1', 'SAMSN1', 'CRTAP', 'YWHAH', 'IFIT3', 'COX5B', 'IFNGR1', 'ATP6AP2', 'NEU1', 'P4HB', 'GTF2H5', 'TPI1', 'USMG5', 'ANAPC11', 'UQCR11', 'NDUFB1', 'ARL8B', 'ALDOA', 'CISD2', 'SLC43A2', 'PFN1', 'FKBP1A', 'ATP6AP1', 'GPX4', 'SCO2', 'NFKBIZ', 'SOX4', 'NCOA4', 'ATG3', 'FKBP2', 'ATP5J', 'PPIB', 'FGR', 'MT1E', 'OAZ1', 'ENO1', 'ARAP1', 'GUSB', 'UBL5', 'EPSTI1', 'PLEKHO1', 'HEXA', 'PRDX1', 'TNFRSF1B', 'CTA-29F11.1', 'CLEC2B', 'LDHA', 'GNPTG', 'CYBA', 'MID1IP1', 'SEPW1', 'NDUFS5', 'NDUFB3', 'TMEM14C', 'TUBA1B', 'NDUFA1', 'ATP6V0B', 'CALM3', 'PNP', 'AP1S2', 'MYO9B', 'CD86', 'LINC00936', 'NDUFC1', 'ACTG1', 'LITAF', 'ACTB', 'TNF', 'NDUFB2', 'C14orf2', 'UQCRQ', 'NUCB1', 'CFLAR', 'NDUFA2', 'NENF', 'CITED2', 'PSMA6', 'CD81', 'HEXIM1', 'POLR2L', 'HM13', 'BNIP3L', 'POMP', 'PRELID1', 'RGS2', 'NR4A3', 'YWHAE', 'CAPZB', 'NDUFS6', 'UBE2L6', 'LCP1', 'RBMS1', 'LAMTOR4', 'CYBB', 'IFI27L2', 'TKT', 'NDUFA3', 'PKM', 'SSR3', 'GLIPR1', 'COX7B', 'ATP6V0D1', 'MINOS1', 'CALM2', 'TLN1', 'NBPF19', 'TWF2', 'MYDGF', 'CLIC1', 'GLUD1', 'SEC11A', 'RNASEK', 'FAM46A', 'GMFG', 'C7orf73', 'MYEOV2', 'RNF149', 'SEC61G', 'ATP6V0E1', 'NDUFB7', 'C20orf24', 'TMEM258', 'CAPZA2', 'RAB10', 'RBX1', 'RBKS', 'IVNS1ABP', 'FERMT3', 'PSMB3', 'TMEM219', 'H2AFV', 'FAM96B', 'COX5A', 'NXF1', 'MMP24-AS1', 'RHOG', 'KDELR1', 'PHACTR1', 'OST4', 'NAA38', 'SHFM1', 'ARPC2', 'MIR155HG', 'SNX6', 'SERTAD1', 'TNFSF10', 'LIPA', 'BANF1', 'CALR', 'ENY2', 'CD99', 'COTL1', 'CALM1', 'GNB2', 'ATP5G3', 'SLC38A2', 'ZFAND5', 'GUK1', 'ROMO1', 'RAB5C', 'NDUFB4', 'RNF213', 'MAP3K8', 'DRAP1', 'PGAM1', 'BRK1', 'LAMTOR1', 'MYL12B', 'CTSH', 'PSMA7', 'NDUFA4', 'ATP5C1', 'CDKN1A', 'HSPA5', 'PSME2', 'H3F3A', 'H2AFZ', 'HSP90AA1', 'CKS2', 'COPE', 'MIDN', 'IRF7', 'GNAS', 'FLNA')
-
-
-  module_scores<-AddModuleScore(atac_sub,features=bcell_list,assay="SoupXRNA",search=TRUE,name=names(bcell_list)) #use add module function to add cell scores
-  module_scores<-module_scores@meta.data[seq(ncol(module_scores@meta.data)-(length(module_feats)-1),ncol(module_scores@meta.data))]
-  colnames(module_scores)<-names(module_feats) #it adds a number at the end to each name by default, which I don't like
-  dat_epi<-AddMetaData(dat,metadata=module_scores)
-
-
+#Plotting Marker Differences across subtypes
+  run_top_TFs(obj=atac_sub,prefix="mesenchymal_subtype",i="assigned_subtype",n_markers=10,CHROMVAR=FALSE,plot_height=15) #all RNA/ATAC
+  run_top_TFs(obj=atac_sub,prefix="mesenchymal_subtype",i="EMBO_predicted.id",n_markers=10,CHROMVAR=TRUE,plot_height=15) #limit to TFs
 
 ```
 
-### TBD
-"myeloid.SeuratObject.rds"
-"plasmacell.SeuratObject.rds"
-"fibroblast.SeuratObject.rds"
-"endothelial.SeuratObject.rds"
-"pericyte.SeuratObject.rds"
+## Comparison of cell types across diagnoses and other factors.
+<!-- Rerun -->
+
+### Heatmap proportion of cells (Similar to  Bar Plots across cells subsection)
+
+```R
+library(Signac)
+library(Seurat)
+library(ggplot2)
+library(dplyr) 
+library(ComplexHeatmap)
+library(reshape2)
+library(RColorBrewer)
+library(circlize)
+library(JASPAR2020)
+library(TFBSTools)
+library(patchwork)
+library(BSgenome.Hsapiens.UCSC.hg38)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+###########Color Schema#################
+type_cols<-c(
+#epithelial
+"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+"B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
+"CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
+
+embo_cell_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
+       
+diag_cols<-c("IDC"="red", "DCIS"="grey")
+
+molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"="#F7B7BB")
+########################################
 
 
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+immune<-readRDS("immune.SeuratObject.rds")
+immune_subtypes<-setNames(immune$assigned_subtype,nm=row.names(immune@meta.data))
+dat<-AddMetaData(dat,immune_subtypes,col.name="immune_subtype")
+
+mesenchymal<-readRDS("mesenchymal.SeuratObject.rds")
+mesenchymal_subtypes<-setNames(mesenchymal$assigned_subtype,nm=row.names(mesenchymal@meta.data))
+dat<-AddMetaData(dat,mesenchymal_subtypes,col.name="mesenchymal_subtype")
+
+saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
+
+#Set up metadata and set up facet labels as factors for ordering
+metadat<-as.data.frame(dat@meta.data)
+metadat$diagnosis = factor(metadat$diagnosis, levels=c("NAT","DCIS","IDC","ILC"), labels=c("NAT","DCIS","IDC","ILC")) 
+metadat$molecular_type = factor(metadat$molecular_type, levels=c("NA","DCIS","ER+/PR+/HER2-","ER+/PR-/HER2+","ER+/PR-/HER2-"), labels=c("NA","DCIS","ER+/PR+/HER2-","ER+/PR-/HER2+","ER+/PR-/HER2-")) 
+metadat$sample=factor(metadat$sample,levels=c("RM_4","sample_15","sample_19","sample_1","sample_16","sample_7","sample_10","sample_11","sample_3","sample_4","RM_2","RM_3","sample_12","sample_20","sample_5","sample_6","sample_8","sample_9","RM_1"),labels=c("RM_4","sample_15","sample_19","sample_1","sample_16","sample_7","sample_10","sample_11","sample_3","sample_4","RM_2","RM_3","sample_12","sample_20","sample_5","sample_6","sample_8","sample_9","RM_1"))
+
+metadat$cell_subtype_assignment<-metadat$EMBO_predicted.id
+metadat[!is.na(metadat$immune_subtype),]$cell_subtype_assignment<-metadat[!is.na(metadat$immune_subtype),]$immune_subtype
+metadat[!is.na(metadat$mesenchymal_subtype),]$cell_subtype_assignment<-metadat[!is.na(metadat$mesenchymal_subtype),]$mesenchymal_subtype
+metadat[metadat$cell_subtype_assignment %in% c("cycling.epithelial","epithelial"),]$cell_subtype_assignment<-"Epithelial"
+DF<-as.data.frame(metadat %>% group_by(diagnosis, molecular_type,sample,cell_subtype_assignment) %>% tally())
+DF<-DF[DF$cell_subtype_assignment!="NA",]
+
+cell_subtype_assignment<-setNames(metadat$cell_subtype_assignment,nm=row.names(metadat))
+dat<-AddMetaData(dat,cell_subtype_assignment,col.name="cell_subtype_assignment")
+saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
+
+#all cells celltypes markers
+dat<-subset(dat,EMBO_predicted.id!="NA")
+run_top_TFs(obj=dat,prefix="dat",i="cell_subtype_assignment",n_markers=8,CHROMVAR=FALSE,plot_height=15)
+run_top_TFs(obj=dat,prefix="dat",i="cell_subtype_assignment",n_markers=8,CHROMVAR=TRUE,plot_height=15)
+
+#Project Data into Heatmap
+#Diagnosis
+DF_diag <- as.data.frame(dcast(DF, diagnosis ~ cell_subtype_assignment,fun.aggregate=sum,fill=0,value.var="n"))
+row.names(DF_diag)<-DF_diag$diagnosis
+DF_diag<-DF_diag[,2:ncol(DF_diag)]
+
+#Molecular Type
+DF_mol <- as.data.frame(dcast(DF, molecular_type ~ cell_subtype_assignment,fun.aggregate=sum,fill=0,value.var="n"))
+row.names(DF_mol)<-DF_mol$molecular_type
+DF_mol <- DF_mol[,2:ncol(DF_mol)]
+
+#Samples
+DF_samp <- as.data.frame(dcast(DF, sample~ cell_subtype_assignment,fun.aggregate=sum,fill=0,value.var="n"))
+row.names(DF_samp)<-DF_samp$sample
+DF_samp <- DF_samp[,2:ncol(DF_samp)]
+
+celltype_order<-c("Fibroblast","CAF_1","CAF_2","Endothelial_1","Endothelial_2","Endothelial_3","Pericytes_1","Pericytes_2",
+  "CD8+Naive","CD4+Tcell_1","CD4+Tcell_2","Tcell_3","Tcell_4","Treg","NK","Bcell","CD14+Mono_1","CD14+Mono_2","CD14+Mono_3","DC","Plasmablast")
+
+DF_diag<-DF_diag[celltype_order]
+DF_mol<-DF_mol[celltype_order]
+DF_samp<-DF_samp[celltype_order]
+
+DF_diag<-do.call("rbind",lapply(1:nrow(DF_diag),function(x) DF_diag[x,]/sum(DF_diag[x,])))
+DF_mol<-do.call("rbind",lapply(1:nrow(DF_mol),function(x) DF_mol[x,]/sum(DF_mol[x,])))
+DF_samp<-do.call("rbind",lapply(1:nrow(DF_samp),function(x) DF_samp[x,]/sum(DF_samp[x,])))
+
+DF_diag<-t(DF_diag[levels(metadat$diagnosis),celltype_order])
+DF_mol<-t(DF_mol[levels(metadat$molecular_type),celltype_order])
+DF_samp<-t(DF_samp[levels(metadat$sample),celltype_order])
+
+col_fun = colorRamp2(c(0,0.25,0.5), c("#e0ecf4", "#9ebcda", "#8856a7"))
+
+heat_diag<-Heatmap(DF_diag,row_order=1:nrow(DF_diag),column_order=1:ncol(DF_diag),col=col_fun)
+heat_mol<-Heatmap(DF_mol,row_order=1:nrow(DF_mol),column_order=1:ncol(DF_mol),col=col_fun)
+heat_samp<-Heatmap(DF_samp,row_order=1:nrow(DF_samp),column_order=1:ncol(DF_samp),col=col_fun)
+
+out_plt<-heat_samp+heat_mol+heat_diag
+
+pdf(file="cellcount_heatmap.pdf")
+draw(out_plt)
+dev.off()
+system("slack -F cellcount_heatmap.pdf ryan_todo")
+
+```
+
+Motif Footprinting
+```R
+library(Signac)
+library(Seurat)
+library(ggplot2)
+library(dplyr) 
+library(ComplexHeatmap)
+library(reshape2)
+library(RColorBrewer)
+library(circlize)
+library(JASPAR2020)
+library(TFBSTools)
+library(patchwork)
+library(BSgenome.Hsapiens.UCSC.hg38)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+###########Color Schema#################
+type_cols<-c(
+#epithelial
+"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
+"B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
+"CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
+
+embo_cell_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
+       
+diag_cols<-c("IDC"="red", "DCIS"="grey")
+
+molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"="#F7B7BB")
+########################################
+
+
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+# Get a list of motif position frequency matrices from the JASPAR database
+
+Idents(dat)<-"EMBO_predicted.id"
+pwm <- getMatrixSet(
+  x = JASPAR2020,
+  opts = list(species = 9606, all_versions = FALSE)
+)
+
+# add motif information
+dat <- AddMotifs(
+  object = dat,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  pfm = pwm
+)
+
+#PAM50 Genes
+#CDCA1 KNTC2 ORC6L use different names in our data
+#NUF2, NDC80, ORC6 resp.
+pam50_genes<-c('ACTR3B', 'ANLN', 'BAG1', 'BCL2', 'BIRC5', 'BLVRA', 'CCNB1', 'CCNE1', 'CDC20', 'CDC6', 'NUF2', 'CDH3', 'CENPF', 'CEP55', 'CXXC5', 'EGFR', 'ERBB2', 'ESR1', 'EXO1', 'FGFR4', 'FOXA1', 'FOXC1', 'GPR160', 'GRB7', 'KIF2C', 'NDC80', 'KRT14', 'KRT17', 'KRT5', 'MAPT', 'MDM2', 'MELK', 'MIA', 'MKI67', 'MLPH', 'MMP11', 'MYBL2', 'MYC', 'NAT1', 'ORC6', 'PGR', 'PHGDH', 'PTTG1', 'RRM2', 'SFRP1', 'SLC39A6', 'TMEM45B', 'TYMS', 'UBE2C', 'UBE2T')
+
+#PAM50 TFs
+pam50_tfs<-pam50_genes[pam50_genes %in% dat@assays$ATAC@motifs@motif.names]
+
+# gather the footprinting information for sets of motifs
+dat <- Footprint(
+  object = dat,
+  motif.name = pam50_tfs,
+  genome = BSgenome.Hsapiens.UCSC.hg38
+)
+
+# plot the footprint data for each group of cells
+p2 <- PlotFootprint(dat, features = pam50_tfs)
+ggsave((p2 + patchwork::plot_layout(ncol = 1)),file="tf_footprints.pdf",height=30,limitsize=T)
+system("slack -F tf_footprints.pdf ryan_todo")
+
+```
 
 ## Plot of Differential Genes across Normal epithelial (NAT) DCIS and IDC
 <!-- Rerun -->
@@ -4949,8 +5306,6 @@ for (i in c("ESR1")){
 #FAM83A
 #ERICH5
 ```
-## Comparison of cell types across diagnoses and other factors.
-<!-- Rerun -->
 
 ## 3D Plotting in Blender
 <!-- Rerun -->

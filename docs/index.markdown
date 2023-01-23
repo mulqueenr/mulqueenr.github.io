@@ -46,12 +46,23 @@ My full code for processing of various projects while working towards my graduat
     {% endfor %}
 </ul>
 
-More recently, I joined <a href="https://www.ohsu.edu/knight-cancer-institute/cedar">CEDAR</a>, with actively developed code available as well.
+I joined <a href="https://www.ohsu.edu/knight-cancer-institute/cedar">CEDAR</a>, at OHSU for roughly one year to begin my transistion into a cancer researcher. My actively developed code for projects there are available as well.
 
 <h3>CEDAR Projects</h3>
 <ul>
     {% for doc in site.pages %}
       {% if doc.category == "CEDAR" %}
+        <li><a href="{{ doc.url }}">{{ doc.title }}</a></li>
+      {% endif %}
+    {% endfor %}
+</ul>
+
+More recently, I joined up with Nick Navin at MD Anderson to explore the effect of copy number variation on the epigenome.
+
+<h3>CEDAR Projects</h3>
+<ul>
+    {% for doc in site.pages %}
+      {% if doc.category == "mdanderson" %}
         <li><a href="{{ doc.url }}">{{ doc.title }}</a></li>
       {% endif %}
     {% endfor %}

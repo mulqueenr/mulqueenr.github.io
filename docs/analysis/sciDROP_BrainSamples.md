@@ -15,7 +15,7 @@ This notebook details the processing of the "20K" and "70K" loaded mouse brain a
 
 ```bash
 #libraries were generated as two separate lanes of a NovaSeq S4 flowcell.
-#bcl2fastq was run prior to the run transfer
+#bcl2fastq was run prior to the jibe transfer
 FASTQ_DIR="/home/groups/oroaklab/fastq/201103_NovaSeq_sciDropATAC"
 #fastq files downloaded to $FASTQ_DIR
 

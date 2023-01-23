@@ -1544,35 +1544,43 @@ system(paste0("slack -F ","orgo_cirm43.TF_footprints.pdf"," ryan_todo"))
 dat<-orgo_cirm43
 
 dat$seurat_clusters<-factor(dat$seurat_clusters,levels=c(6,5,0,4,1,3,2))
-#SOX2
-sox2_plot<-CoveragePlot(object = dat, region="SOX2", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="SOX2",expression.assay="GeneActivity") 
-ggsave(sox2_plot,file=paste0("orgo_cirm43.SOX2.featureplots.pdf"),height=40,width=20,limitsize=F)
-system(paste0("slack -F ","orgo_cirm43.SOX2.featureplots.pdf"," ryan_todo"))
-
 
 #PAX6
 PAX6_plot<-CoveragePlot(object = dat, region="PAX6", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="PAX6",expression.assay="GeneActivity") 
 ggsave(PAX6_plot,file=paste0("orgo_cirm43.PAX6.featureplots.pdf"),height=40,width=20,limitsize=F)
 system(paste0("slack -F ","orgo_cirm43.PAX6.featureplots.pdf"," ryan_todo"))
 
+#SOX2
+sox2_plot<-CoveragePlot(object = dat, region="SOX2", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="SOX2",expression.assay="GeneActivity") 
+ggsave(sox2_plot,file=paste0("orgo_cirm43.SOX2.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","orgo_cirm43.SOX2.featureplots.pdf"," ryan_todo"))
 
-#TBR1
-TBR1_plot<-CoveragePlot(object = dat, region="TBR1", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="TBR1",expression.assay="GeneActivity") 
-ggsave(TBR1_plot,file=paste0("orgo_cirm43.TBR1.featureplots.pdf"),height=40,width=20,limitsize=F)
-system(paste0("slack -F ","orgo_cirm43.TBR1.featureplots.pdf"," ryan_todo"))
-
+#HOPX
+HOPX_plot<-CoveragePlot(object = dat, region="HOPX", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="HOPX",expression.assay="GeneActivity") 
+ggsave(HOPX_plot,file=paste0("orgo_cirm43.HOPX.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","orgo_cirm43.HOPX.featureplots.pdf"," ryan_todo"))
 
 #EOMES
 EOMES_plot<-CoveragePlot(object = dat, region="EOMES", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="EOMES",expression.assay="GeneActivity") 
 ggsave(EOMES_plot,file=paste0("orgo_cirm43.EOMES.featureplots.pdf"),height=40,width=20,limitsize=F)
 system(paste0("slack -F ","orgo_cirm43.EOMES.featureplots.pdf"," ryan_todo"))
 
+#TBR1
+TBR1_plot<-CoveragePlot(object = dat, region="TBR1", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="TBR1",expression.assay="GeneActivity") 
+ggsave(TBR1_plot,file=paste0("orgo_cirm43.TBR1.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","orgo_cirm43.TBR1.featureplots.pdf"," ryan_todo"))
+
+#NEUROD1
+NEUROD1_plot<-CoveragePlot(object = dat, region="NEUROD1", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="NEUROD1",expression.assay="GeneActivity") 
+ggsave(NEUROD1_plot,file=paste0("orgo_cirm43.NEUROD1.featureplots.pdf"),height=40,width=20,limitsize=F)
+system(paste0("slack -F ","orgo_cirm43.NEUROD1.featureplots.pdf"," ryan_todo"))
+
+
 
 #BCL11B
 BCL11B_plot<-CoveragePlot(object = dat, region="BCL11B", assay="peaks", ident=dat$seurat_clusters, extend.upstream=2000,extend.downstream=2000,features="BCL11B",expression.assay="GeneActivity") 
 ggsave(BCL11B_plot,file=paste0("orgo_cirm43.BCL11B.featureplots.pdf"),height=40,width=20,limitsize=F)
 system(paste0("slack -F ","orgo_cirm43.BCL11B.featureplots.pdf"," ryan_todo"))
-
 
 
 #SATB2
@@ -4034,9 +4042,29 @@ motif_ix <- matchMotifs(motifs, counts_filtered,
                         genome = BSgenome.Hsapiens.UCSC.hg19)
 ```
 
+### Output of Final Metadata for Supplementary Table
 
+```R
+  library(Signac)
+  library(Seurat)
+  library(GenomeInfoDb)
+  library(ggplot2)
+  set.seed(1234)
+  library(EnsDb.Hsapiens.v86)
+  library(Matrix)
+  library(dplyr)
+  library(patchwork)
+  setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+  all_cells<-readRDS("orgo_cirm43.preQC2.SeuratObject.Rds")
+  processed_cells<-readRDS("orgo_cirm43.QC2.SeuratObject.Rds")
+  processed_metadata<-as.data.frame(processed_cells@meta.data[colnames(processed_cells@meta.data)[!(colnames(processed_cells@meta.data) %in% colnames(all_cells@meta.data))]])
+  all_cells<-AddMetaData(all_cells,processed_metadata)
+  write.table(as.data.frame(all_cells@meta.data),col.names=T,row.names=T,sep="\t",quote=F,file="organoid_ST5.metadata.tsv")
+  system("slack -F organoid_ST5.metadata.tsv ryan_todo")
 
-
+  dat<-as.data.frame(all_cells@meta.data) 
+  dat %>% filter(pass_qc=="True") %>% summarize(frip_avg=mean(FRIP),frip_sd=sd(FRIP))
+```
 <!-- 
   #########OLD PSEUDOTIME#############
 ## Using monocle to build trajectories
