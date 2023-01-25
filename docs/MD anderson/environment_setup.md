@@ -36,17 +36,83 @@ conda install -c conda-forge r-base scipy numpy
 #add conda environment to .bashrc
 echo "conda activate r4.2" >> ~/.bashrc
 ```
+
 Log out and login to automatic load in of conda environment.
 
-### General RNA and ATAC processing can be done with Seurat and Signac
+## General tools
+### FastQ Generation:
+bcl2fastq2
+
+### Alignment:
+bwa
+bowtie2
+hisat2
+bismark (methylation)
+
+### Fastq/sam/bam manipulation
+samtools
+
+### Bed file manipulation
+bedtools
+
+### ATAC peak calling
+macs3
+
+```bash
+#bcl2fastq2
+conda install -c bih-cubi bcl2fastq2
+
+#bwa
+cd ~/tools
+git clone https://github.com/lh3/bwa.git
+cd bwa; make
+
+#bowtie2
+cd ~/tools
+wget https://sourceforge.net/projects/bowtie-bio/files/bowtie2/2.5.1/bowtie2-2.5.1-linux-x86_64.zip
+
+#hisat2
+conda install -c bioconda hisat2
+
+#bismark
+cd ~/tools
+wget https://github.com/FelixKrueger/Bismark/archive/refs/tags/0.24.0.tar.gz
+
+#samtools
+conda install -c bioconda samtools
+
+#bedtools
+conda install -c bioconda bedtools
+
+#macs3
+pip install macs3
+
+#Add to PATH (for those not conda installed)
+echo "PATH=$PATH:~/tools/bowtie2-2.5.1-linux-x86_64" >> ~/.bashrc
+echo "PATH=$PATH:~/tools/bwa" >> ~/.bashrc
+echo "PATH=$PATH:~/tools/Bismark-0.24.0/"  >> ~/.bashrc
+```
+
+### General RNA and ATAC processing can be done with Seurat and Signac in R
 
 Now install all the R packages.
+
+Install an XML package dependency in the environment
+```bash
+conda install -c conda-forge r-xml
+conda install -c conda-forge r-gert
+conda install -c conda-forge r-ragg
+conda install -c conda-forge r-spdep
+conda install -c conda-forge r-terra
+conda install -c conda-forge zlib
+```
+
+I'm sure there are a ton that I'm missing. But I'm getting started with these. 
 ```R
-install.packages("Seurat","Signac","ComplexHeatmap","devtools","BiocManager")
-
-BiocManager::install("cicero")
+install.packages(c("BiocManager","devtools")) 
+install.packages(c("Seurat","Signac","harmony")) #biocmanager install is necessary for signac
+BiocManager::install(c("cicero","ComplexHeatmap"))
 devtools::install_github('cole-trapnell-lab/monocle3')
-
 ```
 
 ### HiC Data Analysis can be done with the DipC group's released hickit
@@ -80,19 +146,26 @@ cd hickit-0.1_x64-linux
 ./hickit-gl -I imput.cpg.3dg.gz --view
 ```
 
+# Separate Conda Env: scbs_env
+Need a separate environment for scbs analysis because python version has to be lower.
+
 ### Methylation Analysis with scbs
 https://github.com/LKremer/scbs
 https://www.bioconductor.org/packages/release/bioc/vignettes/Melissa/inst/doc/process_files.html
 
+Naming a scbs conda environment as scbs_env
 ```bash
+conda deactivate #get out of r3.4 env
+conda create -n "scbs_env" python=3.9.15
+conda activate scbs_env
 python3 -m pip install scbs
+conda install -c conda-forge r-xml r-gert r-ragg r-spdep r-terra r-stringi
+scbs --version                                                                                    
+#scbs, version 0.5.4            
 ```
 
+Install R packages for downstream analysis.
 ```R
-## try http:// if https:// URLs are not supported
-if (!requireNamespace("BiocManager", quietly=TRUE))
-    install.packages("BiocManager")
+install.packages(c("BiocManager","devtools")) 
 BiocManager::install("Melissa")
-
 ```
-## File Location
