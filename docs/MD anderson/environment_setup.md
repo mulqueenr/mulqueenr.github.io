@@ -97,7 +97,7 @@ echo "PATH=$PATH:~/tools/Bismark-0.24.0/"  >> ~/.bashrc
 
 Now install all the R packages.
 
-Install an XML package dependency in the environment
+Install package dependencies in the environment
 ```bash
 conda install -c conda-forge r-xml
 conda install -c conda-forge r-gert
@@ -108,6 +108,7 @@ conda install -c conda-forge zlib
 ```
 
 I'm sure there are a ton that I'm missing. But I'm getting started with these. 
+
 ```R
 install.packages(c("BiocManager","devtools")) 
 install.packages(c("Seurat","Signac","harmony")) #biocmanager install is necessary for signac
@@ -168,4 +169,26 @@ Install R packages for downstream analysis.
 ```R
 install.packages(c("BiocManager","devtools")) 
 BiocManager::install("Melissa")
+```
+
+# References Download
+Downloading mm10 and hg38 reference genomes. Using the cellranger ones for consistency with commercial products.
+
+```bash
+mkdir ~/ref
+cd ~/ref
+wget https://cf.10xgenomics.com/supp/cell-arc/refdata-cellranger-arc-GRCh38-2020-A-2.0.0.tar.gz
+wget https://cf.10xgenomics.com/supp/cell-arc/refdata-cellranger-arc-mm10-2020-A-2.0.0.tar.gz
+
+tar -xvf refdata-cellranger-arc-GRCh38-2020-A-2.0.0.tar.gz
+tar -xvf refdata-cellranger-arc-mm10-2020-A-2.0.0.tar.gz
+
+```
+
+## Prepare Reference Genomes For Aligners
+Skipping mouse genome for now, but its similar
+```bash
+bwa index ~/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa &
+
+bismark_genome_preparation ~/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta &
 ```

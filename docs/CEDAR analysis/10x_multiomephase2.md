@@ -957,6 +957,7 @@ macs2_counts <- FeatureMatrix(
   cells = colnames(dat)
 )
 
+
 # create a new assay using the MACS2 peak set and add it to the Seurat object
 dat[["peaks"]] <- CreateChromatinAssay(
   counts = macs2_counts,
@@ -2175,7 +2176,6 @@ library(Seurat)
 library(SeuratWrappers)
 library(ggplot2)
 library(patchwork)
-library(cicero)
 library(SeuratObjects)
 library(EnsDb.Hsapiens.v86)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
@@ -2245,7 +2245,7 @@ infercnv_per_sample<-function(x,prediction="EMBO"){
   }
   dat<-readRDS("phase2.QC.filt.SeuratObject.rds") #use QC controlled bulk seurat object as input
   dat<-subset(dat,sample==outname) #subset data to sample specified by x and outname
-
+  #dat<-subset(dat,downsample=200)
   DefaultAssay(dat)<-"RNA" #using raw counts, and not SOUPX corrected counts for this
   dat$cnv_ref<-"FALSE"
   if(prediction=="EMBO"){
@@ -2284,7 +2284,7 @@ infercnv_per_sample<-function(x,prediction="EMBO"){
                                denoise=TRUE,
                                HMM=TRUE,
                                HMM_report_by="cell",
-                               resume_mode=T,
+                               resume_mode=F,
                                HMM_type='i3',
                                num_threads=10)
   saveRDS(infercnv_obj,paste0(wd,"/",outname,"_inferCNV","/",outname,".inferCNV.Rds"))
@@ -3942,16 +3942,115 @@ library(Signac)
 library(Seurat)
 library(data.table)
 library(GenomicRanges)
+library(EnsDb.Hsapiens.v86)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(liftOver)
+library(gwascat)
+library(rtracklayer)
+library(ggplot2)
+
+system("wget -P /home/groups/CEDAR/mulqueen/ref https://hgdownload.cse.ucsc.edu/goldenpath/hg19/liftOver/hg19ToHg38.over.chain.gz")
+system("gzip -f -d /home/groups/CEDAR/mulqueen/ref/hg19ToHg38.over.chain.gz")
+path = "/home/groups/CEDAR/mulqueen/ref/hg19ToHg38.over.chain"
+ch = import.chain(path)
+
+lift_over<-function(cur){
+seqlevelsStyle(cur) = "UCSC"  # necessary
+cur38 = liftOver(cur, ch)
+class(cur38)
+cur38 = unlist(cur38)
+genome(cur38) = "hg38"
+cur38 = new("gwaswloc", cur38)
+return(cur38)}
+
+
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
 
+#convert hg19 to hg38
+
 poor_er<-makeGRangesFromDataFrame(fread("http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Poor%20outcome%20ER%20regions.bed.gz",col.names=c("chr","start","end")))
 good_er<-makeGRangesFromDataFrame(fread("http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Good%20outcome%20ER%20regions.bed.gz",col.names=c("chr","start","end")))
+poor_er<-lift_over(poor_er)
+good_er<-lift_over(good_er)
 
-ClosestFeature
-RegionMatrix
-RegionHeatmap
+er_sig<-c(poor_er,good_er)
+
+counts <- FeatureMatrix(
+  fragments = dat@assays$peaks@fragments,
+  features = granges(er_sig),
+  cells = colnames(dat)
+)
+
+annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+
+# create a new assay using the MACS2 peak set and add it to the Seurat object
+dat[["er_peaks"]] <- CreateChromatinAssay(
+  counts = counts,min.cells=-1,min.features=-1,
+  fragments = dat@assays$peaks@fragments,
+  annotation = annotation
+)
+
+DefaultAssay(dat)<-"er_peaks"
+dat<-NormalizeData(dat)
+dat<-FindVariableFeatures(dat)
+dat<-ScaleData(dat)
+
+#Using Metafeatures function to generate aggregate score for good and poor ER peaks
+dat<-MetaFeature(dat,assay="er_peaks",features=paste(poor_er@seqnames,poor_er@ranges,sep="-"),meta.name="Carroll_PoorER")
+dat<-MetaFeature(dat,assay="er_peaks",features=paste(good_er@seqnames,good_er@ranges,sep="-"),meta.name="Carroll_GoodER")
+
+saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
+
+plt<-VlnPlot(dat,features=c("Carroll_PoorER","Carroll_GoodER"),idents="molecular_type")
+ggsave(plt,file="Carroll_ERPeaks_VlnPlot.pdf")
+system("slack -F Carroll_ERPeaks_VlnPlot.pdf ryan_todo")
+
 ```
+
+## CancerSEA for Pathway analysis
+cancersea:: has a list of genes associated with morphologies. Run enrichment of these feature sets.
+
+```R
+#devtools::install_github("camlab-bioml/cancersea")
+library(Signac)
+library(Seurat)
+library(data.table)
+library(GenomicRanges)
+library(cancersea)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+DefaultAssay(dat)<-"SoupXRNA"
+data('available_pathways')#load in cancersea gene lists for pathways
+
+#make a named vector of cancersea sets
+cancersea<-setNames(nm=available_pathways,
+  lapply(available_pathways,function(i){
+    feat_list<-eval(parse(text=i))$symbol
+    feat_list<-feat_list[feat_list %in% row.names(dat@assays$SoupXRNA@data)]
+    return(feat_list)
+  }))
+
+for(i in colnames(dat@meta.data)[grepl(pattern="cancersea",colnames(dat@meta.data))]) {
+dat[[i]] <- NULL
+}
+
+dat<-AddModuleScore(dat,features=cancersea,name=paste0("cancersea_",names(cancersea)),assay="SoupXRNA",seed=123,search=TRUE)
+saveRDS(dat,"phase2.QC.filt.SeuratObject.rds")
+
+plot_list<-colnames(dat@meta.data)[grepl(pattern="cancersea_",colnames(dat@meta.data))][2:15]
+Idents(dat)<-dat$molecular_type
+
+for(i in plot_list){
+plt<-VlnPlot(dat,features=i)
+ggsave(plt,file=paste0("CancerSEA_",i,"VlnPlot.pdf"))
+system(paste0("slack -F ",paste0("CancerSEA_",i,"VlnPlot.pdf")," ryan_todo"))
+}
+
+saveRDS(dat,"phase2.QC.filt.SeuratObject.rds")
+```
+
 ### Files for Travis
 <!-- Rerun -->
 
@@ -4085,7 +4184,7 @@ dat<-readRDS("phase2.QC.SeuratObject.rds")
 #call peaks per predicted.id cell type
 peaks <- CallPeaks(dat, 
   assay="ATAC",
-  group.by="predicted.id",
+  group.by="EMBO_predicted.id",
   combine.peaks=FALSE,
   macs2.path = "/home/groups/CEDAR/mulqueen/src/miniconda3/bin/macs2")
   #use this set of peaks for all samples
@@ -4427,7 +4526,7 @@ harmony_sample_integration<-function(x,outname,res=0.1){
 
 harmony_sample_integration(x="phase2.QC.filt.SeuratObject.rds",outname="all_cells",res=0.1) #done
 harmony_sample_integration(x="normalepithelial.SeuratObject.rds",outname="normalepithelial",res=0.1) #done
-
+harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial",res=0.1) #done
 harmony_sample_integration(x="mesenchymal.SeuratObject.rds",outname="mesenchymal",res=0.1) 
 harmony_sample_integration(x="immune.SeuratObject.rds",outname="immune",res=0.1) 
 
@@ -4445,7 +4544,7 @@ harmony_sample_integration(x="immune.SeuratObject.rds",outname="immune",res=0.1)
 ```
 
 ## Cell Subtyping
-<!-- RUNNING -->
+<!-- DONE -->
 
 Functions used for all cell subtyping.
 Transcription Factor Expression Markers are Based on seurat tutorial https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html#wnn-analysis-of-10x-multiome-rna-atac-1
@@ -4840,8 +4939,6 @@ umap_sample_integration<-function(dat,outname){
 
 ### Across all cell types
 
-
-
 ### Normal Epithelial Subtyping
 Continued session. 
 ```R
@@ -5018,6 +5115,40 @@ system("slack -F mesenchymal_featureplot.pdf ryan_todo")
 
 ```
 
+### Epithelial (all cells) pseudotime trajectory
+```R
+atac_sub<-readRDS("epithelial.SeuratObject.rds")
+atac_sub <- FindClusters(atac_sub, graph.name="wknn",verbose = FALSE,resolution=0.5)
+atac_sub$seurat_subcluster<-atac_sub$seurat_clusters
+umap_sample_integration(dat=atac_sub,outname="allepithelial")
+saveRDS(atac_sub,file="epithelial.SeuratObject.rds")
+
+normal_epi<-readRDS("normalepithelial.SeuratObject.rds")
+
+sample_label_transfer()
+sample_label_transfer<-function(in_dat,ref_dat,prefix="Tcell_",transfer_label="celltype"){
+  transfer.anchors <- FindTransferAnchors(
+    reference = ref_dat,
+    reference.assay="RNA",
+    query = in_dat,
+    query.assay="SoupXRNA",
+    verbose=T
+  )
+
+  predictions<- TransferData(
+    anchorset = transfer.anchors,
+    refdata = ref_dat@meta.data[,transfer_label],
+  )
+  colnames(predictions)<-paste0(prefix,colnames(predictions))
+
+  in_dat<-AddMetaData(in_dat,metadata=predictions)
+  return(in_dat)
+  }
+
+
+library(slingshot)
+```
+
 ## Comparison of cell types across diagnoses and other factors.
 <!-- Rerun -->
 
@@ -5166,7 +5297,7 @@ molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"
 dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
 # Get a list of motif position frequency matrices from the JASPAR database
 
-Idents(dat)<-"EMBO_predicted.id"
+Idents(dat)<-"diagnosis"
 pwm <- getMatrixSet(
   x = JASPAR2020,
   opts = list(species = 9606, all_versions = FALSE)
