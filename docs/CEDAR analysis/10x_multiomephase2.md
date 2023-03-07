@@ -2004,6 +2004,20 @@ plt1<-ggplot(DF,aes(x=sample,fill=EMBO_predicted.id,y=n))+geom_bar(position="fil
 ggsave(plt1,file="Embo_barplot_qc_celltype.pdf")
 system("slack -F Embo_barplot_qc_celltype.pdf ryan_todo")
 
+
+#Cell types (Epi excluded) (stacked bar)
+DF<-as.data.frame(metadat %>% filter(!(predicted.id %in% c("Cancer Epithelial", "Normal Epithelial"))) %>% group_by(diagnosis, molecular_type,sample,predicted.id) %>% tally())
+plt1<-ggplot(DF,aes(x=sample,fill=predicted.id,y=n))+geom_bar(position="fill",stat="identity")+theme_minimal()+scale_fill_manual(values=type_cols)+facet_grid(.~diagnosis+molecular_type,scales="free_x",space="free")
+ggsave(plt1,file="swarbrick_barplot_qc_celltype.nonepi.pdf")
+system("slack -F swarbrick_barplot_qc_celltype.nonepi.pdf ryan_todo")
+
+#Cell types (Epi excluded) (stacked bar)
+DF<-as.data.frame(metadat %>% filter(!(EMBO_predicted.id %in% c("epithelial", "cycling.epithelial"))) %>% group_by(diagnosis, molecular_type,sample,EMBO_predicted.id) %>% tally())
+plt1<-ggplot(DF,aes(x=sample,fill=EMBO_predicted.id,y=n))+geom_bar(position="fill",stat="identity")+theme_minimal()+scale_fill_manual(values=embo_cell_cols)+facet_grid(.~diagnosis+molecular_type,scales="free_x",space="free")
+ggsave(plt1,file="Embo_barplot_qc_celltype.nonepi.pdf")
+system("slack -F Embo_barplot_qc_celltype.nonepi.pdf ryan_todo")
+
+
 ```
 
 
@@ -2163,6 +2177,56 @@ dat <- RunChromVAR( object = dat,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   assay="ATAC")
 
+saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
+
+```
+
+Many transcription factors share the same motifs. To account for this, we are also going to perform chromvar across TF families.
+
+
+
+## Using JASPAR TF Families in Jaspar
+```R
+library(JASPAR2020)
+library(TFBSTools)
+library(universalmotif)
+library(Signac)
+library(Seurat)
+library(GenomicRanges)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+set.seed(1234)
+library(BiocParallel)
+register(MulticoreParam(5))
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+#download cluster root motifs
+system("wget --no-check-certificate https://jaspar2020.genereg.net/static/clustering/2020/vertebrates/CORE/interactive_trees/JASPAR_2020_matrix_clustering_vertebrates_cluster_root_motifs.tf") #use JASPAR2020 motif clusters
+system("wget --no-check-certificate https://jaspar2020.genereg.net/static/clustering/2020/vertebrates/CORE/interactive_trees/JASPAR_2020_matrix_clustering_vertebrates_central_motifs_IDs.tab")
+tf<-read_transfac("JASPAR_2020_matrix_clustering_vertebrates_cluster_root_motifs.tf") #read in transfac format
+tf_cluster_names<-read.table("JASPAR_2020_matrix_clustering_vertebrates_central_motifs_IDs.tab",sep="\t",header=F)
+#set up PWMatrix-List
+pfm<-lapply(tf,function(x) convert_motifs(x,class="TFBSTools-PWMatrix"))
+names(pfm)<-lapply(pfm,function(x) x@name)
+pfm<-do.call(PWMatrixList,pfm)
+names(pfm)<-tf_cluster_names[match(names(pfm),tf_cluster_names$V1),]$V3 #use readable names from jaspar
+
+#Run regular chromvar
+# Scan the DNA sequence of each peak for the presence of each motif, using orgo_atac for all objects (shared peaks)
+DefaultAssay(dat)<-"ATAC"
+motif.matrix <- CreateMotifMatrix(features = granges(dat), pwm = pfm, genome = 'hg38', use.counts = FALSE)
+
+# Create a new Mofif object to store the results
+motif <- CreateMotifObject(data = motif.matrix, pwm = pfm)
+
+# Add the Motif object to the assays and run ChromVar
+dat_chrom<- SetAssayData(object = dat, assay = 'ATAC', slot = 'motifs', new.data = motif) #write to dat_chrom so full motif list is not overwritten
+dat_chrom<- RegionStats(object = dat_chrom, genome = BSgenome.Hsapiens.UCSC.hg38)
+dat_chrom<- RunChromVAR(object = dat_chrom,genome = BSgenome.Hsapiens.UCSC.hg38,new.assay.name="jaspar_tffamily")
+
+dat[["jaspar_tffamily"]]<-dat_chrom@assays$jaspar_tffamily
 saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
 
 ```
@@ -4204,6 +4268,63 @@ for(i in 1:length(peaks)){
 cp *bed /home/groups/CEDAR/scATACcnv/Hisham_data/final_data
 ```
 
+## Adding RobustCNV Consensus Calls into Seurat Objects
+Returned CNV consensus clusters based on TM analysis using RobustCNV and InferCNV
+
+```R
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(SeuratObjects)
+library(EnsDb.Hsapiens.v86)
+library(cowplot)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+
+add_cluster_meta<-function(x){
+  print(paste("Running sample ",x))
+  if(x %in% 1:12){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x)
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-x
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.SeuratObject.rds")
+  }
+  metadata_clus<-read.table(paste0("/home/groups/CEDAR/scATACcnv/Hisham_data/final_data/",outname,"/metadata.tsv"))
+  if("CNV_clust_id" %in% colnames(metadata_clus)){
+  cell_names<-unlist(lapply(strsplit(row.names(metadata_clus),"_"),"[",3))
+  cnv<-setNames(nm=cell_names,metadata_clus$CNV_clust_id)
+  dat<-AddMetaData(dat,cnv,col.name="CNV_clust_id")
+  cnv_return<-setNames(nm=paste0(outname,"_",cell_names),metadata_clus$CNV_clust_id)
+  } else {
+  dat$CNV_clust_id<-c("NA")
+  cnv_return<-setNames(nm=paste0(outname,"_",colnames(dat)),dat$CNV_clust_id)
+  }
+  saveRDS(dat,file=paste0(wd,"/",outname,".QC.filt.SeuratObject.rds"))
+  print(paste("Finished sample ",x))
+  return(cnv_return)
+}
+
+cnv_met<-lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x) add_cluster_meta(x))
+
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+cnv_results<-setNames(nm=names(unlist(cnv_met)),unlist(cnv_met))
+dat<-AddMetaData(dat,cnv_results,col.name="CNV_clust_id")
+
+saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
+```
+
+
+
 ## Genome tracks of celltype markers
 <!-- Rerun -->
 
@@ -4310,7 +4431,7 @@ type_cols<-c(
 diag_cols<-c("IDC"="red", "DCIS"="grey","ILC"="blue","NAT"="orange")
 embo_cell_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
 molecular_type_cols<-c("DCIS"="grey", "ER+/PR+/HER2-"="#EBC258", "ER+/PR-/HER2-"="#F7B7BB","ER+/PR-/HER2+"="#4c9173","NA"="black")
-########################################
+########################################                                                                                                                                                            
 alpha_val=0.33
 
 
@@ -4939,6 +5060,15 @@ umap_sample_integration<-function(dat,outname){
 
 ### Across all cell types
 
+```R
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+#Plotting Marker Differences across cell subtypes
+run_top_TFs(obj=dat,prefix="cell_subtype",i="cell_subtype_assignment",n_markers=8,CHROMVAR=TRUE,plot_height=15) #limit to TFs
+run_top_TFs(obj=dat,prefix="cell_subtype",i="cell_subtype_assignment",n_markers=8,CHROMVAR=FALSE,plot_height=15) #all RNA/ATAC
+
+```
 ### Normal Epithelial Subtyping
 Continued session. 
 ```R
@@ -5149,8 +5279,141 @@ sample_label_transfer<-function(in_dat,ref_dat,prefix="Tcell_",transfer_label="c
 library(slingshot)
 ```
 
+### Comparison of expression and chromatin structure across subclones
+```R
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+subclone_structure<-function(x){
+  print(paste("Running sample ",x))
+  if(x %in% 1:20){
+    sample_name<-paste0("sample_",x)
+  }else{
+    sample_name<-x
+  }
+  if(
+    any(dat@meta.data[dat@meta.data$sample==sample_name,]$CNV_clust_id!="NA") && 
+    length(unique(dat@meta.data[dat@meta.data$sample==sample_name,]$CNV_clust_id))>2
+    ){
+    dat_tmp<-subset(dat,sample==sample_name)
+    dat_tmp<-subset(dat_tmp,CNV_clust_id!="NA")
+    #Plotting Marker Differences across cell subtypes
+    run_top_TFs(obj=dat_tmp,prefix=paste0(sample_name,".CNVclones"),i="CNV_clust_id",n_markers=5,CHROMVAR=TRUE,plot_height=15) #limit to TFs
+    run_top_TFs(obj=dat_tmp,prefix=paste0(sample_name,".CNVclones"),i="CNV_clust_id",n_markers=8,CHROMVAR=FALSE,plot_height=15) #all RNA/ATAC
+  } else {
+  print("No substructure in sample. Moving on...")
+  }
+}
+
+lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x) subclone_structure(x))
+
+
+#cancersea enrichment across clones
+cancersea_heatmap<-function(x){
+  print(paste("Running sample ",x))
+  if(x %in% 1:20){
+    sample_name<-paste0("sample_",x)
+  }else{
+    sample_name<-x
+  }
+  if(any(dat@meta.data[dat@meta.data$sample==sample_name,]$CNV_clust_id!="NA")){
+    dat_tmp<-subset(dat,sample==sample_name)
+    dat_tmp<-subset(dat_tmp,CNV_clust_id!="NA")
+    #Plotting Marker Differences across cell subtypes
+    run_top_TFs(obj=dat_tmp,prefix=paste0(sample_name,".CNVclones"),i="CNV_clust_id",n_markers=5,CHROMVAR=TRUE,plot_height=15) #limit to TFs
+    run_top_TFs(obj=dat_tmp,prefix=paste0(sample_name,".CNVclones"),i="CNV_clust_id",n_markers=8,CHROMVAR=FALSE,plot_height=15) #all RNA/ATAC  
+  }
+}
+
+lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x) subclone_structure(x))
+
+```
+
+Motif Footprinting per Clonal Substructure across Samples
+
+```R
+library(Signac)
+library(Seurat)
+library(ggplot2)
+library(dplyr) 
+library(ComplexHeatmap)
+library(reshape2)
+library(RColorBrewer)
+library(circlize)
+library(JASPAR2020)
+library(TFBSTools)
+library(patchwork)
+library(BSgenome.Hsapiens.UCSC.hg38)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+# gather the footprinting information for sets of motifs
+ pwm <- getMatrixSet(
+   x = JASPAR2020,
+   opts = list(species = 9606, all_versions = FALSE)
+ )
+
+subclone_tf_footpints<-function(x){
+  print(paste("Running sample ",x))
+  if(x %in% 1:20){
+    sample_name<-paste0("sample_",x)
+  }else{
+    sample_name<-x
+  }
+  #if(
+    any(dat@meta.data[dat@meta.data$sample==sample_name,]$CNV_clust_id!="NA") && 
+    length(unique(dat@meta.data[dat@meta.data$sample==sample_name,]$CNV_clust_id))>2
+  #  ){
+    dat_tmp<-subset(dat,sample==sample_name)
+    DefaultAssay(dat_tmp)<-"ATAC"
+    dat_tmp<-subset(dat_tmp,CNV_clust_id!="NA")
+    prefix=paste0(sample_name,".CNVclones")
+    Idents(dat_tmp)<-"CNV_clust_id"
+
+   # add motif information
+   dat_tmp<- AddMotifs(
+     object = dat_tmp,
+     genome = BSgenome.Hsapiens.UCSC.hg38,
+     pfm = pwm
+   )
+
+    da_tf_markers<-readRDS(paste0(prefix,"_celltype_TF_markers.RDS"))
+    tfs<-da_tf_markers$gene
+    #select list of TF genes with motifs
+    tfs<-tfs[tfs %in% dat_tmp@assays$ATAC@motifs@motif.names]
+
+    # gather the footprinting information for sets of motifs
+    dat_tmp <- Footprint(
+      object = dat_tmp,
+      motif.name = tfs,
+      genome=BSgenome.Hsapiens.UCSC.hg38
+    )
+
+    # plot the footprint data for each group of cells
+    p2 <- PlotFootprint(dat_tmp, features = tfs,group.by="CNV_clust_id")
+    ggsave((p2 + patchwork::plot_layout(ncol = 1)),file="tf_footprints.pdf",height=30,limitsize=T)+ggtitle(sample_name)
+    system("slack -F tf_footprints.pdf ryan_todo")
+  } else {
+  print("No substructure in sample. Moving on...")
+  }
+}
+
+lapply(c(1,3,4,5,6,7,8,9,10,11,12,15,16,19,20,"RM_1","RM_2","RM_3","RM_4"),function(x) subclone_tf_footpints(x))
+
+```
 ## Comparison of cell types across diagnoses and other factors.
-<!-- Rerun -->
+
+### All Cell Subtyping Differences
+Plotting differential accessibility and transcription across 
+```R
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+#Plotting Marker Differences across cell subtypes
+run_top_TFs(obj=dat,prefix="cell_subtype",i="cell_subtype_assignment",n_markers=5,CHROMVAR=TRUE,plot_height=15) #limit to TFs
+run_top_TFs(obj=dat,prefix="cell_subtype",i="cell_subtype_assignment",n_markers=8,CHROMVAR=FALSE,plot_height=15) #all RNA/ATAC
+```
 
 ### Heatmap proportion of cells (Similar to  Bar Plots across cells subsection)
 
@@ -5261,76 +5524,21 @@ draw(out_plt)
 dev.off()
 system("slack -F cellcount_heatmap.pdf ryan_todo")
 
-```
 
-Motif Footprinting
-```R
-library(Signac)
-library(Seurat)
-library(ggplot2)
-library(dplyr) 
-library(ComplexHeatmap)
-library(reshape2)
-library(RColorBrewer)
-library(circlize)
-library(JASPAR2020)
-library(TFBSTools)
-library(patchwork)
-library(BSgenome.Hsapiens.UCSC.hg38)
-setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+#Cell types (stacked bar)
+DF<-as.data.frame(metadat  %>% group_by(diagnosis, molecular_type,sample,cell_subtype_assignment) %>% tally())
+plt1<-ggplot(DF,aes(x=sample,fill=cell_subtype_assignment,y=n))+geom_bar(position="fill",stat="identity")+theme_minimal()+facet_grid(.~diagnosis+molecular_type,scales="free_x",space="free")
+ggsave(plt1,file="cellsubtype_barplot_qc_celltype.pdf")
+system("slack -F cellsubtype_barplot_qc_celltype.pdf ryan_todo")
 
-###########Color Schema#################
-type_cols<-c(
-#epithelial
-"Cancer Epithelial" = "#7C1D6F", "Normal Epithelial" = "#DC3977", #immune
-"B-cells" ="#089099", "T-cells" ="#003147","Myeloid" ="#E9E29C", "Plasmablasts"="#B7E6A5", #other
-"CAFs" ="#E31A1C", "Endothelial"="#EEB479",  "PVL" ="#F2ACCA")
-
-embo_cell_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
-       
-diag_cols<-c("IDC"="red", "DCIS"="grey")
-
-molecular_type_cols<-c("DCIS"="grey", "er+_pr+_her2-"="#EBC258", "er+_pr-_her2-"="#F7B7BB")
-########################################
-
-
-dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
-# Get a list of motif position frequency matrices from the JASPAR database
-
-Idents(dat)<-"diagnosis"
-pwm <- getMatrixSet(
-  x = JASPAR2020,
-  opts = list(species = 9606, all_versions = FALSE)
-)
-
-# add motif information
-dat <- AddMotifs(
-  object = dat,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  pfm = pwm
-)
-
-#PAM50 Genes
-#CDCA1 KNTC2 ORC6L use different names in our data
-#NUF2, NDC80, ORC6 resp.
-pam50_genes<-c('ACTR3B', 'ANLN', 'BAG1', 'BCL2', 'BIRC5', 'BLVRA', 'CCNB1', 'CCNE1', 'CDC20', 'CDC6', 'NUF2', 'CDH3', 'CENPF', 'CEP55', 'CXXC5', 'EGFR', 'ERBB2', 'ESR1', 'EXO1', 'FGFR4', 'FOXA1', 'FOXC1', 'GPR160', 'GRB7', 'KIF2C', 'NDC80', 'KRT14', 'KRT17', 'KRT5', 'MAPT', 'MDM2', 'MELK', 'MIA', 'MKI67', 'MLPH', 'MMP11', 'MYBL2', 'MYC', 'NAT1', 'ORC6', 'PGR', 'PHGDH', 'PTTG1', 'RRM2', 'SFRP1', 'SLC39A6', 'TMEM45B', 'TYMS', 'UBE2C', 'UBE2T')
-
-#PAM50 TFs
-pam50_tfs<-pam50_genes[pam50_genes %in% dat@assays$ATAC@motifs@motif.names]
-
-# gather the footprinting information for sets of motifs
-dat <- Footprint(
-  object = dat,
-  motif.name = pam50_tfs,
-  genome = BSgenome.Hsapiens.UCSC.hg38
-)
-
-# plot the footprint data for each group of cells
-p2 <- PlotFootprint(dat, features = pam50_tfs)
-ggsave((p2 + patchwork::plot_layout(ncol = 1)),file="tf_footprints.pdf",height=30,limitsize=T)
-system("slack -F tf_footprints.pdf ryan_todo")
+#Cell types (Epi excluded) (stacked bar)
+DF<-as.data.frame(metadat  %>% filter(cell_subtype_assignment!="Epithelial") %>% group_by(diagnosis, molecular_type,sample,cell_subtype_assignment) %>% tally())
+plt1<-ggplot(DF,aes(x=sample,fill=cell_subtype_assignment,y=n))+geom_bar(position="fill",stat="identity")+theme_minimal()+facet_grid(.~diagnosis+molecular_type,scales="free_x",space="free")
+ggsave(plt1,file="cellsubtype_barplot_qc_celltype.nonepi.pdf")
+system("slack -F cellsubtype_barplot_qc_celltype.nonepi.pdf ryan_todo")
 
 ```
+
 
 ## Plot of Differential Genes across Normal epithelial (NAT) DCIS and IDC
 <!-- Rerun -->

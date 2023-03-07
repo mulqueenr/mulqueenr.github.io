@@ -184,7 +184,7 @@ library(Matrix)
 setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
 input_dir="/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/Regions/"
 fragments="/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/coverage.plots.BAM_DataFreeze_Cortex_and_Hippocampus/BAM_DataFreeze_Cortex_and_Hippocampus.bbrd.q10.filt.bam.fragments.tsv.gz"
-
+#(the maga directory part was about microglia, not political affiliation)
 
 # get gene annotations for hg38
 annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
@@ -1272,186 +1272,60 @@ system(paste0("slack -F ","opc_marker_cov.png"," ryan_todo"))
 ## Analysis of clustering resolution effects.
 
 Breakdown of clustering, showing resolution relationship to clusters
+Local seurat object locations 
+
+```
 Seurat Objects:
 1. Oligodendrocytes: /home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/glialatlas.celltype.analyses/combined.oligodendrocytes/combined.olig.updated.SeuratObject.Rds
 2. OPCs: /home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/glialatlas.celltype.analyses/combined.OPCs/combined.opc.updated.SeuratObject.Rds
 3. Astrocytes: /home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/glialatlas.celltype.analyses/combined.astroependymal/combined.astro.updated.SeuratObject.Rds
 4. Microglia: /home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/glialatlas.celltype.analyses/combined.microglia/combined.microglia.updated.SeuratObject.Rds
+```
+
 ```R
 library(Signac)
 library(Seurat)
-library(SeuratWrappers)
 library(ggplot2)
 library(patchwork)
-library(cicero)
-library(cisTopic)
-library(GenomeInfoDb)
-library(ggplot2)
 set.seed(1234)
-library(EnsDb.Hsapiens.v86)
-library(Matrix)
-library(JASPAR2020)
-library(TFBSTools)
-library(BSgenome.Hsapiens.UCSC.hg38)
-library(patchwork)
 library(dplyr)
 library(ggrepel)
 library(clustree)
 
-setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/subcluster")
+setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
 
 #UMAP Projection and clustering on selected cistopic model
-clustering_loop<-function(topicmodel_list.=topicmodel_list,sample,topiccount_list.=topic_count_list){
-    #topicmodel_list.=topicmodel_list;topiccount_list.=topic_count_list
-    #set up outname
-    topicmodel_list.<-topicmodel_list.[sample]
+clustering_loop<-function(in_path,output_name){
+		dat<-readRDS(in_path)
+		res_list<-colnames(dat@meta.data)[startsWith(prefix="peaks_snn_res",colnames(dat@meta.data))]
+    plt<-DimPlot(dat,group.by=res_list)
+    ggsave(plt,file=paste(output_name,"clustering.dimplot.pdf",sep="."),width=15,height=15)
+    system(paste0("slack -F ",paste(output_name,"clustering.dimplot.pdf",sep=".")," ryan_todo"))
 
-    outname<-strsplit(topicmodel_list.,split="[.]")[[1]][1]
-    object_input<-readRDS(paste0(outname,".75k.subset.SeuratObject.Rds"))
-    #select_topic
-    models_input<-readRDS(topicmodel_list.)
-    cisTopicObject<-cisTopic::selectModel(models_input,select=topiccount_list.[topicmodel_list.],keepModels=F)
-    
-    #perform UMAP on topics
-    topic_df<-as.data.frame(cisTopicObject@selected.model$document_expects)
-    row.names(topic_df)<-paste0("Topic_",row.names(topic_df))
+    plt<-clustree(dat, prefix = "peaks_snn_res.")
+    ggsave(plt,file=paste(output_name,"clustree.pdf",sep="."),width=15,height=15)
+    system(paste0("slack -F ",paste(output_name,"clustree.pdf",sep=".")," ryan_todo"))
 
-    #get cell embeddings
-    cell_embeddings<-as.data.frame(cisTopicObject@selected.model$document_expects)
-    colnames(cell_embeddings)<-cisTopicObject@cell.names
-    n_topics<-nrow(cell_embeddings)
-    row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
-    cell_embeddings<-as.data.frame(t(cell_embeddings))
-    
-    #get feature loadings
-    feature_loadings<-as.data.frame(cisTopicObject@selected.model$topics)
-    row.names(feature_loadings)<-paste0("topic_",1:n_topics)
-    feature_loadings<-as.data.frame(t(feature_loadings))
-    
-    #combine with seurat object for celltype seuratobject  
-    cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
-    object_input@reductions$cistopic<-cistopic_obj
-    n_topics<-ncol(Embeddings(object_input,reduction="cistopic"))
-    object_input@assays$peaks@key<-"peaks_"
-    object_input<-RunUMAP(object_input,reduction="cistopic",dims=1:n_topics)    #finally recluster
-    #Clustering with multiple resolutions to account for different celltype complexities
-    object_input <- FindNeighbors(object = object_input, reduction = 'cistopic', dims = 1:n_topics)
-    object_input <- FindClusters(object = object_input,resolution=0.01)
-    object_input <- FindClusters(object = object_input,resolution=0.025)
-    object_input <- FindClusters(object = object_input,resolution=0.05)
-    object_input <- FindClusters(object = object_input,resolution=0.1)
-    object_input <- FindClusters(object = object_input,resolution=0.2)
-    object_input <- FindClusters(object = object_input,resolution=0.5)
-    object_input <- FindClusters(object = object_input,resolution=0.9)
-    
-    saveRDS(object_input,paste0(outname,".75k.subset.SeuratObject.Rds"))
-    plt<-DimPlot(object_input,group.by=c('peaks_snn_res.0.01','peaks_snn_res.0.025','peaks_snn_res.0.05','peaks_snn_res.0.1','peaks_snn_res.0.2','peaks_snn_res.0.5','peaks_snn_res.0.9'))
-    ggsave(plt,file=paste(outname,"clustering.pdf",sep="."))
-    system(paste0("slack -F ",paste(outname,"clustering.pdf",sep=".")," ryan_todo"))
-    plt<-clustree(object_input, prefix = "peaks_snn_res.")
-    ggsave(plt,file=paste(outname,"clustree.pdf",sep="."))
-    system(paste0("slack -F ",paste(outname,"clustree.pdf",sep=".")," ryan_todo"))
-    object_input<-AddMetaData(object_input,object_input@reductions$umap@cell.embeddings,col.name=c("UMAP_1","UMAP_2"))
-    plt<-clustree_overlay(object_input, prefix = "peaks_snn_res.", x_value = "UMAP_1", y_value = "UMAP_2",red_dim="umap")
-    ggsave(plt,file=paste(outname,"clustree.overlay.pdf",sep="."))
-    system(paste0("slack -F ",paste(outname,"clustree.overlay.pdf",sep=".")," ryan_todo"))
+    plt<-clustree_overlay(dat, prefix = "peaks_snn_res.", x_value = "UMAP_1", y_value = "UMAP_2",red_dim="umap")
+    ggsave(plt,file=paste(output_name,"clustree.overlay.pdf",sep="."),width=15,height=15)
+    system(paste0("slack -F ",paste(output_name,"clustree.overlay.pdf",sep=".")," ryan_todo"))
 
 }
 
-####################################
-### Processing ###
-    topicmodel_list<-list.files(pattern="75k.CisTopicObject.Rds$")
+#Cell types for clustree
 
-    #determine model count to use for each cell type
-    for (i in list.files(pattern="model_selection.pdf")){system(paste0("slack -F ",i," ryan_todo"))}
+#Cell type object locations
+oligo<-"/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/glialatlas.celltype.analyses/combined.oligodendrocytes/combined.olig.updated.SeuratObject.Rds"
+opc<-"/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/glialatlas.celltype.analyses/combined.OPCs/combined.opc.updated.SeuratObject.Rds"
+astro<-"/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/glialatlas.celltype.analyses/combined.astroependymal/combined.astro.updated.SeuratObject.Rds"
+micro<-"/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/glialatlas.celltype.analyses/combined.microglia/combined.microglia.updated.SeuratObject.Rds"
 
-    #selecting topics based on derivative, making a named vector, note some of these seem to suggest a topic count over 28, but were artificially capped
-    topic_count_list<-setNames(c(25,26,27,27,28,25,26,26,25,24,25,27,25,25,27,28,27),topicmodel_list)
+#Processing
 
-    #Running clustering loop
-    for (i in 1:length(topic_count_list)){clustering_loop(sample=i)}
-
-    #selecting resolution by plots
-    for (i in list.files(pattern="clustering.pdf")){system(paste0("slack -F ",i," ryan_todo"))}
-    
-    setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
-
-    #Read in data and modify to monocle CDS file
-    #read in RDS file.
-    hg38_atac<-readRDS(file="hg38_SeuratObject.Rds")
-
-    #adding all subclustering info back into main RDS object
-    hg38_atac$seurat_subcluster<-"NA"
-    hg38_atac$subcluster_x<-"NA"
-    hg38_atac$subcluster_y<-"NA"
-
-    #Assign clustering resolution based on clustering.pdf output
-    celltype_list<-list.files(path="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/subcluster",pattern="clustering.pdf")
-    hg38_celltype_list<-celltype_list[startsWith(prefix="hg38",celltype_list)]
-
-    hg38_resolution_list<-setNames(c("peaks_snn_res.0.05","peaks_snn_res.0.1","peaks_snn_res.0.05","peaks_snn_res.0.025",
-        "peaks_snn_res.0.05","peaks_snn_res.0.01","peaks_snn_res.0.01","peaks_snn_res.0.025"),hg38_celltype_list)
-    cell_order<-row.names(hg38_atac@meta.data)
-
-    metadat_embedding<-lapply(hg38_celltype_list, function(celltype.x){
-        outname<-strsplit(celltype.x,split="[.]")[[1]][1]
-        atac_sub<-readRDS(paste0("./subcluster/",outname,".75k.subset.SeuratObject.Rds"))
-        embedding<-as.data.frame(atac_sub@reductions$umap@cell.embeddings)
-        return(embedding)
-        })
-
-    metadat_subcluster<-lapply(hg38_celltype_list, function(celltype.x){
-        outname<-strsplit(celltype.x,split="[.]")[[1]][1]
-        atac_sub<-readRDS(paste0("./subcluster/",outname,".75k.subset.SeuratObject.Rds"))
-        seurat_subcluster<-data.frame(row.names=row.names(atac_sub@meta.data),seruat_subcluster=atac_sub@meta.data[,hg38_resolution_list[celltype.x]])
-        return(seurat_subcluster)
-        })
-
-    embedding<-do.call("rbind",metadat_embedding)
-    seurat_subcluster<-do.call("rbind",metadat_subcluster)
-    hg38_atac<-AddMetaData(hg38_atac,embedding,col.name=c("subcluster_x","subcluster_y"))
-    hg38_atac<-AddMetaData(hg38_atac,seurat_subcluster,col.name=c("seurat_subcluster"))
-    hg38_atac$cluster_ID<-paste(hg38_atac$seurat_clusters,hg38_atac$seurat_subcluster,sep="_")
-    as.data.frame(hg38_atac@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
-    #na values are doublets or excluded indexes
-    saveRDS(hg38_atac,"hg38_SeuratObject.Rds")
+clustering_loop(in_path=oligo,output_name="oligodendrocytes")
+clustering_loop(in_path=opc,output_name="opc")
+clustering_loop(in_path=astro,output_name="astrocytes")
+clustering_loop(in_path=micro,output_name="microglia")
 
 
-    #and mouse
-    mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
-
-    #adding all subclustering info back into main RDS object
-    mm10_atac$seurat_subcluster<-"NA"
-    mm10_atac$subcluster_x<-"NA"
-    mm10_atac$subcluster_y<-"NA"
-
-    #Assign clustering resolution based on clustering.pdf output
-    celltype_list<-list.files(path="/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/subcluster",pattern="clustering.pdf")
-    mm10_celltype_list<-celltype_list[startsWith(prefix="mm10",celltype_list)]
-
-    mm10_resolution_list<-setNames(c("peaks_snn_res.0.05","peaks_snn_res.0.05","peaks_snn_res.0.01","peaks_snn_res.0.025",
-        "peaks_snn_res.0.01","peaks_snn_res.0.025","peaks_snn_res.0.01","peaks_snn_res.0.01","peaks_snn_res.0.01"),mm10_celltype_list)
-
-    metadat_embedding<-lapply(mm10_celltype_list, function(celltype.x){
-        outname<-strsplit(celltype.x,split="[.]")[[1]][1]
-        atac_sub<-readRDS(paste0("./subcluster/",outname,".75k.subset.SeuratObject.Rds"))
-        embedding<-as.data.frame(atac_sub@reductions$umap@cell.embeddings)
-        return(embedding)
-        })
-
-    metadat_subcluster<-lapply(mm10_celltype_list, function(celltype.x){
-        outname<-strsplit(celltype.x,split="[.]")[[1]][1]
-        atac_sub<-readRDS(paste0("./subcluster/",outname,".75k.subset.SeuratObject.Rds"))
-        seurat_subcluster<-data.frame(row.names=row.names(atac_sub@meta.data),seruat_subcluster=atac_sub@meta.data[,mm10_resolution_list[celltype.x]])
-        return(seurat_subcluster)
-        })
-
-    embedding<-do.call("rbind",metadat_embedding)
-    seurat_subcluster<-do.call("rbind",metadat_subcluster)
-    mm10_atac<-AddMetaData(mm10_atac,embedding,col.name=c("subcluster_x","subcluster_y"))
-    mm10_atac<-AddMetaData(mm10_atac,seurat_subcluster,col.name=c("seurat_subcluster"))
-    mm10_atac$cluster_ID<-paste(mm10_atac$seurat_clusters,mm10_atac$seurat_subcluster,sep="_")
-    as.data.frame(mm10_atac@meta.data %>% group_by(seurat_clusters,seurat_subcluster)%>% summarize(count=n()))
-    #na values are doublets or excluded indexes
-    saveRDS(mm10_atac,"mm10_SeuratObject.Rds")
 ```

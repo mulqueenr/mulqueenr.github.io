@@ -90,34 +90,28 @@ Required software
 
 ## Description of the script and how to run
 
-I set up a script to automate the full process. I'll list what is happening within the script so it is a bit easier to tweak. The blender-python (bpy) API is kind of in a state right now because there is a lot of active development. Sorry it isn't as readable as a good python script should be! To run the script, just open blender, change a window panel to "Python Console" or just press Shift+F4. Then run. The script makes a shader similar to what we use in the molecular render side project. It does this in python but the end result (when made nice to look at) is this:
-
-<img src="{{site.baseurl}}/assets/images/scatterplot_cellshader.png">
-
-This script uses linked objects (basically a way to save memory). To do this, it makes a "master" data point for each cluster, hides it, and then duplicates it for each data point. That means each data point isn't a unique object, but a copy with a unique location. Saves on a ton of time and memory.
-In the future, the geometry or particle nodes might make this even easier, but this is what we have to work with now.
-I've run this script on up to 200k cells. It seems to slow down the more data-blocks there are in the blender file. From my computer, I run the plotting in 1k cell batches. I find that for each 1K cells I plot, the next 1K cells take about 0.2-0.4 more seconds. This adds up with bigger files, but hey, at least it is linear. For my trash computer, 200k cells took about 2-3 hours.
-
-Change these lines:
-```python
-#Input
-file_xyz=open("C:/Users/Chad/Desktop/cortex.3D.table","r") #change the filepath to your tsv will the line format described above.
-#Output
-bpy.ops.wm.save_as_mainfile(filepath="C:/Users/Chad/Desktop/cortex.blend") #change filepath to the output blender file you would like
-bpy.context.scene.render.filepath = 'cortex.test.png' #change file path to the output png you would like.
-
-```
-
-Here is the script as used to generate the hero image at the top of the page.
-
-## The script
-
 ```python
 #1. import modules
 import bpy
 import math
 import time
 import bmesh
+import subprocess
+import bpy
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import minimum_spanning_tree
+#/Applications/Blender.app/Contents/Resources/3.3/python/bin/python3.10 -m pip install --upgrade pip
+#/Applications/Blender.app/Contents/Resources/3.3/python/bin/python3.10 -m pip install scipy
+
+#Object select
+obj=bpy.data.objects["protein"]
+obj=bpy.context.active_object #select the sphere we just made
+coords = [(obj.matrix_world @ v.co) for v in obj.data.vertices.values()]
+
+X = csr_matrix(coords)
+Tcsr = minimum_spanning_tree(X)
+
+
 
 #Read in file and store it in memory (this doesn't take up much memory)
 file_xyz=open("C:/Users/mulqueen/Desktop/hg38_3d.umap.tsv","r") #change path to whatever filepath you want. I got my computer refurbished and it was named Chad. I swear it wasn't me.
@@ -127,7 +121,6 @@ file_xyz.close()
 
 #initialize an object, a sphere, for our data points.
 bpy.ops.mesh.primitive_uv_sphere_add(radius=0.05,segments=64, ring_count=32) #higher segments and ring_counts will make a smoother sphere, but I dont think its necessary
-obj=bpy.context.active_object #select the sphere we just made
 
 #set up a master shader material
 mat = bpy.data.materials.new(name='mymat')
