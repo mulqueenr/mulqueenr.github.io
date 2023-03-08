@@ -91,6 +91,9 @@ pip install macs3
 echo "PATH=$PATH:~/tools/bowtie2-2.5.1-linux-x86_64" >> ~/.bashrc
 echo "PATH=$PATH:~/tools/bwa" >> ~/.bashrc
 echo "PATH=$PATH:~/tools/Bismark-0.24.0/"  >> ~/.bashrc
+
+#multiqc
+pip install multiqc
 ```
 
 ### General RNA and ATAC processing can be done with Seurat and Signac in R
@@ -114,6 +117,7 @@ install.packages(c("BiocManager","devtools"))
 install.packages(c("Seurat","Signac","harmony")) #biocmanager install is necessary for signac
 BiocManager::install(c("cicero","ComplexHeatmap"))
 devtools::install_github('cole-trapnell-lab/monocle3')
+devtools::install_github("navinlabcode/copykit")
 ```
 
 ### HiC Data Analysis can be done with the DipC group's released hickit
