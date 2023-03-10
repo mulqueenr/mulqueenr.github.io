@@ -471,7 +471,7 @@ a.sidebar-nav-item:focus {
 .sidenav a, .dropdown-btn {
   padding: 6px 8px 6px 16px;
   text-decoration: none;
-  font-size: 15px;
+  font-size: 1rem;
   color: var(--main-text-color);
   display: block;
   border: none;
