@@ -79,21 +79,148 @@ python ~/src/plate2_fastqsplitter.py /volumes/USR2/Ryan/fastq/230306_VH00219_371
 /volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_I2_001.fastq.gz 
 
 #then gzip
-
-gzip *fastq &
+for i in *fastq; do gzip $i & done &
 ```
-
 Got 253,517,850 reads total from assignment
 
+# Processing Samples via Copykit to start
+## Alignment
+```bash
+#set up variables and directory
+mkdir /volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test
+ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
+dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
+fq1="/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R1_001.barc.fastq.gz"
+fq2="/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R2_001.barc.fastq.gz"
+
+#Map reads with BWA Mem
+bwa mem -t 20 $ref $fq1 $fq2 | samtools view -b - > $dir/230306_gccact.bam
+```
+
+## Split out single-cells
+```bash
+#set up cell directory
+mkdir $dir/cells
+```
+Split by readname bam field into cells subdir and add metadata column
+
+```bash
+samtools view $dir/230306_gccact.bam | awk -v dir=$dir 'OFS="\t" {split($1,a,":"); print $0,"XM:Z:"a[1] > "./cells/"a[1]".230306_gccact.sam"}'
+ #split out bam to cell level sam
+```
+
+## Add header to each sam and convert to bam and sort
+Using parallel to save time
+```bash
+ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
+dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
+
+add_header() {
+	samtools view -bT $ref {$1::-4}.sam
+	samtools sort -T $dir -o {}.bam -
+}
+export -f add_header
+sam_in=`ls *sam`
+parallel --jobs 30 sort_and_markdup ::: $sam_in
+```
+
+## Mark duplicate reads
+```bash
+#name sort, fix mates, sort by position, mark dup
+sort_and_markdup() {
+  samtools sort -T . -n -o - $1 | samtools fixmate -m - -| samtools sort -T . -o - - | samtools markdup -s - ${1::-4}.rmdup.bam 2> ${1::-4}.rmdup.stats.txt
+}
+export -f sort_and_markdup
+
+bam_in=`ls *bam`
+parallel --jobs 30 sort_and_markdup ::: $bam_in
+```
+
+## Run Fastqc on everything and clean up
+
+```bash
+bam_in=`ls *rmdup.bam`
+parallel --jobs 30 fastqc ::: $bam_in
+
+mkdir $dir/cells/fastqc
+mv *fastqc* $dir/cells/fastqc
+mv *stats.txt $dir/cells/fastqc
+rm -rf *gccact.bam #only keep duplicate marked bams
+
+#run multiqc to aggregate
+multiqc . 
+#C100 had zero reads, gzipping to prevent copykit from reading in
+
+```
+
+## Run CopyKit for WGS portion
+Analysis from 
+https://navinlabcode.github.io/CopyKit-UserGuide/quick-start.html
+
+```R
+library(copykit)
+library(BiocParallel)
+register(MulticoreParam(progressbar = T, workers = 50), default = T)
+BiocParallel::bpparam()
+
+tumor <- runVarbin("/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells",
+                 remove_Y = TRUE,
+                 genome="hg38",
+                 is_paired_end=TRUE)
+
+# Mark euploid cells if they exist
+tumor <- findAneuploidCells(tumor)
+
+# Mark low-quality cells for filtering
+tumor <- findOutliers(tumor)
+
+# Visualize cells labeled by filter and aneuploid status
+pdf("outlier_qc.heatmap.pdf")
+plotHeatmap(tumor, label = c('outlier', 'is_aneuploid'), row_split = 'outlier')
+dev.off()
+
+# Remove cells marked as low-quality and/or aneuploid from the copykit object
+tumor <- tumor[,SummarizedExperiment::colData(tumor)$outlier == FALSE]
+tumor <- tumor[,SummarizedExperiment::colData(tumor)$is_aneuploid == TRUE]
+
+
+# kNN smooth profiles
+tumor <- knnSmooth(tumor)
+
+
+k_clones<-findSuggestedK(tumor)
+# Create a umap embedding 
+tumor <- runUmap(tumor)
+
+# Find clusters of similar copy number profiles and plot the results
+# If no k_subclones value is provided, automatically detect it from findSuggestedK()
+tumor  <- findClusters(tumor,k_subclones=17)#output from k_clones
+
+pdf("subclone.umap.pdf")
+plotUmap(tumor, label = 'subclones')
+dev.off()
+
+# Calculate consensus profiles for each subclone, 
+# and order cells by cluster for visualization with plotHeatmap
+tumor <- calcConsensus(tumor)
+tumor <- runConsensusPhylo(tumor)
+
+# Plot a copy number heatmap with clustering annotation
+pdf("subclone.heatmap.pdf")
+plotHeatmap(tumor, label = 'subclones',order='hclust')
+dev.off()
+
+saveRDS(tumor,file="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/scCNA.rds")
+```
+
+### eccDNA Analysis
+
 ### HiC Data Analysis can be done with the DipC group's released hickit
+
 https://github.com/lh3/hickit
 
 ```bash
-mkdir 
-ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
 
-#Map reads with BWA Mem
-bwa mem -t 20 $ref read1.fq.gz read2.fq.gz | gzip > aln.sam.gz
 
 # Map Dip-C reads and extract contacts (skip if you use your own pipeline)
 seqtk mergepe read1.fq.gz read2.fq.gz | ~/tools/hickit-0.1_x64-linux/pre-dip-c - | bwa mem -5SP -p hs37d5.fa - | gzip > aln.sam.gz

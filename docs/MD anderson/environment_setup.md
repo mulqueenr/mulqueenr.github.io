@@ -151,6 +151,25 @@ cd hickit-0.1_x64-linux
 ./hickit-gl -I imput.cpg.3dg.gz --view
 ```
 
+### Samblaster for eccDNA
+Installation of samblaster
+https://github.com/GregoryFaust/samblaster
+```bash
+cd ~/tools
+wget https://github.com/GregoryFaust/samblaster/archive/refs/heads/master.zip
+unzip master.zip
+cd samblaster-master
+make
+```
+
+### Circle-finder for eccDNA
+https://github.com/pk7zuva/Circle_finder
+```bash
+cd ~/tools
+mkdir circle-finder
+wget https://github.com/pk7zuva/Circle_finder/blob/3eb333db2ea6277dde36cbf640be9afeb710c717/circle_finder-pipeline-bwa-mem-samblaster.sh
+```
+
 # Separate Conda Env: scbs_env
 Need a separate environment for scbs analysis because python version has to be lower.
 
