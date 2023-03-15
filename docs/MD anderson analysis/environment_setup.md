@@ -121,6 +121,28 @@ devtools::install_github("navinlabcode/copykit")
 ```
 
 ### HiC Data Analysis can be done with the DipC group's released hickit
+https://github.com/4dn-dcic/pairix#installation-for-pairix
+Pairix download and installation
+```bash
+cd ~/tools
+git clone https://github.com/4dn-dcic/pairix
+cd pairix
+make
+#and then add to path
+```
+Installing cooler on alternative conda env
+
+```bash
+conda deactivate #get out of r3.4 env
+conda create -n "cooler_env" python=3.9.15
+conda activate cooler_env
+pip install cooler
+pip install Cython
+pip install cooltools #need to downgrate python for this
+pip install pyparix
+```
+
+<!--
 https://github.com/lh3/hickit
 
 ```bash
@@ -150,6 +172,7 @@ cd hickit-0.1_x64-linux
 # Visualize 3D structure (requiring a graphical card)
 ./hickit-gl -I imput.cpg.3dg.gz --view
 ```
+-->
 
 ### Samblaster for eccDNA
 Installation of samblaster
