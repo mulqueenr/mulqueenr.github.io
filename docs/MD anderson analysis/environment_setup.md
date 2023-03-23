@@ -20,6 +20,7 @@ Make directories for src (usually my own code) and tools (other peoples analysis
 mkdir tools
 mkdir src
 ```
+
 Download and install conda
 ```bash
 cd tools
@@ -140,8 +141,20 @@ pip install cooler
 pip install Cython
 pip install cooltools #need to downgrate python for this
 pip install pyparix
+pip install plotly seaborn
 ```
 
+Installing HiSV in cooler_env
+https://github.com/GaoLabXDU/HiSV
+```bash
+conda activate cooler_env
+conda install gcc
+pip install numpy pysam pandas prox_tv
+#prox_tv was annoying but installed from git source
+git clone https://github.com/gaolabXDU/HiSV
+
+
+```
 <!--
 https://github.com/lh3/hickit
 

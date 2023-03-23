@@ -327,7 +327,6 @@ parallel --jobs 5 pairix_to_cooler ::: $pairix_in & #uses 10 cores per job
 # first argument is pairix gzipped file
 ```
 
-
 Normalize cooler matrices and visualize
 ```bash
 #using cooler balance to normalize
@@ -353,7 +352,6 @@ cooler_in=`ls *cool`
 parallel --jobs 10 cooler_plot ::: $cooler_in & 
 ```
 
-
 Use this for all chromosomes plots, code adapted from cooltools and inspired by:
 https://github.com/bianlab-hub/zuo_ncomms_2021/blob/Hi-C_data_analysis/fig1f_plot_obs_heatmap.py
 
@@ -368,54 +366,110 @@ import itertools
 import click
 import cooltools
 from scipy.linalg import toeplitz
+import os
+import seaborn as sns
 
-in_file="merged.contacts.cool"
+os.chdir('/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells/contacts')
+
+counts=pd.read_csv("/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells/read_count.csv")
+counts.sort_values('trans',ascending=False)
+in_files=["C217_AAGAGGCAATATCCTGTAGT.230306_gccact.rmdup.bsorted.cool", 
+"C221_ACTCGCTAATATCCTGTAGT.230306_gccact.rmdup.bsorted.cool",
+"C52_TAGGCATGATTACTCCTTGT.230306_gccact.rmdup.bsorted.cool",
+"C303_GCGTAGTAATCACTTCGAGT.230306_gccact.rmdup.bsorted.cool",
+"./merged/merged.contacts.cool"]
+
+
+def all_chr_plot(in_file):
+	""" Function to take in str of file name, read in cooler matrix and plot chr x chr across all bins 
+	Returns c (cooler matrix read in and normalized)"""
 in_name=in_file.split(sep=".")[0]
-## all by all heatmap
-
 coolfile=in_file
 c = cooler.Cooler(coolfile)
 obs_mat = c.matrix()[:]
-scale='log10'
+bins=c.bins()[:]
+bins_chr=bins.sort_values("chrom")
+chr_splits=np.where(np.roll(bins_chr["chrom"],1)!=bins_chr["chrom"])[0]
+chr_list=bins_chr["chrom"].copy
+#get bin start for each chr
+scale='linear'
 out=''.join([in_name,'_all_by_all_log2_1Mb_obs.pdf'])
 dpi= 300
 colormap='PuRd'
-#row_matrix= stage
-#col_matrix= stage
 zmin=0.00000
 zmax=0.0004
-plt.figure(figsize=(10,10))
-plt.gcf().canvas.set_window_title("Contact matrix".format())
+
+#convert obs_mat to long form and set x and y chr bins?
+obs_mat[0].stack().reset_index().set_axis('bin1 bin2 value'.split(), axis=1)
+sns.heatmap(data=obs_mat)
+fg=sns.FacetGrid(obs_mat,row=chr_splits,col=chr_splits)
+plt.savefig(out, dpi=dpi, format='pdf')
+plt.close("all")
+
+### Make HiC Subplots
+fig, axes = plt.subplots(len(chr_splits), len(chr_splits), figsize=(10, 10),sharex=True,sharey=True)
+for i in range(0,len(chr_splits)-1):
+	for j in range(0,len(chr_splits)-1):
+		chr_start_i=chr_splits[i]
+		chr_end_i=chr_splits[i+1]-1
+		chr_start_j=chr_splits[j]
+		chr_end_j=chr_splits[j+1]-1
+		sns.heatmap(ax=axes[i,j],data=obs_mat[chr_start_i:chr_end_i,chr_start_j:chr_end_j],cbar=False,yticklabels=False,xticklabels=False)
+
+plt.savefig(out, dpi=dpi, format='pdf')
+plt.close("all")
+
+
+
+plt.figure(figsize=(10,10)) #	plt.gcf().canvas.set_window_title("Contact matrix".format())
 plt.title("")
 plt.imshow(obs_mat, interpolation="none",vmin=zmin,vmax=zmax, cmap=colormap)
-#plt.ylabel("{} coordinate".format(row_matrix))
-#plt.xlabel("{} coordinate".format(col_matrix))
 cb = plt.colorbar()
 cb.set_label({"linear": "relative contact frequency", "log2": "log 2 ( relative contact frequency )",
   "log10": "log 10 ( relative contact frequency )",
   }[scale])
-plt.savefig(out, dpi=dpi, format='pdf')
+
+print("Completed all by all plot:" + in_name)
+
+def trans_chr_plot(in_file,chr1,chr2):
+	""" Function to plot chr by chr trans interactions (or chr by chr cis interactions if same chr given)
+	Takes in c for cooler matrix and str for chr1 and chr2 (format "chr1","chrX", etc.)
+	"""
+	in_name=in_file.split(sep=".")[0]
+	coolfile=in_file
+	c = cooler.Cooler(coolfile)
+	obs_mat = c.matrix()[:]
+	scale='log10'
+	row_chrom=chr1
+	col_chrom=chr2
+	mat = c.matrix().fetch(row_chrom,col_chrom)
+	zmin=0
+	zmax=0.0035
+	out=''.join([in_name,'_',row_chrom,'_',col_chrom,'_obs_1Mb.pdf'])
+	dpi= 300
+	plt.figure(figsize=(10,10)) #	plt.gcf().canvas.set_window_title("Contact matrix".format())
+	plt.title("")
+	plt.imshow(mat, interpolation="none", vmin=zmin,vmax=zmax,cmap=colormap)
+	plt.ylabel("{} coordinate".format(row_chrom))
+	plt.xlabel("{} coordinate".format(col_chrom))
+	cb = plt.colorbar()
+	cb.set_label({"linear": "relative contact frequency", "log2": "log 2 ( relative contact frequency )",
+	  "log10": "log 10 ( relative contact frequency )",
+	  }[scale])
+	plt.savefig(out, dpi=dpi, format='pdf')
+	plt.close()
+	print("Completed "+chr1+" by "+chr2+" plot:" + in_name)
 
 
-# trans
-row_chrom='chr3'
-col_chrom='chr8'
-mat = c.matrix().fetch(row_chrom,col_chrom)
-zmin=0
-zmax=0.0035
-out=''.join([in_name,'_',row_chrom,'_',col_chrom,'_obs_1Mb.pdf'])
-dpi= 300
-plt.figure(figsize=(10,10))
-plt.gcf().canvas.set_window_title("Contact matrix".format())
-plt.title("")
-plt.imshow(mat, interpolation="none", vmin=zmin,vmax=zmax,cmap=colormap)
-plt.ylabel("{} coordinate".format(row_chrom))
-plt.xlabel("{} coordinate".format(col_chrom))
-cb = plt.colorbar()
-cb.set_label({"linear": "relative contact frequency", "log2": "log 2 ( relative contact frequency )",
-  "log10": "log 10 ( relative contact frequency )",
-  }[scale])
-plt.savefig(out, dpi=dpi, format='pdf')
+for in_file in in_files:
+	#c=all_chr_plot(in_file)
+	trans_chr_plot(in_file,"chr2","chr8")
+	trans_chr_plot(in_file,"chr2","chr12")
+	trans_chr_plot(in_file,"chr3","chr8")
+	trans_chr_plot(in_file,"chr8","chr12")
+
+
+
 ```
 
 Generate eigengenes for compartments across chromosomes
@@ -444,11 +498,43 @@ cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH ${i::-4}.bsorted.pairs.
 cooler balance -p 10 -f -c 10000 ${i::-4}.cool
 ```
 
+Get structural variants across merged data with HiSV
+```bash
+dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells/contacts/merged"
+CHROMSIZES_FILE="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/hg38.chrom.sizes"
+cd $dir
+
+python ~/tools/HiSV/convert_type/hiccovert.py -o $dir/converted_output -r $CHROMSIZES_FILE -b 1000000 -t cool -m $dir/merged.contacts.cool 
+#typo in python script name
+
+#convert outputs with name format sample_1000kb_chr10_chr21_matrix.txt. need to be renamed and moved to directory
+rename -v 'sample_1000kb_' '' $dir/converted_output/Inter_matrix/*txt
+rename -v '_matrix.' '.' $dir/converted_output/Inter_matrix/*txt
+mkdir $dir/hic_files
+mv $dir/converted_output/Inter_matrix/*txt $dir/hic_files
+
+rename -v 'sample_1000kb_' '' $dir/converted_output/Intra_matrix/*txt
+rename -v "_matrix." "." $dir/converted_output/Intra_matrix/*txt
+for file in $dir/converted_output/Intra_matrix/*txt; do mv "$file" "${file/chr*_/}"; done
+mv $dir/converted_output/Intra_matrix/*txt $dir/hic_files
+
+python ~/tools/HiSV/HiSV_code/HiSV.py -o $dir/merged_output \
+               -l $CHROMSIZES_FILE \
+               -f $dir/hic_files \
+               -a 1000000 \
+               -e 1000000 \
+               -w 10 \
+               -c 0.4
+```
+
+
 <!--
-#Add function for merging cool matrices (or just pairix files) based on same lineage in copykit
-#Use cooltools virtual4c for eccDNA interactions
+#Add function for merging cool matrices (or just pairix files) based on same lineage in copykit (output copykit lineage, make list and feed into samtools merge for reprocessing
+)
 #Add compartments
+#Split cooler bins to chromosomes
 #Add SV detection by contact matrix
+#Use cooltools virtual4c for eccDNA interactions
 #Add 
 -->
 
