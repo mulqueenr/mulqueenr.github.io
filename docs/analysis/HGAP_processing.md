@@ -1287,6 +1287,7 @@ library(Signac)
 library(Seurat)
 library(ggplot2)
 library(patchwork)
+library(cowplot)
 set.seed(1234)
 library(dplyr)
 library(ggrepel)
@@ -1295,20 +1296,100 @@ library(clustree)
 setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
 
 #UMAP Projection and clustering on selected cistopic model
-clustering_loop<-function(in_path,output_name){
+clustering_loop<-function(in_path,output_name,res_count){
 		dat<-readRDS(in_path)
 		res_list<-colnames(dat@meta.data)[startsWith(prefix="peaks_snn_res",colnames(dat@meta.data))]
-    plt<-DimPlot(dat,group.by=res_list)
-    ggsave(plt,file=paste(output_name,"clustering.dimplot.pdf",sep="."),width=15,height=15)
-    system(paste0("slack -F ",paste(output_name,"clustering.dimplot.pdf",sep=".")," ryan_todo"))
+    plt1<-DimPlot(dat,group.by=res_list,combine=FALSE,label=T,raster=T)
+    #system(paste0("slack -F ",paste(output_name,"clustering.dimplot.pdf",sep=".")," ryan_todo"))
+    plt2<-clustree(dat, prefix = "peaks_snn_res.",node_size = 10)
 
-    plt<-clustree(dat, prefix = "peaks_snn_res.")
-    ggsave(plt,file=paste(output_name,"clustree.pdf",sep="."),width=15,height=15)
+    if(res_count==5){
+		layout <- "
+		AZZ
+		BZZ
+		CZZ
+		DZZ
+		EZZ"
+    plt<-wrap_plots(
+    	A=plt1[[1]]+theme_void()+ theme(legend.position = "none"),
+    	B=plt1[[2]]+theme_void()+ theme(legend.position = "none"),
+    	C=plt1[[3]]+theme_void()+ theme(legend.position = "none"),
+    	D=plt1[[4]]+theme_void()+ theme(legend.position = "none"),
+    	E=plt1[[5]]+theme_void()+ theme(legend.position = "none"),
+    	Z=plt2+ theme(legend.position = "none"),
+    	design=layout) + plot_layout(guides="collect")
+    legend <- cowplot::get_legend(plt2)
+		} else if (res_count==6) {
+		layout <- "
+		AZZ
+		BZZ
+		CZZ
+		DZZ
+		EZZ
+		FZZ"
+    plt<-wrap_plots(
+    	A=plt1[[1]]+theme_void()+ theme(legend.position = "none"),
+    	B=plt1[[2]]+theme_void()+ theme(legend.position = "none"),
+    	C=plt1[[3]]+theme_void()+ theme(legend.position = "none"),
+    	D=plt1[[4]]+theme_void()+ theme(legend.position = "none"),
+    	E=plt1[[5]]+theme_void()+ theme(legend.position = "none"),
+    	F=plt1[[6]]+theme_void()+ theme(legend.position = "none"),
+    	Z=plt2+ theme(legend.position = "none"),
+    	design=layout) + plot_layout(guides="collect")
+    legend <- cowplot::get_legend(plt2)
+		} else if (res_count==7) {
+		layout <- "
+		AZZ
+		BZZ
+		CZZ
+		DZZ
+		EZZ
+		FZZ
+		GZZ"
+    plt<-wrap_plots(
+    	A=plt1[[1]]+theme_void()+ theme(legend.position = "none"),
+    	B=plt1[[2]]+theme_void()+ theme(legend.position = "none"),
+    	C=plt1[[3]]+theme_void()+ theme(legend.position = "none"),
+    	D=plt1[[4]]+theme_void()+ theme(legend.position = "none"),
+    	E=plt1[[5]]+theme_void()+ theme(legend.position = "none"),
+    	F=plt1[[6]]+theme_void()+ theme(legend.position = "none"),
+    	G=plt1[[7]]+theme_void()+ theme(legend.position = "none"),
+    	Z=plt2+ theme(legend.position = "none"),
+    	design=layout) + plot_layout(guides="collect")
+    legend <- cowplot::get_legend(plt2)
+		} else if (res_count==9) {
+		layout <- "
+		AZZ
+		BZZ
+		CZZ
+		DZZ
+		EZZ
+		FZZ
+		GZZ
+		HZZ
+		IZZ"
+    plt<-wrap_plots(
+    	A=plt1[[1]]+theme_void()+ theme(legend.position = "none"),
+    	B=plt1[[2]]+theme_void()+ theme(legend.position = "none"),
+    	C=plt1[[3]]+theme_void()+ theme(legend.position = "none"),
+    	D=plt1[[4]]+theme_void()+ theme(legend.position = "none"),
+    	E=plt1[[5]]+theme_void()+ theme(legend.position = "none"),
+    	F=plt1[[6]]+theme_void()+ theme(legend.position = "none"),
+    	G=plt1[[7]]+theme_void()+ theme(legend.position = "none"),
+    	H=plt1[[8]]+theme_void()+ theme(legend.position = "none"),
+    	I=plt1[[9]]+theme_void()+ theme(legend.position = "none"),
+    	Z=plt2+ theme(legend.position = "none"),
+    	design=layout) + plot_layout(guides="collect")
+    legend <- cowplot::get_legend(plt2)
+		}
+
+		ggsave(plt,file=paste(output_name,"clustree.pdf",sep="."),width=8,height=8,units="in")
     system(paste0("slack -F ",paste(output_name,"clustree.pdf",sep=".")," ryan_todo"))
-
-    plt<-clustree_overlay(dat, prefix = "peaks_snn_res.", x_value = "UMAP_1", y_value = "UMAP_2",red_dim="umap")
-    ggsave(plt,file=paste(output_name,"clustree.overlay.pdf",sep="."),width=15,height=15)
-    system(paste0("slack -F ",paste(output_name,"clustree.overlay.pdf",sep=".")," ryan_todo"))
+    ggsave(legend,file=paste(output_name,"clustree.legend.pdf",sep="."))
+    system(paste0("slack -F ",paste(output_name,"clustree.legend.pdf",sep=".")," ryan_todo"))
+    #plt<-clustree_overlay(dat, prefix = "peaks_snn_res.", x_value = "UMAP_1", y_value = "UMAP_2",red_dim="umap")
+    #ggsave(plt,file=paste(output_name,"clustree.overlay.pdf",sep="."),width=15,height=15)
+    #system(paste0("slack -F ",paste(output_name,"clustree.overlay.pdf",sep=".")," ryan_todo"))
 
 }
 
@@ -1322,10 +1403,10 @@ micro<-"/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hi
 
 #Processing
 
-clustering_loop(in_path=oligo,output_name="oligodendrocytes")
-clustering_loop(in_path=opc,output_name="opc")
-clustering_loop(in_path=astro,output_name="astrocytes")
-clustering_loop(in_path=micro,output_name="microglia")
+clustering_loop(in_path=oligo,output_name="oligodendrocytes",res_count=6)
+clustering_loop(in_path=opc,output_name="opc",res_count=5)
+clustering_loop(in_path=astro,output_name="astrocytes",res_count=9)
+clustering_loop(in_path=micro,output_name="microglia",res_count=7)
 
 
 ```

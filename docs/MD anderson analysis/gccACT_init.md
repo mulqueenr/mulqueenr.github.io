@@ -82,6 +82,18 @@ python ~/src/plate2_fastqsplitter.py /volumes/USR2/Ryan/fastq/230306_VH00219_371
 for i in *fastq; do gzip $i & done &
 ```
 Got 253,517,850 reads total from assignment
+Moving fastq.gz files to a project directory
+
+Processing will be in: 
+```bash
+/volumes/seq/projects/gccACT/230306_mdamb231_test
+```
+
+Moving the two fastq files.
+```bash
+mkdir /volumes/seq/projects/gccACT/230306_mdamb231_test
+cp /volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R1_001.barc.fastq.gz /volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R2_001.barc.fastq.gz /volumes/seq/projects/gccACT/230306_mdamb231_test
+```
 
 # Processing Samples via Copykit to start
 ## Alignment
@@ -116,12 +128,12 @@ ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/gen
 dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
 
 add_header() {
-	samtools view -bT $ref {$1::-4}.sam
-	samtools sort -T $dir -o {}.bam -
+	samtools view -bT $ref $1
+	samtools sort -T $dir -o {$1::-4}.bam -
 }
 export -f add_header
 sam_in=`ls *sam`
-parallel --jobs 30 sort_and_markdup ::: $sam_in
+parallel --jobs 30 add_header ::: $sam_in
 ```
 
 ## Mark duplicate reads
@@ -153,6 +165,45 @@ multiqc .
 
 ```
 
+### Count of WGS and GCC Reads
+```bash
+dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
+#count reads based on paired alignments
+readtype_count() {
+	#print out reads on same chromosome that are >= 1000 bp apart (distal)
+	distal=$(samtools view -F 1024 $1 | awk '{if (sqrt(($9^2))>=1000) print $0}' | wc -l)
+	#print out reads on different chromosomes
+	trans=$(samtools view -F 1024 $1 | awk '{if($7 != "=") print $0}' | wc -l)
+	#print out reads on same chromosome within 1000bp (cis)
+	near=$(samtools view -F 1024 $1 | awk '{if (sqrt(($9^2))<=1000) print $0}' | wc -l)
+	echo $1,$near,$distal,$trans
+}
+export -f readtype_count
+
+cd $dir/cells
+bam_in=`ls *bam`
+echo "cellid,near_cis,distal_cis,trans" > read_count.csv; parallel --jobs 10 readtype_count ::: $bam_in >> read_count.csv
+```
+
+Plotting GCC read types
+```R
+library(ggplot2)
+library(patchwork)
+setwd("/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test")
+dat<-read.table("./cells/read_count.csv",header=T,sep=",")
+dat$total_reads<-dat$near_cis+dat$distal_cis+dat$trans
+
+plt1<-ggplot(dat,aes(y=near_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis Reads")+theme_minimal()
+plt2<-ggplot(dat,aes(y=distal_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis Reads")+theme_minimal()
+plt3<-ggplot(dat,aes(y=trans,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans Reads")+theme_minimal()
+
+plt4<-ggplot(dat,aes(y=(near_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis % Reads")+theme_minimal()
+plt5<-ggplot(dat,aes(y=(distal_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis % Reads")+theme_minimal()
+plt6<-ggplot(dat,aes(y=(trans/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans % Reads")+theme_minimal()
+
+plt<-(plt1|plt2|plt3)/(plt4|plt5|plt6)
+ggsave(plt,file="read_counts.pdf")
+```
 ## Run CopyKit for WGS portion
 Analysis from 
 https://navinlabcode.github.io/CopyKit-UserGuide/quick-start.html
@@ -162,6 +213,7 @@ library(copykit)
 library(BiocParallel)
 register(MulticoreParam(progressbar = T, workers = 50), default = T)
 BiocParallel::bpparam()
+setwd("/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells")
 
 tumor <- runVarbin("/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells",
                  remove_Y = TRUE,
@@ -211,50 +263,16 @@ plotHeatmap(tumor, label = 'subclones',order='hclust')
 dev.off()
 
 saveRDS(tumor,file="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/scCNA.rds")
-```
-
-### Count of WGS and GCC Reads
-```bash
-dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
-#count reads based on paired alignments
-readtype_count() {
-	#print out reads on same chromosome that are >= 1000 bp apart (distal)
-	distal=$(samtools view -F 1024 $1 | awk '{if (sqrt(($9^2))>=1000) print $0}' | wc -l)
-	#print out reads on different chromosomes
-	trans=$(samtools view -F 1024 $1 | awk '{if($7 != "=") print $0}' | wc -l)
-	#print out reads on same chromosome within 1000bp (cis)
-	near=$(samtools view -F 1024 $1 | awk '{if (sqrt(($9^2))<=1000) print $0}' | wc -l)
-	echo $1,$near,$distal,$trans
+tumor<-readRDS("/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/scCNA.rds")
+clone_out<-data.frame(bam=paste0(row.names(tumor@colData),".bam"),clone=tumor@colData$subclones)
+for (i in unique(clone_out$clone)){
+	tmp<-clone_out[clone_out$clone==i,]
+	write.table(tmp$bam,file=paste0("clone_",i,".bam_list.txt"),row.names=F,col.names=F,quote=F)
 }
-export -f readtype_count
-
-cd $dir/cells
-bam_in=`ls *bam`
-echo "cellid,near_cis,distal_cis,trans" > read_count.csv; parallel --jobs 10 readtype_count ::: $bam_in >> read_count.csv
-```
-
-Plotting GCC read types
-```R
-library(ggplot2)
-library(patchwork)
-setwd("/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test")
-dat<-read.table("./cells/read_count.csv",header=T,sep=",")
-dat$total_reads<-dat$near_cis+dat$distal_cis+dat$trans
-
-plt1<-ggplot(dat,aes(y=near_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis Reads")+theme_minimal()
-plt2<-ggplot(dat,aes(y=distal_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis Reads")+theme_minimal()
-plt3<-ggplot(dat,aes(y=trans,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans Reads")+theme_minimal()
-
-plt4<-ggplot(dat,aes(y=(near_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis % Reads")+theme_minimal()
-plt5<-ggplot(dat,aes(y=(distal_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis % Reads")+theme_minimal()
-plt6<-ggplot(dat,aes(y=(trans/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans % Reads")+theme_minimal()
-
-plt<-(plt1|plt2|plt3)/(plt4|plt5|plt6)
-ggsave(plt,file="read_counts.pdf")
 ```
 
 ### Generation of HiC Contact Matrices
-First using bam2pairs from pairix to generate contacts
+Merge bam files based on CopyKit output. Then using bam2pairs from pairix to generate contacts
 ```bash
 dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
 ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
@@ -263,18 +281,33 @@ ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/gen
 mkdir $dir/cells/contacts
 
 #should i just go for reads that are at least larger than some portion of the bin size?
-bam_to_pairs() {
-	samtools view -F 1024 $3 | awk '{if (sqrt(($9^2))>=1000 || $7 != "=") print $0}' | samtools view -bT $2 - > $1/cells/contacts/${3::-4}.contacts.bam && wait;
-	bam2pairs $1/cells/contacts/${3::-4}.contacts.bam $1/cells/contacts/${3::-4}
-}
-export -f bam_to_pairs
+#bam_to_pairs() {
+#	samtools view -F 1024 $3 | awk '{if (sqrt(($9^2))>=1000 || $7 != "=") print $0}' | samtools view -bT $2 - > $1/cells/contacts/${3::-4}.contacts.bam && wait;
+#	bam2pairs $1/cells/contacts/${3::-4}.contacts.bam $1/cells/contacts/${3::-4}
+#}
+#export -f bam_to_pairs
 
-cd $dir/cells
-bam_in=`ls *bam`
-parallel --jobs 50 bam_to_pairs $dir $ref {} ::: $bam_in &
+#### For generation of pairix per cell
+#cd $dir/cells
+#bam_in=`ls *bam`
+#parallel --jobs 50 bam_to_pairs $dir $ref {} ::: $bam_in &
 # first argument is directory
 # second is reference fasta
 # third is bam file input
+
+bamlist_merge_to_pairs() {
+	samtools merge -b $3 -O SAM -@ 20 - | awk '{if (sqrt(($9^2))>=1000 || $7 != "=") print $0}' | samtools view -bT $2 - > $1/cells/contacts/${3::-13}.contacts.bam && wait;
+	bam2pairs $1/cells/contacts/${3::-13}.contacts.bam $1/cells/contacts/${3::-13}
+}
+export -f bamlist_merge_to_pairs
+
+bamlist_merge_to_pairs $dir $ref clone_c1.bam_list.txt 
+bamlist_merge_to_pairs $dir $ref clone_c2.bam_list.txt 
+bamlist_merge_to_pairs $dir $ref clone_c3.bam_list.txt 
+bamlist_merge_to_pairs $dir $ref clone_c4.bam_list.txt 
+
+#set variable for bam list in function
+
 
 ```
 
@@ -322,7 +355,7 @@ cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.cool
 export -f pairix_to_cooler
 
 cd $dir/cells/contacts
-pairix_in=`ls *pairs.gz`
+pairix_in=`ls clone_*pairs.gz`
 parallel --jobs 5 pairix_to_cooler ::: $pairix_in & #uses 10 cores per job
 # first argument is pairix gzipped file
 ```
@@ -355,118 +388,140 @@ parallel --jobs 10 cooler_plot ::: $cooler_in &
 Use this for all chromosomes plots, code adapted from cooltools and inspired by:
 https://github.com/bianlab-hub/zuo_ncomms_2021/blob/Hi-C_data_analysis/fig1f_plot_obs_heatmap.py
 
+* Cooler storage of single cell files cooler.create_scool(
+
 ```python
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import multiprocess as mp
-import bioframe
 import cooler
-import itertools
-import click
 import cooltools
-from scipy.linalg import toeplitz
 import os
 import seaborn as sns
-
-os.chdir('/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells/contacts')
-
-counts=pd.read_csv("/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells/read_count.csv")
-counts.sort_values('trans',ascending=False)
-in_files=["C217_AAGAGGCAATATCCTGTAGT.230306_gccact.rmdup.bsorted.cool", 
-"C221_ACTCGCTAATATCCTGTAGT.230306_gccact.rmdup.bsorted.cool",
-"C52_TAGGCATGATTACTCCTTGT.230306_gccact.rmdup.bsorted.cool",
-"C303_GCGTAGTAATCACTTCGAGT.230306_gccact.rmdup.bsorted.cool",
-"./merged/merged.contacts.cool"]
-
-
-def all_chr_plot(in_file):
-	""" Function to take in str of file name, read in cooler matrix and plot chr x chr across all bins 
-	Returns c (cooler matrix read in and normalized)"""
-in_name=in_file.split(sep=".")[0]
-coolfile=in_file
-c = cooler.Cooler(coolfile)
-obs_mat = c.matrix()[:]
-bins=c.bins()[:]
-bins_chr=bins.sort_values("chrom")
-chr_splits=np.where(np.roll(bins_chr["chrom"],1)!=bins_chr["chrom"])[0]
-chr_list=bins_chr["chrom"].copy
-#get bin start for each chr
-scale='linear'
-out=''.join([in_name,'_all_by_all_log2_1Mb_obs.pdf'])
-dpi= 300
-colormap='PuRd'
-zmin=0.00000
-zmax=0.0004
-
-#convert obs_mat to long form and set x and y chr bins?
-obs_mat[0].stack().reset_index().set_axis('bin1 bin2 value'.split(), axis=1)
-sns.heatmap(data=obs_mat)
-fg=sns.FacetGrid(obs_mat,row=chr_splits,col=chr_splits)
-plt.savefig(out, dpi=dpi, format='pdf')
-plt.close("all")
-
-### Make HiC Subplots
-fig, axes = plt.subplots(len(chr_splits), len(chr_splits), figsize=(10, 10),sharex=True,sharey=True)
-for i in range(0,len(chr_splits)-1):
-	for j in range(0,len(chr_splits)-1):
-		chr_start_i=chr_splits[i]
-		chr_end_i=chr_splits[i+1]-1
-		chr_start_j=chr_splits[j]
-		chr_end_j=chr_splits[j+1]-1
-		sns.heatmap(ax=axes[i,j],data=obs_mat[chr_start_i:chr_end_i,chr_start_j:chr_end_j],cbar=False,yticklabels=False,xticklabels=False)
-
-plt.savefig(out, dpi=dpi, format='pdf')
-plt.close("all")
+import cooltools.lib.plotting
+import matplotlib
 
 
 
-plt.figure(figsize=(10,10)) #	plt.gcf().canvas.set_window_title("Contact matrix".format())
-plt.title("")
-plt.imshow(obs_mat, interpolation="none",vmin=zmin,vmax=zmax, cmap=colormap)
-cb = plt.colorbar()
-cb.set_label({"linear": "relative contact frequency", "log2": "log 2 ( relative contact frequency )",
-  "log10": "log 10 ( relative contact frequency )",
-  }[scale])
-
-print("Completed all by all plot:" + in_name)
-
-def trans_chr_plot(in_file,chr1,chr2):
+def trans_chr_plot(mat,chr_row,chr_col,ax_row,ax_col,axes,out,zmin,zmax,cmap,xlim,ylim):
 	""" Function to plot chr by chr trans interactions (or chr by chr cis interactions if same chr given)
-	Takes in c for cooler matrix and str for chr1 and chr2 (format "chr1","chrX", etc.)
+	Takes in c for cooler file and str for chr_row and chr_col (format "chr1","chrX", etc.)
+	Takes in integers for ax_row and ax_col to add output plot as subplot.
 	"""
+	mat=np.log10(mat)
+	ax=sns.heatmap(ax=axes[ax_row,ax_col],data=mat,cbar=False,yticklabels=False,square=False,xticklabels=False,vmin=zmin,vmax=zmax,cmap=cmap,
+		gridspec_kw={"truncate":False})
+	ax.set_ylim(ylim,0)
+	ax.set_xlim(0,xlim)
+	if ax_row==0:
+		axes[ax_row,ax_col].set_title(chr_col)
+	if ax_col==0:
+		axes[ax_row,ax_col].set_ylabel(chr_row)
+	print("Completed "+chr_row+" by "+chr_col+" plot:"+out)
+	return(ax)
+
+
+def all_by_all_plot(infile_name,chr_count,zmin,zmax,cmap):
+	"""Function to read in cooler file from given string name. And run all by all chr comparison"""
+	#Read in Cooler File
+	in_file=infile_name
 	in_name=in_file.split(sep=".")[0]
 	coolfile=in_file
 	c = cooler.Cooler(coolfile)
+	cooler.coarsen_cooler(coolfile,in_name+"_5mb.cool",factor=5,chunksize=10000000) #coarsen to 5mb
+	c = cooler.Cooler(in_name+"_5mb.cool")
+	cooler.balance_cooler(c,store=True) #balance matrix
 	obs_mat = c.matrix()[:]
-	scale='log10'
-	row_chrom=chr1
-	col_chrom=chr2
-	mat = c.matrix().fetch(row_chrom,col_chrom)
-	zmin=0
-	zmax=0.0035
-	out=''.join([in_name,'_',row_chrom,'_',col_chrom,'_obs_1Mb.pdf'])
-	dpi= 300
-	plt.figure(figsize=(10,10)) #	plt.gcf().canvas.set_window_title("Contact matrix".format())
-	plt.title("")
-	plt.imshow(mat, interpolation="none", vmin=zmin,vmax=zmax,cmap=colormap)
-	plt.ylabel("{} coordinate".format(row_chrom))
-	plt.xlabel("{} coordinate".format(col_chrom))
-	cb = plt.colorbar()
-	cb.set_label({"linear": "relative contact frequency", "log2": "log 2 ( relative contact frequency )",
-	  "log10": "log 10 ( relative contact frequency )",
-	  }[scale])
+	chr_list=list(c.bins()[:]["chrom"].unique())
+	out=''.join([in_name,'_all_by_all_log2_1Mb_obs.png'])
+	#init subplot
+	chr_in=len(chr_list)
+	chr_sizes=pd.DataFrame(c.bins()[:]).groupby(["chrom"])["chrom"].count()
+	chr_ratios=list(chr_sizes/chr_sizes[0])
+	fig, axes = plt.subplots(chr_count, chr_count, figsize=(40, 40),sharex=True,sharey=True,
+		gridspec_kw={'width_ratios': chr_ratios[0:chr_count],'height_ratios':chr_ratios[0:chr_count]})
+	#plt.subplots_adjust(hspace=0.1,wspace=0.1)
+	for i in range(0,chr_count):
+		row_chrom=chr_list[i]
+		ax_row=i
+		xlim=chr_sizes[i]
+		for j in range(0,chr_count):
+			col_chrom=chr_list[j]
+			ax_col=j
+			ylim=chr_sizes[j]
+			mat=c.matrix().fetch(row_chrom,col_chrom)
+			im=trans_chr_plot(mat,row_chrom,col_chrom,ax_row,ax_col,axes,in_name,zmin,zmax,cmap,xlim,ylim)
+	plt.tight_layout()
+	plt.savefig(out, dpi=dpi, format='png',bbox_inches="tight")
+	plt.close("all")
+
+
+def all_by_all_plot_subtract(infile_name1,infile_name2,chr_count,cmap):
+	"""Function to read in cooler file from given string name. And run all by all chr comparison"""
+	#Read in Cooler File
+	in_file1=infile_name1
+	in_file2=infile_name2
+	in_name1=in_file1.split(sep=".")[0]
+	in_name2=in_file2.split(sep=".")[0]
+	coolfile1=in_file1
+	coolfile2=in_file2
+	c1 = cooler.Cooler(coolfile1)
+	c2 = cooler.Cooler(coolfile2)
+	cooler.balance_cooler(c1,store=True) #balance matrix
+	cooler.balance_cooler(c2,store=True) 
+	chr_list=list(c1.bins()[:]["chrom"].unique())
+	out=''.join([in_name1,"_",in_name2,'_all_by_all_log2_1Mb_obs.pdf'])
+	#init subplot
+	chr_in=len(chr_list)
+	fig, axes = plt.subplots(chr_count, chr_count, figsize=(10, 10),sharex=True,sharey=True)
+	plt.subplots_adjust(hspace=0.1,wspace=0.1)
+	subplot_chr_list=[]
+	for i in range(0,chr_count):
+		row_chrom=chr_list[i]
+		ax_row=i
+		for j in range(0,chr_count):
+			col_chrom=chr_list[j]
+			ax_col=j
+			obs_mat1 = c1.matrix().fetch(row_chrom,col_chrom)
+			obs_mat2 = c2.matrix().fetch(row_chrom,col_chrom)
+			mat=np.log2(obs_mat1) / np.log2(obs_mat2)
+			trans_chr_plot(mat,row_chrom,col_chrom,ax_row,ax_col,axes,out,cmap) 
+	print(plt)
 	plt.savefig(out, dpi=dpi, format='pdf')
-	plt.close()
-	print("Completed "+chr1+" by "+chr2+" plot:" + in_name)
+	plt.close("all")
 
+#wd 
+os.chdir('/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells/contacts/clones')
 
-for in_file in in_files:
-	#c=all_chr_plot(in_file)
-	trans_chr_plot(in_file,"chr2","chr8")
-	trans_chr_plot(in_file,"chr2","chr12")
-	trans_chr_plot(in_file,"chr3","chr8")
-	trans_chr_plot(in_file,"chr8","chr12")
+#in files
+in_files=["clone_c1.bsorted.cool",
+	"clone_c2.bsorted.cool",
+	"clone_c3.bsorted.cool",
+	"clone_c4.bsorted.cool"]
+
+#Set up settings for plot
+dpi= 300
+colormap='fall'
+zmin=-3
+zmax=-1
+
+all_by_all_plot(in_files[0],4,zmin,zmax,cmap="PuBu")
+all_by_all_plot(in_files[2],4,zmin,zmax,cmap="YlGn")
+
+#make all by all plot for all clones
+[all_by_all_plot(x,4,zmin,zmax) for x in in_files]
+
+#colormap="coolwarm"
+#for x in in_files:
+#	for y in in_files:
+#		all_by_all_plot_subtract(x,y,4)
+
+#
+
+#plot difference of one matrix from another
+#get expected - observed?
+#expected = cooltools.expected_cis(clr, view_df=hg38_arms, nproc=2, chunksize=1_000_000)
+
 
 
 
@@ -498,13 +553,17 @@ cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH ${i::-4}.bsorted.pairs.
 cooler balance -p 10 -f -c 10000 ${i::-4}.cool
 ```
 
+
+
 Get structural variants across merged data with HiSV
+https://github.com/GaoLabXDU/HiSV
+
 ```bash
-dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells/contacts/merged"
+dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells/contacts/clones"
 CHROMSIZES_FILE="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/hg38.chrom.sizes"
 cd $dir
 
-python ~/tools/HiSV/convert_type/hiccovert.py -o $dir/converted_output -r $CHROMSIZES_FILE -b 1000000 -t cool -m $dir/merged.contacts.cool 
+python ~/tools/HiSV/convert_type/hiccovert.py -o $dir/converted_output -r $CHROMSIZES_FILE -b 1000000 -t cool -m $dir/clone_c1.bsorted.cool  
 #typo in python script name
 
 #convert outputs with name format sample_1000kb_chr10_chr21_matrix.txt. need to be renamed and moved to directory
@@ -516,9 +575,10 @@ mv $dir/converted_output/Inter_matrix/*txt $dir/hic_files
 rename -v 'sample_1000kb_' '' $dir/converted_output/Intra_matrix/*txt
 rename -v "_matrix." "." $dir/converted_output/Intra_matrix/*txt
 for file in $dir/converted_output/Intra_matrix/*txt; do mv "$file" "${file/chr*_/}"; done
+mkdir $dir/hic_files
 mv $dir/converted_output/Intra_matrix/*txt $dir/hic_files
 
-python ~/tools/HiSV/HiSV_code/HiSV.py -o $dir/merged_output \
+python ~/tools/HiSV/HiSV_code/HiSV.py -o $dir \
                -l $CHROMSIZES_FILE \
                -f $dir/hic_files \
                -a 1000000 \
@@ -529,10 +589,7 @@ python ~/tools/HiSV/HiSV_code/HiSV.py -o $dir/merged_output \
 
 
 <!--
-#Add function for merging cool matrices (or just pairix files) based on same lineage in copykit (output copykit lineage, make list and feed into samtools merge for reprocessing
-)
 #Add compartments
-#Split cooler bins to chromosomes
 #Add SV detection by contact matrix
 #Use cooltools virtual4c for eccDNA interactions
 #Add 

@@ -140,7 +140,7 @@ conda activate cooler_env
 pip install cooler
 pip install Cython
 pip install cooltools #need to downgrate python for this
-pip install pyparix
+pip install pypairix
 pip install plotly seaborn
 ```
 
@@ -152,8 +152,6 @@ conda install gcc
 pip install numpy pysam pandas prox_tv
 #prox_tv was annoying but installed from git source
 git clone https://github.com/gaolabXDU/HiSV
-
-
 ```
 <!--
 https://github.com/lh3/hickit

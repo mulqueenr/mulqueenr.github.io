@@ -2564,6 +2564,34 @@ system("slack -F orgo_cirm43.tf.heatmap.motif.pdf ryan_todo")
 
 ```
 
+## Make Correlation Matrix between DA Peaks by aggregate cluster scores
+```R
+library(Signac)
+library(Seurat)
+library(ComplexHeatmap)
+library(dplyr)
+library(circlize)
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+orgo_cirm43<-readRDS("orgo_cirm43.QC2.SeuratObject.Rds") #reading in QC passing cells
+DefaultAssay(orgo_cirm43)<-"peaks"
+
+da_peaks_df<-read.table(file="orgo_cirm43.onevrest.da_peaks.txt",sep="\t")
+da_peaks_df<-da_peaks_df %>% filter(p_val_adj<=0.05)
+
+i="peaks"
+pseudobulk=AggregateExpression(orgo_cirm43,return.seurat=FALSE,slot="counts",assays=i) #aggregate by idents
+pseudobulk[[1]]<-pseudobulk[[1]][row.names(pseudobulk[[1]]) %in% row.names(da_peaks_df),]
+col_fun = colorRamp2(c(0.5, 1), c("white", "black"))
+cor_out=cor(pseudobulk[[1]],method="spearman")
+plt<-Heatmap(cor_out,col_fun)
+pdf(paste0("cluster_correlation_heatmap.",i,".pdf"))
+plt
+dev.off()
+system(paste0("slack -F cluster_correlation_heatmap.",i,".pdf ryan_todo"))
+
+
+```
+
 ## Make 3D UMAP Projection
 ```R
 library(Signac)
@@ -3853,19 +3881,21 @@ library(reshape2)
 library(qvalue)
 library(RColorBrewer)
 library(zoo)
+library(mgcv)
 library(scales)
 setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
 ########Heatmap shoutouts###########
 markers<-readRDS(file="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/ref/Bhaduri_clusters.rds")
-
+system("wget https://jaspar2020.genereg.net/static/clustering/2020/vertebrates/CORE/interactive_trees/JASPAR_2020_matrix_clustering_vertebrates_central_motifs_IDs.tab")
+tf_fam_names<-read.table("JASPAR_2020_matrix_clustering_vertebrates_central_motifs_IDs.tab")
 #from https://broadinstitute.github.io/2019_scWorkshop/functional-pseudotime-analysis.html
 # Fit GAM for each gene using pseudotime as independent variable.
-gam_per_row<-function(var,pseudotime.=pseudotime,k_in,bins=100){
+gam_per_row<-function(var.,pseudotime.=pseudotime,k_in,bins=100){
   out_list<-list()
-  d <- data.frame(y=var, t=pseudotime.)
+  d <- data.frame(y=var., t=pseudotime.)
   tmp <- gam(y ~ s(t,k=k_in), data=d) #k sets knots (kind of), which alters wiggliness of fit line
-  pd=data.frame(t=seq(from=min(pseudotime),to=max(pseudotime),by=(max(pseudotime)-min(pseudotime))/bins))
+  pd=data.frame(t=seq(from=min(pseudotime.),to=max(pseudotime.),by=(max(pseudotime.)-min(pseudotime.))/bins))
   out_list[["out"]]<-predict.gam(tmp,newdata=pd)
   out_list[["p"]] <- as.numeric(summary(tmp)$p.pv)
   return(out_list)
@@ -3885,40 +3915,74 @@ pseudotime_gam_fit<-function(x=chromvar,y=pseudotime,z=-1,prefix="test",colfun,f
   x<-x[which(apply(x,1,var)>quantile(unlist(apply(x,1,var)),filt_to_top_perc)),]
   }
 
- # print("Fitting GAMs")
- # gam.out<-mclapply(1:nrow(x), function(i) gam_per_row(var=x[i,],k_in=z,bins=bins),mc.cores=20)
- # i<-1
- # gam.pval<-as.data.frame(cbind(gene=row.names(x),pval=sapply(unlist(lapply(gam.out,"[[",2)),as.numeric)))
- # gam.pval$qval<-p.adjust(p=gam.pval$pval,method="bonferroni")
- # saveRDS(gam.pval,file=paste0(prefix,".pseudotime.GAM.540.pval.rds"))
- # print("Generating Fit Curves")
+  print("Fitting GAMs")
+  gam.out<-mclapply(1:nrow(x), function(i) gam_per_row(var.=x[i,],k_in=z,bins=bins),mc.cores=20)
+  i<-1
+  gam.pval<-as.data.frame(cbind(gene=row.names(x),pval=sapply(unlist(lapply(gam.out,"[[",2)),as.numeric)))
+  gam.pval$qval<-p.adjust(p=gam.pval$pval,method="bonferroni")
+  saveRDS(gam.pval,file=paste0(prefix,".pseudotime.GAM.540.pval.rds"))
+  print("Generating Fit Curves")
 
- # gam.dat<-as.data.frame(do.call("rbind",lapply(gam.out,"[[",1)))
- # row.names(gam.dat)<-row.names(x)
- # saveRDS(gam.pval,file=paste0(prefix,".pseudotime.GAM.540.values_unscaled.rds"))
+  gam.dat<-as.data.frame(do.call("rbind",lapply(gam.out,"[[",1)))
+  row.names(gam.dat)<-row.names(x)
+  saveRDS(gam.pval,file=paste0(prefix,".pseudotime.GAM.540.values_unscaled.rds"))
 
- # print("Scaling Curves")
- # gam.dat<-apply(gam.dat,1,rescale)
- # gam.dat<-t(gam.dat)
- # gam.dat<-gam.dat[order(unlist(lapply(1:nrow(gam.dat),function(i) which(gam.dat[i,]==max(gam.dat[i,]))))),]
+  print("Scaling Curves")
+  gam.dat<-apply(gam.dat,1,rescale)
+  gam.dat<-t(gam.dat)
+  gam.dat<-gam.dat[order(unlist(lapply(1:nrow(gam.dat),function(i) which(gam.dat[i,]==max(gam.dat[i,]))))),]
 
+  if(endsWith(prefix,"GA") | endsWith(prefix,"chromvar")){
+  label_idx=which(row.names(gam.dat) %in% markers$Gene)
+  col_markers=setNames(colorRampPalette(brewer.pal(8, "Set1"))(length(unique(markers$Subtype))),unique(markers$Subtype))
+  markers$col<-unname(col_markers[match(markers$Subtype,names(col_markers))]) #set up color of text by cell subtype
+  ha = rowAnnotation(genes = anno_mark(at = label_idx, 
+  labels = row.names(gam.dat)[label_idx],
+  labels_gp = gpar(col =markers[markers$Gene %in% row.names(gam.dat)[label_idx],]$col,fontsize=30)
+  ))
+  print("Making Heatmap")
+  plt<-Heatmap(gam.dat,
+  row_order=1:nrow(gam.dat),
+  column_order=1:ncol(gam.dat),
+  row_names_gp = gpar(fontsize = 3),
+  column_names_gp = gpar(fontsize = 3),
+  show_column_names=T,
+  right_annotation=ha,
+  col=colfun
+  )
+  } else if (endsWith(prefix,"family")){
+  row.names(gam.dat)<-unlist(lapply(row.names(gam.dat),function(i) gsub("-","_",i)))
+  label_idx=which(row.names(gam.dat) %in% tf_fam_names$V1)
+  ha = rowAnnotation(genes = anno_mark(at = label_idx, 
+  labels = tf_fam_names[label_idx,]$V3,
+  labels_gp = gpar(fontsize=30)
+  ))
+  print("Making Heatmap")
+  plt<-Heatmap(gam.dat,
+  row_order=1:nrow(gam.dat),
+  column_order=1:ncol(gam.dat),
+  row_names_gp = gpar(fontsize = 3),
+  column_names_gp = gpar(fontsize = 3),
+  show_column_names=T,
+  right_annotation=ha,
+  col=colfun
+  )
+  } else {
+  print("Making Heatmap")
+  plt<-Heatmap(gam.dat,
+  row_order=1:nrow(gam.dat),
+  column_order=1:ncol(gam.dat),
+  row_names_gp = gpar(fontsize = 3),
+  column_names_gp = gpar(fontsize = 3),
+  show_column_names=T,
+  col=colfun
+  )
+  }
 
- # print("Making Heatmap")
- # plt<-Heatmap(gam.dat,
- # row_order=1:nrow(gam.dat),
- # column_order=1:ncol(gam.dat),
- # row_names_gp = gpar(fontsize = 3),
- # column_names_gp = gpar(fontsize = 3),
- # show_column_names=T,
- # col=colfun
- # )
-
- # pdf(paste0(prefix,".pseudotime.chromvar.540.heatmap.pdf"),width=50,height=50)
- # plt<-draw(plt)#,annotation_legend_list=lgd_list)
- # dev.off()
- # system(paste0("slack -F ",prefix,".pseudotime.chromvar.540.heatmap.pdf"," ryan_todo"))
-
-
+  pdf(paste0(prefix,".pseudotime.chromvar.540.heatmap.pdf"),width=50,height=50)
+  plt<-draw(plt)#,annotation_legend_list=lgd_list)
+  dev.off()
+  system(paste0("slack -F ",prefix,".pseudotime.chromvar.540.heatmap.pdf"," ryan_todo"))
 
   print("Generating a Rolling Window of Scaled Values")
   roll_win_out<-mclapply(1:nrow(x),function(i) zscore_per_row(var=x[i,],bins=bins))
@@ -4002,7 +4066,7 @@ pseudotime_gam_fit(x=chromvar,y=pseudotime,z=-1,prefix=paste0(prefix,".chromvar"
 cistopic_col<-colorRamp2(c(0, 0.5, 1), rev(c("#004529","#78c679","#f7f7f7")))
 pseudotime_gam_fit(x=cistopics,y=pseudotime,z=-1,prefix=paste0(prefix,".cistopic"),colfun=cistopic_col,bins=100)
 
-magma_col<-colorRamp2(c(0,0.5, 1), magma(3))
+magma_col<-colorRamp2(c(0,0.7, 1), magma(3))
 pseudotime_gam_fit(x=geneactivity,y=pseudotime,z=-1,prefix=paste0(prefix,".GA"),colfun=magma_col,filt_to_top_perc=0.99,bins=100)
 }
 

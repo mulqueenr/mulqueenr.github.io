@@ -4548,17 +4548,6 @@ celltype_cistopic_generation(celltype_list=c("TAMs","TAMs_2","Myeloid","T.cells"
 # Mesenchymal Cells
 celltype_cistopic_generation(celltype_list=c("CAFs","Endothelial","Pericytes"),outname="mesenchymal")
 
-#Single cell type reclusters (deprecated)
-#celltype_cistopic_generation(celltype_list=c("TAMs","TAMs_2","Myeloid"),outname="myeloid")#Myeloid
-#celltype_cistopic_generation(celltype_list=c("T.cells"),outname="tcell")#T Cells
-#celltype_cistopic_generation(celltype_list=c("Plasma.cells"),outname="plasmacell")#Plasma cells
-#celltype_cistopic_generation(celltype_list=c("CAFs"),outname="fibroblast")#Fibroblasts
-#celltype_cistopic_generation(celltype_list=c("B.cells"),outname="bcell")#B cells
-#celltype_cistopic_generation(celltype_list=c("Endothelial"),outname="endothelial")#Endothelial
-#celltype_cistopic_generation(celltype_list=c("Pericytes"),outname="pericyte")#Pericytes
-
-
-
 ```
 
 ### Integration: Now Clustering together on RNA profiles using harmony to integrate
@@ -4652,15 +4641,6 @@ harmony_sample_integration(x="mesenchymal.SeuratObject.rds",outname="mesenchymal
 harmony_sample_integration(x="immune.SeuratObject.rds",outname="immune",res=0.1) 
 
 
-#deprecated
-#harmony_sample_integration(x="tcell.SeuratObject.rds",outname="tcell",res=0.5)
-#harmony_sample_integration(x="myeloid.SeuratObject.rds",outname="myeloid",res=0.2)
-#harmony_sample_integration(x="plasmacell.SeuratObject.rds",outname="plasmacell",res=0.1)
-#harmony_sample_integration(x="fibroblast.SeuratObject.rds",outname="fibroblast",res=0.3)
-#harmony_sample_integration(x="bcell.SeuratObject.rds",outname="bcell",res=0.2)
-#harmony_sample_integration(x="endothelial.SeuratObject.rds",outname="endothelial",res=0.1)
-#harmony_sample_integration(x="pericyte.SeuratObject.rds",outname="pericyte",res=0.1)
-#harmony_sample_integration(x="epithelial.SeuratObject.rds",outname="epithelial",res=0.1)
 
 ```
 
