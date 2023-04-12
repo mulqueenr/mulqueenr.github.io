@@ -99,9 +99,9 @@ cp /volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R1
 ## Alignment
 ```bash
 #set up variables and directory
-mkdir /volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test
+mkdir /volumes/seq/projects/gccACT/230306_mdamb231_test
 ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
-dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 fq1="/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R1_001.barc.fastq.gz"
 fq2="/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R2_001.barc.fastq.gz"
 
@@ -125,11 +125,10 @@ samtools view $dir/230306_gccact.bam | awk -v dir=$dir 'OFS="\t" {split($1,a,":"
 Using parallel to save time
 ```bash
 ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
-dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 
 add_header() {
-	samtools view -bT $ref $1
-	samtools sort -T $dir -o {$1::-4}.bam -
+	samtools view -bT $ref $1 | samtools sort -T $dir -o ${1::-4}.bam -
 }
 export -f add_header
 sam_in=`ls *sam`
@@ -167,7 +166,7 @@ multiqc .
 
 ### Count of WGS and GCC Reads
 ```bash
-dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 #count reads based on paired alignments
 readtype_count() {
 	#print out reads on same chromosome that are >= 1000 bp apart (distal)
@@ -189,7 +188,7 @@ Plotting GCC read types
 ```R
 library(ggplot2)
 library(patchwork)
-setwd("/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test")
+setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test")
 dat<-read.table("./cells/read_count.csv",header=T,sep=",")
 dat$total_reads<-dat$near_cis+dat$distal_cis+dat$trans
 
@@ -213,9 +212,9 @@ library(copykit)
 library(BiocParallel)
 register(MulticoreParam(progressbar = T, workers = 50), default = T)
 BiocParallel::bpparam()
-setwd("/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells")
+setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells")
 
-tumor <- runVarbin("/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells",
+tumor <- runVarbin("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells",
                  remove_Y = TRUE,
                  genome="hg38",
                  is_paired_end=TRUE)
@@ -262,8 +261,8 @@ pdf("subclone.heatmap.pdf")
 plotHeatmap(tumor, label = 'subclones',order='hclust')
 dev.off()
 
-saveRDS(tumor,file="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/scCNA.rds")
-tumor<-readRDS("/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/scCNA.rds")
+saveRDS(tumor,file="/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
+tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
 clone_out<-data.frame(bam=paste0(row.names(tumor@colData),".bam"),clone=tumor@colData$subclones)
 for (i in unique(clone_out$clone)){
 	tmp<-clone_out[clone_out$clone==i,]
@@ -274,7 +273,7 @@ for (i in unique(clone_out$clone)){
 ### Generation of HiC Contact Matrices
 Merge bam files based on CopyKit output. Then using bam2pairs from pairix to generate contacts
 ```bash
-dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
 
 #filter reads to HiC contacts, then perform bam2pairs 
@@ -346,7 +345,7 @@ cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
 Generate Cooler matrices from pairix data
 ```bash
 # Note that the input pairs file happens to be space-delimited, so we convert to tab-delimited with `tr`.
-dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 
 pairix_to_cooler() {
 BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
@@ -363,7 +362,7 @@ parallel --jobs 5 pairix_to_cooler ::: $pairix_in & #uses 10 cores per job
 Normalize cooler matrices and visualize
 ```bash
 #using cooler balance to normalize
-dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 
 cooler_balance() {
 }
@@ -491,7 +490,7 @@ def all_by_all_plot_subtract(infile_name1,infile_name2,chr_count,cmap):
 	plt.close("all")
 
 #wd 
-os.chdir('/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells/contacts/clones')
+os.chdir('/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clones')
 
 #in files
 in_files=["clone_c1.bsorted.cool",
@@ -539,7 +538,7 @@ export -f cooler_balance
 
 As a sanity check, concatenate all bams to see if SVs are clear in our data
 ```bash
-dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
 BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
 #following same pipeline as before, just after merging all contact bams
@@ -559,7 +558,7 @@ Get structural variants across merged data with HiSV
 https://github.com/GaoLabXDU/HiSV
 
 ```bash
-dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test/cells/contacts/clones"
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clones"
 CHROMSIZES_FILE="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/hg38.chrom.sizes"
 cd $dir
 
@@ -605,7 +604,7 @@ https://github.com/pk7zuva/Circle_finder/blob/master/circle_finder-pipeline-bwa-
 It says read length must be at least 75bp if not enriched. But I'm going to try anyway.
 
 ```bash
-dir="/volumes/USR2/Ryan/projects/gccact/230306_mdamb231_test"
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 bwa mem <idxbase> samp.r1.fq samp.r2.fq | samblaster -e -d samp.disc.sam -s samp.split.sam | samtools view -Sb - > samp.out.bam
 samtools -H $dir/230306_gccact.bam | samblaster -e --minNonOverlap 10 -d $6-$7\.disc.sam -s $6-$7\.split.sam -u $6-$7\.unmap.sam > $6-$7\.sam
 ```
