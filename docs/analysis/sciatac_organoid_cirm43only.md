@@ -1320,7 +1320,7 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
     colfun=colorRamp2(quantile(unlist(dat_ga), probs=seq(0.1,0.9,0.1)),magma(length(seq(0.1,0.9,0.1))))
 
     plt<-Heatmap(dat_ga,
-                row_order=match(markers,row.names(dat_ga))[!is.na(match(markers,row.names(dat_ga)))],
+                #row_order=match(markers,row.names(dat_ga))[!is.na(match(markers,row.names(dat_ga)))],
                 column_order=clus_order,
                 col=colfun)
                 #column_split=column_split)
@@ -2296,7 +2296,7 @@ da_one_v_rest<-function(i,obj,group,assay.="GeneActivity"){
         logfc.threshold=0
         )
     da_ga_tmp$da_region<-row.names(da_ga_tmp)
-    da_ga_tmp$enriched_group<-c(i)
+    da_ga_tmp$enriched_group<-c(as.numeric(i)-1) #correct group name (levels vs. actual ID)
     da_ga_tmp$compared_group<-c("all_other_cells")
     return(da_ga_tmp)
   }
@@ -2305,17 +2305,21 @@ da_one_v_rest<-function(i,obj,group,assay.="GeneActivity"){
 da_peaks_df<-lapply(unique(orgo_cirm43$seurat_clusters),function(x) da_one_v_rest(x,obj=orgo_cirm43,group="seurat_clusters",assay.="peaks"))
 da_peaks_df<-do.call("rbind",da_peaks_df)
 write.table(da_peaks_df,file="orgo_cirm43.onevrest.da_peaks.txt",sep="\t",col.names=T,row.names=T,quote=F)
-
+system(paste0("slack -F ","orgo_cirm43.onevrest.da_peaks.txt"," ryan_todo"))
 
 #gene activity
 da_ga_df<-lapply(unique(orgo_cirm43$seurat_clusters),function(x) da_one_v_rest(x,obj=orgo_cirm43,group="seurat_clusters",assay.="GeneActivity"))
 da_ga_df<-do.call("rbind",da_ga_df)
 write.table(da_ga_df,file="orgo_cirm43.onevrest.da_ga.txt",sep="\t",col.names=T,row.names=T,quote=F)
+system(paste0("slack -F ","orgo_cirm43.onevrest.da_ga.txt"," ryan_todo"))
 
 #now doing chromvar
 da_ga_df<-lapply(unique(orgo_cirm43$seurat_clusters),function(x) da_one_v_rest(x,obj=orgo_cirm43,group="seurat_clusters",assay.="chromvar"))
 da_ga_df<-do.call("rbind",da_ga_df)
+da_ga_df$TF_name<-ConvertMotifID(orgo_cirm43, id = da_ga_df$da_region)
 write.table(da_ga_df,file="orgo_cirm43.onevrest.da_chromvar.txt",sep="\t",col.names=T,row.names=T,quote=F)
+system(paste0("slack -F ","orgo_cirm43.onevrest.da_chromvar.txt"," ryan_todo"))
+
 
 ##now doing bhaduri
 #da_ga_df<-lapply(unique(orgo_cirm43$seurat_clusters),function(x) da_one_v_rest(x,obj=orgo_cirm43,group="seurat_clusters",assay.="Bhaduri_modules"))
@@ -3862,7 +3866,6 @@ saveRDS(out,file="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/re
 ```
 
 ```R
-
 library(slingshot)
 library(Seurat)
 library(Signac)
@@ -3889,6 +3892,8 @@ setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_fina
 markers<-readRDS(file="/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/ref/Bhaduri_clusters.rds")
 system("wget https://jaspar2020.genereg.net/static/clustering/2020/vertebrates/CORE/interactive_trees/JASPAR_2020_matrix_clustering_vertebrates_central_motifs_IDs.tab")
 tf_fam_names<-read.table("JASPAR_2020_matrix_clustering_vertebrates_central_motifs_IDs.tab")
+
+
 #from https://broadinstitute.github.io/2019_scWorkshop/functional-pseudotime-analysis.html
 # Fit GAM for each gene using pseudotime as independent variable.
 gam_per_row<-function(var.,pseudotime.=pseudotime,k_in,bins=100){
@@ -3908,7 +3913,7 @@ zscore_per_row<-function(var,pseudotime.=pseudotime,bins=100){
   return(d_window)
 }
 
-pseudotime_gam_fit<-function(x=chromvar,y=pseudotime,z=-1,prefix="test",colfun,filt_to_top_perc=-1,bins=100){ 
+pseudotime_gam_fit<-function(obj=atac_sub,x=chromvar,y=pseudotime,z=-1,prefix="test",colfun,filt_to_top_perc=-1,bins=100){ 
   #z= k knots in fit, -1 using cross validation to automatically determine; 
   #filt_to_top_perc -1 means no filter, any number [0-1] is top quantile of variance kept (0.9 means var > 90% quantile kept)
   if(filt_to_top_perc != -1){
@@ -3983,55 +3988,74 @@ pseudotime_gam_fit<-function(x=chromvar,y=pseudotime,z=-1,prefix="test",colfun,f
   plt<-draw(plt)#,annotation_legend_list=lgd_list)
   dev.off()
   system(paste0("slack -F ",prefix,".pseudotime.chromvar.540.heatmap.pdf"," ryan_todo"))
+  return(gam.dat)
 
-  print("Generating a Rolling Window of Scaled Values")
-  roll_win_out<-mclapply(1:nrow(x),function(i) zscore_per_row(var=x[i,],bins=bins))
-  t_window<-rollapply(y[order(y)],width = floor(length(y)/bins), by = floor(length(y)/bins)/5, FUN = median, align = "left") #used for annotations
-  win.dat<-as.data.frame(do.call("rbind",roll_win_out))
-  row.names(win.dat)<-row.names(x)
+  #print("Generating a Rolling Window of Scaled Values")
+  #roll_win_out<-mclapply(1:nrow(x),function(i) zscore_per_row(var=x[i,],bins=bins))
+  #t_window<-rollapply(y[order(y)],width = floor(length(y)/bins), by = floor(length(y)/bins)/5, FUN = median, align = "left") #used for annotations
+  #win.dat<-as.data.frame(do.call("rbind",roll_win_out))
+  #row.names(win.dat)<-row.names(x)
 
-  print("Scaling Windows")
-  win.dat<-apply(win.dat,1,rescale)
-  win.dat<-t(win.dat)
+  #print("Scaling Windows")
+  #win.dat<-apply(win.dat,1,rescale)
+  #win.dat<-t(win.dat)
 
-  win.dat<-win.dat[order(unlist(lapply(1:nrow(win.dat),function(i) which(win.dat[i,]==max(win.dat[i,]))))),]
+  #win.dat<-win.dat[order(unlist(lapply(1:nrow(win.dat),function(i) which(win.dat[i,]==max(win.dat[i,]))))),]
 
-  print("Making Heatmap")
+  #print("Making Heatmap")
 
-  if(endsWith(prefix,"GA") | endsWith(prefix,"chromvar")){
-  label_idx=which(row.names(win.dat) %in% markers$Gene)
-  col_markers=setNames(colorRampPalette(brewer.pal(8, "Set1"))(length(unique(markers$Subtype))),unique(markers$Subtype))
-  markers$col<-unname(col_markers[match(markers$Subtype,names(col_markers))]) #set up color of text by cell subtype
-  ha = rowAnnotation(genes = anno_mark(at = label_idx, 
-  labels = row.names(win.dat)[label_idx],
-  labels_gp = gpar(col =markers[markers$Gene %in% row.names(win.dat)[label_idx],]$col,fontsize=30)
-  ))
-  plt<-Heatmap(win.dat,
-  row_order = 1:nrow(win.dat),
-  column_order=1:ncol(win.dat),
-  row_names_gp = gpar(fontsize = 3),
-  column_names_gp = gpar(fontsize = 3),
-  show_column_names=F,
-  right_annotation=ha,
-  col=colfun
-  )
-  } else {
-  plt<-Heatmap(win.dat,
-  row_order = 1:nrow(win.dat),
-  column_order=1:ncol(win.dat),
-  row_names_gp = gpar(fontsize = 3),
-  column_names_gp = gpar(fontsize = 3),
-  show_column_names=F,
-  col=colfun
-  )
-  }
+  #if(endsWith(prefix,"GA") | endsWith(prefix,"chromvar")){
+  #label_idx=which(row.names(win.dat) %in% markers$Gene)
+  #col_markers=setNames(colorRampPalette(brewer.pal(8, "Set1"))(length(unique(markers$Subtype))),unique(markers$Subtype))
+  #markers$col<-unname(col_markers[match(markers$Subtype,names(col_markers))]) #set up color of text by cell subtype
 
+  #ha = rowAnnotation(genes = anno_mark(at = label_idx, 
+  #labels = row.names(win.dat)[label_idx],
+  #labels_gp = gpar(col =markers[markers$Gene %in% row.names(win.dat)[label_idx],]$col,fontsize=30)
+  #))
 
-  pdf(paste0(prefix,".pseudotime.chromvar.heatmap.zscored.slidingbin.pdf"),width=50,height=50)
-  plt<-draw(plt)#,annotation_legend_list=lgd_list)
-  dev.off()
-  system(paste0("slack -F ",prefix,".pseudotime.chromvar.heatmap.zscored.slidingbin.pdf"," ryan_todo"))
+  #ha_left = rowAnnotation(annot = markers[markers$Gene %in% row.names(win.dat)[label_idx],]$cluster,
+  #  col=setNames(
+  #    nm=c(unique(markers[markers$Gene %in% row.names(win.dat)[label_idx],]$cluster),"NA"),
+  #    c(unique(markers[markers$Gene %in% row.names(win.dat)[label_idx],]$col),"grey"))
+  #  )
 
+  # legend_dat<-markers[markers$Gene %in% row.names(win.dat)[label_idx],]
+  # legend_dat$out<-paste(legend_dat$Class,legend_dat$State,legend_dat$Type,legend_dat$Subtype)
+  # legend_dat<-legend_dat[!duplicated(legend_dat$out),]
+  # legend_plt<-ggplot(dat=legend_dat,aes(x=,y=1,col=col))+geom_point()
+  # ggsave(legend_plt,file="marker_color.pdf")
+  # system("slack -F marker_color.pdf ryan_todo")
+  # plt<-Heatmap(win.dat,
+  # row_order = 1:nrow(win.dat),
+  # column_order=1:ncol(win.dat),
+  # row_names_gp = gpar(fontsize = 3),
+  # column_names_gp = gpar(fontsize = 3),
+  # show_column_names=F,
+  # right_annotation=ha,
+  # col=colfun
+  # )
+  # } else {
+  # plt<-Heatmap(win.dat,
+  # row_order = 1:nrow(win.dat),
+  # column_order=1:ncol(win.dat),
+  # row_names_gp = gpar(fontsize = 3),
+  # column_names_gp = gpar(fontsize = 3),
+  # show_column_names=F,
+  # col=colfun
+  # )
+  # }
+
+  # pdf(paste0(prefix,".pseudotime.chromvar.heatmap.zscored.slidingbin.pdf"),width=50,height=50)
+  # plt<-draw(plt)#,annotation_legend_list=lgd_list)
+  # dev.off()
+  # system(paste0("slack -F ",prefix,".pseudotime.chromvar.heatmap.zscored.slidingbin.pdf"," ryan_todo"))
+
+  # #if(endsWith(prefix,"jaspar_tffamily")){
+  # #plt<-MotifPlot(object = atac_sub,assay="peaks_2",motifs = unlist(lapply(row.names(win.dat),function(x) gsub(x,pattern="-",replacement="_"))),ncol=1)+theme_void()+theme(strip.text = element_blank())
+  # #ggsave(plt,file=paste0(prefix,".pseudotime.chromvar.heatmap.tffamilitymotifs.pdf"),height=200,width=2,limitsize=F)
+  # #system(paste0("slack -F ",prefix,".pseudotime.chromvar.heatmap.tffamilitymotifs.pdf"," ryan_todo"))
+  # #}
 }
 
 
@@ -4058,16 +4082,29 @@ geneactivity<-geneactivity[,match(colnames(geneactivity),names(pseudotime))]
 
 
 cividis_col<-colorRamp2(c(0, 0.5, 1), cividis(3))
-pseudotime_gam_fit(x=jaspar_tffamily,y=pseudotime,z=-1,prefix=paste0(prefix,".jaspar_tffamily"),colfun=cividis_col,filt_to_top_perc=0.5,bins=100)
+jaspar_tf_gam<-pseudotime_gam_fit(x=jaspar_tffamily,y=pseudotime,z=-1,prefix=paste0(prefix,".jaspar_tffamily"),colfun=cividis_col,filt_to_top_perc=0.5,bins=100)
 
 cividis_col<-colorRamp2(c(0, 0.5, 1), cividis(3))
-pseudotime_gam_fit(x=chromvar,y=pseudotime,z=-1,prefix=paste0(prefix,".chromvar"),colfun=cividis_col,filt_to_top_perc=0.80,bins=100)
+chromvar_tf_gam<-pseudotime_gam_fit(x=chromvar,y=pseudotime,z=-1,prefix=paste0(prefix,".chromvar"),colfun=cividis_col,filt_to_top_perc=0.80,bins=100)
 
 cistopic_col<-colorRamp2(c(0, 0.5, 1), rev(c("#004529","#78c679","#f7f7f7")))
-pseudotime_gam_fit(x=cistopics,y=pseudotime,z=-1,prefix=paste0(prefix,".cistopic"),colfun=cistopic_col,bins=100)
+cistopic_gam<-pseudotime_gam_fit(x=cistopics,y=pseudotime,z=-1,prefix=paste0(prefix,".cistopic"),colfun=cistopic_col,bins=100)
 
 magma_col<-colorRamp2(c(0,0.7, 1), magma(3))
-pseudotime_gam_fit(x=geneactivity,y=pseudotime,z=-1,prefix=paste0(prefix,".GA"),colfun=magma_col,filt_to_top_perc=0.99,bins=100)
+ga_gam<-pseudotime_gam_fit(x=geneactivity,y=pseudotime,z=-1,prefix=paste0(prefix,".GA"),colfun=magma_col,filt_to_top_perc=0.99,bins=100)
+
+dat<-cor(t(ga_gam),t(jaspar_tf_gam))
+plt<-Heatmap(dat,
+  row_names_gp = gpar(fontsize = 10),
+  column_names_gp = gpar(fontsize = 10),
+  show_column_names=T,
+  )
+
+  pdf(paste0(prefix,".pseudotime.cor.540.heatmap.pdf"),width=50,height=50)
+  plt<-draw(plt)#,annotation_legend_list=lgd_list)
+  dev.off()
+  system(paste0("slack -F ",prefix,".pseudotime.cor.540.heatmap.pdf"," ryan_todo"))
+
 }
 
 pseudotime_processing(x="orgo_cirm43.RG.540.SeuratObject.Rds",prefix="orgo_cirm43.RG.540")

@@ -164,45 +164,6 @@ multiqc .
 
 ```
 
-### Count of WGS and GCC Reads
-```bash
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
-#count reads based on paired alignments
-readtype_count() {
-	#print out reads on same chromosome that are >= 1000 bp apart (distal)
-	distal=$(samtools view -F 1024 $1 | awk '{if (sqrt(($9^2))>=1000) print $0}' | wc -l)
-	#print out reads on different chromosomes
-	trans=$(samtools view -F 1024 $1 | awk '{if($7 != "=") print $0}' | wc -l)
-	#print out reads on same chromosome within 1000bp (cis)
-	near=$(samtools view -F 1024 $1 | awk '{if (sqrt(($9^2))<=1000) print $0}' | wc -l)
-	echo $1,$near,$distal,$trans
-}
-export -f readtype_count
-
-cd $dir/cells
-bam_in=`ls *bam`
-echo "cellid,near_cis,distal_cis,trans" > read_count.csv; parallel --jobs 10 readtype_count ::: $bam_in >> read_count.csv
-```
-
-Plotting GCC read types
-```R
-library(ggplot2)
-library(patchwork)
-setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test")
-dat<-read.table("./cells/read_count.csv",header=T,sep=",")
-dat$total_reads<-dat$near_cis+dat$distal_cis+dat$trans
-
-plt1<-ggplot(dat,aes(y=near_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis Reads")+theme_minimal()
-plt2<-ggplot(dat,aes(y=distal_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis Reads")+theme_minimal()
-plt3<-ggplot(dat,aes(y=trans,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans Reads")+theme_minimal()
-
-plt4<-ggplot(dat,aes(y=(near_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis % Reads")+theme_minimal()
-plt5<-ggplot(dat,aes(y=(distal_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis % Reads")+theme_minimal()
-plt6<-ggplot(dat,aes(y=(trans/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans % Reads")+theme_minimal()
-
-plt<-(plt1|plt2|plt3)/(plt4|plt5|plt6)
-ggsave(plt,file="read_counts.pdf")
-```
 ## Run CopyKit for WGS portion
 Analysis from 
 https://navinlabcode.github.io/CopyKit-UserGuide/quick-start.html
@@ -270,6 +231,46 @@ for (i in unique(clone_out$clone)){
 }
 ```
 
+### Count of WGS and GCC Reads
+```bash
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+#count reads based on paired alignments
+readtype_count() {
+	#print out reads on same chromosome that are >= 1000 bp apart (distal)
+	distal=$(samtools view -F 1024 $1 | awk '{if (sqrt(($9^2))>=1000) print $0}' | wc -l)
+	#print out reads on different chromosomes
+	trans=$(samtools view -F 1024 $1 | awk '{if($7 != "=") print $0}' | wc -l)
+	#print out reads on same chromosome within 1000bp (cis)
+	near=$(samtools view -F 1024 $1 | awk '{if (sqrt(($9^2))<=1000) print $0}' | wc -l)
+	echo $1,$near,$distal,$trans
+}
+export -f readtype_count
+
+cd $dir/cells
+bam_in=`ls *bam`
+echo "cellid,near_cis,distal_cis,trans" > read_count.csv; parallel --jobs 10 readtype_count ::: $bam_in >> read_count.csv
+```
+
+Plotting GCC read types
+```R
+library(ggplot2)
+library(patchwork)
+setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test")
+dat<-read.table("./cells/read_count.csv",header=T,sep=",")
+dat$total_reads<-dat$near_cis+dat$distal_cis+dat$trans
+
+plt1<-ggplot(dat,aes(y=near_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis Reads")+theme_minimal()
+plt2<-ggplot(dat,aes(y=distal_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis Reads")+theme_minimal()
+plt3<-ggplot(dat,aes(y=trans,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans Reads")+theme_minimal()
+
+plt4<-ggplot(dat,aes(y=(near_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis % Reads")+theme_minimal()
+plt5<-ggplot(dat,aes(y=(distal_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis % Reads")+theme_minimal()
+plt6<-ggplot(dat,aes(y=(trans/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans % Reads")+theme_minimal()
+
+plt<-(plt1|plt2|plt3)/(plt4|plt5|plt6)
+ggsave(plt,file="read_counts.pdf")
+```
+
 ### Generation of HiC Contact Matrices
 Merge bam files based on CopyKit output. Then using bam2pairs from pairix to generate contacts
 ```bash
@@ -279,14 +280,13 @@ ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/gen
 #filter reads to HiC contacts, then perform bam2pairs 
 mkdir $dir/cells/contacts
 
-#should i just go for reads that are at least larger than some portion of the bin size?
+#### For generation of pairix per cell
 #bam_to_pairs() {
 #	samtools view -F 1024 $3 | awk '{if (sqrt(($9^2))>=1000 || $7 != "=") print $0}' | samtools view -bT $2 - > $1/cells/contacts/${3::-4}.contacts.bam && wait;
 #	bam2pairs $1/cells/contacts/${3::-4}.contacts.bam $1/cells/contacts/${3::-4}
 #}
 #export -f bam_to_pairs
 
-#### For generation of pairix per cell
 #cd $dir/cells
 #bam_in=`ls *bam`
 #parallel --jobs 50 bam_to_pairs $dir $ref {} ::: $bam_in &
@@ -332,14 +332,42 @@ faidx $ref -i chromsizes > hg38.chrom.sizes
 
 Prepare bin of genome and the GC bins
 ```bash
+ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
 FASTA_PATH=$ref
 CHROMSIZES_FILE="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/hg38.chrom.sizes"
+
+#1MB Bins
 BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins"
 GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.gc.bins"
 BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
 cooltools genome binnify $CHROMSIZES_FILE 1000000 > $BINS_PATH & #1mb bins, 
 tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
 cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
+
+#5KB Bins
+BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins"
+GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.gc.bins"
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins.bed"
+cooltools genome binnify $CHROMSIZES_FILE 5000 > $BINS_PATH  #5kb bins, 
+tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
+cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
+
+#10KB Bins
+BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins"
+GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.gc.bins"
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins.bed"
+cooltools genome binnify $CHROMSIZES_FILE 10000 > $BINS_PATH #10kb bins, 
+tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
+cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
+
+#50KB Bins
+BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins"
+GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.gc.bins"
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins.bed"
+cooltools genome binnify $CHROMSIZES_FILE 50000 > $BINS_PATH #50kb bins, 
+tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
+cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
+
 ```
 
 Generate Cooler matrices from pairix data
@@ -348,46 +376,29 @@ Generate Cooler matrices from pairix data
 dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 
 pairix_to_cooler() {
-BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
-cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.cool
+cooler cload pairix -p 10 --assembly hg38 $2 $1 ${1::-9}.${3}.cool
 }
 export -f pairix_to_cooler
 
-cd $dir/cells/contacts
+cd $dir/rm_archive/contacts
 pairix_in=`ls clone_*pairs.gz`
-parallel --jobs 5 pairix_to_cooler ::: $pairix_in & #uses 10 cores per job
+
+#5kb
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins.bed"
+parallel --jobs 5 pairix_to_cooler ::: $pairix_in $BINS_BED_PATH 5kb& #uses 10 cores per job
+#10kb
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins.bed"
+parallel --jobs 5 pairix_to_cooler ::: $pairix_in $BINS_BED_PATH 10kb & #uses 10 cores per job
+#50kb
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins.bed"
+parallel --jobs 5 pairix_to_cooler ::: $pairix_in $BINS_BED_PATH 50kb & #uses 10 cores per job
+
 # first argument is pairix gzipped file
-```
-
-Normalize cooler matrices and visualize
-```bash
-#using cooler balance to normalize
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
-
-cooler_balance() {
-}
-export -f cooler_balance
-
-cd $dir/cells/contacts
-cooler_in=`ls *cool`
-parallel --jobs 5 cooler_balance ::: $cooler_in & #each job uses 10 cores
-
-
-#plotting now
-cooler_plot() {
-cooler show -s log2 --cmap "viridis" --out pngs/${1::-5}.png --dpi 200 $1 chr2
-}
-export -f cooler_plot
-
-mkdir $dir/cells/contacts/pngs
-cooler_in=`ls *cool`
-parallel --jobs 10 cooler_plot ::: $cooler_in & 
 ```
 
 Use this for all chromosomes plots, code adapted from cooltools and inspired by:
 https://github.com/bianlab-hub/zuo_ncomms_2021/blob/Hi-C_data_analysis/fig1f_plot_obs_heatmap.py
 
-* Cooler storage of single cell files cooler.create_scool(
 
 ```python
 import numpy as np
@@ -522,6 +533,140 @@ all_by_all_plot(in_files[2],4,zmin,zmax,cmap="YlGn")
 #expected = cooltools.expected_cis(clr, view_df=hg38_arms, nproc=2, chunksize=1_000_000)
 
 
+```
+
+Detection of structural variants in HiC clone cool files. Using a kernel density estimate to locate them.
+
+
+Using https://github.com/GaoLabXDU/HiSV/blob/main/HiSV_code/HiSV.py for starters
+
+https://cooltools.readthedocs.io/en/latest/notebooks/dots.html
+
+https://cooltools.readthedocs.io/en/latest/cooltools.html#module-cooltools.api.dotfinder
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import cooler
+import cooltools
+import bioframe
+
+import os
+import seaborn as sns
+import cooltools.lib.plotting
+import matplotlib
+
+
+#wd 
+os.chdir('/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones') #note rm_archive is temporary to not interfere with mariam processing
+
+#in files
+in_files=["clone_c1.bsorted.cool",
+	"clone_c2.bsorted.cool",
+	"clone_c3.bsorted.cool",
+	"clone_c4.bsorted.cool"]
+
+#Set up settings for plot
+dpi= 300
+colormap='fall'
+zmin=-3
+zmax=-1
+chr_count=4
+
+
+# Use bioframe to fetch the genomic features from the UCSC. from https://cooltools.readthedocs.io/en/latest/notebooks/dots.html
+hg38_chromsizes = bioframe.fetch_chromsizes('hg38')
+hg38_cens = bioframe.fetch_centromeres('hg38')
+hg38_arms = bioframe.make_chromarms(hg38_chromsizes, hg38_cens)
+
+
+#def make_all_by_all_matrix(infile_name,chr_count,zmin,zmax,cmap):
+	"""Function to read in cooler file from given string name. And run all by all chr comparison"""
+	#Read in Cooler File
+
+in_file=in_files[0]
+#in_file=infile_name
+in_name=in_file.split(sep=".")[0]
+coolfile=in_file
+c = cooler.Cooler(coolfile)
+#cooler.coarsen_cooler(coolfile,in_name+"_5mb.cool",factor=5,chunksize=10000000) #coarsen to 5mb
+#c = cooler.Cooler(in_name+"_5mb.cool")
+cooler.balance_cooler(c,store=True) #balance matrix
+obs_mat = c.matrix()[:]
+obs_mat.shape
+
+# intra-arm expected
+expected = cooltools.expected_cis(
+    c,
+    view_df=hg38_arms,
+    nproc=4,
+)
+
+binsize=10_000_000
+kernels = cooltools.api.dotfinder.recommend_kernels(binsize)
+
+# create a grid of coordinates from -5 to 5, to define round kernels
+# see https://numpy.org/doc/stable/reference/generated/numpy.meshgrid.html for details
+half = 5  # half width of the kernel
+x, y = np.meshgrid(
+    np.linspace(-half, half, 2*half + 1),
+    np.linspace(-half, half, 2*half + 1),
+)
+# now define a donut-like mask as pixels between 2 radii: sqrt(7) and sqrt(30):
+mask = (x**2+y**2 > 7) & (x**2+y**2 <= 30)
+mask[:,half] = 0
+mask[half,:] = 0
+
+# lowleft mask - zero out neccessary parts
+mask_ll = mask.copy()
+mask_ll[:,:half] = 0
+mask_ll[half:,:] = 0
+
+# new kernels with more round donut and lowleft masks:
+kernels_round = {'donut': mask,
+ 'vertical': kernels["vertical"].copy(),
+ 'horizontal': kernels["horizontal"].copy(),
+ 'lowleft': mask_ll}
+
+dots_df = cooltools.dots(
+    c,
+    expected=expected,
+    view_df=hg38_arms,
+    kernels=5,
+    # how far from the main diagonal to call dots:
+    max_loci_separation=10_000_000,
+    clustering_radius=None,
+    cluster_filtering=False,
+    nproc=4,
+)
+
+chr_list=list(c.bins()[:]["chrom"].unique())
+out=''.join([in_name,'_all_by_all_log2_1Mb_obs.png'])
+#init subplot
+chr_in=len(chr_list)
+chr_sizes=pd.DataFrame(c.bins()[:]).groupby(["chrom"])["chrom"].count()
+chr_ratios=list(chr_sizes/chr_sizes[0])
+fig, axes = plt.subplots(chr_count, chr_count, figsize=(40, 40),sharex=True,sharey=True,
+	gridspec_kw={'width_ratios': chr_ratios[0:chr_count],'height_ratios':chr_ratios[0:chr_count]})
+#plt.subplots_adjust(hspace=0.1,wspace=0.1)
+for i in range(0,chr_count):
+	row_chrom=chr_list[i]
+	ax_row=i
+	xlim=chr_sizes[i]
+	for j in range(0,chr_count):
+		col_chrom=chr_list[j]
+		ax_col=j
+		ylim=chr_sizes[j]
+		mat=c.matrix().fetch(row_chrom,col_chrom)
+		im=trans_chr_plot(mat,row_chrom,col_chrom,ax_row,ax_col,axes,in_name,zmin,zmax,cmap,xlim,ylim)
+plt.tight_layout()
+plt.savefig(out, dpi=dpi, format='png',bbox_inches="tight")
+plt.close("all")
+
+
+all_by_all_plot(in_files[0],4,zmin,zmax,cmap="PuBu")
+all_by_all_plot(in_files[2],4,zmin,zmax,cmap="YlGn")
 
 
 ```
@@ -535,23 +680,6 @@ cooltools eigs-cis -o outputs/test.eigs.100000 --view data/view_hg38.tsv --phasi
 }
 export -f cooler_balance
 ```
-
-As a sanity check, concatenate all bams to see if SVs are clear in our data
-```bash
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
-ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
-BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
-#following same pipeline as before, just after merging all contact bams
-mkdir $dir/cells/contacts/merged
-ls $dir/cells/contacts/*contacts.bam > $dir/cells/contacts/merged/bam_contact_list.txt
-samtools merge -b $dir/cells/contacts/merged/bam_contact_list.txt -o - -@ 20 | samtools view -F 1024 - | awk '{if (sqrt(($9^2))>=1000 || $7 != "=") print $0}' | samtools view -bT $ref - > $dir/cells/contacts/merged/merged.contacts.bam &
-
-i=$dir"/cells/contacts/merged/merged.contacts.bam"
-bam2pairs $i ${i::-4}
-cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH ${i::-4}.bsorted.pairs.gz ${i::-4}.cool
-cooler balance -p 10 -f -c 10000 ${i::-4}.cool
-```
-
 
 
 Get structural variants across merged data with HiSV

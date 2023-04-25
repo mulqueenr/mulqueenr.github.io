@@ -4248,7 +4248,7 @@ dat<-readRDS("phase2.QC.SeuratObject.rds")
 #call peaks per predicted.id cell type
 peaks <- CallPeaks(dat, 
   assay="ATAC",
-  group.by="EMBO_predicted.id",
+  group.by="EMBO_predicted.id",s
   combine.peaks=FALSE,
   macs2.path = "/home/groups/CEDAR/mulqueen/src/miniconda3/bin/macs2")
   #use this set of peaks for all samples
@@ -4324,6 +4324,135 @@ saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
 ```
 
 
+## Perform cistopic on epithelial clones per sample. 
+Use epithelial subsampled per patient data set. Run cistopic and generate annotated heatmap.
+Focus on samples 3, 11, 4, 12, 7 (balance of clonal structure and sufficient power (cell counts per clone))
+
+```R
+library(Signac)
+library(Seurat)
+library(SeuratWrappers)
+library(ggplot2)
+library(SeuratObjects)
+library(EnsDb.Hsapiens.v86)
+library(cowplot)
+library(cisTopic)
+library(ComplexHeatmap)
+library(RColorBrewer)
+library(circlize)
+
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+
+
+epithelial_clones_cistopic_generation<-function(x,outname){
+  atac_sub<-subset(x,CNV_clust_id!="NA")
+
+  #format for cistopic
+  cistopic_counts_frmt<-atac_sub@assays$peaks@counts
+  row.names(cistopic_counts_frmt)<-sub("-", ":", row.names(cistopic_counts_frmt))
+  sub_cistopic<-cisTopic::createcisTopicObject(cistopic_counts_frmt)
+  print("made cistopic object")
+  #run cistopic and save (or load model if already saved)
+  if(!file.exists(paste0(outname,".CisTopicObject.Rds"))){
+  print("Generating cistopic model")
+  sub_cistopic_models<-cisTopic::runWarpLDAModels(sub_cistopic,topic=c(10:30),nCores=5,addModels=FALSE)
+  sub_cistopic_models<- selectModel(sub_cistopic_models, type='derivative')
+  saveRDS(sub_cistopic_models,file=paste0(outname,".CisTopicObject.Rds"))
+  } else {
+  print("Reading in cistopic model")
+  sub_cistopic_models<-readRDS(file=paste0(outname,".CisTopicObject.Rds"))
+  }
+  print("finshed running cistopic")
+
+  #get topic specific peaks
+  cisTopicObject <- getRegionsScores(sub_cistopic_models, method='NormTop', scale=TRUE)
+  cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.975, plot=FALSE)
+  cisTopicObject <- GREAT(cisTopicObject, genome='hg38', fold_enrichment=2, geneHits=1, sign=0.05, request_interval=10)
+  print("Running topic ontology")
+
+  #Add cell embeddings into seurat
+  cell_embeddings<-as.data.frame(sub_cistopic_models@selected.model$document_expects)
+  colnames(cell_embeddings)<-sub_cistopic_models@cell.names
+  n_topics<-nrow(cell_embeddings)
+  row.names(cell_embeddings)<-paste0("topic_",1:n_topics)
+  cell_embeddings<-as.data.frame(t(cell_embeddings))
+
+  #Add feature loadings into seurat
+  feature_loadings<-as.data.frame(sub_cistopic_models@selected.model$topics)
+  row.names(feature_loadings)<-paste0("topic_",1:n_topics)
+  feature_loadings<-as.data.frame(t(feature_loadings))
+
+  #combined cistopic results (cistopic loadings and umap with seurat object)
+  cistopic_obj<-CreateDimReducObject(embeddings=as.matrix(cell_embeddings),loadings=as.matrix(feature_loadings),assay="peaks",key="topic_")
+  print("Cistopic Loading into Seurat")
+  atac_sub@reductions$cistopic<-cistopic_obj
+  n_topics<-ncol(Embeddings(atac_sub,reduction="cistopic")) 
+
+  #generate cistopic based umap
+  print("Running UMAP")
+  atac_sub<-RunUMAP(atac_sub,reduction="cistopic",dims=1:n_topics)
+  print("Plotting UMAPs")
+  plt1<-DimPlot(atac_sub,reduction="umap",group.by=c("CNV_clust_id"))
+  pdf(paste0(outname,".cistopic.umap.pdf"),width=10)
+  print(plt1)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".cistopic.umap.pdf")," ryan_todo"))
+  
+  #generate cistopic heatmap
+  colfun<-colorRamp2(c(-4, 0, 4), c("blue","white","red"))
+
+  cistopic_mat<-scale(as.data.frame(atac_sub@reductions$cistopic@cell.embeddings),center=T,scale=T)
+  clus_count=length(unique(atac_sub$CNV_clust_id))
+  col_markers=setNames(colorRampPalette(brewer.pal(clus_count, "Set1"))(clus_count),unique(atac_sub$CNV_clust_id))
+  read_count=atac_sub$atac_fragments
+  read_count_col=colorRamp2(c(min(read_count),max(read_count)),c("white","black"))
+  ha = rowAnnotation(CNV_clust_id = atac_sub@meta.data[row.names(atac_sub@meta.data) %in% row.names(cistopic_mat),]$CNV_clust_id,
+                      read_count=read_count,
+                      col = list(CNV_clust_id= col_markers,read_count=read_count_col))
+  plt2<-Heatmap(cistopic_mat,
+        column_names_gp = gpar(fontsize = 6),
+        show_column_names=T,
+        show_row_names=F,
+        left_annotation=ha,
+        col=colfun
+    )
+  pdf(paste0(outname,".cistopic.heatmap.pdf"),width=10)
+  print(plt2)
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".cistopic.heatmap.pdf")," ryan_todo"))
+
+  pdf(paste0(outname,".cistopic.GO.pdf"),width=10)
+  ontologyDotPlot(cisTopicObject, top=5, topics=seq(1,n_topics), var.y='name', order.by='Binom_Adjp_BH')
+  dev.off()
+  system(paste0("slack -F ",paste0(outname,".cistopic.GO.pdf")," ryan_todo"))
+  
+  saveRDS(atac_sub,paste0(outname,".SeuratObject.rds"))
+  }
+
+epithelial_clonal_cistopic<-function(x){
+  print(paste("Running sample ",x))
+  if(x %in% 1:12){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs")
+    outname<-paste0("sample_",x,".epithelial")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220414_multiome_phase1/sample_",x,"/outs/sample_",x,".QC.filt.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else if(x %in% 13:20){
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs")
+    outname<-paste0("sample_",x,".epithelial")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2/sample_",x,"/outs/sample_",x,".QC.filt.SeuratObject.rds")
+    dat<-readRDS(file_in)
+  }else{
+    wd<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs")
+    outname<-paste0(x,".epithelial")
+    file_in<-paste0("/home/groups/CEDAR/mulqueen/projects/multiome/220111_multi/",x,"/outs/",x,".QC.filt.SeuratObject.rds")
+  }
+  epithelial_clones_cistopic_generation(x=dat,outname=paste0(wd,"/",outname))
+}
+
+lapply(c(3,11,4,12),function(x) epithelial_clonal_cistopic(x))
+
+```
 
 ## Genome tracks of celltype markers
 <!-- Rerun -->
@@ -4775,7 +4904,12 @@ topTFs <- function(markers_list,celltype, padj.cutoff = 1e-2,rna=NA,ga=NA,motifs
 
 
 #Make volcano plot per modality
-plot_volcano<-function(markers.=markers,prefix,assay){
+plot_volcano<-function(x,markers.=markers,prefix,assay){
+  if(assay=="chromvar"){
+      name_conversion=data.frame(ma_names=names(x@assays$ATAC@motifs@motif.names),human_readable=unname(sapply(x@assays$ATAC@motifs@motif.names,"[[",1)))
+      markers.$jaspar_motif<-markers.$feature
+      markers.$feature<-paste0(name_conversion[which(name_conversion$ma_names %in% markers.$feature),]$human_readable,"_",markers.$feature)
+    }
   markers.$sig<-ifelse(markers.$padj<=0.05,"sig","non_sig")
   markers.<-markers.[!duplicated(markers.$feature),]
   markers.<-markers.[is.finite(markers.$pval),]
@@ -4805,7 +4939,8 @@ Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA",prefix.){
       y=unname(unlist(unique(x@meta.data[group_by.]))), 
       assay = 'data', seurat_assay = assay.)
     write.table(markers,file=paste0(prefix.,"_",assay.,"_DE_table.tsv"),sep="\t",row.names=F,col.names=T,quote=F)
-    plot_volcano(markers.=markers,prefix=prefix.,assay=assay.)
+    system(paste0("slack -F ",paste0(prefix.,"_",assay.,"_DE_table.tsv")," ryan_todo"))
+    plot_volcano(x=x,markers.=markers,prefix=prefix.,assay=assay.)
     colnames(markers) <- paste(assay., colnames(markers),sep=".")
     if (assay. == "chromvar") {
       motif.names <- markers[,paste0(assay.,".feature")]
@@ -5038,16 +5173,16 @@ umap_sample_integration<-function(dat,outname){
 }
 ```
 
-### Across all cell types
+### Across all cells all samples
 
 ```R
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
 
-#Plotting Marker Differences across cell subtypes
-run_top_TFs(obj=dat,prefix="cell_subtype",i="cell_subtype_assignment",n_markers=8,CHROMVAR=TRUE,plot_height=15) #limit to TFs
-run_top_TFs(obj=dat,prefix="cell_subtype",i="cell_subtype_assignment",n_markers=8,CHROMVAR=FALSE,plot_height=15) #all RNA/ATAC
+lapply(c("cell_subtype_assignment","diagnosis","molecular_type","PAM50_epi_designation","SCSubtype_epi_designation","pseudobulk_pam50","pseudobulk_genefu_pam50","pseudobulk_sspbc_PAM50"),function(x) run_top_TFs(obj=dat,prefix=x,i=x,n_markers=8,CHROMVAR=TRUE,plot_height=15)) #limit to TFs)
 
+
+lapply(c("cell_subtype_assignment","diagnosis","molecular_type","PAM50_epi_designation","SCSubtype_epi_designation","pseudobulk_pam50","pseudobulk_genefu_pam50","pseudobulk_sspbc_PAM50"), function(x) system(paste0("slack -F ",paste0(x,"_*","_DE_table.tsv")," ryan_todo")))
 ```
 ### Normal Epithelial Subtyping
 Continued session. 
@@ -5395,6 +5530,7 @@ run_top_TFs(obj=dat,prefix="cell_subtype",i="cell_subtype_assignment",n_markers=
 run_top_TFs(obj=dat,prefix="cell_subtype",i="cell_subtype_assignment",n_markers=8,CHROMVAR=FALSE,plot_height=15) #all RNA/ATAC
 ```
 
+
 ### Heatmap proportion of cells (Similar to  Bar Plots across cells subsection)
 
 ```R
@@ -5645,80 +5781,6 @@ write.table(dat_out,file="multiome_tumor.tsv",sep="\t",quote=F,col.names=F,row.n
 system("slack -F multiome_tumor.tsv ryan_todo")
 
 ```
-
-
-
-<!-- NOT GOING TO WORK, TOO LOW COV
-### Looking for subclonality in bulk WGS libraries
-
-Install Battenberg
-https://github.com/Wedge-lab/battenberg
-Reference files downloaded from https://ora.ox.ac.uk/objects/uuid:08e24957-7e76-438a-bd38-66c48008cf52
-
-```bash
-R -q -e 'BiocManager::install(c("igordot/copynumber"))'
-R -q -e 'devtools::install_github("Crick-CancerGenomics/ascat/ASCAT")'
-R -q -e 'devtools::install_github("Wedge-Oxford/battenberg")'
-mkdir /home/groups/CEDAR/mulqueen/ref/battenberg
-cd /home/groups/CEDAR/mulqueen/ref/battenberg
-
-#placed reference files here after direct download with SFTP
-```
-
-### Pysam to make pseudobulk bam files
-https://divingintogeneticsandgenomics.rbind.io/post/split-a-10xscatac-bam-file-by-cluster/
-```python
-import pysam
-import csv
-
-cluster_dict = {}
-with open('clusters.csv') as csv_file:
-    csv_reader = csv.reader(csv_file, delimiter=',')
-    #skip header
-    header = next(csv_reader)
-    for row in csv_reader:
-        cluster_dict[row[0]] = row[1]
-
-clusters = set(x for x in cluster_dict.values())
-
-
-fin = pysam.AlignmentFile("atac_v1_pbmc_5k_possorted_bam.bam", "rb")
-
-# open the number of bam files as the same number of clusters, and map the out file handler to the cluster id, write to a bam with wb
-fouts_dict = {}
-for cluster in clusters:
-    fout = pysam.AlignmentFile("cluster" + cluster + ".bam", "wb", template = fin)
-    fouts_dict[cluster] = fout
-
-for read in fin:
-    tags = read.tags
-    CB_list = [ x for x in tags if x[0] == "CB"]
-    if CB_list:
-        cell_barcode = CB_list[0][1]
-    # the bam files may contain reads not in the final clustered barcodes
-    # will be None if the barcode is not in the clusters.csv file
-    else: 
-        continue
-    cluster_id = cluster_dict.get(cell_barcode)
-    if cluster_id:
-        fouts_dict[cluster_id].write(read)
-
-## do not forget to close the files
-fin.close()
-for fout in fouts_dict.values():
-    fout.close()
-```
-
--->
-
-<!--
-#ER binding poor and good outcome from patients, overlap with ATAC data
-http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Poor%20outcome%20ER%20regions.bed.gz
-http://www.carroll-lab.org.uk/FreshFiles/Data/RossInnes_Nature_2012/Good%20outcome%20ER%20regions.bed.gz
-
-
--->
-
 
 ## R Session Info with all packages loaded
 

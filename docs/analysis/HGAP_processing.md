@@ -266,20 +266,165 @@ dat<-celltype_umap_plot(in_dat=dat,color_by="Putative_Celltype",outname="hippoca
 
 ```
 
-### Integration of Cortex
+
+Subset the data to 5% of cells per cell type. This is going to greatly increase the speed for gene activity calculation.
+
+```R
+library(Signac)
+library(Seurat)
+library(EnsDb.Hsapiens.v86)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+library(Matrix)
+setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
+
+#Ours
+hgap_cortex<-readRDS("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/cortex.SeuratObject.Rds")
+hgap_hippo<-readRDS("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/hippocampus.SeuratObject.Rds")
+
+subset_5perc<-function(in_dat,prefix){
+	Idents(in_dat)<-in_dat$Putative_Celltype
+	cells_to_keep=unlist(lapply(unique(Idents(in_dat)),function(x) {
+			ident_count=sum(Idents(in_dat)==x)
+			cells_to_return=row.names(in_dat@meta.data[Idents(in_dat)==x,])
+			cells_to_return=sample(cells_to_return,size=as.integer((ident_count/100)*5))
+			return(cells_to_return)#sample to 5% per cell type
+			}))
+	print("Writing out cells.")
+	write.table(cells_to_keep,file=paste0(prefix,".cellIDs.tsv"),sep="\t",col.names=F,row.names=F,quote=F)
+}
+
+subset_5perc(in_dat=hgap_cortex,prefix="cortex.5perc")
+subset_5perc(in_dat=hgap_hippo,prefix="hippocampus.5perc")
+
+```
+Use python to subset the fragments file to just those in the 5 % per cell subtype subset.
+
+```python
+import gzip
+import pandas as pd
+
+chunk_size=500000000
+read_lines=range(0,9000000000,chunk_size)
+
+#run for cortex
+cellid_in=pd.read_csv("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/cortex.5perc.cellIDs.tsv",header=None,sep=" ") #read in cellIDs
+for i in range(0,len(read_lines)-1):
+	df = pd.read_csv("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/coverage.plots.BAM_DataFreeze_Cortex_and_Hippocampus/BAM_DataFreeze_Cortex_and_Hippocampus.bbrd.q10.filt.bam.fragments.tsv.gz",sep="\t",header=None,nrows=chunk_size,skiprows=i) #read in fragments file
+	df_filt=df[df[3].isin(cellid_in[0])] #filter to cell IDs in input cell id in
+	print(df_filt)
+	df_filt.to_csv('/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/cortex.5perc.q10.filt.bam.fragments.'+str(read_lines[i])+'tsv.gz',compression="gzip",sep="\t",index=False) #write out compressed opc fragment file
+
+#run again for hippo, trying just without chunking
+cellid_in=pd.read_csv("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/hippocampus.5perc.cellIDs.tsv",header=None,sep=" ") #read in cellIDs
+for i in range(0,len(read_lines)-1):
+	df = pd.read_csv("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/coverage.plots.BAM_DataFreeze_Cortex_and_Hippocampus/BAM_DataFreeze_Cortex_and_Hippocampus.bbrd.q10.filt.bam.fragments.tsv.gz",sep="\t",header=None,nrows=chunk_size,skiprows=i) #read in fragments file
+	df_filt=df[df[3].isin(cellid_in[0])] #filter to cell IDs in input cell id in
+	print(df_filt)
+	df_filt.to_csv('/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/hippocampus.5perc.q10.filt.bam.fragments.'+str(read_lines[i])+'tsv.gz',compression="gzip",sep="\t",index=False) #write out compressed opc fragment file
+
+```
+
+Merge all the output files and index
+
+```bash
+bgzip="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/bgzip"
+tabix="/home/groups/oroaklab/src/cellranger-atac/cellranger-atac-1.1.0/miniconda-atac-cs/4.3.21-miniconda-atac-cs-c10/bin/tabix"
+cat cortex.5perc.q10.*tsv.gz > cortex.5perc.q10.filt.bam.fragments.tsv.gz &
+zcat cortex.5perc.q10.filt.bam.fragments.tsv.gz | awk 'OFS="\t" {print $1,$2,$3,$4,$5}' | sort -S 2G -T . --parallel=30 -k1,1 -k2,2n -k3,3n | $bgzip > cortex.5perc.q10.filt.bam.fragments.sorted.tsv.gz; wait ;
+zcat cortex.5perc.q10.filt.bam.fragments.sorted.tsv.gz | tail -n +18 | $bgzip > cortex.5perc.q10.filt.bam.fragments.sorted2.tsv.gz; wait ; #
+$tabix -p bed cortex.5perc.q10.filt.bam.fragments.sorted2.tsv.gz &
+#this is to remove header from concatenation
+
+cat hippocampus.5perc.q10.*tsv.gz > hippocampus.5perc.q10.filt.bam.fragments.tsv.gz ; wait;
+zcat hippocampus.5perc.q10.filt.bam.fragments.tsv.gz | awk 'OFS="\t" {print $1,$2,$3,$4,$5}' | sort -S 2G -T . --parallel=30 -k1,1 -k2,2n -k3,3n | $bgzip > hippocampus.5perc.q10.filt.bam.fragments.sorted.tsv.gz; wait ;
+zcat hippocampus.5perc.q10.filt.bam.fragments.sorted.tsv.gz | tail -n +18 | $bgzip > hippocampus.5perc.q10.filt.bam.fragments.sorted2.tsv.gz; wait ; 
+$tabix -p bed hippocampus.5perc.q10.filt.bam.fragments.sorted2.tsv.gz &
+#this is to remove header from concatenation
+```
+
+### ATAC-RNA Integration of Cortex
 ```R
 library(Seurat)
 library(Signac) 
 library(patchwork)
 library(ggplot2)
+library(EnsDb.Hsapiens.v86)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ComplexHeatmap)
+library(Matrix)
+library(reshape2)
+library(harmony)
+library(circlize)
+library(cicero,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/")
+  library(SeuratWrappers)
+
+  library(monocle3,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #using old install of monocle, just need for as.cell_data_set conversion
+
 setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
 
-#Public RNA data
-cortex_brainspan<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
+# gene annotation sample for gene activity
+get_annot<-function(){
+	hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
 
-#Ours
-hgap_cortex<-readRDS("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/cortex.SeuratObject.Rds")
+	pos <-as.data.frame(hg38_annotations,row.names=NULL)
+	pos$chromosome<-paste0("chr",pos$seqnames)
+	pos$gene<-pos$gene_id
+	pos <- subset(pos, strand == "+")
+	pos <- pos[order(pos$start),] 
+	pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
+	pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
 
+	neg <-as.data.frame(hg38_annotations,row.names=NULL)
+	neg$chromosome<-paste0("chr",neg$seqnames)
+	neg$gene<-neg$gene_id
+	neg <- subset(neg, strand == "-")
+	neg <- neg[order(neg$start,decreasing=TRUE),] 
+	neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
+	neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
+
+	gene_annotation<- rbind(pos, neg)
+	gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
+	names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
+	return(gene_annotation)
+	}
+
+  #Cicero processing function
+cicero_processing<-function(object_input=hgap_cortex,prefix="hgap_cortex_5perc"){
+      #Generate CDS format from Seurat object
+      atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap")
+      # convert to CellDataSet format and make the cicero object
+      print("Making Cicero format CDS file")
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
+      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+      
+      genome <- seqlengths(object_input) # get the chromosome sizes from the Seurat object
+      genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
+      
+      print("Running Cicero to generate connections.")
+      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
+      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+      
+      print("Generating CCANs")
+      ccans <- generate_ccans(conns) # generate ccans
+      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+      
+      print("Adding CCAN links into Seurat Object and Returning.")
+      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
+      Links(object_input) <- links
+      return(object_input)
+}
+
+
+geneactivity_processing<-function(cds_input,conns_input,prefix){
+      atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
+      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
+      saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
+}
 
 sample_label_transfer<-function(in_dat,ref_dat,transfer.anchors.,prefix="Tcell_",transfer_label="celltype"){
   predictions<- TransferData(
@@ -296,12 +441,14 @@ sample_label_transfer<-function(in_dat,ref_dat,transfer.anchors.,prefix="Tcell_"
 
 generate_transfer_anchor<-function(in_dat,ref_dat,feat,prefix){
 	#generate LSI matrix for downstream normalization
+	#downsample cells to 5% per identity
+
 	in_dat <- RunTFIDF(in_dat)
 	in_dat <- FindTopFeatures(in_dat, min.cutoff = 'q0')
 	in_dat <- RunSVD(in_dat)
 
 	#generate gene activity for just variable genes, add to object and normalize
-	ga_mat<-GeneActivity(in_dat,features = feat, process_n = 10000)
+	ga_mat<-GeneActivity(in_dat, features = feat)
 	in_dat[['RNA']] <- CreateAssayObject(counts = ga_mat)
 	in_dat<- NormalizeData(
 	  object = in_dat,
@@ -321,7 +468,6 @@ generate_transfer_anchor<-function(in_dat,ref_dat,feat,prefix){
 	return(in_dat)
 }
 
-
 coembed_data<-function(in_dat,ref_dat,transfer.anchors.,feat,prefix,assay_name){
 	imputation<- TransferData(
 	  anchorset = transfer.anchors.,
@@ -338,27 +484,85 @@ coembed_data<-function(in_dat,ref_dat,transfer.anchors.,feat,prefix,assay_name){
 	return(coembed)
 }
 
-#Process HGAP cortex and brainspan integration
-	features=VariableFeatures(cortex_brainspan,selection.method="vst",assay="RNA")
-	#FindTopFeatures instead?
-	hgap_cortex<-generate_transfer_anchor(in_dat=hgap_cortex,ref_dat=cortex_brainspan,prefix="cortex",feat=features)
-	transfer_anchors=readRDS("cortex.transferanchors.rds")
-	hgap_cortex<-sample_label_transfer(in_dat=hgap_cortex,prefix="brainspan_class_",transfer.anchors.=transfer_anchors,transfer_label="class_label")
-	hgap_cortex<-sample_label_transfer(in_dat=hgap_cortex,prefix="brainspan_subclass_",transfer.anchors.=transfer_anchors,transfer_label="subclass_label")
-	saveRDS(hgap_cortex,file="cortex.SeuratObject.Rds")
 
-	#Plot Label Transfer
+
+
+#Public RNA data
+cortex_brainspan<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
+
+#Ours
+hgap_cortex<-readRDS("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/cortex.SeuratObject.Rds")
+
+#subset to 5perc per celltype list
+cells_to_keep=read.table(file="cortex.5perc.cellIDs.tsv",sep="\t",header=F)
+hgap_cortex=subset(hgap_cortex,cells=cells_to_keep$V1)
+
+#Updated fragments files that are just for subset hgap_cortex
+Fragments(hgap_cortex)<-NULL
+fragments <- CreateFragmentObject(
+  path = "/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/cortex.5perc.q10.filt.bam.fragments.sorted2.tsv.gz",
+  cells = cells_to_keep$V1,
+  validate.fragments = FALSE
+)
+Fragments(hgap_cortex) <- fragments
+#(the maga directory part was about glia, not political affiliation)
+
+
+  conns<-as.data.frame(readRDS("orgo_cirm43_atac_cicero_conns.Rds"))
+  orgo_cirm43.cicero<-readRDS("orgo_cirm43_atac_cicero_cds.Rds")
+  geneactivity_processing(cds_input=as.cell_data_set(orgo_cirm43,group_by="seurat_clusters"),conns_input=conns,prefix="cirm43_atac")
+
+  #Read in unnormalized GA
+  cicero_gene_activities<-readRDS("cirm43_atac.unnorm_GA.Rds")
+  orgo_cirm43[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
+
+  # normalize
+  orgo_cirm43 <- NormalizeData(
+    object = orgo_cirm43,
+    assay = 'GeneActivity',
+    normalization.method = 'LogNormalize',
+    scale.factor = median(orgo_cirm43$nCount_GeneActivity)
+  )
+  saveRDS(orgo_cirm43,"orgo_cirm43.QC2.SeuratObject.Rds")
+
+
+
+#Process HGAP cortex and brainspan integration
+	#features=FindVariableFeatures(cortex_brainspan,selection.method="vst",assay="RNA",nfeatures=5000) #
+	Idents(cortex_brainspan)<-cortex_brainspan$subclass_label
+	markers<-FindAllMarkers(cortex_brainspan,only.pos=TRUE) 
+	features<-row.names(markers) #i think this is right??
+	hgap_cortex<-generate_transfer_anchor(in_dat=hgap_cortex,ref_dat=cortex_brainspan,prefix="cortex.5perc",feat=features)
+	transfer_anchors=readRDS("cortex.5perc.transferanchors.rds")
+	hgap_cortex<-sample_label_transfer(in_dat=hgap_cortex,ref_dat=cortex_brainspan,prefix="brainspan_class_",transfer.anchors.=transfer_anchors,transfer_label="class_label")
+	hgap_cortex<-sample_label_transfer(in_dat=hgap_cortex,ref_dat=cortex_brainspan,prefix="brainspan_subclass_",transfer.anchors.=transfer_anchors,transfer_label="subclass_label")
+	saveRDS(hgap_cortex,file="cortex.RNAintegration.SeuratObject.Rds")
+
+#Plot Label Transfer
 	plt1<-DimPlot(hgap_cortex,group.by="Putative_Celltype")#,reduction="umap.atac")
 	plt2<-DimPlot(hgap_cortex,group.by="brainspan_class_predicted.id")
 	plt3<-DimPlot(hgap_cortex,group.by="brainspan_subclass_predicted.id")
 	plt<-plt1/plt2/plt3
-	ggsave(plt1,file="hgap_cortex.predicted.brainspan.umap.png")
+	ggsave(plt,file="hgap_cortex.predicted.brainspan.umap.png")
 	system("slack -F hgap_cortex.predicted.brainspan.umap.png ryan_todo")
 
-	#Generate coembedding
-	cortex_coembed<-coembed_data(in_dat=hgap_cortex,ref_dat=cortex_brainspan,transfer.anchors.=transfer_anchors,feat=features,prefix="cortex",assay_name="brainspan_imputation")
-	plt<-DimPlot(coembed, group.by = c("orig.ident", "class_label","subclass_label"))
-	ggsave(plt,file="hgap_cortex.brainspan.coembed.umap.pdf")
+#Generate Confusion Matrix
+	conf_dat<-as.data.frame.matrix(table(hgap_cortex$Putative_Celltype,hgap_cortex$brainspan_subclass_predicted.id))
+	conf_dat<-do.call("rbind",lapply(1:nrow(conf_dat),function(x) conf_dat[x,]/sum(conf_dat[x,])))
+	colfun<-colorRamp2(c(0, 0.5, 1), c("white","grey","black"))
+	pdf("hgap_cortex.predicted.brainspan.confmat.pdf")
+	Heatmap(conf_dat,col=colfun)
+	dev.off()
+	system("slack -F hgap_cortex.predicted.brainspan.confmat.pdf ryan_todo")
+
+
+
+#Generate coembedding
+	cortex_coembed<-coembed_data(in_dat=hgap_cortex,ref_dat=cortex_brainspan,transfer.anchors.=transfer_anchors,feat=features,prefix="cortex.5perc",assay_name="brainspan_imputation")
+	cortex_coembed<-RunHarmony(cortex_coembed,group.by.vars="orig.ident",reduction.save="harmony_rna",assay.use="RNA",reduction="pca",project.dim=F)
+	cortex_coembed<-RunUMAP(cortex_coembed,reduction.name="harmonyumap_rna",reduction = "harmony_rna",dims=1:dim(cortex_coembed@reductions$harmony_rna)[2]) 
+	plt<-DimPlot(cortex_coembed, group.by = c("orig.ident", "class_label","subclass_label"),reduction="harmonyumap_rna")
+	ggsave(plt,file="hgap_cortex.brainspan.coembed.umap.pdf",width=15)
 	system("slack -F hgap_cortex.brainspan.coembed.umap.pdf ryan_todo")
 
 
@@ -371,6 +575,15 @@ library(Seurat)
 library(Signac) 
 library(patchwork)
 library(ggplot2)
+library(EnsDb.Hsapiens.v86)
+library(GenomeInfoDb)
+set.seed(1234)
+library(stringr)
+library(ComplexHeatmap)
+library(Matrix)
+library(reshape2)
+library(harmony)
+library(circlize)
 setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
 
 #Public RNA data
@@ -379,6 +592,19 @@ hippo_lifespan<-readRDS("/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo
 
 #Ours
 hgap_hippo<-readRDS("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/hippocampus.SeuratObject.Rds")
+
+#subset to 5perc per celltype list
+cells_to_keep=read.table(file="hippocampus.5perc.cellIDs.tsv",sep="\t",header=F)
+hgap_hippo=subset(hgap_hippo,cells=cells_to_keep$V1)
+
+#Updated fragments files that are just for subset hgap_cortex
+Fragments(hgap_hippo)<-NULL
+fragments <- CreateFragmentObject(
+  path = "/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/hippocampus.5perc.q10.filt.bam.fragments.sorted2.tsv.gz",
+  cells = cells_to_keep$V1,
+  validate.fragments = FALSE
+)
+Fragments(hgap_hippo) <- fragments
 
 
 sample_label_transfer<-function(in_dat,ref_dat,transfer.anchors.,prefix="Tcell_",transfer_label="celltype"){
@@ -396,6 +622,8 @@ sample_label_transfer<-function(in_dat,ref_dat,transfer.anchors.,prefix="Tcell_"
 
 generate_transfer_anchor<-function(in_dat,ref_dat,feat,prefix){
 	#generate LSI matrix for downstream normalization
+
+
 	in_dat <- RunTFIDF(in_dat)
 	in_dat <- FindTopFeatures(in_dat, min.cutoff = 'q0')
 	in_dat <- RunSVD(in_dat)
@@ -439,34 +667,50 @@ coembed_data<-function(in_dat,ref_dat,transfer.anchors.,feat,prefix,assay_name){
 }
 
 #Process HGAP hippocampus and Hippo Axis integration
-	features=VariableFeatures(hippo_axis)
-	hgap_hippo<-generate_transfer_anchor(in_dat=hgap_hippo,ref_dat=hippo_axis,prefix="hippo",feat=features)
-	transfer_anchors=readRDS("hippo.transferanchors.rds")
-	#hgap_hippo<-sample_label_transfer(in_dat=hgap_hippo,prefix="brainspan_class_",transfer.anchors.=transfer_anchors,transfer_label="class_label")
-	#hgap_hippo<-sample_label_transfer(in_dat=hgap_hippo,prefix="brainspan_subclass_",transfer.anchors.=transfer_anchors,transfer_label="subclass_label")
-	saveRDS(hgap_hippo,file="hippo.SeuratObject.Rds")
+	Idents(hippo_axis)<-hippo_axis$Cluster
+	markers<-FindAllMarkers(hippo_axis,only.pos=TRUE) 
+	features=row.names(markers)
+	hgap_hippo<-generate_transfer_anchor(in_dat=hgap_hippo,ref_dat=hippo_axis,prefix="hippo.axis",feat=features)
+	transfer_anchors=readRDS("hippo.axis.transferanchors.rds")
+	hgap_hippo<-sample_label_transfer(in_dat=hgap_hippo,ref_dat=hippo_axis,prefix="hippoaxis_cluster_",transfer.anchors.=transfer_anchors,transfer_label="Cluster")
+	saveRDS(hgap_hippo,file="hippo.axis.5perc.SeuratObject.Rds")
 
 	#Plot Label Transfer
-	plt1<-DimPlot(hgap_hippo,group.by="Putative_Celltype")#,reduction="umap.atac")
-	#plt2<-DimPlot(hgap_hippo,group.by="brainspan_class_predicted.id")
-	#plt3<-DimPlot(hgap_hippo,group.by="brainspan_subclass_predicted.id")
-	plt<-plt1/plt2/plt3
-	ggsave(plt1,file="hgap_hippo.predicted.axis.umap.png")
+	plt1<-DimPlot(hgap_hippo,group.by="Putative_Celltype")
+	plt2<-DimPlot(hgap_hippo,group.by="hippoaxis_cluster_predicted.id")
+	plt<-plt1|plt2
+	ggsave(plt,file="hgap_hippo.predicted.axis.umap.png")
 	system("slack -F hgap_hippo.predicted.axis.umap.png ryan_todo")
 
+	#Generate Confusion Matrix
+	#Add row scaling
+	conf_dat<-as.data.frame.matrix(table(hgap_hippo$Putative_Celltype,hgap_hippo$hippoaxis_cluster_predicted.id))
+	conf_dat<-do.call("rbind",lapply(1:nrow(conf_dat),function(x) conf_dat[x,]/sum(conf_dat[x,])))
+	colfun<-colorRamp2(c(0, 0.5, 1), c("white","grey","black"))
+	pdf("hgap_hippo.predicted.axis.confmat.pdf")
+	Heatmap(conf_dat,col=colfun)
+	dev.off()
+	system("slack -F hgap_hippo.predicted.axis.confmat.pdf ryan_todo")
+
 	#Generate coembedding
-	hippo_coembed<-coembed_data(in_dat=hgap_hippo,ref_dat=hippo_axis,transfer.anchors.=transfer_anchors,feat=features,prefix="hippo",assay_name="axis_imputation")
-	plt<-DimPlot(coembed, group.by = c("orig.ident", "class_label","subclass_label"))
-	ggsave(plt,file="hgap_hippo.axis.coembed.umap.pdf")
+	hippo_coembed<-coembed_data(in_dat=hgap_hippo,ref_dat=hippo_axis,transfer.anchors.=transfer_anchors,feat=features,prefix="hippo.5perc",assay_name="axis_imputation")
+	plt<-DimPlot(hippo_coembed, group.by = c("orig.ident", "Putative_Celltype","Cluster"))
+	ggsave(plt,file="hgap_hippo.axis.coembed.umap.pdf",width=15)
+	system("slack -F hgap_hippo.axis.coembed.umap.pdf ryan_todo")
+
+	hippo_coembed<-RunHarmony(hippo_coembed,group.by.vars="orig.ident",reduction.save="harmony_rna",assay.use="RNA",reduction="pca",project.dim=F)
+	hippo_coembed<-RunUMAP(hippo_coembed,reduction.name="harmonyumap_rna",reduction = "harmony_rna",dims=2:dim(hippo_coembed@reductions$harmony_rna)[2]) 
+	plt<-DimPlot(hippo_coembed, group.by = c("orig.ident", "Putative_Celltype","Cluster"),reduction="harmonyumap_rna")
+	ggsave(plt,file="hgap_hippo.axis.coembed.umap.pdf",width=15)
 	system("slack -F hgap_hippo.axis.coembed.umap.pdf ryan_todo")
 
 #Process HGAP hippocampus and Hippo Lifespan integration
 	features=VariableFeatures(hippo_lifespan)
-	hgap_hippo<-generate_transfer_anchor(in_dat=hgap_hippo,ref_dat=hippo_lifespan,prefix="hippo",feat=features)
+	hgap_hippo<-generate_transfer_anchor(in_dat=hgap_hippo,ref_dat=hippo_lifespan,prefix="hippo.5perc",feat=features)
 	transfer_anchors=readRDS("hippo.transferanchors.rds")
 	#hgap_hippo<-sample_label_transfer(in_dat=hgap_hippo,prefix="brainspan_class_",transfer.anchors.=transfer_anchors,transfer_label="class_label")
 	#hgap_hippo<-sample_label_transfer(in_dat=hgap_hippo,prefix="brainspan_subclass_",transfer.anchors.=transfer_anchors,transfer_label="subclass_label")
-	saveRDS(hgap_hippo,file="hippo.SeuratObject.Rds")
+	saveRDS(hgap_hippo,file="hippo.5perc.SeuratObject.Rds")
 
 	#Plot Label Transfer
 	plt1<-DimPlot(hgap_hippo,group.by="Putative_Celltype")#,reduction="umap.atac")
@@ -477,7 +721,7 @@ coembed_data<-function(in_dat,ref_dat,transfer.anchors.,feat,prefix,assay_name){
 	system("slack -F hgap_hippo.predicted.lifespan.umap.png ryan_todo")
 
 	#Generate coembedding
-	hippo_coembed<-coembed_data(in_dat=hgap_hippo,ref_dat=hippo_lifespan,transfer.anchors.=transfer_anchors,feat=features,prefix="hippo",assay_name="lifespan_imputation")
+	hippo_coembed<-coembed_data(in_dat=hgap_hippo,ref_dat=hippo_lifespan,transfer.anchors.=transfer_anchors,feat=features,prefix="hippo.5perc",assay_name="lifespan_imputation")
 	plt<-DimPlot(coembed, group.by = c("orig.ident", "class_label","subclass_label"))
 	ggsave(plt,file="hgap_hippo.lifespan.coembed.umap.pdf")
 	system("slack -F hgap_hippo.lifespan.coembed.umap.pdf ryan_todo")
@@ -1034,12 +1278,36 @@ system(paste0("slack -F ",paste0("opc.atac.integrated.",plot_name,".umap.pdf") ,
 
 saveRDS(opc,"opc.integrated.SeuratObject.rds")
 
+
+hga_opc<-subset(opc,assay=="HGAP")
+corces_opc<-subset(opc,assay!="HGAP")
+Idents(hga_opc)<-hga_opc$opc_subtype
+bcl11b_markers <- FindMarkers(hga_opc,ident.1 = "OPC_BCL11B", ident.2 = "OPC_MAG",only.pos=TRUE,test.use="LR",logfc.threshold = 0.1,min.pct=0.05,latent.vars="nCount_peaks")
+mag_markers <- FindMarkers(hga_opc,ident.1 = "OPC_MAG",ident.2 = "OPC_BCL11B",only.pos=TRUE,test.use="LR",logfc.threshold = 0.1,min.pct=0.05,latent.vars="nCount_peaks")
+
+transfer.anchors <- FindTransferAnchors(
+  reference = hga_opc,
+  query = corces_opc,
+  features=VariableFeatures(object = hga_opc),
+  reduction = 'lsiproject'
+)
+
+predicted.labels <- TransferData(
+  anchorset = transfer.anchors,
+  refdata = hga_opc$opc_subtype,
+  weight.reduction = corces_opc[['pca']],
+  dims = 2:30
+)
+
+	theirs <- AddMetaData(object = theirs, metadata = predicted.labels)
+
 opc<-subset(opc,assay=="HGAP")
 names_out<-colnames(opc)
 names_out<-names_out[grepl(names_out,pattern="HGAP")]
 names_out_cellid<-unlist(lapply(strsplit(names_out,"_"),"[[",3))
 name_conversion_table<-as.data.frame(cbind(names_out,names_out_cellid))
 write.table(name_conversion_table,file="opc.cellIDs.tsv",col.names=F,quote=F,row.names=F,sep="\t")
+
 
 ```
 ## Perform Gene Activity and OPC integration on RNA sets

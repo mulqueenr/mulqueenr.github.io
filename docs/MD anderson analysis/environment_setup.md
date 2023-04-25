@@ -144,6 +144,24 @@ pip install pypairix
 pip install plotly seaborn
 ```
 
+
+# Testing of SV detectors
+
+Installing EagleC
+https://github.com/XiaoTaoWang/EagleC
+```bash
+conda install mamba -n base -c conda-forge
+conda config --add channels defaults
+conda config --add channels bioconda
+conda config --add channels conda-forge
+mamba create -n EagleC scikit-learn statsmodels matplotlib cooler pyBigWig pyensembl python=3.8 joblib=1.0.1 tensorflow=2 cython=0.29.24
+
+conda activate EagleC
+pip install eaglec
+download-pretrained-models
+```
+
+
 Installing HiSV in cooler_env
 https://github.com/GaoLabXDU/HiSV
 ```bash
@@ -152,6 +170,28 @@ conda install gcc
 pip install numpy pysam pandas prox_tv
 #prox_tv was annoying but installed from git source
 git clone https://github.com/gaolabXDU/HiSV
+```
+
+
+Installing HiC_breakfinder in cooler_env
+https://github.com/dixonlab/hic_breakfinder
+```bash
+cd ~/tools
+git clone https://gitlab.com/libeigen/eigen.git #https://eigen.tuxfamily.org/dox/GettingStarted.html
+git clone https://github.com/pezmaster31/bamtools.git #https://github.com/pezmaster31/bamtools/wiki/Building-and-installing
+conda install -c conda-forge jsoncpp
+
+git clone https://github.com/dixonlab/hic_breakfinder.git
+
+./configure --prefix=/volumes/USR2/Ryan/tools/hic_breakfinder/ CPPFLAGS="-I /volumes/USR2/Ryan/tools/bamtools/include -I /volumes/USR2/Ryan/tools/eigen" LDFLAGS="-L/volumes/USR2/Ryan/tools/bamtools/lib/"
+
+git clone https://github.com/dixonlab/hic_breakfinder
+
+ conda install -c bioconda bamtools
+ conda install -c conda-forge eigen
+./configure CPPFLAGS="-I /volumes/USR2/Ryan/miniconda3/envs/cooler_env/include/bamtools -I /volumes/USR2/Ryan/miniconda3/envs/cooler_env/include/eigen3/" LDFLAGS="-L/volumes/USR2/Ryan/miniconda3/envs/cooler_env/lib/bamtools"
+make
+
 ```
 <!--
 https://github.com/lh3/hickit
