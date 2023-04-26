@@ -375,27 +375,76 @@ Generate Cooler matrices from pairix data
 # Note that the input pairs file happens to be space-delimited, so we convert to tab-delimited with `tr`.
 dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 
-pairix_to_cooler() {
-cooler cload pairix -p 10 --assembly hg38 $2 $1 ${1::-9}.${3}.cool
+pairix_to_cooler_5kb() {
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins.bed"
+out_name="5kb"
+cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
 }
-export -f pairix_to_cooler
+export -f pairix_to_cooler_5kb
 
-cd $dir/rm_archive/contacts
+pairix_to_cooler_10kb() {
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins.bed"
+out_name="10kb"
+cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
+}
+export -f pairix_to_cooler_10kb
+
+pairix_to_cooler_50kb() {
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins.bed"
+out_name="50kb"
+cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
+}
+export -f pairix_to_cooler_50kb
+
+
+
+cd $dir/rm_archive/contacts/clones
 pairix_in=`ls clone_*pairs.gz`
 
 #5kb
-BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins.bed"
-parallel --jobs 5 pairix_to_cooler ::: $pairix_in $BINS_BED_PATH 5kb& #uses 10 cores per job
+parallel --jobs 5 pairix_to_cooler_5kb ::: $pairix_in & #uses 10 cores per job
+
 #10kb
-BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins.bed"
-parallel --jobs 5 pairix_to_cooler ::: $pairix_in $BINS_BED_PATH 10kb & #uses 10 cores per job
+parallel --jobs 5 pairix_to_cooler_10kb ::: $pairix_in & #uses 10 cores per job
+
 #50kb
-BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins.bed"
-parallel --jobs 5 pairix_to_cooler ::: $pairix_in $BINS_BED_PATH 50kb & #uses 10 cores per job
+parallel --jobs 5 pairix_to_cooler_50kb ::: $pairix_in & #uses 10 cores per job
 
 # first argument is pairix gzipped file
 ```
 
+
+Detection of structural variants using Eagle C
+
+```bash
+conda activate EagleC
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+cd $clone_dir
+
+eaglec_SV_detect() {
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+clone=${1::-17}
+#run cooler balance on all cool matrices, using 20 cores
+cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.5kb.cool
+cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.10kb.cool
+cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.50kb.cool
+#now run predict sv
+predictSV --hic-5k ${clone_dir}/${clone}.bsorted.5kb.cool \
+            --hic-10k ${clone_dir}/${clone}.bsorted.10kb.cool \
+            --hic-50k ${clone_dir}/${clone}.bsorted.50kb.cool \
+            -O $clone -g hg38 --balance-type ICE --output-format full \
+            --prob-cutoff-5k 0.8 --prob-cutoff-10k 0.8 --prob-cutoff-50k 0.99999
+}
+export -f eaglec_SV_detect
+
+clones=`ls clone*pairs.gz`
+
+parallel --jobs 1 eaglec_SV_detect ::: $clones &
+
+
+#run with --output-format NeoLoopFinder to get neoloop finder output as well?
+
+```
 Use this for all chromosomes plots, code adapted from cooltools and inspired by:
 https://github.com/bianlab-hub/zuo_ncomms_2021/blob/Hi-C_data_analysis/fig1f_plot_obs_heatmap.py
 
