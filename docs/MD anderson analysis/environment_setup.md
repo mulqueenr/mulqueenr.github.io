@@ -158,7 +158,17 @@ mamba create -n EagleC scikit-learn statsmodels matplotlib cooler pyBigWig pyens
 
 conda activate EagleC
 pip install eaglec
+pip install numpy==1.21
 download-pretrained-models
+
+#quick start testing
+cd ~/ref
+wget -O SKNAS-MboI-allReps-filtered.mcool -L https://www.dropbox.com/s/f80bgn11d7wfgq8/SKNAS-MboI-allReps-filtered.mcool?dl=0
+predictSV --hic-5k SKNAS-MboI-allReps-filtered.mcool::/resolutions/5000 \
+            --hic-10k SKNAS-MboI-allReps-filtered.mcool::/resolutions/10000 \
+            --hic-50k SKNAS-MboI-allReps-filtered.mcool::/resolutions/50000 \
+            -O SK-N-AS -g hg38 --balance-type CNV --output-format full \
+            --prob-cutoff-5k 0.8 --prob-cutoff-10k 0.8 --prob-cutoff-50k 0.99999
 ```
 
 

@@ -231,6 +231,86 @@ for (i in unique(clone_out$clone)){
 }
 ```
 
+Write out CNV segments as bedfiles at multiple resolutions for cnv correction via NeoLoopFinder
+
+```R
+library(copykit)
+library(GenomicRanges)
+setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells")
+
+tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
+
+BINS_BED_PATH_1mb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
+BINS_BED_PATH_5kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins.bed"
+BINS_BED_PATH_10kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins.bed"
+BINS_BED_PATH_50kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins.bed"
+BINS_BED_PATH_500kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
+
+
+#function to define blacklist regions
+make_black_list<-function(bed_in,copykit_obj){
+#bins in bin bed file that are not in the copykit filtered list are considered black list,
+#generate per bins.bed resolution
+bins_bed<-read.table(bed_in,header=F,sep="\t")
+colnames(bins_bed)<-c("chr","start","end")
+bins_bed<-GRanges(bins_bed)
+accepted_bed_ranges<-GRanges(copykit_obj@rowRanges) #row ranges for bedgraph
+overlaps<-findOverlaps(query=bins_bed,subject=accepted_bed_ranges,minoverlap=1,ignore.strand=T)
+blacklist<-bins_bed[!(range(1,nrow(bins_bed)) %in% overlaps@from),]
+write.table(as.data.frame(blacklist)[1:3],col.names=F,row.names=F,quote=F,file=paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed"))
+print(paste("Wrote out",paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed")))
+}
+
+#Make blacklist
+lapply(c(BINS_BED_PATH_1mb,BINS_BED_PATH_5kb,BINS_BED_PATH_10kb,BINS_BED_PATH_50kb,BINS_BED_PATH_500kb), function(x) make_black_list(x,copykit_obj=tumor))
+
+#function to generate consensus bedGraphs for CNV correction.
+
+#function to define blacklist regions
+make_consensus_bedgraph<-function(bed_in,copykit_obj,clone){
+#bins in bin bed file that are not in the copykit filtered list are considered black list,
+#generate per bins.bed resolution
+bins_bed<-read.table(bed_in,header=F,sep="\t")
+colnames(bins_bed)<-c("chr","start","end")
+bins_bed<-GRanges(bins_bed)
+accepted_bed_ranges<-GRanges(copykit_obj@rowRanges) #row ranges for bedgraph
+accepted_bed_ranges$cnv<-copykit_obj@consensus[clone]
+hits<-findOverlaps(query=bins_bed,subject=accepted_bed_ranges,minoverlap=1,ignore.strand=T)
+overlaps <- pintersect(bins_bed[queryHits(hits)], accepted_bed_ranges[subjectHits(hits)])
+
+bins_bed$cnv<-NA
+if(mean(width(accepted_bed_ranges))<mean(width(bins_bed))){ #if hic bins are bigger than copykit windows
+	percentOverlap <- width(overlaps) / width(bins_bed[queryHits(hits)])
+	out<-lapply(unique(hits@from),function(x) {
+		overlaps_tmp<-hits[hits@from==x,]
+		cnv_tmp<-unlist(as.data.frame(accepted_bed_ranges[overlaps_tmp@to,])[clone])
+		weight_tmp<-percentOverlap[overlaps_tmp@to]
+		cnv_out<-weighted.mean(cnv_tmp,w=weight_tmp) #weighted mean score by overlap percentage
+		bins_bed[x,]$cnv<-cnv_out
+		return(bins_bed[x,])})
+	bins_bed_cnv<-do.call("c",out)
+} else { #if copykit windows are bigger than hic bins
+	percentOverlap <- width(overlaps) / width(accepted_bed_ranges[subjectHits(hits)])
+	out<-lapply(unique(hits@from),function(x) {
+		overlaps_tmp<-hits[hits@from==x,]
+		cnv_tmp<-unlist(as.data.frame(accepted_bed_ranges[overlaps_tmp@to,])[clone])
+		weight_tmp<-percentOverlap[overlaps_tmp@to]
+		cnv_out<-weighted.mean(cnv_tmp,w=weight_tmp) #weighted mean score by overlap percentage
+		bins_bed[x,]$cnv<-cnv_out
+		return(bins_bed[x,])})
+	bins_bed_cnv<-do.call("c",out)
+
+}
+
+#FIX THIS, OUTPUT CNV DATA INSTEAD OF BLACKLIST
+write.table(as.data.frame(blacklist)[1:3],col.names=F,row.names=F,quote=F,file=paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed"))
+print(paste("Wrote out",paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed")))
+}
+
+
+#output values at matched bin resolutions for neoloop finder, then use segment-cnv and correct-cnv from neoloop finder afterwards
+#also output a blacklist of regions that don't overlap between the bins.bed and the copykit bin filtered ranges
+```
 ### Count of WGS and GCC Reads
 ```bash
 dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
@@ -311,11 +391,11 @@ bamlist_merge_to_pairs $dir $ref clone_c4.bam_list.txt
 ```
 
 
-## Using cooler and cooltools (seems like the 4DN preferred format)
+## Using cooler, cooltools, and EagleC to detect Structural Variants
+
 Cooler is both python line and command line, using command line for this
 https://github.com/open2c/cooler
 https://github.com/open2c/cooltools
-
 
 Change to cooler environment ::sunglasses::
 ```bash
@@ -368,9 +448,17 @@ cooltools genome binnify $CHROMSIZES_FILE 50000 > $BINS_PATH #50kb bins,
 tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
 cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
 
+#500KB Bins
+BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins"
+GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.gc.bins"
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
+cooltools genome binnify $CHROMSIZES_FILE 500000 > $BINS_PATH #50kb bins, 
+tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
+cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
+
 ```
 
-Generate Cooler matrices from pairix data
+### Generate Cooler matrices from pairix data
 ```bash
 # Note that the input pairs file happens to be space-delimited, so we convert to tab-delimited with `tr`.
 dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
@@ -397,6 +485,13 @@ cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}
 export -f pairix_to_cooler_50kb
 
 
+pairix_to_cooler_500kb() {
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
+out_name="500kb"
+cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
+}
+export -f pairix_to_cooler_500kb
+
 
 cd $dir/rm_archive/contacts/clones
 pairix_in=`ls clone_*pairs.gz`
@@ -410,18 +505,22 @@ parallel --jobs 5 pairix_to_cooler_10kb ::: $pairix_in & #uses 10 cores per job
 #50kb
 parallel --jobs 5 pairix_to_cooler_50kb ::: $pairix_in & #uses 10 cores per job
 
+#500kb
+#TO RUN
+parallel --jobs 5 pairix_to_cooler_500kb ::: $pairix_in & #uses 10 cores per job
+
 # first argument is pairix gzipped file
 ```
 
 
-Detection of structural variants using Eagle C
+### Detection of structural variants using Eagle C
 
 ```bash
 conda activate EagleC
 clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
 cd $clone_dir
 
-eaglec_SV_detect() {
+eaglec_SV_detect_ICE() {
 clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
 clone=${1::-17}
 #run cooler balance on all cool matrices, using 20 cores
@@ -429,6 +528,7 @@ cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.5kb.cool
 cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.10kb.cool
 cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.50kb.cool
 #now run predict sv
+
 predictSV --hic-5k ${clone_dir}/${clone}.bsorted.5kb.cool \
             --hic-10k ${clone_dir}/${clone}.bsorted.10kb.cool \
             --hic-50k ${clone_dir}/${clone}.bsorted.50kb.cool \
@@ -441,10 +541,18 @@ clones=`ls clone*pairs.gz`
 
 parallel --jobs 1 eaglec_SV_detect ::: $clones &
 
+#maybe try predictSV-single-resolution at 500kb resolution instead?
+#run correct-cnv with NeoLoopFinder toolkit for --balance-type CNV
+	#convert copykit output to bedgraph for neoloopfinder #https://github.com/XiaoTaoWang/NeoLoopFinder
+	#calculate-cnv -H SKNMC-MboI-allReps-filtered.mcool::resolutions/25000 -g hg38 -e MboI --output SKNMC_25k.CNV-profile.bedGraph
+	#segment-cnv --cnv-file SKNMC_25k.CNV-profile.bedGraph --binsize 25000 --ploidy 2 --output SKNMC_25k.CNV-seg.bedGraph --nproc 4
+	#correct-cnv -H SKNMC-MboI-allReps-filtered.mcool::resolutions/25000 --cnv-file SKNMC_25k.CNV-seg.bedGraph --nproc 4 -f
 
 #run with --output-format NeoLoopFinder to get neoloop finder output as well?
 
 ```
+
+### Plot all by all autosome interactions
 Use this for all chromosomes plots, code adapted from cooltools and inspired by:
 https://github.com/bianlab-hub/zuo_ncomms_2021/blob/Hi-C_data_analysis/fig1f_plot_obs_heatmap.py
 
@@ -459,8 +567,6 @@ import os
 import seaborn as sns
 import cooltools.lib.plotting
 import matplotlib
-
-
 
 def trans_chr_plot(mat,chr_row,chr_col,ax_row,ax_col,axes,out,zmin,zmax,cmap,xlim,ylim):
 	""" Function to plot chr by chr trans interactions (or chr by chr cis interactions if same chr given)
@@ -584,142 +690,7 @@ all_by_all_plot(in_files[2],4,zmin,zmax,cmap="YlGn")
 
 ```
 
-Detection of structural variants in HiC clone cool files. Using a kernel density estimate to locate them.
-
-
-Using https://github.com/GaoLabXDU/HiSV/blob/main/HiSV_code/HiSV.py for starters
-
-https://cooltools.readthedocs.io/en/latest/notebooks/dots.html
-
-https://cooltools.readthedocs.io/en/latest/cooltools.html#module-cooltools.api.dotfinder
-
-```python
-import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
-import cooler
-import cooltools
-import bioframe
-
-import os
-import seaborn as sns
-import cooltools.lib.plotting
-import matplotlib
-
-
-#wd 
-os.chdir('/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones') #note rm_archive is temporary to not interfere with mariam processing
-
-#in files
-in_files=["clone_c1.bsorted.cool",
-	"clone_c2.bsorted.cool",
-	"clone_c3.bsorted.cool",
-	"clone_c4.bsorted.cool"]
-
-#Set up settings for plot
-dpi= 300
-colormap='fall'
-zmin=-3
-zmax=-1
-chr_count=4
-
-
-# Use bioframe to fetch the genomic features from the UCSC. from https://cooltools.readthedocs.io/en/latest/notebooks/dots.html
-hg38_chromsizes = bioframe.fetch_chromsizes('hg38')
-hg38_cens = bioframe.fetch_centromeres('hg38')
-hg38_arms = bioframe.make_chromarms(hg38_chromsizes, hg38_cens)
-
-
-#def make_all_by_all_matrix(infile_name,chr_count,zmin,zmax,cmap):
-	"""Function to read in cooler file from given string name. And run all by all chr comparison"""
-	#Read in Cooler File
-
-in_file=in_files[0]
-#in_file=infile_name
-in_name=in_file.split(sep=".")[0]
-coolfile=in_file
-c = cooler.Cooler(coolfile)
-#cooler.coarsen_cooler(coolfile,in_name+"_5mb.cool",factor=5,chunksize=10000000) #coarsen to 5mb
-#c = cooler.Cooler(in_name+"_5mb.cool")
-cooler.balance_cooler(c,store=True) #balance matrix
-obs_mat = c.matrix()[:]
-obs_mat.shape
-
-# intra-arm expected
-expected = cooltools.expected_cis(
-    c,
-    view_df=hg38_arms,
-    nproc=4,
-)
-
-binsize=10_000_000
-kernels = cooltools.api.dotfinder.recommend_kernels(binsize)
-
-# create a grid of coordinates from -5 to 5, to define round kernels
-# see https://numpy.org/doc/stable/reference/generated/numpy.meshgrid.html for details
-half = 5  # half width of the kernel
-x, y = np.meshgrid(
-    np.linspace(-half, half, 2*half + 1),
-    np.linspace(-half, half, 2*half + 1),
-)
-# now define a donut-like mask as pixels between 2 radii: sqrt(7) and sqrt(30):
-mask = (x**2+y**2 > 7) & (x**2+y**2 <= 30)
-mask[:,half] = 0
-mask[half,:] = 0
-
-# lowleft mask - zero out neccessary parts
-mask_ll = mask.copy()
-mask_ll[:,:half] = 0
-mask_ll[half:,:] = 0
-
-# new kernels with more round donut and lowleft masks:
-kernels_round = {'donut': mask,
- 'vertical': kernels["vertical"].copy(),
- 'horizontal': kernels["horizontal"].copy(),
- 'lowleft': mask_ll}
-
-dots_df = cooltools.dots(
-    c,
-    expected=expected,
-    view_df=hg38_arms,
-    kernels=5,
-    # how far from the main diagonal to call dots:
-    max_loci_separation=10_000_000,
-    clustering_radius=None,
-    cluster_filtering=False,
-    nproc=4,
-)
-
-chr_list=list(c.bins()[:]["chrom"].unique())
-out=''.join([in_name,'_all_by_all_log2_1Mb_obs.png'])
-#init subplot
-chr_in=len(chr_list)
-chr_sizes=pd.DataFrame(c.bins()[:]).groupby(["chrom"])["chrom"].count()
-chr_ratios=list(chr_sizes/chr_sizes[0])
-fig, axes = plt.subplots(chr_count, chr_count, figsize=(40, 40),sharex=True,sharey=True,
-	gridspec_kw={'width_ratios': chr_ratios[0:chr_count],'height_ratios':chr_ratios[0:chr_count]})
-#plt.subplots_adjust(hspace=0.1,wspace=0.1)
-for i in range(0,chr_count):
-	row_chrom=chr_list[i]
-	ax_row=i
-	xlim=chr_sizes[i]
-	for j in range(0,chr_count):
-		col_chrom=chr_list[j]
-		ax_col=j
-		ylim=chr_sizes[j]
-		mat=c.matrix().fetch(row_chrom,col_chrom)
-		im=trans_chr_plot(mat,row_chrom,col_chrom,ax_row,ax_col,axes,in_name,zmin,zmax,cmap,xlim,ylim)
-plt.tight_layout()
-plt.savefig(out, dpi=dpi, format='png',bbox_inches="tight")
-plt.close("all")
-
-
-all_by_all_plot(in_files[0],4,zmin,zmax,cmap="PuBu")
-all_by_all_plot(in_files[2],4,zmin,zmax,cmap="YlGn")
-
-
-```
-
+<!--
 Generate eigengenes for compartments across chromosomes
 ```bash
 cooler_eigen() {
@@ -729,40 +700,7 @@ cooltools eigs-cis -o outputs/test.eigs.100000 --view data/view_hg38.tsv --phasi
 }
 export -f cooler_balance
 ```
-
-
-Get structural variants across merged data with HiSV
-https://github.com/GaoLabXDU/HiSV
-
-```bash
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clones"
-CHROMSIZES_FILE="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/hg38.chrom.sizes"
-cd $dir
-
-python ~/tools/HiSV/convert_type/hiccovert.py -o $dir/converted_output -r $CHROMSIZES_FILE -b 1000000 -t cool -m $dir/clone_c1.bsorted.cool  
-#typo in python script name
-
-#convert outputs with name format sample_1000kb_chr10_chr21_matrix.txt. need to be renamed and moved to directory
-rename -v 'sample_1000kb_' '' $dir/converted_output/Inter_matrix/*txt
-rename -v '_matrix.' '.' $dir/converted_output/Inter_matrix/*txt
-mkdir $dir/hic_files
-mv $dir/converted_output/Inter_matrix/*txt $dir/hic_files
-
-rename -v 'sample_1000kb_' '' $dir/converted_output/Intra_matrix/*txt
-rename -v "_matrix." "." $dir/converted_output/Intra_matrix/*txt
-for file in $dir/converted_output/Intra_matrix/*txt; do mv "$file" "${file/chr*_/}"; done
-mkdir $dir/hic_files
-mv $dir/converted_output/Intra_matrix/*txt $dir/hic_files
-
-python ~/tools/HiSV/HiSV_code/HiSV.py -o $dir \
-               -l $CHROMSIZES_FILE \
-               -f $dir/hic_files \
-               -a 1000000 \
-               -e 1000000 \
-               -w 10 \
-               -c 0.4
-```
-
+-->
 
 <!--
 #Add compartments
