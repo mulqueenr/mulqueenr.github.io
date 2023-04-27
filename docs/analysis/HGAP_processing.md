@@ -345,6 +345,7 @@ $tabix -p bed hippocampus.5perc.q10.filt.bam.fragments.sorted2.tsv.gz &
 #this is to remove header from concatenation
 ```
 
+<!--
 ### ATAC-RNA Integration of Cortex
 ```R
 library(Seurat)
@@ -361,9 +362,9 @@ library(reshape2)
 library(harmony)
 library(circlize)
 library(cicero,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/")
-  library(SeuratWrappers)
-
-  library(monocle3,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #using old install of monocle, just need for as.cell_data_set conversion
+library(SeuratWrappers)
+library(rtracklayer)
+library(monocle3,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #using old install of monocle, just need for as.cell_data_set conversion
 
 setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
 
@@ -394,17 +395,19 @@ get_annot<-function(){
 	}
 
   #Cicero processing function
+
 cicero_processing<-function(object_input=hgap_cortex,prefix="hgap_cortex_5perc"){
       #Generate CDS format from Seurat object
-      atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap")
+      atac.cds <- as.cell_data_set(object_input,assay="peaks",reduction="umap.atac")
       # convert to CellDataSet format and make the cicero object
       print("Making Cicero format CDS file")
-      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = reducedDims(atac.cds)$UMAP)
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = object_input@reductions$umap.atac@cell.embeddings)
       saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
       
-      genome <- seqlengths(object_input) # get the chromosome sizes from the Seurat object
-      genome.df <- data.frame("chr" = names(genome), "length" = genome) # convert chromosome sizes to a dataframe
-      
+      genome<-SeqinfoForUCSCGenome("hg38")
+      genome.df<-data.frame("chr"=seqnames(genome),"length"=seqlengths(genome))
+      genome.df<-genome.df[genome.df$chr %in% paste0("chr",seq(1:22)),]
+
       print("Running Cicero to generate connections.")
       conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
       saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
@@ -418,7 +421,6 @@ cicero_processing<-function(object_input=hgap_cortex,prefix="hgap_cortex_5perc")
       Links(object_input) <- links
       return(object_input)
 }
-
 
 geneactivity_processing<-function(cds_input,conns_input,prefix){
       atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
@@ -567,23 +569,21 @@ Fragments(hgap_cortex) <- fragments
 
 
 ```
-
+-->
 
 ### Integration of Hippocampus
 ```R
 library(Seurat)
 library(Signac) 
-library(patchwork)
 library(ggplot2)
 library(EnsDb.Hsapiens.v86)
 library(GenomeInfoDb)
 set.seed(1234)
-library(stringr)
-library(ComplexHeatmap)
 library(Matrix)
-library(reshape2)
-library(harmony)
-library(circlize)
+library(cicero,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/")
+#library(SeuratWrappers)
+library(monocle3,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #using old install of monocle, just need for as.cell_data_set conversion
+library(rtracklayer)
 setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
 
 #Public RNA data
@@ -607,6 +607,81 @@ fragments <- CreateFragmentObject(
 Fragments(hgap_hippo) <- fragments
 
 
+# gene annotation sample for gene activity
+get_annot<-function(){
+	hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+
+	pos <-as.data.frame(hg38_annotations,row.names=NULL)
+	pos$chromosome<-paste0("chr",pos$seqnames)
+	pos$gene<-pos$gene_id
+	pos <- subset(pos, strand == "+")
+	pos <- pos[order(pos$start),] 
+	pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
+	pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
+
+	neg <-as.data.frame(hg38_annotations,row.names=NULL)
+	neg$chromosome<-paste0("chr",neg$seqnames)
+	neg$gene<-neg$gene_id
+	neg <- subset(neg, strand == "-")
+	neg <- neg[order(neg$start,decreasing=TRUE),] 
+	neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
+	neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
+
+	gene_annotation<- rbind(pos, neg)
+	gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
+	names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
+	return(gene_annotation)
+	}
+
+
+#Cicero processing function  
+cicero_processing<-function(object_input=hgap_hippo,prefix="hgap_hippo_5perc"){
+      #Generate CDS format from Seurat object
+      #atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap.atac")
+      atac.cds <- as.cell_data_set(object_input,assay="peaks",reduction="umap.atac")
+      # convert to CellDataSet format and make the cicero object
+      print("Making Cicero format CDS file")
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = object_input@reductions$umap.atac@cell.embeddings)
+
+      # convert to CellDataSet format and make the cicero object
+      print("Making Cicero format CDS file")
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = as.data.frame(object_input@reductions$umap.atac@cell.embeddings)) #aggregate cells for cicero analysis
+      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+      atac.cicero<-readRDS(paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+
+      genome<-SeqinfoForUCSCGenome("hg38")
+      genome.df<-data.frame("chr"=seqnames(genome),"length"=seqlengths(genome))
+      genome.df<-genome.df[genome.df$chr %in% paste0("chr",seq(1:22)),]
+
+      print("Running Cicero to generate connections.")
+      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
+      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+      conns<-readRDS(paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+
+      print("Generating CCANs")
+      ccans <- generate_ccans(conns) # generate ccans
+      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+      ccans<-readRDS(paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+
+      print("Adding CCAN links into Seurat Object and Returning.")
+      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
+      Links(object_input) <- links
+      return(object_input)
+}
+
+geneactivity_processing<-function(object_input=hgap_cortex,conns_input=conns,prefix="hgap_cortex_5perc"){
+			anno<-get_annot()
+			atac.cds <- as.cell_data_set(object_input,assay="peaks",reduction="umap.atac")
+			#atac.cds<-newCellDataSet(cellData=object_input@assays$peaks@counts,featureData=atac.cds@featureData,phenoData=atac.cds@phenoData))
+			#cds <- new("CellDataSet", assayData = assayDataNew("environment", 
+      #  exprs = object_input@assays$peaks@counts), phenoData = atac.cds@phenoData, featureData = atac.cds@featureData, 
+      #  lowerDetectionLimit =  0.1, expressionFamily = VGAM::negbinomial.size(), 
+      #  dispFitInfo = new.env(hash = TRUE))
+      atac.cds<- annotate_cds_by_site(atac.cds, anno)
+      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
+      saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
+}
+
 sample_label_transfer<-function(in_dat,ref_dat,transfer.anchors.,prefix="Tcell_",transfer_label="celltype"){
   predictions<- TransferData(
     anchorset = transfer.anchors.,
@@ -622,14 +697,14 @@ sample_label_transfer<-function(in_dat,ref_dat,transfer.anchors.,prefix="Tcell_"
 
 generate_transfer_anchor<-function(in_dat,ref_dat,feat,prefix){
 	#generate LSI matrix for downstream normalization
-
+	#downsample cells to 5% per identity
 
 	in_dat <- RunTFIDF(in_dat)
 	in_dat <- FindTopFeatures(in_dat, min.cutoff = 'q0')
 	in_dat <- RunSVD(in_dat)
 
 	#generate gene activity for just variable genes, add to object and normalize
-	ga_mat<-GeneActivity(in_dat,features = feat, process_n = 10000)
+	ga_mat<-GeneActivity(in_dat, features = feat)
 	in_dat[['RNA']] <- CreateAssayObject(counts = ga_mat)
 	in_dat<- NormalizeData(
 	  object = in_dat,
@@ -648,7 +723,6 @@ generate_transfer_anchor<-function(in_dat,ref_dat,feat,prefix){
 	saveRDS(in_dat,file=paste0(prefix,".SeuratObject.Rds"))
 	return(in_dat)
 }
-
 
 coembed_data<-function(in_dat,ref_dat,transfer.anchors.,feat,prefix,assay_name){
 	imputation<- TransferData(

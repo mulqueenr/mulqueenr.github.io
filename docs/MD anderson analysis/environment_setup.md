@@ -171,6 +171,30 @@ predictSV --hic-5k SKNAS-MboI-allReps-filtered.mcool::/resolutions/5000 \
             --prob-cutoff-5k 0.8 --prob-cutoff-10k 0.8 --prob-cutoff-50k 0.99999
 ```
 
+Installing NeoloopFinder
+https://github.com/XiaoTaoWang/NeoLoopFinder
+
+```bash
+conda config --add channels r
+conda config --add channels defaults
+conda config --add channels bioconda
+conda config --add channels conda-forge
+conda config --set channel_priority strict
+mamba create -n neoloop cooler matplotlib pyensembl pybigwig intervaltree scikit-learn=1.1.2 joblib=1.1.0 rpy2 r-mgcv
+mamba activate neoloop
+#mamba install -c anaconda pomegranate=0.14.4
+pip install pomegranate==0.14.4
+pip install -U neoloop TADLib
+
+#testing install
+cd ~/refs
+wget -O SKNMC-MboI-allReps-filtered.mcool -L https://www.dropbox.com/s/tuhhrecipkp1u8k/SKNMC-MboI-allReps-filtered.mcool?dl=0
+calculate-cnv -H SKNMC-MboI-allReps-filtered.mcool::resolutions/25000 -g hg38 \
+                -e MboI --output SKNMC_25k.CNV-profile.bedGraph
+
+segment-cnv --cnv-file ~/ref/SKNMC_25k.CNV-profile.bedGraph --binsize 25000 \
+              --ploidy 2 --output ~/ref/SKNMC_25k.CNV-seg.bedGraph --nproc 4
+```
 
 Installing HiSV in cooler_env
 https://github.com/GaoLabXDU/HiSV

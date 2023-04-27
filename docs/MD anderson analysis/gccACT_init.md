@@ -231,86 +231,6 @@ for (i in unique(clone_out$clone)){
 }
 ```
 
-Write out CNV segments as bedfiles at multiple resolutions for cnv correction via NeoLoopFinder
-
-```R
-library(copykit)
-library(GenomicRanges)
-setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells")
-
-tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
-
-BINS_BED_PATH_1mb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
-BINS_BED_PATH_5kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins.bed"
-BINS_BED_PATH_10kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins.bed"
-BINS_BED_PATH_50kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins.bed"
-BINS_BED_PATH_500kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
-
-
-#function to define blacklist regions
-make_black_list<-function(bed_in,copykit_obj){
-#bins in bin bed file that are not in the copykit filtered list are considered black list,
-#generate per bins.bed resolution
-bins_bed<-read.table(bed_in,header=F,sep="\t")
-colnames(bins_bed)<-c("chr","start","end")
-bins_bed<-GRanges(bins_bed)
-accepted_bed_ranges<-GRanges(copykit_obj@rowRanges) #row ranges for bedgraph
-overlaps<-findOverlaps(query=bins_bed,subject=accepted_bed_ranges,minoverlap=1,ignore.strand=T)
-blacklist<-bins_bed[!(range(1,nrow(bins_bed)) %in% overlaps@from),]
-write.table(as.data.frame(blacklist)[1:3],col.names=F,row.names=F,quote=F,file=paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed"))
-print(paste("Wrote out",paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed")))
-}
-
-#Make blacklist
-lapply(c(BINS_BED_PATH_1mb,BINS_BED_PATH_5kb,BINS_BED_PATH_10kb,BINS_BED_PATH_50kb,BINS_BED_PATH_500kb), function(x) make_black_list(x,copykit_obj=tumor))
-
-#function to generate consensus bedGraphs for CNV correction.
-
-#function to define blacklist regions
-make_consensus_bedgraph<-function(bed_in,copykit_obj,clone){
-#bins in bin bed file that are not in the copykit filtered list are considered black list,
-#generate per bins.bed resolution
-bins_bed<-read.table(bed_in,header=F,sep="\t")
-colnames(bins_bed)<-c("chr","start","end")
-bins_bed<-GRanges(bins_bed)
-accepted_bed_ranges<-GRanges(copykit_obj@rowRanges) #row ranges for bedgraph
-accepted_bed_ranges$cnv<-copykit_obj@consensus[clone]
-hits<-findOverlaps(query=bins_bed,subject=accepted_bed_ranges,minoverlap=1,ignore.strand=T)
-overlaps <- pintersect(bins_bed[queryHits(hits)], accepted_bed_ranges[subjectHits(hits)])
-
-bins_bed$cnv<-NA
-if(mean(width(accepted_bed_ranges))<mean(width(bins_bed))){ #if hic bins are bigger than copykit windows
-	percentOverlap <- width(overlaps) / width(bins_bed[queryHits(hits)])
-	out<-lapply(unique(hits@from),function(x) {
-		overlaps_tmp<-hits[hits@from==x,]
-		cnv_tmp<-unlist(as.data.frame(accepted_bed_ranges[overlaps_tmp@to,])[clone])
-		weight_tmp<-percentOverlap[overlaps_tmp@to]
-		cnv_out<-weighted.mean(cnv_tmp,w=weight_tmp) #weighted mean score by overlap percentage
-		bins_bed[x,]$cnv<-cnv_out
-		return(bins_bed[x,])})
-	bins_bed_cnv<-do.call("c",out)
-} else { #if copykit windows are bigger than hic bins
-	percentOverlap <- width(overlaps) / width(accepted_bed_ranges[subjectHits(hits)])
-	out<-lapply(unique(hits@from),function(x) {
-		overlaps_tmp<-hits[hits@from==x,]
-		cnv_tmp<-unlist(as.data.frame(accepted_bed_ranges[overlaps_tmp@to,])[clone])
-		weight_tmp<-percentOverlap[overlaps_tmp@to]
-		cnv_out<-weighted.mean(cnv_tmp,w=weight_tmp) #weighted mean score by overlap percentage
-		bins_bed[x,]$cnv<-cnv_out
-		return(bins_bed[x,])})
-	bins_bed_cnv<-do.call("c",out)
-
-}
-
-#FIX THIS, OUTPUT CNV DATA INSTEAD OF BLACKLIST
-write.table(as.data.frame(blacklist)[1:3],col.names=F,row.names=F,quote=F,file=paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed"))
-print(paste("Wrote out",paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed")))
-}
-
-
-#output values at matched bin resolutions for neoloop finder, then use segment-cnv and correct-cnv from neoloop finder afterwards
-#also output a blacklist of regions that don't overlap between the bins.bed and the copykit bin filtered ranges
-```
 ### Count of WGS and GCC Reads
 ```bash
 dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
@@ -396,6 +316,12 @@ bamlist_merge_to_pairs $dir $ref clone_c4.bam_list.txt
 Cooler is both python line and command line, using command line for this
 https://github.com/open2c/cooler
 https://github.com/open2c/cooltools
+
+*EagleC* is a deep learning method of SV detection in bulk and single cells at multiple resolutions
+https://github.com/XiaoTaoWang/EagleC
+
+EagleC also makes use of the toolkit form the same authors called *NeoLoopFinder*, used to CNV correction in HiC Data
+https://github.com/XiaoTaoWang/NeoLoopFinder
 
 Change to cooler environment ::sunglasses::
 ```bash
@@ -488,7 +414,7 @@ export -f pairix_to_cooler_50kb
 pairix_to_cooler_500kb() {
 BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
 out_name="500kb"
-cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
+cooler cload pairix -0 -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
 }
 export -f pairix_to_cooler_500kb
 
@@ -506,15 +432,136 @@ parallel --jobs 5 pairix_to_cooler_10kb ::: $pairix_in & #uses 10 cores per job
 parallel --jobs 5 pairix_to_cooler_50kb ::: $pairix_in & #uses 10 cores per job
 
 #500kb
-#TO RUN
 parallel --jobs 5 pairix_to_cooler_500kb ::: $pairix_in & #uses 10 cores per job
 
 # first argument is pairix gzipped file
 ```
 
+### CNV normalization on HiC Data
+Write out CNV segments as bedfiles at multiple resolutions for cnv correction via NeoLoopFinder
+NeoLoopFinder also reports CNVs through log2 changes, making this a direct comparison.
+
+```R
+library(copykit)
+library(GenomicRanges)
+library(parallel)
+wd_out="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
+
+setwd(wd_out)
+tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/scCNA.rds")
+tumor <- calcInteger(tumor, method = 'scquantum', assay = 'smoothed_bincounts') #calculate ploidy
+tumor <- calcConsensus(tumor) #generate consensus
+
+pdf("cellploidy.integer.pdf")
+plotMetrics(tumor, metric = 'ploidy', label = 'ploidy_score') #plot ploidy score
+dev.off()
+
+tumor <- calcInteger(tumor, method = 'fixed', ploidy_value = median(tumor$ploidy)) #calculate integer value per consensus
+tumor <- calcConsensus(tumor, consensus_by = 'subclones', assay = 'integer')
+
+
+# Plot a consensus copy number heatmap 
+pdf("consensus.heatmap.integer.pdf")
+plotHeatmap(tumor,
+            consensus = TRUE,
+            label = 'subclones',
+            assay = 'integer')
+dev.off()
+saveRDS(tumor,file="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/scCNA.rds")
+
+
+#function to define blacklist regions
+make_black_list<-function(bed_in,copykit_obj){
+#bins in bin bed file that are not in the copykit filtered list are considered black list,
+#generate per bins.bed resolution
+bins_bed<-read.table(bed_in,header=F,sep="\t")
+colnames(bins_bed)<-c("chr","start","end")
+bins_bed<-GRanges(bins_bed)
+accepted_bed_ranges<-GRanges(copykit_obj@rowRanges) #row ranges for bedgraph
+overlaps<-findOverlaps(query=bins_bed,subject=accepted_bed_ranges,minoverlap=1,ignore.strand=T)
+blacklist<-bins_bed[!(range(1,nrow(bins_bed)) %in% overlaps@from),]
+write.table(as.data.frame(blacklist)[1:3],col.names=F,row.names=F,quote=F,file=paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed"))
+print(paste("Wrote out",paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed")))
+}
+
+#function to generate consensus bedGraphs for CNV correction.
+
+#function to define blacklist regions
+make_consensus_bedgraph<-function(bed_in,res,copykit_obj,clone,cores=10){
+	#bins in bin bed file that are not in the copykit filtered list are considered black list,
+	#generate per bins.bed resolution granges
+	bins_bed<-read.table(bed_in,header=F,sep="\t")
+	colnames(bins_bed)<-c("chr","start","end")
+	bins_bed<-GRanges(bins_bed)
+
+	#generate granges of copykit data
+	accepted_bed_ranges<-GRanges(copykit_obj@rowRanges) #row ranges for bedgraph
+	accepted_bed_ranges$cnv<-copykit_obj@consensus[clone] #add cnv data as metadata column
+
+	#overlap the two granges
+	hits<-findOverlaps(query=bins_bed,subject=accepted_bed_ranges,minoverlap=1,ignore.strand=T) #get list of intersecting
+	overlaps <- pintersect(bins_bed[queryHits(hits)], accepted_bed_ranges[subjectHits(hits)]) #combine intersecting sites for overlap
+	bins_bed$cnv<-mean(unlist(accepted_bed_ranges$cnv)) #set up column meta data, set to average for blacklist bed regions
+
+	#change overlap calculation to correct for it one if bigger than the other (i think I did this right??)
+	print(paste("Calculating window CNVs from CopyKit Clone consensus for",clone,"at",res))
+	if(mean(width(accepted_bed_ranges))<mean(width(bins_bed))){ #if hic bins are bigger than copykit windows
+		percentOverlap <- width(overlaps) / width(bins_bed[queryHits(hits)])
+	} else { #if copykit windows are bigger than hic bins
+		percentOverlap <- width(overlaps) / width(accepted_bed_ranges[subjectHits(hits)])}
+	#lapply to 
+	out<-mclapply(unique(hits@from),function(x) {
+		overlaps_tmp<-hits[hits@from==x,]
+		cnv_tmp<-unlist(as.data.frame(accepted_bed_ranges[overlaps_tmp@to,])[clone])
+		weight_tmp<-percentOverlap[overlaps_tmp@to]
+		cnv_out<-weighted.mean(cnv_tmp,w=weight_tmp) #weighted mean score by overlap percentage
+		bins_bed[x,]$cnv<-cnv_out
+		return(bins_bed[x,])},mc.cores=cores)
+	bins_bed_cnv<-do.call("c",out)
+	bins_bed_cnv<-c(bins_bed_cnv,bins_bed[-subjectHits(findOverlaps(query=bins_bed_cnv, subject=bins_bed, minoverlap=10)),] )
+	bins_bed_cnv<-sortSeqlevels(bins_bed_cnv)
+	bins_bed_cnv <- sort(bins_bed_cnv)
+	out_cnv<-cbind(as.data.frame(bins_bed_cnv)[1:3],cnv=bins_bed_cnv$cnv)
+	out_cnv$cnv<-as.integer(out_cnv$cnv)
+	outname<-paste0("clone_",clone,".cnv.",res,".segmented.bedgraph")
+	write.table(out_cnv,col.names=F,row.names=F,quote=F,file=outname,sep="\t")
+	print(paste("Wrote out",outname))
+
+}
+
+
+#Make blacklist
+lapply(bed_in_list, function(x) make_black_list(x,copykit_obj=tumor))
+
+BINS_BED_PATH_500kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
+clone_list<-colnames(tumor@consensus)
+
+#Make clone specific bedgraph format for HiC windows
+for(clone in clone_list){
+	make_consensus_bedgraph(bed_in=BINS_BED_PATH_500kb,res="500kb",clone=clone,copykit_obj=tumor,cores=50)
+}
+
+#output values at matched bin resolutions for neoloop finder, then use segment-cnv and correct-cnv from neoloop finder afterwards
+#also output a blacklist of regions that don't overlap between the bins.bed and the copykit bin filtered ranges
+```
+
+Using the copykit output of CNV data generated above (in bedgraph format).
+
+```bash
+wd_out="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
+cd $wd_out
+
+mamba activate neoloop
+#segment-cnv --cnv-file ${wd_out}/c1_cnv_500kb.bedgraph --num-of-states 5 --binsize 500000 --ploidy 2 --output c1_cnv_500kb.CNV-seg.bedGraph --nproc 10
+
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+cd $clone_dir
+cooler balance -p 20 --force ${clone_dir}/clone_c1.bsorted.500kb.cool
+correct-cnv -H ${clone_dir}/clone_c1.bsorted.500kb.cool --cnv-file ${wd_out}/c1_cnv_500kb.segmented.bedgraph --nproc 4 -f
+```
 
 ### Detection of structural variants using Eagle C
-
+ICE normalized output at multiresolution
 ```bash
 conda activate EagleC
 clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
@@ -527,15 +574,44 @@ clone=${1::-17}
 cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.5kb.cool
 cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.10kb.cool
 cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.50kb.cool
+
 #now run predict sv
 
 predictSV --hic-5k ${clone_dir}/${clone}.bsorted.5kb.cool \
             --hic-10k ${clone_dir}/${clone}.bsorted.10kb.cool \
             --hic-50k ${clone_dir}/${clone}.bsorted.50kb.cool \
-            -O $clone -g hg38 --balance-type ICE --output-format full \
+            -O $clone -g hg38 --balance-type CNV --output-format full \
             --prob-cutoff-5k 0.8 --prob-cutoff-10k 0.8 --prob-cutoff-50k 0.99999
 }
 export -f eaglec_SV_detect
+
+clones=`ls clone*pairs.gz`
+
+parallel --jobs 1 eaglec_SV_detect ::: $clones &
+```
+
+CNV normalized output at single 500kb resolution.
+```bash
+mamba activate EagleC
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+cd $clone_dir
+
+eaglec_SV_CNV() {
+	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
+	clone=${1::-17}
+	#balance through ICE first
+	cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.500kb.cool
+	
+	#now balance by CNV
+	mamba activate neoloop
+	correct-cnv -H ${clone_dir}/${clone}.bsorted.500kb.cool --cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph --nproc 4 -f
+	
+	mamba activate EagleC
+	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 -O $clone --balance-type CNV --region-size 500000 --output-format full --prob-cutoff 0.9 --logFile ${clone}.eaglec.log
+}
+export -f eaglec_SV_CNV
+
 
 clones=`ls clone*pairs.gz`
 
