@@ -345,28 +345,197 @@ $tabix -p bed hippocampus.5perc.q10.filt.bam.fragments.sorted2.tsv.gz &
 #this is to remove header from concatenation
 ```
 
-<!--
+
 ### ATAC-RNA Integration of Cortex
 ```R
 library(Seurat)
 library(Signac) 
-library(patchwork)
 library(ggplot2)
 library(EnsDb.Hsapiens.v86)
 library(GenomeInfoDb)
 set.seed(1234)
-library(stringr)
-library(ComplexHeatmap)
 library(Matrix)
-library(reshape2)
-library(harmony)
-library(circlize)
+library(monocle3,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #using old install of monocle, just need for as.cell_data_set conversion
 library(cicero,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/")
 library(SeuratWrappers)
 library(rtracklayer)
-library(monocle3,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #using old install of monocle, just need for as.cell_data_set conversion
-
 setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
+
+
+
+split_peak_names <- function(inp) {
+  out <- stringr::str_split_fixed(stringi::stri_reverse(inp), 
+                                  ":|-|_", 3)
+  out[,1] <- stringi::stri_reverse(out[,1])
+  out[,2] <- stringi::stri_reverse(out[,2])
+  out[,3] <- stringi::stri_reverse(out[,3])
+  out[,c(3,2,1), drop=FALSE]
+}
+
+make_sparse_matrix <- function(data,
+                               i.name = "Peak1",
+                               j.name = "Peak2",
+                               x.name = "value") {
+  if(!i.name %in% names(data) |
+     !j.name %in% names(data) |
+     !x.name %in% names(data)) {
+    stop('i.name, j.name, and x.name must be columns in data')
+  }
+  
+  data$i <- as.character(data[,i.name])
+  data$j <- as.character(data[,j.name])
+  data$x <- data[,x.name]
+  
+  if(!class(data$x) %in%  c("numeric", "integer"))
+    stop('x.name column must be numeric')
+  
+  peaks <- data.frame(Peak = unique(c(data$i, data$j)),
+                      index = seq_len(length(unique(c(data$i, data$j)))))
+  
+  data <- data[,c("i", "j", "x")]
+  
+  data <- rbind(data, data.frame(i=peaks$Peak, j = peaks$Peak, x = 0))
+  data <- data[!duplicated(data[,c("i", "j", "x")]),]
+  data <- data.table::as.data.table(data)
+  peaks <- data.table::as.data.table(peaks)
+  data.table::setkey(data, "i")
+  data.table::setkey(peaks, "Peak")
+  data <- data[peaks]
+  data.table::setkey(data, "j")
+  data <- data[peaks]
+  data <- as.data.frame(data)
+  
+  data <- data[,c("index", "i.index", "x")]
+  data2 <- data
+  names(data2) <- c("i.index", "index", "x")
+  
+  data <- rbind(data, data2)
+  
+  data <- data[!duplicated(data[,c("index", "i.index")]),]
+  data <- data[data$index >= data$i.index,]
+  
+  sp_mat <- Matrix::sparseMatrix(i=as.numeric(data$index),
+                                 j=as.numeric(data$i.index),
+                                 x=data$x,
+                                 symmetric = TRUE)
+  
+  colnames(sp_mat) <- peaks[order(peaks$index),]$Peak
+  row.names(sp_mat) <- peaks[order(peaks$index),]$Peak
+  return(sp_mat)
+}
+
+build_composite_gene_activity_matrix <- function(input_cds,
+                                                 site_weights,
+                                                 cicero_cons_info,
+                                                 dist_thresh=250000,
+                                                 coaccess_cutoff=0.25) {
+    accessibility_mat <- exprs(input_cds)
+    promoter_peak_table <- fData(input_cds)
+    promoter_peak_table$peak <- as.character(row.names(promoter_peak_table))
+    promoter_peak_table <-
+        promoter_peak_table[!is.na(promoter_peak_table$gene),]
+    promoter_peak_table <- promoter_peak_table[,c("peak", "gene")]
+    promoter_peak_table$gene <- as.character(promoter_peak_table$gene)
+
+    # Make site_weight matrix
+    site_names <- names(site_weights)
+    site_weights <- as(Matrix::Diagonal(x=as.numeric(site_weights)),
+                      "sparseMatrix")
+    row.names(site_weights) <- site_names
+    colnames(site_weights) <- site_names
+
+    # Find distance between cicero peaks. If distance already calculated, skip
+    if ("dist" %in% colnames(cicero_cons_info) == FALSE) {
+        Peak1_cols <- split_peak_names(cicero_cons_info$Peak1)
+        Peak2_cols <- split_peak_names(cicero_cons_info$Peak2)
+        Peak1_bp <- round((as.integer(Peak1_cols[,3]) +
+                          as.integer(Peak1_cols[,2])) / 2)
+        Peak2_bp <- round((as.integer(Peak2_cols[,3]) +
+                          as.integer(Peak2_cols[,2])) / 2)
+        cicero_cons_info$dist <- abs(Peak2_bp - Peak1_bp)
+    }
+
+    # Get connections between promoters and distal sites above coaccess
+    # threshold
+    nonneg_cons <-
+        cicero_cons_info[(cicero_cons_info$Peak1 %in%
+                          promoter_peak_table$peak |
+                          cicero_cons_info$Peak2 %in%
+                          promoter_peak_table$peak) &
+                          cicero_cons_info$coaccess >= coaccess_cutoff &
+                          cicero_cons_info$dist < dist_thresh,]
+    nonneg_cons <- nonneg_cons[,c("Peak1", "Peak2", "coaccess")]
+    nonneg_cons <- nonneg_cons[!duplicated(nonneg_cons),]
+
+    nonneg_cons$Peak1 <- as.character(nonneg_cons$Peak1)
+    nonneg_cons$Peak2 <- as.character(nonneg_cons$Peak2)
+
+    nonneg_cons <- rbind(nonneg_cons,
+                        data.frame(Peak1=unique(promoter_peak_table$peak),
+                                   Peak2=unique(promoter_peak_table$peak),
+                                   coaccess=0))
+
+    # Make square matrix of connections from distal to proximal
+    distal_connectivity_matrix <- make_sparse_matrix(nonneg_cons,
+                                                    x.name="coaccess")
+
+    # Make connectivity matrix of promoters versus all
+    promoter_conn_matrix <-
+        distal_connectivity_matrix[unique(promoter_peak_table$peak),]
+
+    # Get list of promoter and distal sites in accessibility mat
+    promoter_safe_sites <- intersect(rownames(promoter_conn_matrix),
+                                     row.names(accessibility_mat))
+    distal_safe_sites <- intersect(colnames(promoter_conn_matrix),
+                                     row.names(accessibility_mat))
+    distal_safe_sites <- setdiff(distal_safe_sites, promoter_safe_sites)
+
+    # Get accessibility info for promoters
+    promoter_access_mat_in_cicero_map <- accessibility_mat[promoter_safe_sites,, drop=FALSE]
+
+    # Get accessibility for distal sites
+    distal_activity_scores <- accessibility_mat[distal_safe_sites,, drop=FALSE]
+
+    # Scale connectivity matrix by site_weights
+    scaled_site_weights <- site_weights[distal_safe_sites,distal_safe_sites, drop=FALSE]
+    total_linked_site_weights <- promoter_conn_matrix[,distal_safe_sites, drop=FALSE] %*%
+        scaled_site_weights
+    total_linked_site_weights <- 1/Matrix::rowSums(total_linked_site_weights,
+                                                na.rm=TRUE)
+    total_linked_site_weights[is.finite(total_linked_site_weights) == FALSE] <- 0
+    total_linked_site_weights[is.na(total_linked_site_weights)] <- 0
+    total_linked_site_weights[is.nan(total_linked_site_weights)] <- 0
+    site_names <- names(total_linked_site_weights)
+    total_linked_site_weights <- Matrix::Diagonal(x=total_linked_site_weights)
+    row.names(total_linked_site_weights) <- site_names
+    colnames(total_linked_site_weights) <- site_names
+    scaled_site_weights <- total_linked_site_weights %*%
+        promoter_conn_matrix[,distal_safe_sites, drop=FALSE] %*%
+        scaled_site_weights
+    scaled_site_weights@x[scaled_site_weights@x > 1] <- 1
+
+    # Multiply distal accessibility by site weights
+    distal_activity_scores <- scaled_site_weights %*% distal_activity_scores
+
+    distal_activity_scores <-
+        distal_activity_scores[row.names(promoter_access_mat_in_cicero_map),, drop=FALSE]
+
+    # Sum distal and promoter scores
+    promoter_activity_scores <- distal_activity_scores +
+        promoter_access_mat_in_cicero_map
+
+    # Make and populate final matrix
+    promoter_gene_mat <-
+        Matrix::sparseMatrix(j=as.numeric(factor(promoter_peak_table$peak)),
+                             i=as.numeric(factor(promoter_peak_table$gene)),
+                             x=1)
+    colnames(promoter_gene_mat) = levels(factor(promoter_peak_table$peak))
+    row.names(promoter_gene_mat) = levels(factor(promoter_peak_table$gene))
+    promoter_gene_mat <- promoter_gene_mat[,row.names(promoter_activity_scores)]
+    gene_activity_scores <- promoter_gene_mat %*% promoter_activity_scores
+
+    return(gene_activity_scores)
+}
 
 # gene annotation sample for gene activity
 get_annot<-function(){
@@ -394,16 +563,22 @@ get_annot<-function(){
 	return(gene_annotation)
 	}
 
-  #Cicero processing function
 
+#Cicero processing function  
 cicero_processing<-function(object_input=hgap_cortex,prefix="hgap_cortex_5perc"){
       #Generate CDS format from Seurat object
+      #atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap.atac")
       atac.cds <- as.cell_data_set(object_input,assay="peaks",reduction="umap.atac")
       # convert to CellDataSet format and make the cicero object
       print("Making Cicero format CDS file")
       atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = object_input@reductions$umap.atac@cell.embeddings)
+
+      # convert to CellDataSet format and make the cicero object
+      print("Making Cicero format CDS file")
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = as.data.frame(object_input@reductions$umap.atac@cell.embeddings)) #aggregate cells for cicero analysis
       saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
-      
+      atac.cicero<-readRDS(paste(prefix,"atac_cicero_cds.Rds",sep="_"))
+
       genome<-SeqinfoForUCSCGenome("hg38")
       genome.df<-data.frame("chr"=seqnames(genome),"length"=seqlengths(genome))
       genome.df<-genome.df[genome.df$chr %in% paste0("chr",seq(1:22)),]
@@ -411,21 +586,63 @@ cicero_processing<-function(object_input=hgap_cortex,prefix="hgap_cortex_5perc")
       print("Running Cicero to generate connections.")
       conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
       saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
-      
+      conns<-readRDS(paste(prefix,"atac_cicero_conns.Rds",sep="_"))
+
       print("Generating CCANs")
       ccans <- generate_ccans(conns) # generate ccans
       saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
-      
+      ccans<-readRDS(paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
+
       print("Adding CCAN links into Seurat Object and Returning.")
       links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
       Links(object_input) <- links
+      saveRDS(object_input,file=paste0(prefix,".","gene_activity.Rds"))
       return(object_input)
 }
 
-geneactivity_processing<-function(cds_input,conns_input,prefix){
-      atac.cds<- annotate_cds_by_site(cds_input, gene_annotation)
-      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
+geneactivity_processing<-function(object_input=hgap_cortex,conns_input=conns,prefix="hgap_cortex_5perc"){
+			anno<-get_annot()
+			atac.cds <- as.cell_data_set(object_input,assay="peaks",reduction="umap.atac")
+			#atac.cds<-newCellDataSet(cellData=object_input@assays$peaks@counts,featureData=atac.cds@featureData,phenoData=atac.cds@phenoData))
+			#cds <- new("CellDataSet", assayData = assayDataNew("environment", 
+      #  exprs = object_input@assays$peaks@counts), phenoData = atac.cds@phenoData, featureData = atac.cds@featureData, 
+      #  lowerDetectionLimit =  0.1, expressionFamily = VGAM::negbinomial.size(), 
+      #  dispFitInfo = new.env(hash = TRUE))
+      atac.cds<- annotate_cds_by_site(atac.cds, anno)
+      fData(atac.cds)<-cbind(fData(atac.cds),
+      		site_name=row.names(fData(atac.cds)),
+      		chr=gsub(pattern="chr",replace="",unlist(lapply(strsplit(row.names(fData(atac.cds)),"-"),"[",1))),
+      		bp1=unlist(lapply(strsplit(row.names(fData(atac.cds)),"-"),"[",2)),
+      		bp2=unlist(lapply(strsplit(row.names(fData(atac.cds)),"-"),"[",3)))
+
+			input_cds=atac.cds
+			cicero_cons_info=conns
+			site_weights=NULL
+			dist_thresh=250000
+			coaccess_cutoff=0.25
+
+			accessibility_mat <- exprs(input_cds)
+      site_weights <- Matrix::rowMeans(accessibility_mat) / Matrix::rowMeans(accessibility_mat)
+      site_weights[names(site_weights)] <- 1
+			gene_promoter_activity <- build_composite_gene_activity_matrix(input_cds,
+                                             site_weights,
+                                             cicero_cons_info,
+                                             dist_thresh=dist_thresh,
+                                             coaccess_cutoff=coaccess_cutoff)
+			unnorm_ga<-gene_promoter_activity
       saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
+      object_input[['GeneActivity']]<- CreateAssayObject(counts = unnorm_ga) 
+
+		  # normalize
+		  object_input <- NormalizeData(
+		    object = object_input,
+		    assay = 'GeneActivity',
+		    normalization.method = 'LogNormalize',
+		    scale.factor = median(object_input$nCount_GeneActivity)
+		  )
+		  saveRDS(object_input,file=paste0(prefix,".","gene_activity.Rds"))
+      return(object_input)
+  		
 }
 
 sample_label_transfer<-function(in_dat,ref_dat,transfer.anchors.,prefix="Tcell_",transfer_label="celltype"){
@@ -487,8 +704,6 @@ coembed_data<-function(in_dat,ref_dat,transfer.anchors.,feat,prefix,assay_name){
 }
 
 
-
-
 #Public RNA data
 cortex_brainspan<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
 
@@ -509,23 +724,10 @@ fragments <- CreateFragmentObject(
 Fragments(hgap_cortex) <- fragments
 #(the maga directory part was about glia, not political affiliation)
 
-
-  conns<-as.data.frame(readRDS("orgo_cirm43_atac_cicero_conns.Rds"))
-  orgo_cirm43.cicero<-readRDS("orgo_cirm43_atac_cicero_cds.Rds")
-  geneactivity_processing(cds_input=as.cell_data_set(orgo_cirm43,group_by="seurat_clusters"),conns_input=conns,prefix="cirm43_atac")
-
-  #Read in unnormalized GA
-  cicero_gene_activities<-readRDS("cirm43_atac.unnorm_GA.Rds")
-  orgo_cirm43[['GeneActivity']]<- CreateAssayObject(counts = cicero_gene_activities) 
-
-  # normalize
-  orgo_cirm43 <- NormalizeData(
-    object = orgo_cirm43,
-    assay = 'GeneActivity',
-    normalization.method = 'LogNormalize',
-    scale.factor = median(orgo_cirm43$nCount_GeneActivity)
-  )
-  saveRDS(orgo_cirm43,"orgo_cirm43.QC2.SeuratObject.Rds")
+#Gene activity processing of HGAP Hippo
+	hgap_cortex<-cicero_processing(object_input=hgap_cortex,prefix="hgap_cortex_5perc")
+	conns<-readRDS("hgap_cortex_5perc_atac_cicero_conns.Rds")
+	hgap_cortex<-geneactivity_processing(object_input=hgap_cortex,conns_input=conns,prefix="hgap_cortex_5perc")
 
 
 
@@ -533,7 +735,9 @@ Fragments(hgap_cortex) <- fragments
 	#features=FindVariableFeatures(cortex_brainspan,selection.method="vst",assay="RNA",nfeatures=5000) #
 	Idents(cortex_brainspan)<-cortex_brainspan$subclass_label
 	markers<-FindAllMarkers(cortex_brainspan,only.pos=TRUE) 
-	features<-row.names(markers) #i think this is right??
+	saveRDS(markers,file="/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.markers.rds")
+
+	features<-row.names(markers) 
 	hgap_cortex<-generate_transfer_anchor(in_dat=hgap_cortex,ref_dat=cortex_brainspan,prefix="cortex.5perc",feat=features)
 	transfer_anchors=readRDS("cortex.5perc.transferanchors.rds")
 	hgap_cortex<-sample_label_transfer(in_dat=hgap_cortex,ref_dat=cortex_brainspan,prefix="brainspan_class_",transfer.anchors.=transfer_anchors,transfer_label="class_label")
@@ -581,7 +785,7 @@ library(GenomeInfoDb)
 set.seed(1234)
 library(Matrix)
 library(cicero,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/")
-#library(SeuratWrappers)
+library(SeuratWrappers)
 library(monocle3,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #using old install of monocle, just need for as.cell_data_set conversion
 library(rtracklayer)
 setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
@@ -606,6 +810,179 @@ fragments <- CreateFragmentObject(
 )
 Fragments(hgap_hippo) <- fragments
 
+split_peak_names <- function(inp) {
+  out <- stringr::str_split_fixed(stringi::stri_reverse(inp), 
+                                  ":|-|_", 3)
+  out[,1] <- stringi::stri_reverse(out[,1])
+  out[,2] <- stringi::stri_reverse(out[,2])
+  out[,3] <- stringi::stri_reverse(out[,3])
+  out[,c(3,2,1), drop=FALSE]
+}
+
+make_sparse_matrix <- function(data,
+                               i.name = "Peak1",
+                               j.name = "Peak2",
+                               x.name = "value") {
+  if(!i.name %in% names(data) |
+     !j.name %in% names(data) |
+     !x.name %in% names(data)) {
+    stop('i.name, j.name, and x.name must be columns in data')
+  }
+  
+  data$i <- as.character(data[,i.name])
+  data$j <- as.character(data[,j.name])
+  data$x <- data[,x.name]
+  
+  if(!class(data$x) %in%  c("numeric", "integer"))
+    stop('x.name column must be numeric')
+  
+  peaks <- data.frame(Peak = unique(c(data$i, data$j)),
+                      index = seq_len(length(unique(c(data$i, data$j)))))
+  
+  data <- data[,c("i", "j", "x")]
+  
+  data <- rbind(data, data.frame(i=peaks$Peak, j = peaks$Peak, x = 0))
+  data <- data[!duplicated(data[,c("i", "j", "x")]),]
+  data <- data.table::as.data.table(data)
+  peaks <- data.table::as.data.table(peaks)
+  data.table::setkey(data, "i")
+  data.table::setkey(peaks, "Peak")
+  data <- data[peaks]
+  data.table::setkey(data, "j")
+  data <- data[peaks]
+  data <- as.data.frame(data)
+  
+  data <- data[,c("index", "i.index", "x")]
+  data2 <- data
+  names(data2) <- c("i.index", "index", "x")
+  
+  data <- rbind(data, data2)
+  
+  data <- data[!duplicated(data[,c("index", "i.index")]),]
+  data <- data[data$index >= data$i.index,]
+  
+  sp_mat <- Matrix::sparseMatrix(i=as.numeric(data$index),
+                                 j=as.numeric(data$i.index),
+                                 x=data$x,
+                                 symmetric = TRUE)
+  
+  colnames(sp_mat) <- peaks[order(peaks$index),]$Peak
+  row.names(sp_mat) <- peaks[order(peaks$index),]$Peak
+  return(sp_mat)
+}
+
+build_composite_gene_activity_matrix <- function(input_cds,
+                                                 site_weights,
+                                                 cicero_cons_info,
+                                                 dist_thresh=250000,
+                                                 coaccess_cutoff=0.25) {
+    accessibility_mat <- exprs(input_cds)
+    promoter_peak_table <- fData(input_cds)
+    promoter_peak_table$peak <- as.character(row.names(promoter_peak_table))
+    promoter_peak_table <-
+        promoter_peak_table[!is.na(promoter_peak_table$gene),]
+    promoter_peak_table <- promoter_peak_table[,c("peak", "gene")]
+    promoter_peak_table$gene <- as.character(promoter_peak_table$gene)
+
+    # Make site_weight matrix
+    site_names <- names(site_weights)
+    site_weights <- as(Matrix::Diagonal(x=as.numeric(site_weights)),
+                      "sparseMatrix")
+    row.names(site_weights) <- site_names
+    colnames(site_weights) <- site_names
+
+    # Find distance between cicero peaks. If distance already calculated, skip
+    if ("dist" %in% colnames(cicero_cons_info) == FALSE) {
+        Peak1_cols <- split_peak_names(cicero_cons_info$Peak1)
+        Peak2_cols <- split_peak_names(cicero_cons_info$Peak2)
+        Peak1_bp <- round((as.integer(Peak1_cols[,3]) +
+                          as.integer(Peak1_cols[,2])) / 2)
+        Peak2_bp <- round((as.integer(Peak2_cols[,3]) +
+                          as.integer(Peak2_cols[,2])) / 2)
+        cicero_cons_info$dist <- abs(Peak2_bp - Peak1_bp)
+    }
+
+    # Get connections between promoters and distal sites above coaccess
+    # threshold
+    nonneg_cons <-
+        cicero_cons_info[(cicero_cons_info$Peak1 %in%
+                          promoter_peak_table$peak |
+                          cicero_cons_info$Peak2 %in%
+                          promoter_peak_table$peak) &
+                          cicero_cons_info$coaccess >= coaccess_cutoff &
+                          cicero_cons_info$dist < dist_thresh,]
+    nonneg_cons <- nonneg_cons[,c("Peak1", "Peak2", "coaccess")]
+    nonneg_cons <- nonneg_cons[!duplicated(nonneg_cons),]
+
+    nonneg_cons$Peak1 <- as.character(nonneg_cons$Peak1)
+    nonneg_cons$Peak2 <- as.character(nonneg_cons$Peak2)
+
+    nonneg_cons <- rbind(nonneg_cons,
+                        data.frame(Peak1=unique(promoter_peak_table$peak),
+                                   Peak2=unique(promoter_peak_table$peak),
+                                   coaccess=0))
+
+    # Make square matrix of connections from distal to proximal
+    distal_connectivity_matrix <- make_sparse_matrix(nonneg_cons,
+                                                    x.name="coaccess")
+
+    # Make connectivity matrix of promoters versus all
+    promoter_conn_matrix <-
+        distal_connectivity_matrix[unique(promoter_peak_table$peak),]
+
+    # Get list of promoter and distal sites in accessibility mat
+    promoter_safe_sites <- intersect(rownames(promoter_conn_matrix),
+                                     row.names(accessibility_mat))
+    distal_safe_sites <- intersect(colnames(promoter_conn_matrix),
+                                     row.names(accessibility_mat))
+    distal_safe_sites <- setdiff(distal_safe_sites, promoter_safe_sites)
+
+    # Get accessibility info for promoters
+    promoter_access_mat_in_cicero_map <- accessibility_mat[promoter_safe_sites,, drop=FALSE]
+
+    # Get accessibility for distal sites
+    distal_activity_scores <- accessibility_mat[distal_safe_sites,, drop=FALSE]
+
+    # Scale connectivity matrix by site_weights
+    scaled_site_weights <- site_weights[distal_safe_sites,distal_safe_sites, drop=FALSE]
+    total_linked_site_weights <- promoter_conn_matrix[,distal_safe_sites, drop=FALSE] %*%
+        scaled_site_weights
+    total_linked_site_weights <- 1/Matrix::rowSums(total_linked_site_weights,
+                                                na.rm=TRUE)
+    total_linked_site_weights[is.finite(total_linked_site_weights) == FALSE] <- 0
+    total_linked_site_weights[is.na(total_linked_site_weights)] <- 0
+    total_linked_site_weights[is.nan(total_linked_site_weights)] <- 0
+    site_names <- names(total_linked_site_weights)
+    total_linked_site_weights <- Matrix::Diagonal(x=total_linked_site_weights)
+    row.names(total_linked_site_weights) <- site_names
+    colnames(total_linked_site_weights) <- site_names
+    scaled_site_weights <- total_linked_site_weights %*%
+        promoter_conn_matrix[,distal_safe_sites, drop=FALSE] %*%
+        scaled_site_weights
+    scaled_site_weights@x[scaled_site_weights@x > 1] <- 1
+
+    # Multiply distal accessibility by site weights
+    distal_activity_scores <- scaled_site_weights %*% distal_activity_scores
+
+    distal_activity_scores <-
+        distal_activity_scores[row.names(promoter_access_mat_in_cicero_map),, drop=FALSE]
+
+    # Sum distal and promoter scores
+    promoter_activity_scores <- distal_activity_scores +
+        promoter_access_mat_in_cicero_map
+
+    # Make and populate final matrix
+    promoter_gene_mat <-
+        Matrix::sparseMatrix(j=as.numeric(factor(promoter_peak_table$peak)),
+                             i=as.numeric(factor(promoter_peak_table$gene)),
+                             x=1)
+    colnames(promoter_gene_mat) = levels(factor(promoter_peak_table$peak))
+    row.names(promoter_gene_mat) = levels(factor(promoter_peak_table$gene))
+    promoter_gene_mat <- promoter_gene_mat[,row.names(promoter_activity_scores)]
+    gene_activity_scores <- promoter_gene_mat %*% promoter_activity_scores
+
+    return(gene_activity_scores)
+}
 
 # gene annotation sample for gene activity
 get_annot<-function(){
@@ -666,10 +1043,11 @@ cicero_processing<-function(object_input=hgap_hippo,prefix="hgap_hippo_5perc"){
       print("Adding CCAN links into Seurat Object and Returning.")
       links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
       Links(object_input) <- links
+      saveRDS(object_input,file=paste0(prefix,".","gene_activity.Rds"))
       return(object_input)
 }
 
-geneactivity_processing<-function(object_input=hgap_cortex,conns_input=conns,prefix="hgap_cortex_5perc"){
+geneactivity_processing<-function(object_input=hgap_hippo,conns_input=conns,prefix="hgap_hippo_5perc"){
 			anno<-get_annot()
 			atac.cds <- as.cell_data_set(object_input,assay="peaks",reduction="umap.atac")
 			#atac.cds<-newCellDataSet(cellData=object_input@assays$peaks@counts,featureData=atac.cds@featureData,phenoData=atac.cds@phenoData))
@@ -678,8 +1056,40 @@ geneactivity_processing<-function(object_input=hgap_cortex,conns_input=conns,pre
       #  lowerDetectionLimit =  0.1, expressionFamily = VGAM::negbinomial.size(), 
       #  dispFitInfo = new.env(hash = TRUE))
       atac.cds<- annotate_cds_by_site(atac.cds, anno)
-      unnorm_ga <- build_gene_activity_matrix(atac.cds, conns_input)
+      fData(atac.cds)<-cbind(fData(atac.cds),
+      		site_name=row.names(fData(atac.cds)),
+      		chr=gsub(pattern="chr",replace="",unlist(lapply(strsplit(row.names(fData(atac.cds)),"-"),"[",1))),
+      		bp1=unlist(lapply(strsplit(row.names(fData(atac.cds)),"-"),"[",2)),
+      		bp2=unlist(lapply(strsplit(row.names(fData(atac.cds)),"-"),"[",3)))
+
+			input_cds=atac.cds
+			cicero_cons_info=conns
+			site_weights=NULL
+			dist_thresh=250000
+			coaccess_cutoff=0.25
+
+			accessibility_mat <- exprs(input_cds)
+      site_weights <- Matrix::rowMeans(accessibility_mat) / Matrix::rowMeans(accessibility_mat)
+      site_weights[names(site_weights)] <- 1
+			gene_promoter_activity <- build_composite_gene_activity_matrix(input_cds,
+                                             site_weights,
+                                             cicero_cons_info,
+                                             dist_thresh=dist_thresh,
+                                             coaccess_cutoff=coaccess_cutoff)
+			unnorm_ga<-gene_promoter_activity
       saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
+      object_input[['GeneActivity']]<- CreateAssayObject(counts = unnorm_ga) 
+
+		  # normalize
+		  object_input <- NormalizeData(
+		    object = object_input,
+		    assay = 'GeneActivity',
+		    normalization.method = 'LogNormalize',
+		    scale.factor = median(object_input$nCount_GeneActivity)
+		  )
+		  saveRDS(object_input,file=paste0(prefix,".","gene_activity.Rds"))
+      return(object_input)
+  		
 }
 
 sample_label_transfer<-function(in_dat,ref_dat,transfer.anchors.,prefix="Tcell_",transfer_label="celltype"){
@@ -740,9 +1150,16 @@ coembed_data<-function(in_dat,ref_dat,transfer.anchors.,feat,prefix,assay_name){
 	return(coembed)
 }
 
+#Gene activity processing of HGAP Hippo
+	hgap_hippo<-cicero_processing(object_input=hgap_hippo,prefix="hgap_hippo_5perc")
+	conns<-readRDS("hgap_hippo_5perc_atac_cicero_conns.Rds")
+	hgap_hippo<-geneactivity_processing(object_input=hgap_hippo,conns_input=conns,prefix="hgap_hippo_5perc")
+
 #Process HGAP hippocampus and Hippo Axis integration
 	Idents(hippo_axis)<-hippo_axis$Cluster
 	markers<-FindAllMarkers(hippo_axis,only.pos=TRUE) 
+	saveRDS(markers,file="/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_axis/hippo_axis.markers.rds")
+	markers<-readRDS(file="/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_axis/hippo_axis.markers.rds")
 	features=row.names(markers)
 	hgap_hippo<-generate_transfer_anchor(in_dat=hgap_hippo,ref_dat=hippo_axis,prefix="hippo.axis",feat=features)
 	transfer_anchors=readRDS("hippo.axis.transferanchors.rds")
@@ -777,6 +1194,11 @@ coembed_data<-function(in_dat,ref_dat,transfer.anchors.,feat,prefix,assay_name){
 	plt<-DimPlot(hippo_coembed, group.by = c("orig.ident", "Putative_Celltype","Cluster"),reduction="harmonyumap_rna")
 	ggsave(plt,file="hgap_hippo.axis.coembed.umap.pdf",width=15)
 	system("slack -F hgap_hippo.axis.coembed.umap.pdf ryan_todo")
+
+
+
+
+
 
 #Process HGAP hippocampus and Hippo Lifespan integration
 	features=VariableFeatures(hippo_lifespan)

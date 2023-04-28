@@ -604,18 +604,22 @@ eaglec_SV_CNV() {
 	cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.500kb.cool
 	
 	#now balance by CNV
-	mamba activate neoloop
-	correct-cnv -H ${clone_dir}/${clone}.bsorted.500kb.cool --cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph --nproc 4 -f
+	conda activate neoloop
+	correct-cnv -H ${clone_dir}/${clone}.bsorted.500kb.cool --cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph --nproc 20 -f
 	
-	mamba activate EagleC
-	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 -O $clone --balance-type CNV --region-size 500000 --output-format full --prob-cutoff 0.9 --logFile ${clone}.eaglec.log
+	conda activate EagleC
+	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 -O ${clone_dir}/${clone}.SV.tsv --balance-type CNV --region-size 500000 --output-format full --prob-cutoff 0.8 --logFile ${clone}.eaglec.log
 }
 export -f eaglec_SV_CNV
 
 
-clones=`ls clone*pairs.gz`
+#clones=`ls clone*pairs.gz`
 
-parallel --jobs 1 eaglec_SV_detect ::: $clones &
+#parallel --jobs 1 eaglec_SV_CNV ::: $clones & #parallel doesnt like switching between environments
+eaglec_SV_CNV clone_c1.bsorted.pairs.gz
+eaglec_SV_CNV clone_c2.bsorted.pairs.gz
+eaglec_SV_CNV clone_c3.bsorted.pairs.gz
+eaglec_SV_CNV clone_c4.bsorted.pairs.gz
 
 #maybe try predictSV-single-resolution at 500kb resolution instead?
 #run correct-cnv with NeoLoopFinder toolkit for --balance-type CNV
@@ -650,8 +654,8 @@ def trans_chr_plot(mat,chr_row,chr_col,ax_row,ax_col,axes,out,zmin,zmax,cmap,xli
 	Takes in integers for ax_row and ax_col to add output plot as subplot.
 	"""
 	mat=np.log10(mat)
-	ax=sns.heatmap(ax=axes[ax_row,ax_col],data=mat,cbar=False,yticklabels=False,square=False,xticklabels=False,vmin=zmin,vmax=zmax,cmap=cmap,
-		gridspec_kw={"truncate":False})
+	ax=sns.heatmap(ax=axes[ax_row,ax_col],data=mat,cbar=False,yticklabels=False,square=False,xticklabels=False,vmin=zmin,vmax=zmax,cmap=cmap)#,
+		#gridspec_kw={"truncate":False})
 	ax.set_ylim(ylim,0)
 	ax.set_xlim(0,xlim)
 	if ax_row==0:
@@ -669,9 +673,9 @@ def all_by_all_plot(infile_name,chr_count,zmin,zmax,cmap):
 	in_name=in_file.split(sep=".")[0]
 	coolfile=in_file
 	c = cooler.Cooler(coolfile)
-	cooler.coarsen_cooler(coolfile,in_name+"_5mb.cool",factor=5,chunksize=10000000) #coarsen to 5mb
-	c = cooler.Cooler(in_name+"_5mb.cool")
-	cooler.balance_cooler(c,store=True) #balance matrix
+	#cooler.coarsen_cooler(coolfile,in_name+"_5mb.cool",factor=2,chunksize=10000000) #coarsen to 5mb
+	#c = cooler.Cooler(in_name+"_5mb.cool")
+	cooler.balance_cooler(c,store=True,rescale_marginals=True)#rescale_margines=True #balance matrix ignore_diags=10,
 	obs_mat = c.matrix()[:]
 	chr_list=list(c.bins()[:]["chrom"].unique())
 	out=''.join([in_name,'_all_by_all_log2_1Mb_obs.png'])
@@ -680,8 +684,8 @@ def all_by_all_plot(infile_name,chr_count,zmin,zmax,cmap):
 	chr_sizes=pd.DataFrame(c.bins()[:]).groupby(["chrom"])["chrom"].count()
 	chr_ratios=list(chr_sizes/chr_sizes[0])
 	fig, axes = plt.subplots(chr_count, chr_count, figsize=(40, 40),sharex=True,sharey=True,
-		gridspec_kw={'width_ratios': chr_ratios[0:chr_count],'height_ratios':chr_ratios[0:chr_count]})
-	#plt.subplots_adjust(hspace=0.1,wspace=0.1)
+			gridspec_kw={'width_ratios': chr_ratios[0:chr_count],'height_ratios':chr_ratios[0:chr_count]})
+		#plt.subplots_adjust(hspace=0.1,wspace=0.1)
 	for i in range(0,chr_count):
 		row_chrom=chr_list[i]
 		ax_row=i
@@ -732,25 +736,24 @@ def all_by_all_plot_subtract(infile_name1,infile_name2,chr_count,cmap):
 	plt.close("all")
 
 #wd 
-os.chdir('/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clones')
+os.chdir('/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts')
 
 #in files
 in_files=["clone_c1.bsorted.cool",
 	"clone_c2.bsorted.cool",
 	"clone_c3.bsorted.cool",
-	"clone_c4.bsorted.cool"]
+	"clone_c4.bsorted.cool",
+	"clone_c5.bsorted.cool",
+	"clone_c6.bsorted.cool"]
 
 #Set up settings for plot
 dpi= 300
-colormap='fall'
+colormap='Reds'
 zmin=-3
 zmax=-1
 
-all_by_all_plot(in_files[0],4,zmin,zmax,cmap="PuBu")
-all_by_all_plot(in_files[2],4,zmin,zmax,cmap="YlGn")
-
 #make all by all plot for all clones
-[all_by_all_plot(x,4,zmin,zmax) for x in in_files]
+[all_by_all_plot(x,23,zmin,zmax,cmap=colormap) for x in in_files]
 
 #colormap="coolwarm"
 #for x in in_files:
