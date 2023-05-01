@@ -171,17 +171,18 @@ https://navinlabcode.github.io/CopyKit-UserGuide/quick-start.html
 ```R
 library(copykit)
 library(BiocParallel)
+library(EnsDb.Hsapiens.v86)
 register(MulticoreParam(progressbar = T, workers = 50), default = T)
 BiocParallel::bpparam()
 setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells")
 
-tumor <- runVarbin("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells",
+tumor2 <- runVarbin("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells",
                  remove_Y = TRUE,
                  genome="hg38",
                  is_paired_end=TRUE)
 
 # Mark euploid cells if they exist
-tumor <- findAneuploidCells(tumor)
+tumor2 <- findAneuploidCells(tumor2)
 
 # Mark low-quality cells for filtering
 tumor <- findOutliers(tumor)
@@ -467,7 +468,7 @@ plotHeatmap(tumor,
             label = 'subclones',
             assay = 'integer')
 dev.off()
-saveRDS(tumor,file="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/scCNA.rds")
+saveRDS(tumor,file="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/scCNA.consensus.rds") #save categorical consensus scCNA object
 
 
 #function to define blacklist regions
@@ -544,7 +545,76 @@ for(clone in clone_list){
 #output values at matched bin resolutions for neoloop finder, then use segment-cnv and correct-cnv from neoloop finder afterwards
 #also output a blacklist of regions that don't overlap between the bins.bed and the copykit bin filtered ranges
 ```
+Make bigwig files for plotting
 
+```R
+library(copykit)
+library(GenomicRanges)
+library(parallel)
+library(rtracklayer)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+wd_out="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
+setwd(wd_out)
+tumor<-readRDS("scCNA.rds")
+
+
+#function to define blacklist regions
+make_consensus_bigwig<-function(bed_in,res,copykit_obj,clone,cores=10){
+	#bins in bin bed file that are not in the copykit filtered list are considered black list,
+	#generate per bins.bed resolution granges
+	bins_bed<-read.table(bed_in,header=F,sep="\t")
+	colnames(bins_bed)<-c("chr","start","end")
+	bins_bed<-GRanges(bins_bed)
+
+	#generate granges of copykit data
+	accepted_bed_ranges<-GRanges(copykit_obj@rowRanges) #row ranges for bedgraph
+	accepted_bed_ranges$cnv<-copykit_obj@consensus[clone] #add cnv data as metadata column
+
+	#overlap the two granges
+	hits<-findOverlaps(query=bins_bed,subject=accepted_bed_ranges,minoverlap=1,ignore.strand=T) #get list of intersecting
+	overlaps <- pintersect(bins_bed[queryHits(hits)], accepted_bed_ranges[subjectHits(hits)]) #combine intersecting sites for overlap
+	bins_bed$cnv<-mean(unlist(accepted_bed_ranges$cnv),na.rm=TRUE) #set up column meta data, set to average for blacklist bed regions
+
+	#change overlap calculation to correct for it one if bigger than the other (i think I did this right??)
+	print(paste("Calculating window CNVs from CopyKit Clone consensus for",clone,"at",res))
+	if(mean(width(accepted_bed_ranges))<mean(width(bins_bed))){ #if hic bins are bigger than copykit windows
+		percentOverlap <- width(overlaps) / width(bins_bed[queryHits(hits)])
+	} else { #if copykit windows are bigger than hic bins
+		percentOverlap <- width(overlaps) / width(accepted_bed_ranges[subjectHits(hits)])}
+	#lapply to 
+	out<-mclapply(unique(hits@from),function(x) {
+		overlaps_tmp<-hits[hits@from==x,]
+		cnv_tmp<-unlist(as.data.frame(accepted_bed_ranges[overlaps_tmp@to,])[clone])
+		weight_tmp<-percentOverlap[overlaps_tmp@to]
+		cnv_out<-weighted.mean(cnv_tmp,w=weight_tmp,na.rm=TRUE) #weighted mean score by overlap percentage
+		bins_bed[x,]$cnv<-cnv_out
+		return(bins_bed[x,])},mc.cores=cores)
+	bins_bed_cnv<-do.call("c",out)
+	bins_bed_cnv<-c(bins_bed_cnv,bins_bed[-subjectHits(findOverlaps(query=bins_bed_cnv, subject=bins_bed, minoverlap=10)),] )
+	bins_bed_cnv<-sortSeqlevels(bins_bed_cnv)
+	bins_bed_cnv <- sort(bins_bed_cnv)
+
+	out_cnv<-bins_bed_cnv
+	colnames(out_cnv@elementMetadata)<-"score"
+	start(out_cnv) <- start(out_cnv) + 1L
+	out_name<-paste0("clone_",clone,".cnv.",res,".segmented.bigWig")
+	seqinfo(out_cnv) <- seqinfo(txdb)[seqnames(seqinfo(out_cnv))]
+	export(object=out_cnv, con=out_name,format="bigWig")
+	print(paste("Wrote out",out_name))
+
+}
+
+
+BINS_BED_PATH_500kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
+clone_list<-colnames(tumor@consensus)
+
+#Make clone specific bedgraph format for HiC windows
+for(clone in clone_list){
+	make_consensus_bigwig(bed_in=BINS_BED_PATH_500kb,res="500kb",clone=clone,copykit_obj=tumor,cores=50)
+}
+
+```
 Using the copykit output of CNV data generated above (in bedgraph format).
 
 ```bash
@@ -621,14 +691,123 @@ eaglec_SV_CNV clone_c2.bsorted.pairs.gz
 eaglec_SV_CNV clone_c3.bsorted.pairs.gz
 eaglec_SV_CNV clone_c4.bsorted.pairs.gz
 
-#maybe try predictSV-single-resolution at 500kb resolution instead?
-#run correct-cnv with NeoLoopFinder toolkit for --balance-type CNV
-	#convert copykit output to bedgraph for neoloopfinder #https://github.com/XiaoTaoWang/NeoLoopFinder
-	#calculate-cnv -H SKNMC-MboI-allReps-filtered.mcool::resolutions/25000 -g hg38 -e MboI --output SKNMC_25k.CNV-profile.bedGraph
-	#segment-cnv --cnv-file SKNMC_25k.CNV-profile.bedGraph --binsize 25000 --ploidy 2 --output SKNMC_25k.CNV-seg.bedGraph --nproc 4
-	#correct-cnv -H SKNMC-MboI-allReps-filtered.mcool::resolutions/25000 --cnv-file SKNMC_25k.CNV-seg.bedGraph --nproc 4 -f
+#Rerun with neoloopfinder output 
+conda activate EagleC
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
 
-#run with --output-format NeoLoopFinder to get neoloop finder output as well?
+eaglec_SV_CNV_neoout() {
+	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
+	clone=${1::-17}
+	#now balance by CNV
+	conda activate EagleC
+	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 -O ${clone_dir}/${clone}.SV.neoloopfinder.tsv --balance-type CNV --region-size 500000 --output-format NeoLoopFinder --prob-cutoff 0.8 --logFile ${clone}.eaglec.log
+	conda activate neoloop
+	assemble-complexSVs -O ${clone_dir}/${clone} -B ${clone_dir}/${clone}.SV.neoloopfinder.tsv --balance-type CNV --protocol insitu --nproc 20 -H ${clone_dir}/${clone}.bsorted.500kb.cool --logFile ${clone}.neoloop.log --minimum-size 5000
+}
+export -f eaglec_SV_CNV_neoout
+
+eaglec_SV_CNV_neoout clone_c1.bsorted.pairs.gz
+eaglec_SV_CNV_neoout clone_c2.bsorted.pairs.gz
+eaglec_SV_CNV_neoout clone_c3.bsorted.pairs.gz
+eaglec_SV_CNV_neoout clone_c4.bsorted.pairs.gz
+
+```
+
+## Automate interSV plotting
+Take in the SV output from EagleC, filter to significant interchr translocations, make unique and plot.
+
+```bash
+mamba activate EagleC
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+cd $clone_dir
+
+eaglec_SV_interchr_plots() {
+	sv_file=$1
+	clone_dir=$(dirname $1)
+	basename_sv=$(basename $1)
+	clone=${basename_sv::-7}
+	cool_file=${clone_dir}"/"${clone}".bsorted.500kb.cool"
+	if [ ! -d ${clone_dir}"/"${clone}"_interSVs" ] 
+	then
+    echo "Directory ${clone_dir}"/"${clone}"_interSVs" DOES NOT exist. Creating.."
+    mkdir ${clone_dir}"/"${clone}"_interSVs"
+	fi	
+	awk 'NR > 1 {if($5<0.05 || $6<0.05) print $1,$3}' $sv_file | while read line
+	do
+	chrA=$(echo $line | awk '{print $1}');
+	chrB=$(echo $line | awk '{print $2}');
+	plot-interSVs --cool-uri $cool_file \
+	                --full-sv-file $sv_file \
+	                -C $chrA $chrB \
+	                --output-figure-name ${clone_dir}/${clone}_interSVs/${clone}.interSV.${chrA}_${chrB}.png \
+	                --balance-type ICE --dpi 800
+	echo "Completed file ${clone_dir}/${clone}_interSVs/${clone}.interSV.${chrA}_${chrB}.png"
+	done
+}
+
+export -f eaglec_SV_interchr_plots
+
+eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c1.SV.tsv
+eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c2.SV.tsv
+eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c3.SV.tsv
+eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c4.SV.tsv
+
+```
+
+## Automate intraSV plotting
+
+TODO: Update the bigwig plot to log2 FC of CNVs
+
+```bash
+mamba activate EagleC
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
+chrom_sizes="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/hg38.chrom.sizes"
+cd $clone_dir
+
+eaglec_SV_intrachr_plots() {
+	sv_file=$1
+	clone_dir=$(dirname $sv_file)
+	basename_sv=$(basename $sv_file)
+	clone=${basename_sv::-7}
+	cool_file=${clone_dir}"/"${clone}".bsorted.500kb.cool"
+	bedgraph_cnv=${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph
+
+	if [ ! -f ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bigwig ] 
+	then
+	    echo "File ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph DOES NOT exist. Creating from bedgraph..."
+	    sort -k1,1 -k2,2n $bedgraph_cnv > ${bedgraph_cnv}.sorted.bedgraph
+	    bedGraphToBigWig ${bedgraph_cnv}.sorted.bedgraph $chrom_sizes ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bigwig
+	fi	
+	if [ ! -d ${clone_dir}"/"${clone}"_intraSVs" ] 
+	then
+	  echo "Directory ${clone_dir}"/"${clone}"_intraSVs" DOES NOT exist. Creating.."
+	  mkdir ${clone_dir}"/"${clone}"_intraSVs"
+	fi	
+
+	cat $chrom_sizes | while read line
+	do
+		chr_in=$(echo $line | awk '{print $1}');
+		end=$(echo $line | awk '{print $2}');
+
+		plot-intraSVs --cool-uri $cool_file \
+		                --full-sv-file $sv_file \
+		                --region ${chr_in}:1-${end} --output-figure-name ${clone_dir}/${clone}_intraSVs/${clone}.intraSV.${chr_in}.png \
+		                --cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bigwig \
+		                --coordinates-to-display 1 ${end} \
+		                --cnv-max-value 6 \
+		                --balance-type CNV --dpi 800 
+	echo "Completed file ${clone_dir}/${clone}_intraSVs/${clone}.intraSV.${chr_in}.png"
+	done
+	
+}
+export -f eaglec_SV_intrachr_plots
+
+eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c1.SV.tsv
+eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c2.SV.tsv
+eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c3.SV.tsv
+eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c4.SV.tsv
 
 ```
 
@@ -762,22 +941,43 @@ zmax=-1
 
 #
 
-#plot difference of one matrix from another
-#get expected - observed?
-#expected = cooltools.expected_cis(clr, view_df=hg38_arms, nproc=2, chunksize=1_000_000)
+```
+
+### Use NeoLoopFinder to annotate complex SVs
+```bash
+conda activate neoloop
+
+assemble-complexSVs -O ${clone_dir}/${clone} -B ${clone_dir}/${clone}.SV.neoloopfinder.tsv --balance-type CNV --protocol insitu --nproc 20 -H ${clone_dir}/${clone}.bsorted.500kb.cool 
+
+
+
+eaglec_SV_CNV() {
+	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
+	clone=${1::-17}
+	#balance through ICE first
+	
+	#now balance by CNV
+	conda activate neoloop
+
+assemble-complexSVs -O ${clone_dir}/${clone} -B ${clone_dir}/${clone}.SV.neoloopfinder.tsv --balance-type CNV --protocol insitu --nproc 20 -H ${clone_dir}/${clone}.bsorted.500kb.cool 
+
+}
+export -f eaglec_SV_CNV
+
 
 
 ```
-
-<!--
-Generate eigengenes for compartments across chromosomes
+### Generate eigengenes for compartments across chromosomes
 ```bash
-cooler_eigen() {
-cooler balance -p 10 -f -c 10000 $1
+#note this requires the cooler matrix be balanced and normalized already
 
+cooler_eigen() {
 cooltools eigs-cis -o outputs/test.eigs.100000 --view data/view_hg38.tsv --phasing-track outputs/gc.100000.tsv --n-eigs 1 $cool_file::resolutions/100000
 }
 export -f cooler_balance
+
+
 ```
 -->
 

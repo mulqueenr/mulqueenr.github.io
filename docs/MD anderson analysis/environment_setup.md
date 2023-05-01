@@ -171,6 +171,15 @@ predictSV --hic-5k SKNAS-MboI-allReps-filtered.mcool::/resolutions/5000 \
             --prob-cutoff-5k 0.8 --prob-cutoff-10k 0.8 --prob-cutoff-50k 0.99999
 ```
 
+Installing bedGraphtoBigWig in EagleC environment (for plotting)
+
+```bash
+cd ~/tools
+wget http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v369/bedGraphToBigWig
+chmod a+x bedGraphToBigWig
+#add to path
+```
+
 Installing NeoloopFinder
 https://github.com/XiaoTaoWang/NeoLoopFinder
 
