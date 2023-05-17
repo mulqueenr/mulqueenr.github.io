@@ -1228,13 +1228,12 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
     markers<-c("CTCF","EMX1","EMX2","LHX2","PAX6","RFX4","SOX2",
                "TBR1","EOMES","NEUROD1","NEUROD2","NEUROG1","TGIF1","TGIF2",
                "DLX1","DLX2","DLX6","GSX2","LHX6",
-               "POU3F3","POU3F2","TFAP4")
+               "POU3F3","POU3F2","TFAP4","SOX4","TCF7","GSX1","NFIX","BHLHE23","MEF2A")
 
 
     #Plot motifs alongside chromvar plot
     library(ggplot2)
     library(patchwork)
-
 
     motif_order<-names(orgo_cirm43@assays$peaks@motifs@motif.names[match(markers,unlist(orgo_cirm43@assays$peaks@motifs@motif.names),nomatch=0)])
     DefaultAssay(orgo_cirm43)<-"peaks"
@@ -1292,7 +1291,7 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
     markers<-c("SOX2","PAX6","HES1","HOPX","VIM","GFAP","TNC","GPX3",
                "NEUROG1","SSTR2","EOMES","PPP1R17","NEUROD4",
                "SLC17A7","NEUROD6","SATB2","TBR1","SLA",
-               "DLX2","DLX1","LHX6","GAD1")
+               "DLX2","DLX1","LHX6","GAD1","SOX4","TCF7","GSX1","NFIX","BHLHE23","MEF2A")
     dat_ga<-orgo_cirm43@assays$GeneActivity@data
     dat_ga<-data.frame(t(dat_ga))
     dat_ga$cellID<-row.names(dat_ga)
@@ -1320,7 +1319,7 @@ saveRDS(ziffra,"ziffra.SeuratObject.Rds")
     colfun=colorRamp2(quantile(unlist(dat_ga), probs=seq(0.1,0.9,0.1)),magma(length(seq(0.1,0.9,0.1))))
 
     plt<-Heatmap(dat_ga,
-                #row_order=match(markers,row.names(dat_ga))[!is.na(match(markers,row.names(dat_ga)))],
+                row_order=match(markers,row.names(dat_ga))[!is.na(match(markers,row.names(dat_ga)))],
                 column_order=clus_order,
                 col=colfun)
                 #column_split=column_split)

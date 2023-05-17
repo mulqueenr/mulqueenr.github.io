@@ -17,13 +17,13 @@ category: Adey Lab
 |------ | ------ | ------ | -------- | ----------- | 
 |MS Data set| Portmortem Brain | snRNA | 17799 | https://cells.ucsc.edu/?ds=oligodendrocyte-ms |
 | GWAS ATAC comparison | Postmortem 39 healthy| scATAC | 70631 | https://cells.ucsc.edu/?ds=neuro-degen-atac+peaks |
-| Allen Brain Map | Postmortem brain (MTG, ACC, V1C, M1C, S1C) |  snATAC (SMART-seq) | 49495 | https://portal.brain-map.org/atlases-and-data/rnaseq/human-multiple-cortical-areas-smart-seq |
+| Allen Brain Map | Postmortem brain (MTG, ACC, V1C, M1C, S1C) |  snRNA (SMART-seq) | 49495 | https://portal.brain-map.org/atlases-and-data/rnaseq/human-multiple-cortical-areas-smart-seq |
 | Human Hippo Axis | Hippocampus | snRNA | 129,908 | https://cells.ucsc.edu/?ds=human-hippo-axis |
 | Human Hippocampus Lifespan | Hippocampus | snRNA| 224,464 | https://cells.ucsc.edu/?bp=brain&org=Human+(H.+sapiens)&ds=hippo-lifespan |
 
 # Plan for public data set integrations: 
 * Cortex: 
-** Allen Brain Map: focus on M1C (Primary Motor Cortex) (RNA) #Done
+** Allen Brain Map: focus on M1C (Primary Motor Cortex) (RNA) #Done https://knowledge.brain-map.org/data/HPAW0I2JNX5P35OPOPL/summary
 ** GWAS ATAC Comparison: Focus on Middle Frontal Gyrus (ATAC) #Done
 
 * Hippocampus:
@@ -50,7 +50,7 @@ vdb-config --prefetch-to-cwd
 For RNA we can match gene names for integration. This means expression matrices and metadata is a sufficient starting point.
 ## Cortex RNA
 
-### Allen Brain Span M1C Cortex (RNA)
+### Allen Brain Span M1 Cortex (RNA)
 https://portal.brain-map.org/atlases-and-data/rnaseq/human-m1-10x
 <!-- Done -->
 ```bash
@@ -64,6 +64,7 @@ wget https://idk-etl-prod-download-bucket.s3.amazonaws.com/aibs_human_m1_10x/tri
 wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/0c/0c/0c0c882d-1c31-40a9-8039-3bf2706a77cd/sample-exp_component_mapping_human_10x_apr2020.zip
 wget https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/64/6d/646d3592-aff6-4364-8c3f-9e64b902638a/human_dendrogram.rds
 ```
+
 ### Process Data into Seurat Object
 Following https://satijalab.org/seurat/v3.2/pbmc3k_tutorial.html
 
@@ -266,7 +267,7 @@ dat<-celltype_umap_plot(in_dat=dat,color_by="Putative_Celltype",outname="hippoca
 
 ```
 
-
+<!--
 Subset the data to 5% of cells per cell type. This is going to greatly increase the speed for gene activity calculation.
 
 ```R
@@ -345,8 +346,10 @@ $tabix -p bed hippocampus.5perc.q10.filt.bam.fragments.sorted2.tsv.gz &
 #this is to remove header from concatenation
 ```
 
+-->
 
-### ATAC-RNA Integration of Cortex
+
+### ATAC-RNA Integration of Hippocampus and Cortex
 ```R
 library(Seurat)
 library(Signac) 
@@ -359,8 +362,10 @@ library(monocle3,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #using 
 library(cicero,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/")
 library(SeuratWrappers)
 library(rtracklayer)
+library(circlize)
+library(ComplexHeatmap)
+library(dplyr)
 setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
-
 
 
 split_peak_names <- function(inp) {
@@ -565,462 +570,14 @@ get_annot<-function(){
 
 
 #Cicero processing function  
-cicero_processing<-function(object_input=hgap_cortex,prefix="hgap_cortex_5perc"){
+cicero_processing<-function(object_input=hgap_hippo,prefix="hgap_hippo_5perc",k=500){
       #Generate CDS format from Seurat object
       #atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap.atac")
+      object_input<-subset(object_input,features=row.names(object_input@assays$peaks@counts)[which(rowSums(object_input@assays$peaks@counts)>=1000)])
       atac.cds <- as.cell_data_set(object_input,assay="peaks",reduction="umap.atac")
       # convert to CellDataSet format and make the cicero object
       print("Making Cicero format CDS file")
-      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = object_input@reductions$umap.atac@cell.embeddings)
-
-      # convert to CellDataSet format and make the cicero object
-      print("Making Cicero format CDS file")
-      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = as.data.frame(object_input@reductions$umap.atac@cell.embeddings)) #aggregate cells for cicero analysis
-      saveRDS(atac.cicero,paste(prefix,"atac_cicero_cds.Rds",sep="_"))
-      atac.cicero<-readRDS(paste(prefix,"atac_cicero_cds.Rds",sep="_"))
-
-      genome<-SeqinfoForUCSCGenome("hg38")
-      genome.df<-data.frame("chr"=seqnames(genome),"length"=seqlengths(genome))
-      genome.df<-genome.df[genome.df$chr %in% paste0("chr",seq(1:22)),]
-
-      print("Running Cicero to generate connections.")
-      conns <- run_cicero(atac.cicero, genomic_coords = genome.df) # run cicero
-      saveRDS(conns,paste(prefix,"atac_cicero_conns.Rds",sep="_"))
-      conns<-readRDS(paste(prefix,"atac_cicero_conns.Rds",sep="_"))
-
-      print("Generating CCANs")
-      ccans <- generate_ccans(conns) # generate ccans
-      saveRDS(ccans,paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
-      ccans<-readRDS(paste(prefix,"atac_cicero_ccans.Rds",sep="_"))
-
-      print("Adding CCAN links into Seurat Object and Returning.")
-      links <- ConnectionsToLinks(conns = conns, ccans = ccans) #Add connections back to Seurat object as links
-      Links(object_input) <- links
-      saveRDS(object_input,file=paste0(prefix,".","gene_activity.Rds"))
-      return(object_input)
-}
-
-geneactivity_processing<-function(object_input=hgap_cortex,conns_input=conns,prefix="hgap_cortex_5perc"){
-			anno<-get_annot()
-			atac.cds <- as.cell_data_set(object_input,assay="peaks",reduction="umap.atac")
-			#atac.cds<-newCellDataSet(cellData=object_input@assays$peaks@counts,featureData=atac.cds@featureData,phenoData=atac.cds@phenoData))
-			#cds <- new("CellDataSet", assayData = assayDataNew("environment", 
-      #  exprs = object_input@assays$peaks@counts), phenoData = atac.cds@phenoData, featureData = atac.cds@featureData, 
-      #  lowerDetectionLimit =  0.1, expressionFamily = VGAM::negbinomial.size(), 
-      #  dispFitInfo = new.env(hash = TRUE))
-      atac.cds<- annotate_cds_by_site(atac.cds, anno)
-      fData(atac.cds)<-cbind(fData(atac.cds),
-      		site_name=row.names(fData(atac.cds)),
-      		chr=gsub(pattern="chr",replace="",unlist(lapply(strsplit(row.names(fData(atac.cds)),"-"),"[",1))),
-      		bp1=unlist(lapply(strsplit(row.names(fData(atac.cds)),"-"),"[",2)),
-      		bp2=unlist(lapply(strsplit(row.names(fData(atac.cds)),"-"),"[",3)))
-
-			input_cds=atac.cds
-			cicero_cons_info=conns
-			site_weights=NULL
-			dist_thresh=250000
-			coaccess_cutoff=0.25
-
-			accessibility_mat <- exprs(input_cds)
-      site_weights <- Matrix::rowMeans(accessibility_mat) / Matrix::rowMeans(accessibility_mat)
-      site_weights[names(site_weights)] <- 1
-			gene_promoter_activity <- build_composite_gene_activity_matrix(input_cds,
-                                             site_weights,
-                                             cicero_cons_info,
-                                             dist_thresh=dist_thresh,
-                                             coaccess_cutoff=coaccess_cutoff)
-			unnorm_ga<-gene_promoter_activity
-      saveRDS(unnorm_ga,paste(prefix,"unnorm_GA.Rds",sep="."))
-      object_input[['GeneActivity']]<- CreateAssayObject(counts = unnorm_ga) 
-
-		  # normalize
-		  object_input <- NormalizeData(
-		    object = object_input,
-		    assay = 'GeneActivity',
-		    normalization.method = 'LogNormalize',
-		    scale.factor = median(object_input$nCount_GeneActivity)
-		  )
-		  saveRDS(object_input,file=paste0(prefix,".","gene_activity.Rds"))
-      return(object_input)
-  		
-}
-
-generate_transfer_anchor<-function(in_dat,ref_dat,feat,prefix){
-	#generate LSI matrix for downstream normalization
-	#downsample cells to 5% per identity
-
-	#in_dat <- RunTFIDF(in_dat)
-	#in_dat <- FindTopFeatures(in_dat, min.cutoff = 'q0')
-	#in_dat <- RunSVD(in_dat)
-
-	#generate gene activity for just variable genes, add to object and normalize
-	#ga_mat<-GeneActivity(in_dat, features = feat)
-	#in_dat[['RNA']] <- CreateAssayObject(counts = ga_mat)
-	#in_dat<- NormalizeData(
-	#  object = in_dat,
-	#  assay = 'RNA',
-	#  normalization.method = 'LogNormalize',
-	#  scale.factor = median(in_dat$nCount_RNA)
-	#)
-
-	DefaultAssay(in_dat)<-"GeneActivity"
-	transfer.anchors <- FindTransferAnchors(
-	  reference = ref_dat,
-	  query = in_dat,
-	  reduction = 'cca'
-	)
-	saveRDS(transfer.anchors,paste0(prefix,".transferanchors.rds"))
-	saveRDS(in_dat,file=paste0(prefix,".SeuratObject.Rds"))
-	return(in_dat)
-}
-
-sample_label_transfer<-function(in_dat,ref_dat,transfer.anchors.,prefix="Tcell_",transfer_label="celltype"){
-  predictions<- TransferData(
-    anchorset = transfer.anchors.,
-    refdata = ref_dat@meta.data[,transfer_label],
-    weight.reduction = in_dat[["lsi"]],
-    dims=2:30
-  )
-  colnames(predictions)<-paste0(prefix,colnames(predictions))
-  in_dat<-AddMetaData(in_dat,metadata=predictions)
-  return(in_dat)
-}
-
-
-coembed_data<-function(in_dat,ref_dat,transfer.anchors.,feat,prefix,assay_name){
-	imputation<- TransferData(
-	  anchorset = transfer.anchors.,
-	  refdata = GetAssayData(ref_dat, assay = "RNA", slot = "data")[feat,],
-	  weight.reduction = in_dat[["lsi"]],
-	  dims=1:30)
-
-	in_dat[[assay_name]]<-imputation
-	coembed<-merge(x=ref_dat,y=in_dat)
-	coembed <- ScaleData(coembed, features = feat, do.scale = FALSE)
-	coembed <- RunPCA(coembed, features = feat, verbose = FALSE)
-	coembed <- RunUMAP(coembed, dims = 1:30)
-	saveRDS(in_dat,file=paste0(prefix,".SeuratObject.Rds"))
-	return(coembed)
-}
-
-
-#Public RNA data
-cortex_brainspan<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
-
-#Ours
-hgap_cortex<-readRDS("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/cortex.SeuratObject.Rds")
-
-#subset to 5perc per celltype list
-cells_to_keep=read.table(file="cortex.5perc.cellIDs.tsv",sep="\t",header=F)
-hgap_cortex=subset(hgap_cortex,cells=cells_to_keep$V1)
-
-#Updated fragments files that are just for subset hgap_cortex
-Fragments(hgap_cortex)<-NULL
-fragments <- CreateFragmentObject(
-  path = "/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/cortex.5perc.q10.filt.bam.fragments.sorted2.tsv.gz",
-  cells = cells_to_keep$V1,
-  validate.fragments = FALSE
-)
-Fragments(hgap_cortex) <- fragments
-#(the maga directory part was about glia, not political affiliation)
-
-#Gene activity processing of HGAP Hippo
-	hgap_cortex<-cicero_processing(object_input=hgap_cortex,prefix="hgap_cortex_5perc")
-	conns<-readRDS("hgap_cortex_5perc_atac_cicero_conns.Rds")
-	hgap_cortex<-geneactivity_processing(object_input=hgap_cortex,conns_input=conns,prefix="hgap_cortex_5perc")
-	hgap_cortex<-readRDS("hgap_cortex_5perc.gene_activity.Rds")
-
-#Process HGAP cortex and brainspan integration
-	#features=FindVariableFeatures(cortex_brainspan,selection.method="vst",assay="RNA",nfeatures=5000) #
-	Idents(cortex_brainspan)<-cortex_brainspan$subclass_label
-	markers<-FindAllMarkers(cortex_brainspan,only.pos=TRUE) 
-	saveRDS(markers,file="/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.markers.rds")
-	markers<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.markers.rds")
-	features<-row.names(markers) 
-	hgap_cortex<-generate_transfer_anchor(in_dat=hgap_cortex,ref_dat=cortex_brainspan,prefix="cortex.5perc",feat=features)
-	transfer_anchors=readRDS("cortex.5perc.transferanchors.rds")
-
-
-	##########RUNNING##############
-	hgap_cortex<-sample_label_transfer(in_dat=hgap_cortex,ref_dat=cortex_brainspan,prefix="brainspan_class_",transfer.anchors.=transfer_anchors,transfer_label="class_label")
-	hgap_cortex<-sample_label_transfer(in_dat=hgap_cortex,ref_dat=cortex_brainspan,prefix="brainspan_subclass_",transfer.anchors.=transfer_anchors,transfer_label="subclass_label")
-	saveRDS(hgap_cortex,file="cortex.RNAintegration.SeuratObject.Rds")
-
-#Plot Label Transfer
-	plt1<-DimPlot(hgap_cortex,group.by="Putative_Celltype")#,reduction="umap.atac")
-	plt2<-DimPlot(hgap_cortex,group.by="brainspan_class_predicted.id")
-	plt3<-DimPlot(hgap_cortex,group.by="brainspan_subclass_predicted.id")
-	plt<-plt1/plt2/plt3
-	ggsave(plt,file="hgap_cortex.predicted.brainspan.umap.png")
-	system("slack -F hgap_cortex.predicted.brainspan.umap.png ryan_todo")
-
-#Generate Confusion Matrix
-	conf_dat<-as.data.frame.matrix(table(hgap_cortex$Putative_Celltype,hgap_cortex$brainspan_subclass_predicted.id))
-	conf_dat<-do.call("rbind",lapply(1:nrow(conf_dat),function(x) conf_dat[x,]/sum(conf_dat[x,])))
-	colfun<-colorRamp2(c(0, 0.5, 1), c("white","grey","black"))
-	pdf("hgap_cortex.predicted.brainspan.confmat.pdf")
-	Heatmap(conf_dat,col=colfun)
-	dev.off()
-	system("slack -F hgap_cortex.predicted.brainspan.confmat.pdf ryan_todo")
-	##########RUNNING##############
-
-
-
-#Generate coembedding
-	cortex_coembed<-coembed_data(in_dat=hgap_cortex,ref_dat=cortex_brainspan,transfer.anchors.=transfer_anchors,feat=features,prefix="cortex.5perc",assay_name="brainspan_imputation")
-	cortex_coembed<-RunHarmony(cortex_coembed,group.by.vars="orig.ident",reduction.save="harmony_rna",assay.use="RNA",reduction="pca",project.dim=F)
-	cortex_coembed<-RunUMAP(cortex_coembed,reduction.name="harmonyumap_rna",reduction = "harmony_rna",dims=1:dim(cortex_coembed@reductions$harmony_rna)[2]) 
-	plt<-DimPlot(cortex_coembed, group.by = c("orig.ident", "class_label","subclass_label"),reduction="harmonyumap_rna")
-	ggsave(plt,file="hgap_cortex.brainspan.coembed.umap.pdf",width=15)
-	system("slack -F hgap_cortex.brainspan.coembed.umap.pdf ryan_todo")
-
-
-```
-
-### Integration of Hippocampus
-```R
-library(Seurat)
-library(Signac) 
-library(ggplot2)
-library(EnsDb.Hsapiens.v86)
-library(GenomeInfoDb)
-set.seed(1234)
-library(Matrix)
-library(monocle3,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #using old install of monocle, just need for as.cell_data_set conversion
-library(cicero,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/")
-library(SeuratWrappers)
-library(rtracklayer)
-setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
-
-#Public RNA data
-hippo_axis<-readRDS("/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_axis/hippo_axis.rds")
-hippo_lifespan<-readRDS("/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_lifespan/hippo_lifespan.rds")
-
-#Ours
-hgap_hippo<-readRDS("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/hippocampus.SeuratObject.Rds")
-
-#subset to 5perc per celltype list
-cells_to_keep=read.table(file="hippocampus.5perc.cellIDs.tsv",sep="\t",header=F)
-hgap_hippo=subset(hgap_hippo,cells=cells_to_keep$V1)
-
-#Updated fragments files that are just for subset hgap_cortex
-Fragments(hgap_hippo)<-NULL
-fragments <- CreateFragmentObject(
-  path = "/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/hippocampus.5perc.q10.filt.bam.fragments.sorted2.tsv.gz",
-  cells = cells_to_keep$V1,
-  validate.fragments = FALSE
-)
-Fragments(hgap_hippo) <- fragments
-
-split_peak_names <- function(inp) {
-  out <- stringr::str_split_fixed(stringi::stri_reverse(inp), 
-                                  ":|-|_", 3)
-  out[,1] <- stringi::stri_reverse(out[,1])
-  out[,2] <- stringi::stri_reverse(out[,2])
-  out[,3] <- stringi::stri_reverse(out[,3])
-  out[,c(3,2,1), drop=FALSE]
-}
-
-make_sparse_matrix <- function(data,
-                               i.name = "Peak1",
-                               j.name = "Peak2",
-                               x.name = "value") {
-  if(!i.name %in% names(data) |
-     !j.name %in% names(data) |
-     !x.name %in% names(data)) {
-    stop('i.name, j.name, and x.name must be columns in data')
-  }
-  
-  data$i <- as.character(data[,i.name])
-  data$j <- as.character(data[,j.name])
-  data$x <- data[,x.name]
-  
-  if(!class(data$x) %in%  c("numeric", "integer"))
-    stop('x.name column must be numeric')
-  
-  peaks <- data.frame(Peak = unique(c(data$i, data$j)),
-                      index = seq_len(length(unique(c(data$i, data$j)))))
-  
-  data <- data[,c("i", "j", "x")]
-  
-  data <- rbind(data, data.frame(i=peaks$Peak, j = peaks$Peak, x = 0))
-  data <- data[!duplicated(data[,c("i", "j", "x")]),]
-  data <- data.table::as.data.table(data)
-  peaks <- data.table::as.data.table(peaks)
-  data.table::setkey(data, "i")
-  data.table::setkey(peaks, "Peak")
-  data <- data[peaks]
-  data.table::setkey(data, "j")
-  data <- data[peaks]
-  data <- as.data.frame(data)
-  
-  data <- data[,c("index", "i.index", "x")]
-  data2 <- data
-  names(data2) <- c("i.index", "index", "x")
-  
-  data <- rbind(data, data2)
-  
-  data <- data[!duplicated(data[,c("index", "i.index")]),]
-  data <- data[data$index >= data$i.index,]
-  
-  sp_mat <- Matrix::sparseMatrix(i=as.numeric(data$index),
-                                 j=as.numeric(data$i.index),
-                                 x=data$x,
-                                 symmetric = TRUE)
-  
-  colnames(sp_mat) <- peaks[order(peaks$index),]$Peak
-  row.names(sp_mat) <- peaks[order(peaks$index),]$Peak
-  return(sp_mat)
-}
-
-build_composite_gene_activity_matrix <- function(input_cds,
-                                                 site_weights,
-                                                 cicero_cons_info,
-                                                 dist_thresh=250000,
-                                                 coaccess_cutoff=0.25) {
-    accessibility_mat <- exprs(input_cds)
-    promoter_peak_table <- fData(input_cds)
-    promoter_peak_table$peak <- as.character(row.names(promoter_peak_table))
-    promoter_peak_table <-
-        promoter_peak_table[!is.na(promoter_peak_table$gene),]
-    promoter_peak_table <- promoter_peak_table[,c("peak", "gene")]
-    promoter_peak_table$gene <- as.character(promoter_peak_table$gene)
-
-    # Make site_weight matrix
-    site_names <- names(site_weights)
-    site_weights <- as(Matrix::Diagonal(x=as.numeric(site_weights)),
-                      "sparseMatrix")
-    row.names(site_weights) <- site_names
-    colnames(site_weights) <- site_names
-
-    # Find distance between cicero peaks. If distance already calculated, skip
-    if ("dist" %in% colnames(cicero_cons_info) == FALSE) {
-        Peak1_cols <- split_peak_names(cicero_cons_info$Peak1)
-        Peak2_cols <- split_peak_names(cicero_cons_info$Peak2)
-        Peak1_bp <- round((as.integer(Peak1_cols[,3]) +
-                          as.integer(Peak1_cols[,2])) / 2)
-        Peak2_bp <- round((as.integer(Peak2_cols[,3]) +
-                          as.integer(Peak2_cols[,2])) / 2)
-        cicero_cons_info$dist <- abs(Peak2_bp - Peak1_bp)
-    }
-
-    # Get connections between promoters and distal sites above coaccess
-    # threshold
-    nonneg_cons <-
-        cicero_cons_info[(cicero_cons_info$Peak1 %in%
-                          promoter_peak_table$peak |
-                          cicero_cons_info$Peak2 %in%
-                          promoter_peak_table$peak) &
-                          cicero_cons_info$coaccess >= coaccess_cutoff &
-                          cicero_cons_info$dist < dist_thresh,]
-    nonneg_cons <- nonneg_cons[,c("Peak1", "Peak2", "coaccess")]
-    nonneg_cons <- nonneg_cons[!duplicated(nonneg_cons),]
-
-    nonneg_cons$Peak1 <- as.character(nonneg_cons$Peak1)
-    nonneg_cons$Peak2 <- as.character(nonneg_cons$Peak2)
-
-    nonneg_cons <- rbind(nonneg_cons,
-                        data.frame(Peak1=unique(promoter_peak_table$peak),
-                                   Peak2=unique(promoter_peak_table$peak),
-                                   coaccess=0))
-
-    # Make square matrix of connections from distal to proximal
-    distal_connectivity_matrix <- make_sparse_matrix(nonneg_cons,
-                                                    x.name="coaccess")
-
-    # Make connectivity matrix of promoters versus all
-    promoter_conn_matrix <-
-        distal_connectivity_matrix[unique(promoter_peak_table$peak),]
-
-    # Get list of promoter and distal sites in accessibility mat
-    promoter_safe_sites <- intersect(rownames(promoter_conn_matrix),
-                                     row.names(accessibility_mat))
-    distal_safe_sites <- intersect(colnames(promoter_conn_matrix),
-                                     row.names(accessibility_mat))
-    distal_safe_sites <- setdiff(distal_safe_sites, promoter_safe_sites)
-
-    # Get accessibility info for promoters
-    promoter_access_mat_in_cicero_map <- accessibility_mat[promoter_safe_sites,, drop=FALSE]
-
-    # Get accessibility for distal sites
-    distal_activity_scores <- accessibility_mat[distal_safe_sites,, drop=FALSE]
-
-    # Scale connectivity matrix by site_weights
-    scaled_site_weights <- site_weights[distal_safe_sites,distal_safe_sites, drop=FALSE]
-    total_linked_site_weights <- promoter_conn_matrix[,distal_safe_sites, drop=FALSE] %*%
-        scaled_site_weights
-    total_linked_site_weights <- 1/Matrix::rowSums(total_linked_site_weights,
-                                                na.rm=TRUE)
-    total_linked_site_weights[is.finite(total_linked_site_weights) == FALSE] <- 0
-    total_linked_site_weights[is.na(total_linked_site_weights)] <- 0
-    total_linked_site_weights[is.nan(total_linked_site_weights)] <- 0
-    site_names <- names(total_linked_site_weights)
-    total_linked_site_weights <- Matrix::Diagonal(x=total_linked_site_weights)
-    row.names(total_linked_site_weights) <- site_names
-    colnames(total_linked_site_weights) <- site_names
-    scaled_site_weights <- total_linked_site_weights %*%
-        promoter_conn_matrix[,distal_safe_sites, drop=FALSE] %*%
-        scaled_site_weights
-    scaled_site_weights@x[scaled_site_weights@x > 1] <- 1
-
-    # Multiply distal accessibility by site weights
-    distal_activity_scores <- scaled_site_weights %*% distal_activity_scores
-
-    distal_activity_scores <-
-        distal_activity_scores[row.names(promoter_access_mat_in_cicero_map),, drop=FALSE]
-
-    # Sum distal and promoter scores
-    promoter_activity_scores <- distal_activity_scores +
-        promoter_access_mat_in_cicero_map
-
-    # Make and populate final matrix
-    promoter_gene_mat <-
-        Matrix::sparseMatrix(j=as.numeric(factor(promoter_peak_table$peak)),
-                             i=as.numeric(factor(promoter_peak_table$gene)),
-                             x=1)
-    colnames(promoter_gene_mat) = levels(factor(promoter_peak_table$peak))
-    row.names(promoter_gene_mat) = levels(factor(promoter_peak_table$gene))
-    promoter_gene_mat <- promoter_gene_mat[,row.names(promoter_activity_scores)]
-    gene_activity_scores <- promoter_gene_mat %*% promoter_activity_scores
-
-    return(gene_activity_scores)
-}
-
-# gene annotation sample for gene activity
-get_annot<-function(){
-	hg38_annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
-
-	pos <-as.data.frame(hg38_annotations,row.names=NULL)
-	pos$chromosome<-paste0("chr",pos$seqnames)
-	pos$gene<-pos$gene_id
-	pos <- subset(pos, strand == "+")
-	pos <- pos[order(pos$start),] 
-	pos <- pos[!duplicated(pos$tx_id),] # remove all but the first exons per transcript
-	pos$end <- pos$start + 1 # make a 1 base pair marker of the TSS
-
-	neg <-as.data.frame(hg38_annotations,row.names=NULL)
-	neg$chromosome<-paste0("chr",neg$seqnames)
-	neg$gene<-neg$gene_id
-	neg <- subset(neg, strand == "-")
-	neg <- neg[order(neg$start,decreasing=TRUE),] 
-	neg <- neg[!duplicated(neg$tx_id),] # remove all but the first exons per transcript
-	neg$end <- neg$end + 1 # make a 1 base pair marker of the TSS
-
-	gene_annotation<- rbind(pos, neg)
-	gene_annotation <- gene_annotation[,c("chromosome","start","end","gene_name")] # Make a subset of the TSS annotation columns containing just the coordinates and the gene name
-	names(gene_annotation)[4] <- "gene" # Rename the gene symbol column to "gene"
-	return(gene_annotation)
-	}
-
-
-#Cicero processing function  
-cicero_processing<-function(object_input=hgap_hippo,prefix="hgap_hippo_5perc"){
-      #Generate CDS format from Seurat object
-      #atac.cds <- as.CellDataSet(object_input,assay="peaks",reduction="umap.atac")
-      atac.cds <- as.cell_data_set(object_input,assay="peaks",reduction="umap.atac")
-      # convert to CellDataSet format and make the cicero object
-      print("Making Cicero format CDS file")
-      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = object_input@reductions$umap.atac@cell.embeddings,k=500)
+      atac.cicero <- make_cicero_cds(atac.cds, reduced_coordinates = object_input@reductions$umap.atac@cell.embeddings,k=k)
 
       # convert to CellDataSet format and make the cicero object
       print("Making Cicero format CDS file")
@@ -1047,6 +604,7 @@ cicero_processing<-function(object_input=hgap_hippo,prefix="hgap_hippo_5perc"){
       saveRDS(object_input,file=paste0(prefix,".","gene_activity.Rds"))
       return(object_input)
 }
+
 geneactivity_processing<-function(object_input=hgap_hippo,conns_input=conns,prefix="hgap_hippo_5perc"){
 			anno<-get_annot()
 			atac.cds <- as.cell_data_set(object_input,assay="peaks",reduction="umap.atac")
@@ -1092,7 +650,6 @@ geneactivity_processing<-function(object_input=hgap_hippo,conns_input=conns,pref
   		
 }
 
-
 generate_transfer_anchor<-function(in_dat,ref_dat,feat,prefix){
 	#generate LSI matrix for downstream normalization
 	#downsample cells to 5% per identity
@@ -1131,6 +688,7 @@ sample_label_transfer<-function(in_dat,ref_dat,transfer.anchors.,prefix="Tcell_"
   in_dat<-AddMetaData(in_dat,metadata=predictions)
   return(in_dat)
 }
+
 coembed_data<-function(in_dat,ref_dat,transfer.anchors.,feat,prefix,assay_name){
 	imputation<- TransferData(
 	  anchorset = transfer.anchors.,
@@ -1147,81 +705,261 @@ coembed_data<-function(in_dat,ref_dat,transfer.anchors.,feat,prefix,assay_name){
 	return(coembed)
 }
 
-#Gene activity processing of HGAP Hippo
-	hgap_hippo<-cicero_processing(object_input=hgap_hippo,prefix="hgap_hippo_5perc")
-	conns<-readRDS("hgap_hippo_5perc_atac_cicero_conns.Rds")
-	hgap_hippo<-geneactivity_processing(object_input=hgap_hippo,conns_input=conns,prefix="hgap_hippo_5perc")
-	hgap_hippo<-readRDS(paste0("hgap_hippo_5perc",".","gene_activity.Rds"))
-#Process HGAP hippocampus and Hippo Axis integration
-	Idents(hippo_axis)<-hippo_axis$Cluster
-	markers<-FindAllMarkers(hippo_axis,only.pos=TRUE) 
-	saveRDS(markers,file="/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_axis/hippo_axis.markers.rds")
-	markers<-readRDS(file="/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_axis/hippo_axis.markers.rds")
-	features=row.names(markers)
-	##########RUNNING##############
-	hgap_hippo<-generate_transfer_anchor(in_dat=hgap_hippo,ref_dat=hippo_axis,prefix="hippo.axis",feat=features)
-	transfer_anchors=readRDS("hippo.axis.transferanchors.rds")
-	hgap_hippo<-sample_label_transfer(in_dat=hgap_hippo,ref_dat=hippo_axis,prefix="hippoaxis_cluster_",transfer.anchors.=transfer_anchors,transfer_label="Cluster")
-	saveRDS(hgap_hippo,file="hippo.axis.5perc.SeuratObject.Rds")
-	##########RUNNING##############
-
-	#Plot Label Transfer
-	plt1<-DimPlot(hgap_hippo,group.by="Putative_Celltype")
-	plt2<-DimPlot(hgap_hippo,group.by="hippoaxis_cluster_predicted.id")
-	plt<-plt1|plt2
-	ggsave(plt,file="hgap_hippo.predicted.axis.umap.png")
-	system("slack -F hgap_hippo.predicted.axis.umap.png ryan_todo")
-
+generate_confusion_matrix<-function(in_dat,metadat_prefix,filter_val=0){
 	#Generate Confusion Matrix
 	#Add row scaling
-	conf_dat<-as.data.frame.matrix(table(hgap_hippo$Putative_Celltype,hgap_hippo$hippoaxis_cluster_predicted.id))
+	metdat<-in_dat@meta.data
+
+	metdat<-metdat[metdat[paste0(metadat_prefix,"prediction.score.max")]>filter_val,]#########FILTER TO HIGHER VALUES BEFORE PLOTTING
+	conf_dat<-as.data.frame.matrix(table(metdat$Putative_Celltype,metdat[,paste0(metadat_prefix,"predicted.id")]))
+	col_names<-colnames(conf_dat)
+	row_names<-row.names(conf_dat)
+	conf_dat<-do.call("cbind",lapply(1:ncol(conf_dat),function(x) conf_dat[,x]/sum(conf_dat[,x])))
 	conf_dat<-do.call("rbind",lapply(1:nrow(conf_dat),function(x) conf_dat[x,]/sum(conf_dat[x,])))
+	colnames(conf_dat)<-col_names
+	row.names(conf_dat)<-row_names
+
 	colfun<-colorRamp2(c(0, 0.5, 1), c("white","grey","black"))
-	pdf("hgap_hippo.predicted.axis.confmat.pdf")
-	Heatmap(conf_dat,col=colfun)
+	pdf(paste0("hgap_",metadat_prefix,".confmat.pdf"))
+	plt<-Heatmap(conf_dat,col=colfun)
+	print(plt)
 	dev.off()
-	system("slack -F hgap_hippo.predicted.axis.confmat.pdf ryan_todo")
+	system(paste0("slack -F ",paste0("hgap_",metadat_prefix,".confmat.pdf")," ryan_todo"))
+}
 
-	#Generate coembedding
-	hippo_coembed<-coembed_data(in_dat=hgap_hippo,ref_dat=hippo_axis,transfer.anchors.=transfer_anchors,feat=features,prefix="hippo.5perc",assay_name="axis_imputation")
-	plt<-DimPlot(hippo_coembed, group.by = c("orig.ident", "Putative_Celltype","Cluster"))
-	ggsave(plt,file="hgap_hippo.axis.coembed.umap.pdf",width=15)
-	system("slack -F hgap_hippo.axis.coembed.umap.pdf ryan_todo")
-
-	hippo_coembed<-RunHarmony(hippo_coembed,group.by.vars="orig.ident",reduction.save="harmony_rna",assay.use="RNA",reduction="pca",project.dim=F)
-	hippo_coembed<-RunUMAP(hippo_coembed,reduction.name="harmonyumap_rna",reduction = "harmony_rna",dims=2:dim(hippo_coembed@reductions$harmony_rna)[2]) 
-	plt<-DimPlot(hippo_coembed, group.by = c("orig.ident", "Putative_Celltype","Cluster"),reduction="harmonyumap_rna")
-	ggsave(plt,file="hgap_hippo.axis.coembed.umap.pdf",width=15)
-	system("slack -F hgap_hippo.axis.coembed.umap.pdf ryan_todo")
+#Full set processing on long request node 
+#Ours
+	hgap_hippo<-readRDS("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/hippocampus.SeuratObject.Rds")
+#Gene activity processing of HGAP Hippo
+	hgap_hippo<-cicero_processing(object_input=hgap_hippo,prefix="hgap_hippo_100perc",k=500)
+	conns<-readRDS("hgap_hippo_100perc_atac_cicero_conns.Rds")
+	hgap_hippo<-geneactivity_processing(object_input=hgap_hippo,conns_input=conns,prefix="hgap_hippo_100perc")
 
 
+#Process HGAP hippocampus and Hippo Axis integration
+	hgap_hippo<-readRDS("hgap_hippo_100perc.gene_activity.Rds")
+	hippo_axis<-readRDS("/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_axis/hippo_axis.rds")
+	Idents(hippo_axis)<-hippo_axis$Cluster
+	hippo_axis_subset<-subset(hippo_axis,downsample=min(table(Idents(hippo_axis))))
+	#markers<-FindAllMarkers(hippo_axis,only.pos=TRUE) 
+	#saveRDS(markers,file="/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_axis/hippo_axis.markers.rds")
+	#markers<-readRDS(file="/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_axis/hippo_axis.markers.rds")
+	#features=row.names(markers)
+	features<-VariableFeatures(hippo_axis)
+	generate_transfer_anchor(in_dat=hgap_hippo,ref_dat=hippo_axis,prefix="hippo.100perc.axis",feat=features)
+	generate_transfer_anchor(in_dat=hgap_hippo,ref_dat=hippo_axis_subset,prefix="hippo.100perc.axis_subset",feat=features)
 
+	#transfer_anchors=readRDS("hippo.axis.transferanchors.rds")
+	hgap_hippo<-sample_label_transfer(in_dat=hgap_hippo,ref_dat=hippo_axis,
+		prefix="hippoaxis_cluster_",
+		transfer.anchors.=readRDS("hippo.100perc.axis.transferanchors.rds"),
+		transfer_label="Cluster")
+	hgap_hippo<-sample_label_transfer(in_dat=hgap_hippo,ref_dat=hippo_axis_subset,
+		prefix="hippoaxis_subset_cluster_",
+		transfer.anchors.=readRDS("hippo.100perc.axis_subset.transferanchors.rds"),
+		transfer_label="Cluster")
+
+	generate_confusion_matrix(in_dat=hgap_hippo,metadat_prefix="hippoaxis_cluster_")
+	generate_confusion_matrix(in_dat=hgap_hippo,metadat_prefix="hippoaxis_subset_cluster_")
+
+	saveRDS(hgap_hippo,file="hippo.axis.100perc.SeuratObject.Rds")
 
 
 
 #Process HGAP hippocampus and Hippo Lifespan integration
-	features=VariableFeatures(hippo_lifespan)
-	hgap_hippo<-generate_transfer_anchor(in_dat=hgap_hippo,ref_dat=hippo_lifespan,prefix="hippo.5perc",feat=features)
-	transfer_anchors=readRDS("hippo.transferanchors.rds")
-	#hgap_hippo<-sample_label_transfer(in_dat=hgap_hippo,prefix="brainspan_class_",transfer.anchors.=transfer_anchors,transfer_label="class_label")
-	#hgap_hippo<-sample_label_transfer(in_dat=hgap_hippo,prefix="brainspan_subclass_",transfer.anchors.=transfer_anchors,transfer_label="subclass_label")
-	saveRDS(hgap_hippo,file="hippo.5perc.SeuratObject.Rds")
+	hgap_hippo<-readRDS("hgap_hippo_100perc.gene_activity.Rds")
+	hippo_lifespan<-readRDS("/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_lifespan/hippo_lifespan.rds")
+	Idents(hippo_lifespan)<-hippo_lifespan$MajorCellTypes
+	hippo_lifespan_subset<-subset(hippo_lifespan,downsample=min(table(Idents(hippo_lifespan))))
+	#markers<-FindAllMarkers(hippo_lifespan,only.pos=TRUE) 
+	#saveRDS(markers,file="/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_lifespan/hippo_lifespan.markers.rds")	
+	#markers<-readRDS("/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_lifespan/hippo_lifespan.markers.rds")	
+	#features<-row.names(markers)
+	features<-VariableFeatures(hippo_lifespan)
 
-	#Plot Label Transfer
-	plt1<-DimPlot(hgap_hippo,group.by="Putative_Celltype")#,reduction="umap.atac")
-	#plt2<-DimPlot(hgap_hippo,group.by="brainspan_class_predicted.id")
-	#plt3<-DimPlot(hgap_hippo,group.by="brainspan_subclass_predicted.id")
-	plt<-plt1/plt2/plt3
-	ggsave(plt1,file="hgap_hippo.predicted.lifespan.umap.png")
-	system("slack -F hgap_hippo.predicted.lifespan.umap.png ryan_todo")
+	hgap_hippo<-readRDS("hgap_hippo_100perc.gene_activity.Rds")
+	generate_transfer_anchor(in_dat=hgap_hippo,ref_dat=hippo_lifespan,prefix="hippo.100perc.lifespan",feat=features)
+	#transfer_anchors=readRDS("hippo.100perc.lifespan.transferanchors.rds")
+	generate_transfer_anchor(in_dat=hgap_hippo,ref_dat=hippo_lifespan_subset,prefix="hippo.100perc.lifespan_subset",feat=features)
+	#transfer_anchors=readRDS("hippo.100perc.lifespan_subset.transferanchors.rds")
 
-	#Generate coembedding
-	hippo_coembed<-coembed_data(in_dat=hgap_hippo,ref_dat=hippo_lifespan,transfer.anchors.=transfer_anchors,feat=features,prefix="hippo.5perc",assay_name="lifespan_imputation")
-	plt<-DimPlot(coembed, group.by = c("orig.ident", "class_label","subclass_label"))
-	ggsave(plt,file="hgap_hippo.lifespan.coembed.umap.pdf")
-	system("slack -F hgap_hippo.lifespan.coembed.umap.pdf ryan_todo")
+	# Downsample the number of cells per identity class
+	hgap_hippo<-readRDS("hippo.axis.100perc.SeuratObject.Rds")
+	hgap_hippo<-sample_label_transfer(in_dat=hgap_hippo,ref_dat=hippo_lifespan,prefix="hippo.100perc.lifespan",transfer.anchors.=transfer_anchors,transfer_label="MajorCellTypes")
+
+		hgap_hippo<-sample_label_transfer(in_dat=hgap_hippo,ref_dat=hippo_lifespan,prefix="hippo.100perc.lifespan_subset",transfer.anchors.=transfer_anchors,transfer_label="MajorCellTypes")
+
+generate_confusion_matrix(in_dat=hgap_hippo,metadat_prefix="hippo.100perc.lifespan")
+generate_confusion_matrix(in_dat=hgap_hippo,metadat_prefix="hippo.100perc.lifespan_subset")
+
+saveRDS(hgap_hippo,file="hippo.lifespan.100perc.SeuratObject.Rds")
+
+
+#Process HGAP cortex and Allen Brainspan integration
+hgap_cortex<-readRDS("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses/cortex.SeuratObject.Rds")
+#Gene activity processing of HGAP Cortex
+	hgap_cortex<-cicero_processing(object_input=hgap_cortex,prefix="hgap_cortex_100perc")
+	conns<-readRDS("hgap_cortex_100perc_atac_cicero_conns.Rds")
+	hgap_cortex<-geneactivity_processing(object_input=hgap_cortex,conns_input=conns,prefix="hgap_cortex_100perc")
+	hgap_cortex<-readRDS("hgap_cortex_100perc.gene_activity.Rds")
+
+
+#Process HGAP Cortex and Allen Brainmap cortex data
+	hgap_cortex<-readRDS("hgap_cortex_100perc.gene_activity.Rds")
+	cortex_brainspan<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
+	Idents(cortex_brainspan)<-cortex_brainspan$subclass_label
+	features<-VariableFeatures(hgap_cortex)
+
+	generate_transfer_anchor(in_dat=hgap_cortex,ref_dat=cortex_brainspan,prefix="cortex.100perc.brainspan",feat=features)
+	#transfer_anchors=readRDS("cortex.100perc.brainspan.transferanchors.rds")
+
+	hgap_cortex<-sample_label_transfer(in_dat=hgap_cortex,ref_dat=cortex_brainspan,
+		prefix="cortex_brainspan_cluster_",
+		transfer.anchors.=readRDS("cortex.100perc.brainspan.transferanchors.rds"),
+		transfer_label="subclass_label")
+
+generate_confusion_matrix(in_dat=hgap_cortex,metadat_prefix="cortex_brainspan_cluster_")
+
+saveRDS(hgap_cortex,file="cortex.100perc.brainspan.SeuratObject.Rds")
+
+
+
 
 ```
+
+### Identify OPC cell states in RNA data
+
+```R
+library(Seurat)
+library(Signac) 
+library(ggplot2)
+library(EnsDb.Hsapiens.v86)
+library(GenomeInfoDb)
+set.seed(1234)
+library(Matrix)
+library(monocle3,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/") #using old install of monocle, just need for as.cell_data_set conversion
+library(cicero,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/library/")
+library(SeuratWrappers)
+library(rtracklayer)
+library(circlize)
+library(ComplexHeatmap)
+library(dplyr)
+setwd("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/rm_integration_reviewerresponses")
+
+
+generate_transfer_anchor_atac_to_rna<-function(in_dat,ref_dat,feat,prefix){
+	#generate LSI matrix for downstream normalization
+
+	#in_dat <- RunTFIDF(in_dat)
+	#in_dat <- FindTopFeatures(in_dat, min.cutoff = 'q0')
+	#in_dat <- RunSVD(in_dat)
+
+	#generate gene activity for just variable genes, add to object and normalize
+	#ga_mat<-GeneActivity(in_dat, features = feat)
+	#in_dat[['RNA']] <- CreateAssayObject(counts = ga_mat)
+	#in_dat<- NormalizeData(
+	#  object = in_dat,
+	#  assay = 'RNA',
+	#  normalization.method = 'LogNormalize',
+	#  scale.factor = median(in_dat$nCount_RNA)
+	#)
+
+	DefaultAssay(ref_dat)<-"GeneActivity"
+	transfer.anchors <- FindTransferAnchors(
+	  reference = ref_dat,
+	  query = in_dat,
+	  reduction = 'cca'
+	)
+	saveRDS(transfer.anchors,paste0(prefix,".transferanchors.rds"))
+}
+
+sample_label_transfer<-function(in_dat,ref_dat,transfer.anchors.,prefix="Tcell_",transfer_label="celltype"){
+  predictions<- TransferData(
+    anchorset = transfer.anchors.,
+    refdata = ref_dat@meta.data[,transfer_label],
+    weight.reduction = in_dat[["pca"]],
+    dims=2:30
+  )
+  colnames(predictions)<-paste0(prefix,colnames(predictions))
+  in_dat<-AddMetaData(in_dat,metadata=predictions)
+  return(in_dat)
+}
+
+#seurat clusters 0: OPC_BCL11B; 1:OPC_MAG
+opc_cellstate<-read.table("/home/groups/oroaklab/adey_lab/projects/maga/00_DataFreeze_Cortex_and_Hippocampus/glialatlas.celltype.analyses/combined.OPCs/combined.OPCs.cistopic.seurat_clusters.annot",header=F)
+opc_cellstate<-setNames(opc_cellstate$V2,nm=opc_cellstate$V1)
+opc_cellstate[opc_cellstate==0]<-"OPC_BCL11B"
+opc_cellstate[opc_cellstate==1]<-"OPC_MAG"
+
+hgap_hippo<-readRDS("hgap_hippo_100perc.gene_activity.Rds")
+hgap_cortex<-readRDS("hgap_cortex_100perc.gene_activity.Rds")
+
+hgap_hippo<-AddMetaData(hgap_hippo,opc_cellstate,col.name="opc_subtype")
+hgap_cortex<-AddMetaData(hgap_cortex,opc_cellstate,col.name="opc_subtype")
+
+hgap_cortex<-subset(hgap_cortex,opc_subtype %in% c("OPC_BCL11B","OPC_MAG"))
+hgap_hippo<-subset(hgap_hippo,opc_subtype %in% c("OPC_BCL11B","OPC_MAG"))
+DefaultAssay(hgap_cortex)<-"GeneActivity"
+DefaultAssay(hgap_hippo)<-"GeneActivity"
+
+Idents(hgap_cortex)<-hgap_cortex$opc_subtype
+Idents(hgap_hippo)<-hgap_hippo$opc_subtype
+
+hgap_cortex<-FindVariableFeatures(hgap_cortex) 
+hgap_hippo<-FindVariableFeatures(hgap_hippo) 
+markers<-FindAllMarkers(hgap_cortex,logfc.threshold=0.1)
+
+#OPC subtype labelling of brainspan cortex
+	cortex_brainspan<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/public_data/allen_brainspan_humancortex/allen_brainspan_humancortex.rds")
+	cortex_brainspan<-subset(cortex_brainspan,subclass_label=="OPC")
+	generate_transfer_anchor_atac_to_rna(ref_dat=hgap_cortex,in_dat=cortex_brainspan,prefix="cortex_brainspan.opc",feat=unique(markers$gene))
+	cortex_brainspan<-sample_label_transfer(ref_dat=hgap_cortex,in_dat=cortex_brainspan,
+			prefix="opc_cellstate_",
+			transfer.anchors.=readRDS("cortex_brainspan.opc.transferanchors.rds"),
+			transfer_label="opc_subtype")
+	plt<-FeaturePlot(cortex_brainspan,feature=c("opc_cellstate_prediction.score.OPC_BCL11B","opc_cellstate_prediction.score.OPC_MAG"))
+	ggsave(plt,file="cortex_brainspan.opc.pdf",width=10)
+	system("slack -F cortex_brainspan.opc.pdf ryan_todo")
+	plt<-ggplot(cortex_brainspan@meta.data,aes(x=opc_cellstate_prediction.score.OPC_BCL11B,y=opc_cellstate_prediction.score.OPC_MAG,color=subclass_label))+geom_point()+theme_bw()
+	ggsave(plt,file="cortex_brainspan.opc.pdf",width=10)
+	system("slack -F cortex_brainspan.opc.pdf ryan_todo")
+	#table(cortex_brainspan$opc_cellstate_predicted.id)
+	#OPC_BCL11B 
+	#       283 
+	#looks like no MAG in this, but its also a really low cell count, so it is consistent with the percentages we see
+
+#OPC subtype labelling of hippocampus lifespan data
+	hippo_lifespan<-readRDS("/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_lifespan/hippo_lifespan.rds")
+	hippo_lifespan<-subset(hippo_lifespan,MajorCellTypes=="OPC") #11614 cells
+	generate_transfer_anchor_atac_to_rna(ref_dat=hgap_hippo,in_dat=hippo_lifespan,prefix="hippo_lifespan.opc",feat=VariableFeatures(hgap_hippo))
+	hippo_lifespan<-sample_label_transfer(ref_dat=hgap_hippo,in_dat=hippo_lifespan,
+			prefix="opc_cellstate_",
+			transfer.anchors.=readRDS("hippo_lifespan.opc.transferanchors.rds"),
+			transfer_label="opc_subtype")
+	plt<-FeaturePlot(hippo_lifespan,feature=c("opc_cellstate_prediction.score.OPC_BCL11B","opc_cellstate_prediction.score.OPC_MAG"))
+	ggsave(plt,file="hippo_lifespan.opc.pdf",width=10)
+	system("slack -F hippo_lifespan.opc.pdf ryan_todo")
+	plt<-ggplot(hippo_lifespan@meta.data,aes(x=opc_cellstate_prediction.score.OPC_BCL11B,y=opc_cellstate_prediction.score.OPC_MAG,color=MajorCellTypes))+geom_point()+theme_bw()
+	ggsave(plt,file="hippo_lifespan.opc.pdf",width=10)
+	system("slack -F hippo_lifespan.opc.pdf ryan_todo")
+#All assigned to BCL11B as well...
+
+#OPC subtype labelling of hippocampus atlas data
+	hippo_axis<-readRDS("/home/groups/CEDAR/mulqueen/human_brain_ref/human_hippo_axis/hippo_axis.rds")
+	hippo_axis<-subset(hippo_axis,cells=row.names(hippo_axis@meta.data[which(startsWith(hippo_axis$Cluster,prefix="OPC")),])) #cells
+	generate_transfer_anchor_atac_to_rna(ref_dat=hgap_hippo,in_dat=hippo_axis,prefix="hippo_axis.opc",feat=VariableFeatures(hgap_hippo))
+	hippo_axis<-sample_label_transfer(ref_dat=hgap_hippo,in_dat=hippo_axis,
+			prefix="opc_cellstate_",
+			transfer.anchors.=readRDS("hippo_axis.opc.transferanchors.rds"),
+			transfer_label="opc_subtype")
+	plt<-FeaturePlot(hippo_axis,feature=c("opc_cellstate_prediction.score.OPC_BCL11B","opc_cellstate_prediction.score.OPC_MAG"))
+	ggsave(plt,file="hippo_axis.opc.pdf",width=10)
+	system("slack -F hippo_axis.opc.pdf ryan_todo")
+	plt<-ggplot(hippo_axis@meta.data,aes(x=opc_cellstate_prediction.score.OPC_BCL11B,y=opc_cellstate_prediction.score.OPC_MAG,color=Cluster))+geom_point()+theme_bw()
+	ggsave(plt,file="hippo_axis.opc.pdf",width=10)
+	system("slack -F hippo_axis.opc.pdf ryan_todo")
+```
+
 
 # ATAC
 For ATAC data, we will make a new counts matrix using our peak set for integration. This means we will go back to FASTQ format and make sure data sets are aligned on the same reference genome. Also we will limit our download to just the regions we are interested in. 
@@ -1627,7 +1365,6 @@ system(paste0("slack -F ","hippo.atac.integrated_assignedcelltypes.umap.pdf"," r
 saveRDS(hippo,"hippo.atac_integrated.SeuratObject.Rds")
 ```
 
-OPC Subset. Integration using cisTopic Modelling.
 
 ```R
 library(Signac)

@@ -615,20 +615,6 @@ for(clone in clone_list){
 }
 
 ```
-Using the copykit output of CNV data generated above (in bedgraph format).
-
-```bash
-wd_out="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
-cd $wd_out
-
-mamba activate neoloop
-#segment-cnv --cnv-file ${wd_out}/c1_cnv_500kb.bedgraph --num-of-states 5 --binsize 500000 --ploidy 2 --output c1_cnv_500kb.CNV-seg.bedGraph --nproc 10
-
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-cd $clone_dir
-cooler balance -p 20 --force ${clone_dir}/clone_c1.bsorted.500kb.cool
-correct-cnv -H ${clone_dir}/clone_c1.bsorted.500kb.cool --cnv-file ${wd_out}/c1_cnv_500kb.segmented.bedgraph --nproc 4 -f
-```
 
 ### Detection of structural variants using Eagle C
 ICE normalized output at multiresolution
@@ -661,15 +647,20 @@ parallel --jobs 1 eaglec_SV_detect ::: $clones &
 ```
 
 CNV normalized output at single 500kb resolution.
+
 ```bash
 mamba activate EagleC
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones" 
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
 cd $clone_dir
 
 eaglec_SV_CNV() {
-	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
-	clone=${1::-17}
+	#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
+	#bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
+	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+	in=$1
+	clone=${in::-17}
 	#balance through ICE first
 	cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.500kb.cool
 	
@@ -678,7 +669,8 @@ eaglec_SV_CNV() {
 	correct-cnv -H ${clone_dir}/${clone}.bsorted.500kb.cool --cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph --nproc 20 -f
 	
 	conda activate EagleC
-	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 -O ${clone_dir}/${clone}.SV.tsv --balance-type CNV --region-size 500000 --output-format full --prob-cutoff 0.8 --logFile ${clone}.eaglec.log
+	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 --output-file ${clone_dir}/${clone}.SV.cnv.tsv --balance-type CNV --region-size 500000 --output-format full --prob-cutoff 0.5 --logFile ${clone}.eaglec.cnv.log 
+	#--cache-folder ${clone_dir}/${clone}.cache
 }
 export -f eaglec_SV_CNV
 
@@ -690,20 +682,26 @@ eaglec_SV_CNV clone_c1.bsorted.pairs.gz
 eaglec_SV_CNV clone_c2.bsorted.pairs.gz
 eaglec_SV_CNV clone_c3.bsorted.pairs.gz
 eaglec_SV_CNV clone_c4.bsorted.pairs.gz
+eaglec_SV_CNV clone_c5.bsorted.pairs.gz
+eaglec_SV_CNV clone_c6.bsorted.pairs.gz
+eaglec_SV_CNV clone_c7.bsorted.pairs.gz
 
 #Rerun with neoloopfinder output 
 conda activate EagleC
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones" 
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
 
 eaglec_SV_CNV_neoout() {
-	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
+	#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
+	#bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
+	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 	clone=${1::-17}
 	#now balance by CNV
 	conda activate EagleC
-	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 -O ${clone_dir}/${clone}.SV.neoloopfinder.tsv --balance-type CNV --region-size 500000 --output-format NeoLoopFinder --prob-cutoff 0.8 --logFile ${clone}.eaglec.log
+	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 --output-file ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv --balance-type CNV --region-size 500000 --output-format NeoLoopFinder --prob-cutoff 0.8 --logFile ${clone}.eaglec.cnv.log
 	conda activate neoloop
-	assemble-complexSVs -O ${clone_dir}/${clone} -B ${clone_dir}/${clone}.SV.neoloopfinder.tsv --balance-type CNV --protocol insitu --nproc 20 -H ${clone_dir}/${clone}.bsorted.500kb.cool --logFile ${clone}.neoloop.log --minimum-size 5000
+	assemble-complexSVs -O ${clone_dir}/${clone} -B ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv --balance-type CNV --protocol insitu --nproc 20 -H ${clone_dir}/${clone}.bsorted.500kb.cool --logFile ${clone}.neoloop.log --minimum-size 5000
 }
 export -f eaglec_SV_CNV_neoout
 
@@ -711,66 +709,86 @@ eaglec_SV_CNV_neoout clone_c1.bsorted.pairs.gz
 eaglec_SV_CNV_neoout clone_c2.bsorted.pairs.gz
 eaglec_SV_CNV_neoout clone_c3.bsorted.pairs.gz
 eaglec_SV_CNV_neoout clone_c4.bsorted.pairs.gz
+eaglec_SV_CNV_neoout clone_c5.bsorted.pairs.gz
+eaglec_SV_CNV_neoout clone_c6.bsorted.pairs.gz
+eaglec_SV_CNV_neoout clone_c7.bsorted.pairs.gz
 
 ```
 
 ## Automate interSV plotting
 Take in the SV output from EagleC, filter to significant interchr translocations, make unique and plot.
 
+NOTE: I'll make this less specific in terms of directories, and maintain defaults in the future.
+Bash script for plotting, located in /volumes/seq/projects/gccACT/src
+
+/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots 
 ```bash
-mamba activate EagleC
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+
+conda activate EagleC
+#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones" 
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
 cd $clone_dir
 
 eaglec_SV_interchr_plots() {
+	chrom_sizes="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/hg38.chrom.sizes"
 	sv_file=$1
-	clone_dir=$(dirname $1)
-	basename_sv=$(basename $1)
-	clone=${basename_sv::-7}
+	clone_dir=$(dirname $sv_file)
+	basename_sv=$(basename $sv_file)
+	clone=${basename_sv::-11}
 	cool_file=${clone_dir}"/"${clone}".bsorted.500kb.cool"
 	if [ ! -d ${clone_dir}"/"${clone}"_interSVs" ] 
 	then
     echo "Directory ${clone_dir}"/"${clone}"_interSVs" DOES NOT exist. Creating.."
     mkdir ${clone_dir}"/"${clone}"_interSVs"
 	fi	
-	awk 'NR > 1 {if($5<0.05 || $6<0.05) print $1,$3}' $sv_file | while read line
-	do
-	chrA=$(echo $line | awk '{print $1}');
-	chrB=$(echo $line | awk '{print $2}');
-	plot-interSVs --cool-uri $cool_file \
-	                --full-sv-file $sv_file \
-	                -C $chrA $chrB \
-	                --output-figure-name ${clone_dir}/${clone}_interSVs/${clone}.interSV.${chrA}_${chrB}.png \
-	                --balance-type ICE --dpi 800
-	echo "Completed file ${clone_dir}/${clone}_interSVs/${clone}.interSV.${chrA}_${chrB}.png"
-	done
+
+	cat $chrom_sizes | while read chrA end_size1 ; do cat $chrom_sizes | while read chrB end_size2 ;
+			do outname="${clone_dir}/${clone}_interSVs/${clone}.interSV.${chrA}_${chrB}.png"
+			plot-interSVs --cool-uri $cool_file --full-sv-file $sv_file -C $chrA $chrB --output-figure-name $outname --balance-type ICE --dpi 800
+			echo "Completed file ${clone_dir}/${clone}_interSVs/${clone}.interSV.${chrA}_${chrB}.png"
+		done ; done
 }
 
 export -f eaglec_SV_interchr_plots
+eaglec_SV_interchr_plots $1
 
-eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c1.SV.tsv
-eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c2.SV.tsv
-eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c3.SV.tsv
-eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c4.SV.tsv
+```
+
+Running the bash script
+```bash
+#eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c1.SV.cnv.tsv
+
+/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c2.SV.cnv.tsv
+/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c3.SV.cnv.tsv
+/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c4.SV.cnv.tsv
+/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c5.SV.cnv.tsv
+/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c6.SV.cnv.tsv
+/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c7.SV.cnv.tsv
 
 ```
 
 ## Automate intraSV plotting
+Bash script for plotting, located in /volumes/seq/projects/gccACT/src
+NOTE: I'll make this less specific in terms of directories, and maintain defaults in the future.
 
-TODO: Update the bigwig plot to log2 FC of CNVs
+/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots 
 
 ```bash
-mamba activate EagleC
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
-chrom_sizes="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/hg38.chrom.sizes"
+#!/bin/bash
+conda activate EagleC
+#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
+#bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
 cd $clone_dir
 
 eaglec_SV_intrachr_plots() {
 	sv_file=$1
+	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
+	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+	chrom_sizes="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/hg38.chrom.sizes"
 	clone_dir=$(dirname $sv_file)
 	basename_sv=$(basename $sv_file)
-	clone=${basename_sv::-7}
+	clone=${basename_sv::-11}
 	cool_file=${clone_dir}"/"${clone}".bsorted.500kb.cool"
 	bedgraph_cnv=${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph
 
@@ -780,34 +798,31 @@ eaglec_SV_intrachr_plots() {
 	    sort -k1,1 -k2,2n $bedgraph_cnv > ${bedgraph_cnv}.sorted.bedgraph
 	    bedGraphToBigWig ${bedgraph_cnv}.sorted.bedgraph $chrom_sizes ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bigwig
 	fi	
+
 	if [ ! -d ${clone_dir}"/"${clone}"_intraSVs" ] 
 	then
 	  echo "Directory ${clone_dir}"/"${clone}"_intraSVs" DOES NOT exist. Creating.."
 	  mkdir ${clone_dir}"/"${clone}"_intraSVs"
 	fi	
 
-	cat $chrom_sizes | while read line
-	do
-		chr_in=$(echo $line | awk '{print $1}');
-		end=$(echo $line | awk '{print $2}');
-
-		plot-intraSVs --cool-uri $cool_file \
-		                --full-sv-file $sv_file \
-		                --region ${chr_in}:1-${end} --output-figure-name ${clone_dir}/${clone}_intraSVs/${clone}.intraSV.${chr_in}.png \
-		                --cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bigwig \
-		                --coordinates-to-display 1 ${end} \
-		                --cnv-max-value 6 \
-		                --balance-type CNV --dpi 800 
-	echo "Completed file ${clone_dir}/${clone}_intraSVs/${clone}.intraSV.${chr_in}.png"
+	cat $chrom_sizes | while read chr_in_size end_size ; 
+	do plot-intraSVs --cool-uri $cool_file --full-sv-file $sv_file --region ${chr_in_size}:1-${end_size} --output-figure-name ${clone_dir}/${clone}_intraSVs/${clone}.intraSV.${chr_in_size}.png --cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bigwig --coordinates-to-display 1 ${end_size} --cnv-max-value 6 --balance-type ICE --dpi 800 ; 
+	echo "Completed file ${clone_dir}/${clone}_intraSVs/${clone}.intraSV.${chr_in_size}.png"
 	done
-	
 }
+
 export -f eaglec_SV_intrachr_plots
 
-eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c1.SV.tsv
-eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c2.SV.tsv
-eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c3.SV.tsv
-eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones/clone_c4.SV.tsv
+eaglec_SV_intrachr_plots $1
+```
+
+```bash
+/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c2.SV.cnv.tsv
+/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c3.SV.cnv.tsv
+/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c4.SV.cnv.tsv
+/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c5.SV.cnv.tsv
+/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c6.SV.cnv.tsv
+/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c7.SV.cnv.tsv
 
 ```
 
@@ -852,8 +867,8 @@ def all_by_all_plot(infile_name,chr_count,zmin,zmax,cmap):
 	in_name=in_file.split(sep=".")[0]
 	coolfile=in_file
 	c = cooler.Cooler(coolfile)
-	#cooler.coarsen_cooler(coolfile,in_name+"_5mb.cool",factor=2,chunksize=10000000) #coarsen to 5mb
-	#c = cooler.Cooler(in_name+"_5mb.cool")
+	cooler.coarsen_cooler(coolfile,in_name+"_5mb.cool",factor=2,chunksize=10000000) #coarsen to 5mb
+	c = cooler.Cooler(in_name+"_5mb.cool")
 	cooler.balance_cooler(c,store=True,rescale_marginals=True)#rescale_margines=True #balance matrix ignore_diags=10,
 	obs_mat = c.matrix()[:]
 	chr_list=list(c.bins()[:]["chrom"].unique())
@@ -979,7 +994,172 @@ export -f cooler_balance
 
 
 ```
--->
+
+
+
+### Comparison with ACT-seq MDA-MB-231
+```bash
+#files located here:
+/volumes/seq/projects/CNA_projects/DT_CNA/cell_line/231/MDAMB231/MDAMB231/MDAMB231_P1_P2_P3
+
+#list of fastq files here (only some have R1 R2):
+/volumes/seq/projects/CNA_projects/DT_CNA/cell_line/231/MDAMB231/MDAMB231/MDAMB231_P1_P2_P3/fastq_P1_P2_P3
+
+project_dir="/volumes/seq/projects/gccACT/mdamb231_ACTseq"
+mkdir $project_dir
+mkdir ${project_dir}/cells
+
+
+#Map reads with BWA Mem (filter to PE reads before alignment)
+bwa_align() {
+ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
+project_dir="/volumes/seq/projects/gccACT/mdamb231_ACTseq"
+fq2=$1
+if [[ $fq2 == *"_R2_"* ]]; 
+	then 
+		fq1=$(echo $fq2 | sed 's/_R2_/_R1_/')
+		base_name=$(basename $fq1)
+		out_name=${base_name::-9}
+		echo "Checking for files for ${fq1} and ${fq2}..."
+		if [ -f $fq1 ] && [ -f $fq2 ]
+		then
+			echo "Running alignment for ${out_name}..."
+			bwa mem $ref $fq1 $fq2 | samtools view -b - > ${project_dir}/cells/${out_name}.bam
+		fi	
+fi
+}
+export -f bwa_align
+
+fq=$(cat /volumes/seq/projects/CNA_projects/DT_CNA/cell_line/231/MDAMB231/MDAMB231/MDAMB231_P1_P2_P3/fastq_P1_P2_P3)
+parallel --jobs 30 bwa_align ::: $fq &
+
+## Mark duplicate reads
+#name sort, fix mates, sort by position, mark dup
+sort_and_markdup() {
+  samtools sort -T . -n -o - $1 | samtools fixmate -m - -| samtools sort -T . -o - - | samtools markdup -s - ${1::-4}.rmdup.bam 2> ${1::-4}.rmdup.stats.txt
+}
+export -f sort_and_markdup
+
+bam_in=`ls *bam`
+parallel --jobs 30 sort_and_markdup ::: $bam_in
+
+#Ready to run copykit!
+
+```
+
+## Run CopyKit for WGS ACT-seq portion
+Analysis from 
+https://navinlabcode.github.io/CopyKit-UserGuide/quick-start.html
+
+```R
+library(copykit)
+library(BiocParallel)
+library(EnsDb.Hsapiens.v86)
+register(MulticoreParam(progressbar = T, workers = 50), default = T)
+BiocParallel::bpparam()
+setwd("/volumes/seq/projects/gccACT/mdamb231_ACTseq/cells")
+
+act <- runVarbin("/volumes/seq/projects/gccACT/mdamb231_ACTseq/cells",
+                 remove_Y = TRUE,
+                 genome="hg38",
+                 is_paired_end=TRUE)
+
+# Mark euploid cells if they exist
+act <- findAneuploidCells(act)
+
+# Mark low-quality cells for filtering
+act <- findOutliers(act)
+
+# Visualize cells labeled by filter and aneuploid status
+pdf("outlier_qc.heatmap.pdf")
+plotHeatmap(act, label = c('outlier', 'is_aneuploid'), row_split = 'outlier')
+dev.off()
+
+# Remove cells marked as low-quality and/or aneuploid from the copykit object
+act <- act[,SummarizedExperiment::colData(act)$outlier == FALSE]
+act <- act[,SummarizedExperiment::colData(act)$is_aneuploid == TRUE]
+
+
+# kNN smooth profiles
+act <- knnSmooth(act)
+
+
+k_clones<-findSuggestedK(act)
+# Create a umap embedding 
+tumor <- runUmap(tumor)
+
+# Find clusters of similar copy number profiles and plot the results
+# If no k_subclones value is provided, automatically detect it from findSuggestedK()
+tumor  <- findClusters(tumor,k_subclones=17)#output from k_clones
+
+pdf("subclone.umap.pdf")
+plotUmap(tumor, label = 'subclones')
+dev.off()
+
+# Calculate consensus profiles for each subclone, 
+# and order cells by cluster for visualization with plotHeatmap
+tumor <- calcConsensus(tumor)
+tumor <- runConsensusPhylo(tumor)
+
+# Plot a copy number heatmap with clustering annotation
+pdf("subclone.heatmap.pdf")
+plotHeatmap(tumor, label = 'subclones',order='hclust')
+dev.off()
+
+saveRDS(tumor,file="/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
+tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
+clone_out<-data.frame(bam=paste0(row.names(tumor@colData),".bam"),clone=tumor@colData$subclones)
+for (i in unique(clone_out$clone)){
+	tmp<-clone_out[clone_out$clone==i,]
+	write.table(tmp$bam,file=paste0("clone_",i,".bam_list.txt"),row.names=F,col.names=F,quote=F)
+}
+```
+
+### Count of WGS and GCC Reads
+```bash
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+#count reads based on paired alignments
+readtype_count() {
+	#print out reads on same chromosome that are >= 1000 bp apart (distal)
+	distal=$(samtools view -F 1024 $1 | awk '{if (sqrt(($9^2))>=1000) print $0}' | wc -l)
+	#print out reads on different chromosomes
+	trans=$(samtools view -F 1024 $1 | awk '{if($7 != "=") print $0}' | wc -l)
+	#print out reads on same chromosome within 1000bp (cis)
+	near=$(samtools view -F 1024 $1 | awk '{if (sqrt(($9^2))<=1000) print $0}' | wc -l)
+	echo $1,$near,$distal,$trans
+}
+export -f readtype_count
+
+cd $dir/cells
+bam_in=`ls *bam`
+echo "cellid,near_cis,distal_cis,trans" > read_count.csv; parallel --jobs 10 readtype_count ::: $bam_in >> read_count.csv
+```
+
+Plotting GCC read types
+```R
+library(ggplot2)
+library(patchwork)
+setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test")
+dat<-read.table("./cells/read_count.csv",header=T,sep=",")
+dat$total_reads<-dat$near_cis+dat$distal_cis+dat$trans
+
+plt1<-ggplot(dat,aes(y=near_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis Reads")+theme_minimal()
+plt2<-ggplot(dat,aes(y=distal_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis Reads")+theme_minimal()
+plt3<-ggplot(dat,aes(y=trans,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans Reads")+theme_minimal()
+
+plt4<-ggplot(dat,aes(y=(near_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis % Reads")+theme_minimal()
+plt5<-ggplot(dat,aes(y=(distal_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis % Reads")+theme_minimal()
+plt6<-ggplot(dat,aes(y=(trans/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans % Reads")+theme_minimal()
+
+plt<-(plt1|plt2|plt3)/(plt4|plt5|plt6)
+ggsave(plt,file="read_counts.pdf")
+```
+
+```
+#reprocess on copykit
+#correlate HiC to WGS output
+#Test for number of split reads compared to HiC data
+#Test for SVs?
 
 <!--
 #Add compartments
