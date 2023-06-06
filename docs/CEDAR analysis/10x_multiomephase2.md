@@ -2259,7 +2259,67 @@ saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
 
 ```
 
+## Alluvial plot of cell classifications
+```R
+library(Signac)
+library(Seurat)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+library(ggalluvial)
+library(reshape2)
 
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+embo_cell_cols<-c("epithelial"="#DC3977","T.cells"="#003147","TAMs"="#E9E29C","Plasma.cells"="#B7E6A5","CAFs"="#E31A1C","B.cells"="#089099","NA"="grey","Endothelial"="#EEB479", "Pericytes"= "#F2ACCA", "TAMs_2"="#e9e29c","cycling.epithelial"="#591a32", "Myeloid"="#dbc712")    
+
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+met<-as.data.frame(dat@meta.data)
+met_celltypes<-melt(as.data.frame(table(met$predicted.id, met$EMBO_predicted.id)))
+
+wu_order<-c("Endothelial","PVL","CAFs","Cancer Epithelial","Normal Epithelial","T-cells","Plasmablasts","Myeloid","B-cells")
+pal_order<-c("Endothelial","Pericytes","CAFs","cycling.epithelial","epithelial","T.cells","Plasma.cells","Myeloid","TAMs_2","TAMs","B.cells","NA")
+met_celltypes$Var1<-factor(met_celltypes$Var1,levels=wu_order)
+met_celltypes$Var2<-factor(met_celltypes$Var2,levels=pal_order)
+plt<-ggplot(as.data.frame(met_celltypes),
+       aes(y = value, axis1 = Var1, axis2 = Var2)) +
+  geom_alluvium(aes(fill = Var1), width = 1/12) +
+  geom_stratum(width = 1/12, aes(fill = Var1)) +
+  ggrepel::geom_text_repel(
+    aes(label =Var1),
+    stat = "stratum", size = 4, direction = "y", nudge_x = -.5
+  ) +
+  ggrepel::geom_text_repel(
+    aes(label = Var2),
+    stat = "stratum", size = 4, direction = "y", nudge_x = .5
+  ) +
+  scale_x_discrete(limits = c("Var1", "Var2"), expand = c(.05, .05)) +
+  scale_fill_brewer(type = "qual", palette = "Set1")
+
+ggsave(plt,file="cell_type_assignment.alluvial.pdf")
+system("slack -F cell_type_assignment.alluvial.pdf ryan_todo")
+```
+
+## Sample size to cell count output
+Data contained in multiome_finalsamples.xlsx data sheet.
+
+```R
+library(Signac)
+library(Seurat)
+set.seed(1234)
+library(stringr)
+library(ggplot2)
+library(ggalluvial)
+library(reshape2)
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+met<-as.data.frame(dat@meta.data)
+cell_count<-as.data.frame(table(met$sample))
+cell_count<-cbind(cell_count,weight=c(0.23, 0.27, 0.11, 0.39, 0.24, 0.27, 0.18, 0.93, 0.31, 0.19, 0.67, 0.08, 0.90, 0.70, 0.16, 0.19, 0.45, 0.18, 0.21)) 
+plt<-ggplot(cell_count,aes(x=weight,y=Freq))+geom_point()+geom_smooth(method="lm")+theme_minimal()
+ggsave(plt,file="weight_by_cell.pdf")
+system("slack -F weight_by_cell.pdf ryan_todo")
+
+```
 # Determine Tumor Cells and Clones via CNV Callers
 <!-- Done -->
 
@@ -4933,11 +4993,12 @@ plot_volcano<-function(x,markers.=markers,prefix,assay){
 }
 
 #Identify top markers
-Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA",prefix.){
+Identify_Marker_TFs<-function(x,group_by.="predicted.id",assay.="RNA",prefix.,pval_filt=1){
     markers <- presto:::wilcoxauc.Seurat(X = x, group_by = group_by., 
       groups_use=unname(unlist(unique(x@meta.data[group_by.]))),
       y=unname(unlist(unique(x@meta.data[group_by.]))), 
       assay = 'data', seurat_assay = assay.)
+    markers<-markers[markers$padj<=pval_filt,]
     write.table(markers,file=paste0(prefix.,"_",assay.,"_DE_table.tsv"),sep="\t",row.names=F,col.names=T,quote=F)
     system(paste0("slack -F ",paste0(prefix.,"_",assay.,"_DE_table.tsv")," ryan_todo"))
     plot_volcano(x=x,markers.=markers,prefix=prefix.,assay=assay.)
@@ -5179,7 +5240,10 @@ umap_sample_integration<-function(dat,outname){
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
 
+
 lapply(c("cell_subtype_assignment","diagnosis","molecular_type","PAM50_epi_designation","SCSubtype_epi_designation","pseudobulk_pam50","pseudobulk_genefu_pam50","pseudobulk_sspbc_PAM50"),function(x) run_top_TFs(obj=dat,prefix=x,i=x,n_markers=8,CHROMVAR=TRUE,plot_height=15)) #limit to TFs)
+
+lapply(c("cell_subtype_assignment","diagnosis","molecular_type","PAM50_epi_designation","SCSubtype_epi_designation","pseudobulk_pam50","pseudobulk_genefu_pam50","pseudobulk_sspbc_PAM50"),function(x) Identify_Marker_TFs(x=dat,prefix.=x,group_by.=x,pval_filt=0.05)) 
 
 
 lapply(c("cell_subtype_assignment","diagnosis","molecular_type","PAM50_epi_designation","SCSubtype_epi_designation","pseudobulk_pam50","pseudobulk_genefu_pam50","pseudobulk_sspbc_PAM50"), function(x) system(paste0("slack -F ",paste0(x,"_*","_DE_table.tsv")," ryan_todo")))

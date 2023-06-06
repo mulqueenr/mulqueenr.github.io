@@ -264,13 +264,34 @@ plt1<-ggplot(dat,aes(y=near_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("N
 plt2<-ggplot(dat,aes(y=distal_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis Reads")+theme_minimal()
 plt3<-ggplot(dat,aes(y=trans,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans Reads")+theme_minimal()
 
-plt4<-ggplot(dat,aes(y=(near_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis % Reads")+theme_minimal()
-plt5<-ggplot(dat,aes(y=(distal_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis % Reads")+theme_minimal()
-plt6<-ggplot(dat,aes(y=(trans/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans % Reads")+theme_minimal()
+plt4<-ggplot(dat,aes(y=(near_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis % Reads")+theme_minimal()+ylim(c(0,100))
+plt5<-ggplot(dat,aes(y=(distal_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis % Reads")+theme_minimal()+ylim(c(0,10))
+plt6<-ggplot(dat,aes(y=(trans/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans % Reads")+theme_minimal()+ylim(c(0,10))
 
 plt<-(plt1|plt2|plt3)/(plt4|plt5|plt6)
 ggsave(plt,file="read_counts.pdf")
 ```
+
+### Count of WGS and GCC Reads Ligation Signatures
+```bash
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+#count reads based on paired alignments
+readtype_count() {
+	#print out reads on same chromosome that are >= 1000 bp apart (distal)
+	distal=$(samtools view -F 1024 $1 | awk '{if (sqrt(($9^2))>=1000) print $0}' | grep "REmotif" | wc -l)
+	#print out reads on different chromosomes
+	trans=$(samtools view -F 1024 $1 | awk '{if($7 != "=") print $0}' | grep "REmotif" | wc -l)
+	#print out reads on same chromosome within 1000bp (cis)
+	near=$(samtools view -F 1024 $1 | awk '{if (sqrt(($9^2))<=1000) print $0}' |grep "REmotif" |  wc -l)
+	echo $1,$near,$distal,$trans
+}
+export -f readtype_count
+
+cd $dir/cells
+bam_in=`ls *bam`
+echo "cellid,near_cis,distal_cis,trans" > read_count.csv; parallel --jobs 10 readtype_count ::: $bam_in >> read_count.csv
+```
+
 
 ### Generation of HiC Contact Matrices
 Merge bam files based on CopyKit output. Then using bam2pairs from pairix to generate contacts
@@ -1117,7 +1138,7 @@ for (i in unique(clone_out$clone)){
 
 ### Count of WGS and GCC Reads
 ```bash
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+dir="/volumes/seq/projects/gccACT/mdamb231_ACTseq"
 #count reads based on paired alignments
 readtype_count() {
 	#print out reads on same chromosome that are >= 1000 bp apart (distal)
@@ -1139,7 +1160,7 @@ Plotting GCC read types
 ```R
 library(ggplot2)
 library(patchwork)
-setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test")
+setwd("/volumes/seq/projects/gccACT/mdamb231_ACTseq")
 dat<-read.table("./cells/read_count.csv",header=T,sep=",")
 dat$total_reads<-dat$near_cis+dat$distal_cis+dat$trans
 
@@ -1147,16 +1168,15 @@ plt1<-ggplot(dat,aes(y=near_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("N
 plt2<-ggplot(dat,aes(y=distal_cis,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis Reads")+theme_minimal()
 plt3<-ggplot(dat,aes(y=trans,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans Reads")+theme_minimal()
 
-plt4<-ggplot(dat,aes(y=(near_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis % Reads")+theme_minimal()
-plt5<-ggplot(dat,aes(y=(distal_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis % Reads")+theme_minimal()
-plt6<-ggplot(dat,aes(y=(trans/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans % Reads")+theme_minimal()
+plt4<-ggplot(dat,aes(y=(near_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Near Cis % Reads")+theme_minimal()+ylim(c(0,100))
+plt5<-ggplot(dat,aes(y=(distal_cis/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Distal Cis % Reads")+theme_minimal()+ylim(c(0,10))
+plt6<-ggplot(dat,aes(y=(trans/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans % Reads")+theme_minimal()+ylim(c(0,10))
 
 plt<-(plt1|plt2|plt3)/(plt4|plt5|plt6)
 ggsave(plt,file="read_counts.pdf")
 ```
 
 ```
-#reprocess on copykit
 #correlate HiC to WGS output
 #Test for number of split reads compared to HiC data
 #Test for SVs?
@@ -1167,7 +1187,7 @@ ggsave(plt,file="read_counts.pdf")
 #Use cooltools virtual4c for eccDNA interactions
 #Add 
 -->
-
+```
 
 
 
