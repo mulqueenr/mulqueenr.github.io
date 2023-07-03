@@ -3961,6 +3961,7 @@ library(dendextend)
 library(dendsort)
 library(readxl)
 library(seriation)
+library(universalmotif)
 library(Ckmeans.1d.dp)
 setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
 
@@ -4043,7 +4044,6 @@ pseudotime_gam_fit<-function(
   labels = row.names(gam.dat)[which(!is.na(label_idx))],
   labels_gp = gpar(col =markers[label_idx[!is.na(label_idx)],]$col,fontsize=3)
   ))
-  }
   print("Making GA or Chromvar Heatmap")
     if(!cluster){
     plt1<-Heatmap(gam.dat,
@@ -4067,9 +4067,6 @@ pseudotime_gam_fit<-function(
     col=colfun,
     show_heatmap_legend=T)}
   } else if (endsWith(prefix,"family")){
-
-
-
     row.names(gam.dat)<-unlist(lapply(row.names(gam.dat),function(i) gsub("-","_",i)))
     label_idx=match(row.names(gam.dat),tf_fam_names$V1)
     ha = rowAnnotation(genes = anno_mark(at = 1:nrow(gam.dat), 
@@ -4141,12 +4138,12 @@ pseudotime_gam_fit<-function(
     ggplot() + geom_logo( data=pfm[j][[1]]@profileMatrix, seq_type="dna")+theme_void()
     })
 
-plt_motif<-wrap_plots(plt_motif,ncol=1)
-  ggsave(plt_motif,file=paste0(prefix,".pseudotime.chromvar.heatmap.tffamilitymotifs.pdf"),height=30,width=2,limitsize=F)
-  system(paste0("slack -F ",prefix,".pseudotime.chromvar.heatmap.tffamilitymotifs.pdf"," ryan_todo"))
-  }
+  plt_motif<-wrap_plots(plt_motif,ncol=1)
+    ggsave(plt_motif,file=paste0(prefix,".pseudotime.chromvar.heatmap.tffamilitymotifs.pdf"),height=30,width=2,limitsize=F)
+    system(paste0("slack -F ",prefix,".pseudotime.chromvar.heatmap.tffamilitymotifs.pdf"," ryan_todo"))
+    }
 
-  return(gam.dat)
+    return(gam.dat)
 }
 
 pseudotime_processing<-function(x,prefix){
@@ -4173,16 +4170,19 @@ pseudotime_processing<-function(x,prefix){
 
   cividis_col<-colorRamp2(c(0, 0.5, 1), cividis(3))
   jaspar_tf_gam<-pseudotime_gam_fit(x=jaspar_tffamily,y=pseudotime,z=-1,prefix=paste0(prefix,".jaspar_tffamily"),colfun=cividis_col,filt_to_top_perc=0.7,bins=100)
+  saveRDS(jaspar_tf_gam,file=paste0(prefix,".jaspar_tffamily",".gam_dat.rds"))
 
   #cividis_col<-colorRamp2(c(0, 0.5, 1), cividis(3))
   #chromvar_tf_gam<-pseudotime_gam_fit(x=chromvar,y=pseudotime,z=-1,prefix=paste0(prefix,".chromvar"),colfun=cividis_col,filt_to_top_perc=0.80,bins=100)
 
   cistopic_col<-colorRamp2(c(0, 0.5, 1), rev(c("#004529","#78c679","#f7f7f7")))
   cistopic_gam<-pseudotime_gam_fit(x=cistopics,y=pseudotime,z=-1,prefix=paste0(prefix,".cistopic"),colfun=cistopic_col,bins=100)
-
+  saveRDS(cistopic_gam,file=paste0(prefix,".cistopic",".gam_dat.rds"))
+  
   magma_col<-colorRamp2(c(0,0.7, 1), magma(3))
   #ga_gam<-pseudotime_gam_fit(x=geneactivity,y=pseudotime,z=-1,prefix=paste0(prefix,".GA"),colfun=magma_col,filt_to_top_perc=0.99,bins=100)
   ga_gam<-pseudotime_gam_fit(x=geneactivity,y=pseudotime,z=-1,prefix=paste0(prefix,".GA"),colfun=magma_col,filt_to_top_perc=-1,bins=100,filt_markers=markers$gene)
+  saveRDS(ga_gam,file=paste0(prefix,".GA",".gam_dat.rds"))
 
   dat<-cor(t(ga_gam),t(jaspar_tf_gam))
   plt<-Heatmap(dat,
@@ -4202,6 +4202,19 @@ pseudotime_processing(x="orgo_cirm43.RG.540.SeuratObject.Rds",prefix="orgo_cirm4
 
 
 
+```
+
+Plotting single gene/TF family trajectories
+```R
+library(patchwork)
+library(ggplot2)
+
+setwd("/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab/organoid_finalanalysis")
+prefix="orgo_cirm43.RG.540"
+ga_gam<-readRDS(file=paste0(prefix,".GA",".gam_dat.rds"))
+jaspar_tf_gam<-readRDS(file=paste0(prefix,".jaspar_tffamily",".gam_dat.rds"))
+
+plot_through_time<-function(ga=ga_gam,tf=jaspar_tf_gam,gene="LHX6",tf_fam=)
 ```
 
 Use chromVAR motifmatchr to check for peak overlap with topic bed files and motifs
