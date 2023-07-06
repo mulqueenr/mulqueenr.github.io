@@ -33,32 +33,35 @@ bcl2fastq -R /volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/202
 --create-fastq-for-index-reads
 ```
 
-<!--
 Split out gccACT reads via python script
-403,575,855 total reads (expecting 400M)
 
 ```python
 import gzip
 from Bio import SeqIO
 import sys
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
+import pandas as pd
 
 #set up plate
-plate2_i7=['AGGCAGAA', 'TCCTGAGC', 'GGACTCCT', 'TAGGCATG', 'CTCTCTAC', 'CAGAGAGG', 'GCTACGCT', 'CGAGGCTG', 'AAGAGGCA', 'GTAGAGGA', 'GCTCATGA', 'ATCTCAGG', 'ACTCGCTA', 'GGAGCTAC', 'GCGTAGTA', 'CGGAGCCT']
-plate2_i5=['TCTACTCT', 'CTCCTTAC', 'TATGCAGT', 'TACTCCTT', 'AGGCTTAG', 'ATTAGACG', 'CGGAGAGA', 'CTAGTCGA', 'AGCTAGAA', 'AGAGTCAA', 'AGATCGCA', 'AGCAGGAA', 'AGTCACTA', 'ATCCTGTA', 'ATTGAGGA', 'CAACCACA', 'GACTAGTA', 'CAATGGAA', 'CACTTCGA', 'CAGCGTTA', 'CATACCAA', 'CCAGTTCA', 'CCGAAGTA', 'CCGTGAGA']
+n7="/volumes/lab/users/wet_lab/protocols/WaferDT/Barcodes/barcode_txt/wafer_v2_N7_72.txt" #copied to home directory as backup
+s5="/volumes/lab/users/wet_lab/protocols/WaferDT/Barcodes/barcode_txt/wafer_v2_S5_72.txt" #copied to home directory as backup
+n7=pd.read_table(n7)
+s5=pd.read_table(s5)
+plate_i7=n7["RC_N7"]
+plate_i5=s5["RC_S5_Hiseq4000_nextseq"]
 
-idx_array=[]
-i=1
-for i5 in plate2_i5:
-	for i7 in plate2_i7:
-		idx_well=[i5,i7,"C"+str(i)]
-		idx_array.append(idx_well)
-		i+=1
+plate_i7=[i.strip() for i in plate_i7]
+plate_i5=[i.strip() for i in plate_i5]
 
-fq1=sys.argv[1] #read argument fq1="~/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R1_001.fastq.gz"
-fq2=sys.argv[2] #read argument fq2="~/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R2_001.fastq.gz"
-idx3=sys.argv[3] #idx3=~/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_I1_001.fastq.gz"
-idx4=sys.argv[4] #idx4=~/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_I2_001.fastq.gz"
+
+fq1=sys.argv[1] 
+fq2=sys.argv[2] 
+idx3=sys.argv[3] 
+idx4=sys.argv[4] 
+#fq1="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_R1_001.fastq.gz"
+#fq2="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_R2_001.fastq.gz"
+#idx3="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_I1_001.fastq.gz"
+#idx4="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_I2_001.fastq.gz"
 
 i=0
 #open fastq files, correct barcode read names then out fastq 1 and 2  with new read name
@@ -69,53 +72,47 @@ with gzip.open(fq1, "rt") as handle1:
 				with open(fq1[:-9]+".barc.fastq", "w") as outfile_fq1:
 					with open(fq2[:-9]+".barc.fastq", "w") as outfile_fq2:
 						for (title1, seq1, qual1), (title2, seq2, qual2), (title3,seq3,qual3), (title3,seq4,qual4) in zip(FastqGeneralIterator(handle1), FastqGeneralIterator(handle2),FastqGeneralIterator(handle3),FastqGeneralIterator(handle4)):
-							for j in idx_array:
-								if seq3==j[1]+"AT" and seq4==j[0]+"GT":
-									i+=1
-									readname=j[2]+"_"+seq3+seq4
-									outfile_fq1.write("@%s:%s\n%s\n+\n%s\n" % (readname, i, seq1, qual1))
-									outfile_fq2.write("@%s:%s\n%s\n+\n%s\n" % (readname, i, seq2, qual2))
+							if seq3[:8] in plate_i7 and seq4[:8] in plate_i5:
+								i+=1									
+								readname=seq3[:8]+seq4[:8]
+								outfile_fq1.write("@%s:%s\n%s\n+\n%s\n" % (readname, i, seq1, qual1))
+								outfile_fq2.write("@%s:%s\n%s\n+\n%s\n" % (readname, i, seq2, qual2))
 
 ```
 Running fastq splitter
 This can be made a lot faster using something like a hash table, or limiting search space more.
 
 ```bash
-python ~/src/plate2_fastqsplitter.py /volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R1_001.fastq.gz \ 
-/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R2_001.fastq.gz \ 
-/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_I1_001.fastq.gz \ 
-/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_I2_001.fastq.gz 
+python ~/src/plate2_fastqsplitter.py \
+/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_R1_001.fastq.gz \
+/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_R2_001.fastq.gz \
+/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_I1_001.fastq.gz \
+/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_I2_001.fastq.gz
 
 #then gzip
 for i in *fastq; do gzip $i & done &
 ```
-Got 253,517,850 reads total from assignment
+Got 116,212,259 reads total from assignment
 Moving fastq.gz files to a project directory
 
 Processing will be in: 
 ```bash
-/volumes/seq/projects/gccACT/230306_mdamb231_test
-```
-
-Moving the two fastq files.
-```bash
-mkdir /volumes/seq/projects/gccACT/230306_mdamb231_test
-cp /volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R1_001.barc.fastq.gz /volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R2_001.barc.fastq.gz /volumes/seq/projects/gccACT/230306_mdamb231_test
+/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest
 ```
 
 # Processing Samples via Copykit to start
 ## Alignment
 ```bash
 #set up variables and directory
-mkdir /volumes/seq/projects/gccACT/230306_mdamb231_test
 ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
-fq1="/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R1_001.barc.fastq.gz"
-fq2="/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R2_001.barc.fastq.gz"
+dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
+fq1="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_R1_001.barc.fastq.gz"
+fq2="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_R2_001.barc.fastq.gz"
 
 #Map reads with BWA Mem
-bwa mem -t 20 $ref $fq1 $fq2 | samtools view -b - > $dir/230306_gccact.bam
+bwa mem -t 50 $ref $fq1 $fq2 | samtools view -b - > $dir/230701_wafergen_gccact.bam
 ```
+
 
 ## Split out single-cells
 ```bash
@@ -125,22 +122,29 @@ mkdir $dir/cells
 Split by readname bam field into cells subdir and add metadata column
 
 ```bash
-samtools view $dir/230306_gccact.bam | awk -v dir=$dir 'OFS="\t" {split($1,a,":"); print $0,"XM:Z:"a[1] > "./cells/"a[1]".230306_gccact.sam"}'
+samtools view $dir/230701_wafergen_gccact.bam | awk -v dir=$dir 'OFS="\t" {split($1,a,":"); print $0,"XM:Z:"a[1] > "./cells/"a[1]".230701_wafergen_gccact.sam"}' &
  #split out bam to cell level sam
+```
+
+## Remove sam files that have less than 100000 reads
+
+```bash
+wc -l *sam | sort -k1,1n - | head -n -1 | awk '{if($1<100000) print $2}' | xargs rm
+#586 cells returned
 ```
 
 ## Add header to each sam and convert to bam and sort
 Using parallel to save time
 ```bash
-ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 
 add_header() {
+	ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
+	dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
 	samtools view -bT $ref $1 | samtools sort -T $dir -o ${1::-4}.bam -
 }
 export -f add_header
 sam_in=`ls *sam`
-parallel --jobs 30 add_header ::: $sam_in
+parallel --jobs 50 add_header ::: $sam_in
 ```
 
 ## Mark duplicate reads
@@ -152,7 +156,7 @@ sort_and_markdup() {
 export -f sort_and_markdup
 
 bam_in=`ls *bam`
-parallel --jobs 30 sort_and_markdup ::: $bam_in
+parallel --jobs 50 sort_and_markdup ::: $bam_in
 ```
 
 ## Run Fastqc on everything and clean up
@@ -168,7 +172,6 @@ rm -rf *gccact.bam #only keep duplicate marked bams
 
 #run multiqc to aggregate
 multiqc . 
-#C100 had zero reads, gzipping to prevent copykit from reading in
 
 ```
 
@@ -182,9 +185,9 @@ library(BiocParallel)
 library(EnsDb.Hsapiens.v86)
 register(MulticoreParam(progressbar = T, workers = 50), default = T)
 BiocParallel::bpparam()
-setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells")
+setwd("/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/cells")
 
-tumor2 <- runVarbin("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells",
+tumor2 <- runVarbin("/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/cells",
                  remove_Y = TRUE,
                  genome="hg38",
                  is_paired_end=TRUE)
@@ -193,29 +196,26 @@ tumor2 <- runVarbin("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells",
 tumor2 <- findAneuploidCells(tumor2)
 
 # Mark low-quality cells for filtering
-tumor <- findOutliers(tumor)
+tumor2 <- findOutliers(tumor2)
 
 # Visualize cells labeled by filter and aneuploid status
 pdf("outlier_qc.heatmap.pdf")
-plotHeatmap(tumor, label = c('outlier', 'is_aneuploid'), row_split = 'outlier')
+plotHeatmap(tumor2, label = c('outlier', 'is_aneuploid'), row_split = 'outlier')
 dev.off()
 
-# Remove cells marked as low-quality and/or aneuploid from the copykit object
-tumor <- tumor[,SummarizedExperiment::colData(tumor)$outlier == FALSE]
-tumor <- tumor[,SummarizedExperiment::colData(tumor)$is_aneuploid == TRUE]
-
+tumor<-tumor2
 
 # kNN smooth profiles
 tumor <- knnSmooth(tumor)
 
 
-k_clones<-findSuggestedK(tumor)
 # Create a umap embedding 
 tumor <- runUmap(tumor)
+k_clones<-findSuggestedK(tumor) #16
 
 # Find clusters of similar copy number profiles and plot the results
 # If no k_subclones value is provided, automatically detect it from findSuggestedK()
-tumor  <- findClusters(tumor,k_subclones=17)#output from k_clones
+tumor  <- findClusters(tumor,k_subclones=16)#output from k_clones
 
 pdf("subclone.umap.pdf")
 plotUmap(tumor, label = 'subclones')
@@ -238,11 +238,50 @@ for (i in unique(clone_out$clone)){
 	tmp<-clone_out[clone_out$clone==i,]
 	write.table(tmp$bam,file=paste0("clone_",i,".bam_list.txt"),row.names=F,col.names=F,quote=F)
 }
+
+#based on CNV profiles, clone c3 is skbr3 and all others are mda-mb-231.
+#going to split and rerun subclone analysis and heatmaping
+# Remove cells marked as low-quality and/or aneuploid from the copykit object
+skbr3<- tumor[,SummarizedExperiment::colData(tumor)$subclones == "c3"]
+mdamb231 <- tumor[,SummarizedExperiment::colData(tumor)$subclones != "c3"]
+
+
+# Create a umap embedding 
+skbr3 <- runUmap(skbr3) ; mdamb231<- runUmap(mdamb231)
+k_clones_skbr3<-findSuggestedK(skbr3); k_clones_mdamb231<-findSuggestedK(mdamb231); #16
+
+# Find clusters of similar copy number profiles and plot the results
+# If no k_subclones value is provided, automatically detect it from findSuggestedK()
+skbr3 <- findClusters(skbr3,k_subclones=2)#output from k_clones
+mdamb231 <- findClusters(mdamb231,k_subclones=4)#output from k_clones
+
+pdf("skbr3_subclone.umap.pdf")
+plotUmap(skbr3, label = 'subclones')
+dev.off()
+
+pdf("mdamb231_subclone.umap.pdf")
+plotUmap(mdamb231, label = 'subclones')
+dev.off()
+
+# Calculate consensus profiles for each subclone, 
+# and order cells by cluster for visualization with plotHeatmap
+skbr3 <- calcConsensus(skbr3) ; mdamb231<- calcConsensus(mdamb231)
+skbr3 <- runConsensusPhylo(skbr3); mdamb231 <- runConsensusPhylo(mdamb231)
+
+# Plot a copy number heatmap with clustering annotation
+pdf("skbr3_subclone.heatmap.pdf")
+plotHeatmap(skbr3, label = 'subclones',order='hclust')
+dev.off()
+
+pdf("mdamb231_subclone.heatmap.pdf")
+plotHeatmap(mdamb231, label = 'subclones',order='hclust')
+dev.off()
+
 ```
 
 ### Count of WGS and GCC Reads
 ```bash
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
 #count reads based on paired alignments
 readtype_count() {
 	#print out reads on same chromosome that are >= 1000 bp apart (distal)
@@ -257,14 +296,14 @@ export -f readtype_count
 
 cd $dir/cells
 bam_in=`ls *bam`
-echo "cellid,near_cis,distal_cis,trans" > read_count.csv; parallel --jobs 10 readtype_count ::: $bam_in >> read_count.csv
+echo "cellid,near_cis,distal_cis,trans" > read_count.csv; parallel --jobs 20 readtype_count ::: $bam_in >> read_count.csv
 ```
 
 Plotting GCC read types
 ```R
 library(ggplot2)
 library(patchwork)
-setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test")
+setwd("/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest")
 dat<-read.table("./cells/read_count.csv",header=T,sep=",")
 dat$total_reads<-dat$near_cis+dat$distal_cis+dat$trans
 
@@ -277,9 +316,25 @@ plt5<-ggplot(dat,aes(y=(distal_cis/total_reads)*100,x="Cells"))+geom_jitter()+ge
 plt6<-ggplot(dat,aes(y=(trans/total_reads)*100,x="Cells"))+geom_jitter()+geom_boxplot()+ylab("Trans % Reads")+theme_minimal()+ylim(c(0,10))
 
 plt<-(plt1|plt2|plt3)/(plt4|plt5|plt6)
-ggsave(plt,file="read_counts.pdf")
+ggsave(plt,file="./cells/read_counts.pdf")
 ```
 
+
+## Project Library Complexity
+Using Picard Tools
+```bash
+dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
+project_count() {
+java -jar /volumes/seq/code/3rd_party/picard/picard-2.20.4/picard.jar EstimateLibraryComplexity I=$1 O=${1::-4}.complex_metrics.txt
+}
+export -f project_count
+
+cd $dir/cells
+bam_in=`ls *bam`
+parallel --jobs 20 project_count ::: $bam_in
+```
+
+<!--
 ### Count of WGS and GCC Reads Ligation Signatures
 ```bash
 dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
@@ -299,12 +354,12 @@ cd $dir/cells
 bam_in=`ls *bam`
 echo "cellid,near_cis,distal_cis,trans" > read_count.csv; parallel --jobs 10 readtype_count ::: $bam_in >> read_count.csv
 ```
-
+-->
 
 ### Generation of HiC Contact Matrices
 Merge bam files based on CopyKit output. Then using bam2pairs from pairix to generate contacts
 ```bash
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
 ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
 
 #filter reads to HiC contacts, then perform bam2pairs 
@@ -313,7 +368,7 @@ mkdir $dir/cells/contacts
 #### For generation of pairix per cell
 #bam_to_pairs() {
 #	samtools view -F 1024 $3 | awk '{if (sqrt(($9^2))>=1000 || $7 != "=") print $0}' | samtools view -bT $2 - > $1/cells/contacts/${3::-4}.contacts.bam && wait;
-#	bam2pairs $1/cells/contacts/${3::-4}.contacts.bam $1/cells/contacts/${3::-4}
+#	~/tools/pairix/util/bam2pairs/bam2pairs $1/cells/contacts/${3::-4}.contacts.bam $1/cells/contacts/${3::-4}
 #}
 #export -f bam_to_pairs
 
@@ -325,18 +380,18 @@ mkdir $dir/cells/contacts
 # third is bam file input
 
 bamlist_merge_to_pairs() {
-	samtools merge -b $3 -O SAM -@ 20 - | awk '{if (sqrt(($9^2))>=1000 || $7 != "=") print $0}' | samtools view -bT $2 - > $1/cells/contacts/${3::-13}.contacts.bam && wait;
-	bam2pairs $1/cells/contacts/${3::-13}.contacts.bam $1/cells/contacts/${3::-13}
+	dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
+	ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
+	samtools merge -b $1 -O SAM -@ 20 - | awk '{if (sqrt(($9^2))>=1000 || $7 != "=") print $0}' | samtools view -bT $ref - > $dir/cells/contacts/${1::-13}.contacts.bam && wait;
+	~/tools/pairix/util/bam2pairs/bam2pairs $dir/cells/contacts/${1::-13}.contacts.bam $dir/cells/contacts/${1::-13}
 }
 export -f bamlist_merge_to_pairs
 
-bamlist_merge_to_pairs $dir $ref clone_c1.bam_list.txt 
-bamlist_merge_to_pairs $dir $ref clone_c2.bam_list.txt 
-bamlist_merge_to_pairs $dir $ref clone_c3.bam_list.txt 
-bamlist_merge_to_pairs $dir $ref clone_c4.bam_list.txt 
-
-#set variable for bam list in function
-
+cd $dir/cells
+bamlist_merge_to_pairs clone_c1.bam_list.txt 
+bamlist_merge_to_pairs clone_c2.bam_list.txt 
+bamlist_merge_to_pairs clone_c3.bam_list.txt #skbr3
+bamlist_merge_to_pairs clone_c4.bam_list.txt 
 
 ```
 
@@ -362,8 +417,9 @@ conda activate cooler_env #use cooler env (lower python version)
 ### Set up reference and bins
 Prepare chrom.sizes file from reference fasta
 ```bash
-ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
-faidx $ref -i chromsizes > hg38.chrom.sizes
+#ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
+#faidx $ref -i chromsizes > hg38.chrom.sizes
+#previously done
 ```
 
 Prepare bin of genome and the GC bins
@@ -376,7 +432,7 @@ CHROMSIZES_FILE="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0
 BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins"
 GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.gc.bins"
 BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
-cooltools genome binnify $CHROMSIZES_FILE 1000000 > $BINS_PATH & #1mb bins, 
+cooltools genome binnify $CHROMSIZES_FILE 1000000 > $BINS_PATH #1mb bins, 
 tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
 cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
 
@@ -417,26 +473,26 @@ cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
 ### Generate Cooler matrices from pairix data
 ```bash
 # Note that the input pairs file happens to be space-delimited, so we convert to tab-delimited with `tr`.
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
 
 pairix_to_cooler_5kb() {
 BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins.bed"
 out_name="5kb"
-cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
+cooler cload pairs -0 -c1 2 -c2 4 -p1 3 -p2 5 --temp-dir . --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
 }
 export -f pairix_to_cooler_5kb
 
 pairix_to_cooler_10kb() {
 BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins.bed"
 out_name="10kb"
-cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
+cooler cload pairs -0 -c1 2 -c2 4 -p1 3 -p2 5 --temp-dir . --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
 }
 export -f pairix_to_cooler_10kb
 
 pairix_to_cooler_50kb() {
 BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins.bed"
 out_name="50kb"
-cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
+cooler cload pairs -0 -c1 2 -c2 4 -p1 3 -p2 5 --temp-dir . --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
 }
 export -f pairix_to_cooler_50kb
 
@@ -444,12 +500,12 @@ export -f pairix_to_cooler_50kb
 pairix_to_cooler_500kb() {
 BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
 out_name="500kb"
-cooler cload pairix -0 -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
+cooler cload pairs -0 -c1 2 -c2 4 -p1 3 -p2 5 --temp-dir . --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
 }
 export -f pairix_to_cooler_500kb
 
 
-cd $dir/rm_archive/contacts/clones
+cd $dir/cells/contacts
 pairix_in=`ls clone_*pairs.gz`
 
 #5kb
@@ -467,6 +523,7 @@ parallel --jobs 5 pairix_to_cooler_500kb ::: $pairix_in & #uses 10 cores per job
 # first argument is pairix gzipped file
 ```
 
+<!--
 ### CNV normalization on HiC Data
 Write out CNV segments as bedfiles at multiple resolutions for cnv correction via NeoLoopFinder
 NeoLoopFinder also reports CNVs through log2 changes, making this a direct comparison.
@@ -475,7 +532,7 @@ NeoLoopFinder also reports CNVs through log2 changes, making this a direct compa
 library(copykit)
 library(GenomicRanges)
 library(parallel)
-wd_out="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
+wd_out="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
 
 setwd(wd_out)
 tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/scCNA.rds")
@@ -1188,6 +1245,7 @@ ggsave(plt,file="read_counts.pdf")
 #correlate HiC to WGS output
 #Test for number of split reads compared to HiC data
 #Test for SVs?
+--->
 
 <!--
 #Add compartments
@@ -1195,11 +1253,11 @@ ggsave(plt,file="read_counts.pdf")
 #Use cooltools virtual4c for eccDNA interactions
 #Add 
 -->
+<!--
 ```
 
 
 
-<!--
 ### eccDNA Analysis
 https://www.science.org/doi/10.1126/sciadv.aba2489
 https://github.com/pk7zuva/Circle_finder/blob/master/circle_finder-pipeline-bwa-mem-samblaster.sh

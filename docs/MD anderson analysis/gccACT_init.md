@@ -272,6 +272,19 @@ plt<-(plt1|plt2|plt3)/(plt4|plt5|plt6)
 ggsave(plt,file="read_counts.pdf")
 ```
 
+## Project Library Complexity
+Using Picard Tools
+```bash
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+project_count() {
+java -jar /volumes/seq/code/3rd_party/picard/picard-2.20.4/picard.jar EstimateLibraryComplexity I=$1 O=${1::-4}.complex_metrics.txt
+}
+export -f project_count
+
+cd $dir/cells
+bam_in=`ls *bam`
+parallel --jobs 20 project_count ::: $bam_in
+```
 ### Count of WGS and GCC Reads Ligation Signatures
 ```bash
 dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
