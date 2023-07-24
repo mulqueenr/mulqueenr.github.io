@@ -21,6 +21,10 @@ ln -s /volumes/seq/flowcells/MDA/nextseq2000/2023/20230629_Mariam_HiC_MDA231_SKo
 /volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/20230629_Mariam_HiC_MDA231_SKor3
 ```
 
+Use wafergen output to generate a list of cells
+```bash
+/volumes/lab/users/wet_lab/instruments/wafergen/Ryan/2023.06.12-137339
+```
 ```bash
 #run transfered to /volumes/seq/tmp
 cd /volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/20230629_Mariam_HiC_MDA231_SKor3
@@ -34,6 +38,7 @@ bcl2fastq -R /volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/202
 ```
 
 Split out gccACT reads via python script
+(Next time use bcl2fastq2 with proper sample sheet)
 
 ```python
 import gzip
@@ -99,6 +104,7 @@ Processing will be in:
 ```bash
 /volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest
 ```
+
 
 # Processing Samples via Copykit to start
 ## Alignment
@@ -175,19 +181,71 @@ multiqc .
 
 ```
 
+Generate a metadata file of wells and sample input based on wafergen output file
+```python
+import pandas as pd
+import sys
+
+well=sys.argv[1] 
+outdir=sys.argv[2] 
+#well="/volumes/lab/users/wet_lab/instruments/wafergen/Ryan/2023.06.12-137339/137339_WellList.TXT"
+#well.txt is prefilted to only include information of wells chosen for dispensing.
+#outdir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
+
+well=pd.read_csv(well,sep="\t")
+well["idx_i7"]=[x.split("+")[0] for x in well["Barcode"]]
+well["idx_i5"]=[x.split("+")[1] for x in well["Barcode"]]
+well["idx_i5"]=[x[::-1].lower().replace("a","T").replace("t","A").replace("c","G").replace("g","C") for x in well["idx_i5"]]
+well["idx"]=well["idx_i7"]+well["idx_i5"]
+for i in well["Sample"].unique():
+		out_df=well[well["Sample"]==i]["idx"]
+		i_out=i.replace(" ","_").replace("-","_")
+		out_df.to_csv(outdir+"/"+i_out+".barc.list.txt",index=False,header=False)
+
+```
+
+```bash
+python ~/src/wafergen_metadatagenerator.py \
+/volumes/lab/users/wet_lab/instruments/wafergen/Ryan/2023.06.12-137339/137339_WellList.TXT \
+/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest
+
+#arg1 is well list txt from wafergen run
+#arg2 is run directory used in analysis
+```
+
+Move separate samples (wafergen defined) to different directories
+This needs to be looked at again and fixed probably.
+```bash
+run_dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
+
+for i in ${run_dir}/*.barc.list.txt; do  
+	out=$(basename $i)
+	out_prefix=${out::-14}
+	if [ ! -d "${run_dir}/cells/${out_prefix}" ]
+		then 
+			mkdir ${run_dir}/cells/${out_prefix}
+	fi
+	cat $i | find ${run_dir}/cells -type f -name {}.*.bam -exec sh -c 'mv "$0" "$1"/cells/"$2"' {} $run_dir $out_prefix
+done
+
+```
+
 ## Run CopyKit for WGS portion
 Analysis from 
 https://navinlabcode.github.io/CopyKit-UserGuide/quick-start.html
+For this sample, cell labels were lost when I switched wafergen systems (whoops, but can still be identified by the WGS signals).
+In the future I'll just use a single function per sample directory for processing.
 
 ```R
 library(copykit)
 library(BiocParallel)
 library(EnsDb.Hsapiens.v86)
-register(MulticoreParam(progressbar = T, workers = 50), default = T)
+library(scquantum)
+register(MulticoreParam(progressbar = T, workers = 5), default = T)
 BiocParallel::bpparam()
-setwd("/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/cells")
 
-tumor2 <- runVarbin("/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/cells",
+setwd("/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest")
+tumor2 <- runVarbin("/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/cells/sample",
                  remove_Y = TRUE,
                  genome="hg38",
                  is_paired_end=TRUE)
@@ -215,10 +273,14 @@ k_clones<-findSuggestedK(tumor) #16
 
 # Find clusters of similar copy number profiles and plot the results
 # If no k_subclones value is provided, automatically detect it from findSuggestedK()
-tumor  <- findClusters(tumor,k_subclones=16)#output from k_clones
+tumor  <- findClusters(tumor,k_superclones=16, k_subclones=10)#output from k_clones
 
-pdf("subclone.umap.pdf")
+pdf("all_cells.subclone.umap.pdf")
 plotUmap(tumor, label = 'subclones')
+dev.off()
+
+pdf("all_cells.superclone.umap.pdf")
+plotUmap(tumor, label = 'superclones')
 dev.off()
 
 # Calculate consensus profiles for each subclone, 
@@ -227,23 +289,18 @@ tumor <- calcConsensus(tumor)
 tumor <- runConsensusPhylo(tumor)
 
 # Plot a copy number heatmap with clustering annotation
-pdf("subclone.heatmap.pdf")
-plotHeatmap(tumor, label = 'subclones',order='hclust')
+pdf("all_cells.subclone.heatmap.pdf")
+plotHeatmap(tumor, label = c('superclones','subclones'),order='hclust')
 dev.off()
 
-saveRDS(tumor,file="/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
-tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
-clone_out<-data.frame(bam=paste0(row.names(tumor@colData),".bam"),clone=tumor@colData$subclones)
-for (i in unique(clone_out$clone)){
-	tmp<-clone_out[clone_out$clone==i,]
-	write.table(tmp$bam,file=paste0("clone_",i,".bam_list.txt"),row.names=F,col.names=F,quote=F)
-}
+saveRDS(tumor,file="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/all_cells.scCNA.rds")
+tumor<-readRDS("/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/all_cells.scCNA.rds")
 
-#based on CNV profiles, clone c3 is skbr3 and all others are mda-mb-231.
+#based on CNV profiles, superclone s1 is skbr3 and all others are mda-mb-231.
 #going to split and rerun subclone analysis and heatmaping
 # Remove cells marked as low-quality and/or aneuploid from the copykit object
-skbr3<- tumor[,SummarizedExperiment::colData(tumor)$subclones == "c3"]
-mdamb231 <- tumor[,SummarizedExperiment::colData(tumor)$subclones != "c3"]
+skbr3<- tumor[,SummarizedExperiment::colData(tumor)$superclones == "s1"]
+mdamb231 <- tumor[,SummarizedExperiment::colData(tumor)$superclones != "s1"]
 
 
 # Create a umap embedding 
@@ -252,8 +309,9 @@ k_clones_skbr3<-findSuggestedK(skbr3); k_clones_mdamb231<-findSuggestedK(mdamb23
 
 # Find clusters of similar copy number profiles and plot the results
 # If no k_subclones value is provided, automatically detect it from findSuggestedK()
-skbr3 <- findClusters(skbr3,k_subclones=2)#output from k_clones
-mdamb231 <- findClusters(mdamb231,k_subclones=4)#output from k_clones
+skbr3 <- findClusters(skbr3,k_subclones=6)#output from k_clones
+mdamb231 <- findClusters(mdamb231,k_subclones=13)#output from k_clones
+
 
 pdf("skbr3_subclone.umap.pdf")
 plotUmap(skbr3, label = 'subclones')
@@ -277,6 +335,46 @@ pdf("mdamb231_subclone.heatmap.pdf")
 plotHeatmap(mdamb231, label = 'subclones',order='hclust')
 dev.off()
 
+saveRDS(skbr3,file="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/skbr3.scCNA.rds")
+saveRDS(mdamb231,file="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/mdamb231.scCNA.rds")
+
+skbr3 <- calcInteger(skbr3, method = 'scquantum', assay = 'smoothed_bincounts')
+mdamb231 <- calcInteger(mdamb231, method = 'scquantum', assay = 'smoothed_bincounts')
+
+pdf("skrb3_ploidy.score.pdf")
+plotMetrics(skbr3, metric = 'ploidy', label = 'ploidy_score')
+dev.off()
+
+pdf("mdamb231_ploidy.score.pdf")
+plotMetrics(mdamb231, metric = 'ploidy', label = 'ploidy_score')
+dev.off()
+
+pdf("skrb3_ploidy.heatmap.pdf")
+plotHeatmap(skbr3, assay = 'integer', label = c("superclones", "subclones"), order_cells = 'consensus_tree')
+dev.off()
+
+pdf("mdamb231_ploidy.heatmap.pdf")
+plotHeatmap(mdamb231, assay = 'integer', label = c("superclones", "subclones"), order_cells = 'consensus_tree')
+dev.off()
+
+saveRDS(skbr3,file="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/skbr3.scCNA.rds")
+saveRDS(mdamb231,file="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/mdamb231.scCNA.rds")
+
+skbr3<-readRDS(file="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/skbr3.scCNA.rds")
+mdamb231<-readRDS(file="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/mdamb231.scCNA.rds")
+
+
+clone_out<-data.frame(bam=paste0(row.names(skbr3@colData),".bam"),clone=skbr3@colData$subclones)
+for (i in unique(clone_out$clone)){
+	tmp<-clone_out[clone_out$clone==i,]
+	write.table(tmp$bam,file=paste0("skbr3_",i,".bam_list.txt"),row.names=F,col.names=F,quote=F)
+}
+
+clone_out<-data.frame(bam=paste0(row.names(mdamb231@colData),".bam"),clone=mdamb231@colData$subclones)
+for (i in unique(clone_out$clone)){
+	tmp<-clone_out[clone_out$clone==i,]
+	write.table(tmp$bam,file=paste0("mdamb231_",i,".bam_list.txt"),row.names=F,col.names=F,quote=F)
+}
 ```
 
 ### Count of WGS and GCC Reads
@@ -357,7 +455,8 @@ echo "cellid,near_cis,distal_cis,trans" > read_count.csv; parallel --jobs 10 rea
 -->
 
 ### Generation of HiC Contact Matrices
-Merge bam files based on CopyKit output. Then using bam2pairs from pairix to generate contacts
+Merge bam files based on CopyKit output. Then using bam2pairs from pairix to generate contacts.
+Fix this up to move to cleaner directories etc.
 ```bash
 dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
 ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
@@ -382,17 +481,20 @@ mkdir $dir/cells/contacts
 bamlist_merge_to_pairs() {
 	dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
 	ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
-	samtools merge -b $1 -O SAM -@ 20 - | awk '{if (sqrt(($9^2))>=1000 || $7 != "=") print $0}' | samtools view -bT $ref - > $dir/cells/contacts/${1::-13}.contacts.bam && wait;
-	~/tools/pairix/util/bam2pairs/bam2pairs $dir/cells/contacts/${1::-13}.contacts.bam $dir/cells/contacts/${1::-13}
+	outname=`basename $1`
+	samtools merge -b $1 -O SAM -@ 20 - | awk '{if (sqrt(($9^2))>=1000 || $7 != "=") print $0}' | samtools view -bT $ref - > ${outname::-13}.contacts.bam && wait;
+	~/tools/pairix/util/bam2pairs/bam2pairs ${outname::-13}.contacts.bam ${outname::-13}
 }
 export -f bamlist_merge_to_pairs
 
-cd $dir/cells
-bamlist_merge_to_pairs clone_c1.bam_list.txt 
-bamlist_merge_to_pairs clone_c2.bam_list.txt 
-bamlist_merge_to_pairs clone_c3.bam_list.txt #skbr3
-bamlist_merge_to_pairs clone_c4.bam_list.txt 
 
+cd $dir/cells/sample
+bam_list=`ls $dir/*bam_list.txt`
+parallel --jobs 10 bamlist_merge_to_pairs ::: $bam_list
+
+#moved all to contacts directory
+mv *pairs* $dir/cells/contacts
+mv *contacts* $dir/cells/contacts
 ```
 
 
@@ -471,6 +573,8 @@ cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
 ```
 
 ### Generate Cooler matrices from pairix data
+Note: for some reason I switched between making "pairix" files and "pairs". I think they are pretty much the same so using pairs for this script.
+
 ```bash
 # Note that the input pairs file happens to be space-delimited, so we convert to tab-delimited with `tr`.
 dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
@@ -506,7 +610,7 @@ export -f pairix_to_cooler_500kb
 
 
 cd $dir/cells/contacts
-pairix_in=`ls clone_*pairs.gz`
+pairix_in=`ls *bsorted.pairs.gz`
 
 #5kb
 parallel --jobs 5 pairix_to_cooler_5kb ::: $pairix_in & #uses 10 cores per job
@@ -523,58 +627,45 @@ parallel --jobs 5 pairix_to_cooler_500kb ::: $pairix_in & #uses 10 cores per job
 # first argument is pairix gzipped file
 ```
 
-<!--
 ### CNV normalization on HiC Data
 Write out CNV segments as bedfiles at multiple resolutions for cnv correction via NeoLoopFinder
 NeoLoopFinder also reports CNVs through log2 changes, making this a direct comparison.
-
+```bash
+conda deactivate #back to environment r4.2
+```
 ```R
 library(copykit)
 library(GenomicRanges)
 library(parallel)
+library(rtracklayer)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+
 wd_out="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
-
 setwd(wd_out)
-tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/scCNA.rds")
-tumor <- calcInteger(tumor, method = 'scquantum', assay = 'smoothed_bincounts') #calculate ploidy
-tumor <- calcConsensus(tumor) #generate consensus
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
 
-pdf("cellploidy.integer.pdf")
-plotMetrics(tumor, metric = 'ploidy', label = 'ploidy_score') #plot ploidy score
-dev.off()
-
-tumor <- calcInteger(tumor, method = 'fixed', ploidy_value = median(tumor$ploidy)) #calculate integer value per consensus
-tumor <- calcConsensus(tumor, consensus_by = 'subclones', assay = 'integer')
-
-
-# Plot a consensus copy number heatmap 
-pdf("consensus.heatmap.integer.pdf")
-plotHeatmap(tumor,
-            consensus = TRUE,
-            label = 'subclones',
-            assay = 'integer')
-dev.off()
-saveRDS(tumor,file="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/scCNA.consensus.rds") #save categorical consensus scCNA object
+skbr3<-readRDS(file="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/skbr3.scCNA.rds")
+mdamb231<-readRDS(file="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/mdamb231.scCNA.rds")
 
 
 #function to define blacklist regions
 make_black_list<-function(bed_in,copykit_obj){
-#bins in bin bed file that are not in the copykit filtered list are considered black list,
-#generate per bins.bed resolution
-bins_bed<-read.table(bed_in,header=F,sep="\t")
-colnames(bins_bed)<-c("chr","start","end")
-bins_bed<-GRanges(bins_bed)
-accepted_bed_ranges<-GRanges(copykit_obj@rowRanges) #row ranges for bedgraph
-overlaps<-findOverlaps(query=bins_bed,subject=accepted_bed_ranges,minoverlap=1,ignore.strand=T)
-blacklist<-bins_bed[!(range(1,nrow(bins_bed)) %in% overlaps@from),]
-write.table(as.data.frame(blacklist)[1:3],col.names=F,row.names=F,quote=F,file=paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed"))
-print(paste("Wrote out",paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed")))
+	#bins in bin bed file that are not in the copykit filtered list are considered black list,
+	#generate per bins.bed resolution
+	bins_bed<-read.table(bed_in,header=F,sep="\t")
+	colnames(bins_bed)<-c("chr","start","end")
+	bins_bed<-GRanges(bins_bed)
+	accepted_bed_ranges<-GRanges(copykit_obj@rowRanges) #row ranges for bedgraph
+	overlaps<-findOverlaps(query=bins_bed,subject=accepted_bed_ranges,minoverlap=1,ignore.strand=T)
+	blacklist<-bins_bed[!(range(1,nrow(bins_bed)) %in% overlaps@from),]
+	write.table(as.data.frame(blacklist)[1:3],col.names=F,row.names=F,quote=F,sep="\t",file=paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed"))
+	print(paste("Wrote out",paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed")))
 }
 
 #function to generate consensus bedGraphs for CNV correction.
 
-#function to define blacklist regions
-make_consensus_bedgraph<-function(bed_in,res,copykit_obj,clone,cores=10){
+#function to generate bedgraph of CNV calls across clones
+make_consensus_bedgraph<-function(bed_in,res,copykit_obj,clone,cores=10,prefix){
 	#bins in bin bed file that are not in the copykit filtered list are considered black list,
 	#generate per bins.bed resolution granges
 	bins_bed<-read.table(bed_in,header=F,sep="\t")
@@ -610,43 +701,14 @@ make_consensus_bedgraph<-function(bed_in,res,copykit_obj,clone,cores=10){
 	bins_bed_cnv <- sort(bins_bed_cnv)
 	out_cnv<-cbind(as.data.frame(bins_bed_cnv)[1:3],cnv=bins_bed_cnv$cnv)
 	out_cnv$cnv<-as.integer(out_cnv$cnv)
-	outname<-paste0("clone_",clone,".cnv.",res,".segmented.bedgraph")
+	outname<-paste0(prefix,"_",clone,".cnv.",res,".segmented.bedgraph")
 	write.table(out_cnv,col.names=F,row.names=F,quote=F,file=outname,sep="\t")
 	print(paste("Wrote out",outname))
-
 }
 
 
-#Make blacklist
-lapply(bed_in_list, function(x) make_black_list(x,copykit_obj=tumor))
-
-BINS_BED_PATH_500kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
-clone_list<-colnames(tumor@consensus)
-
-#Make clone specific bedgraph format for HiC windows
-for(clone in clone_list){
-	make_consensus_bedgraph(bed_in=BINS_BED_PATH_500kb,res="500kb",clone=clone,copykit_obj=tumor,cores=50)
-}
-
-#output values at matched bin resolutions for neoloop finder, then use segment-cnv and correct-cnv from neoloop finder afterwards
-#also output a blacklist of regions that don't overlap between the bins.bed and the copykit bin filtered ranges
-```
-Make bigwig files for plotting
-
-```R
-library(copykit)
-library(GenomicRanges)
-library(parallel)
-library(rtracklayer)
-library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
-wd_out="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
-setwd(wd_out)
-tumor<-readRDS("scCNA.rds")
-
-
-#function to define blacklist regions
-make_consensus_bigwig<-function(bed_in,res,copykit_obj,clone,cores=10){
+#function to generate bigwig of CNV calls across clones (for plotting)
+make_consensus_bigwig<-function(bed_in,res,copykit_obj,clone,cores=10,prefix){
 	#bins in bin bed file that are not in the copykit filtered list are considered black list,
 	#generate per bins.bed resolution granges
 	bins_bed<-read.table(bed_in,header=F,sep="\t")
@@ -684,52 +746,40 @@ make_consensus_bigwig<-function(bed_in,res,copykit_obj,clone,cores=10){
 	out_cnv<-bins_bed_cnv
 	colnames(out_cnv@elementMetadata)<-"score"
 	start(out_cnv) <- start(out_cnv) + 1L
-	out_name<-paste0("clone_",clone,".cnv.",res,".segmented.bigWig")
+	out_name<-paste0(prefix,"_",clone,".cnv.",res,".segmented.bigWig")
 	seqinfo(out_cnv) <- seqinfo(txdb)[seqnames(seqinfo(out_cnv))]
 	export(object=out_cnv, con=out_name,format="bigWig")
 	print(paste("Wrote out",out_name))
-
 }
 
+bed_in_list=c("/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins.bed",
+	"/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins.bed",
+	"/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins.bed",
+	"/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed")
 
 BINS_BED_PATH_500kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
-clone_list<-colnames(tumor@consensus)
+
+#Make blacklist
+lapply(bed_in_list, function(x) make_black_list(x,copykit_obj=skbr3)) #these are the same across samples, so don't really need to do it twice
+lapply(bed_in_list, function(x) make_black_list(x,copykit_obj=mdamb231))
 
 #Make clone specific bedgraph format for HiC windows
+clone_list<-colnames(skbr3@consensus)
 for(clone in clone_list){
-	make_consensus_bigwig(bed_in=BINS_BED_PATH_500kb,res="500kb",clone=clone,copykit_obj=tumor,cores=50)
+	make_consensus_bedgraph(bed_in=BINS_BED_PATH_500kb,res="500kb",clone=clone,copykit_obj=skbr3,cores=50,prefix="skbr3")
+	make_consensus_bigwig(bed_in=BINS_BED_PATH_500kb,res="500kb",clone=clone,copykit_obj=skbr3,cores=50,prefix="skbr3")
+
 }
 
-```
+clone_list<-colnames(mdamb231@consensus)
+for(clone in clone_list){
+	make_consensus_bedgraph(bed_in=BINS_BED_PATH_500kb,res="500kb",clone=clone,copykit_obj=mdamb231,cores=50,prefix="mdamb231")
+	make_consensus_bigwig(bed_in=BINS_BED_PATH_500kb,res="500kb",clone=clone,copykit_obj=mdamb231,cores=50,prefix="mdamb231")
 
-### Detection of structural variants using Eagle C
-ICE normalized output at multiresolution
-```bash
-conda activate EagleC
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-cd $clone_dir
-
-eaglec_SV_detect_ICE() {
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-clone=${1::-17}
-#run cooler balance on all cool matrices, using 20 cores
-cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.5kb.cool
-cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.10kb.cool
-cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.50kb.cool
-
-#now run predict sv
-
-predictSV --hic-5k ${clone_dir}/${clone}.bsorted.5kb.cool \
-            --hic-10k ${clone_dir}/${clone}.bsorted.10kb.cool \
-            --hic-50k ${clone_dir}/${clone}.bsorted.50kb.cool \
-            -O $clone -g hg38 --balance-type CNV --output-format full \
-            --prob-cutoff-5k 0.8 --prob-cutoff-10k 0.8 --prob-cutoff-50k 0.99999
 }
-export -f eaglec_SV_detect
 
-clones=`ls clone*pairs.gz`
-
-parallel --jobs 1 eaglec_SV_detect ::: $clones &
+#output values at matched bin resolutions for neoloop finder, then use segment-cnv and correct-cnv from neoloop finder afterwards
+#also output a blacklist of regions that don't overlap between the bins.bed and the copykit bin filtered ranges
 ```
 
 CNV normalized output at single 500kb resolution.
@@ -737,69 +787,48 @@ CNV normalized output at single 500kb resolution.
 ```bash
 mamba activate EagleC
 #clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones" 
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
+clone_dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/cells/contacts"
 cd $clone_dir
 
 eaglec_SV_CNV() {
-	#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
-	#bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
-	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+	clone_dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/cells/contacts"
+	bedgraph_dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest"
+	blacklist_bed="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.blacklist.bed"
 	in=$1
 	clone=${in::-17}
 	#balance through ICE first
-	cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.500kb.cool
+	cooler balance -p 20 --force --name sweight --blacklist $blacklist_bed ${clone_dir}/${clone}.bsorted.500kb.cool
 	
 	#now balance by CNV
-	conda activate neoloop
 	correct-cnv -H ${clone_dir}/${clone}.bsorted.500kb.cool --cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph --nproc 20 -f
-	
-	conda activate EagleC
-	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 --output-file ${clone_dir}/${clone}.SV.cnv.tsv --balance-type CNV --region-size 500000 --output-format full --prob-cutoff 0.5 --logFile ${clone}.eaglec.cnv.log 
+	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 --output-file ${clone_dir}/${clone}.SV.cnv.tsv --balance-type CNV --region-size 500000 --output-format full --prob-cutoff 0.5 --logFile ${clone}.eaglec.cnv.log  #output default
+	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 --output-file ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv --balance-type CNV --region-size 500000 --output-format NeoLoopFinder --prob-cutoff 0.8 --logFile ${clone}.eaglec.cnv.log #output neoloopfinder
+	assemble-complexSVs -O ${clone_dir}/${clone} -B ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv --balance-type CNV --protocol insitu --nproc 20 -H ${clone_dir}/${clone}.bsorted.500kb.cool --logFile ${clone}.neoloop.log --minimum-size 5000 
 	#--cache-folder ${clone_dir}/${clone}.cache
 }
 export -f eaglec_SV_CNV
 
+clones=`ls *pairs.gz`
+parallel --jobs 1 eaglec_SV_CNV ::: $clones & #parallel doesnt like switching between environments
 
-#clones=`ls clone*pairs.gz`
+# eaglec_SV_CNV mdamb231_c0.bsorted.pairs.gz
+# eaglec_SV_CNV mdamb231_c2.bsorted.pairs.gz
+# eaglec_SV_CNV mdamb231_c4.bsorted.pairs.gz
+# eaglec_SV_CNV mdamb231_c6.bsorted.pairs.gz
+# eaglec_SV_CNV skbr3_c0.bsorted.pairs.gz
+# eaglec_SV_CNV skbr3_c2.bsorted.pairs.gz
+# eaglec_SV_CNV skbr3_c4.bsorted.pairs.gz
+# eaglec_SV_CNV mdamb231_c1.bsorted.pairs.gz
+# eaglec_SV_CNV mdamb231_c3.bsorted.pairs.gz
+# eaglec_SV_CNV mdamb231_c5.bsorted.pairs.gz
+# meaglec_SV_CNV damb231_c7.bsorted.pairs.gz
+# eaglec_SV_CNV skbr3_c1.bsorted.pairs.gz
+# eaglec_SV_CNV skbr3_c3.bsorted.pairs.gz
 
-#parallel --jobs 1 eaglec_SV_CNV ::: $clones & #parallel doesnt like switching between environments
-eaglec_SV_CNV clone_c1.bsorted.pairs.gz
-eaglec_SV_CNV clone_c2.bsorted.pairs.gz
-eaglec_SV_CNV clone_c3.bsorted.pairs.gz
-eaglec_SV_CNV clone_c4.bsorted.pairs.gz
-eaglec_SV_CNV clone_c5.bsorted.pairs.gz
-eaglec_SV_CNV clone_c6.bsorted.pairs.gz
-eaglec_SV_CNV clone_c7.bsorted.pairs.gz
-
-#Rerun with neoloopfinder output 
-conda activate EagleC
-#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones" 
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
-
-eaglec_SV_CNV_neoout() {
-	#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
-	#bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
-	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
-	clone=${1::-17}
-	#now balance by CNV
-	conda activate EagleC
-	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 --output-file ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv --balance-type CNV --region-size 500000 --output-format NeoLoopFinder --prob-cutoff 0.8 --logFile ${clone}.eaglec.cnv.log
-	conda activate neoloop
-	assemble-complexSVs -O ${clone_dir}/${clone} -B ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv --balance-type CNV --protocol insitu --nproc 20 -H ${clone_dir}/${clone}.bsorted.500kb.cool --logFile ${clone}.neoloop.log --minimum-size 5000
-}
-export -f eaglec_SV_CNV_neoout
-
-eaglec_SV_CNV_neoout clone_c1.bsorted.pairs.gz
-eaglec_SV_CNV_neoout clone_c2.bsorted.pairs.gz
-eaglec_SV_CNV_neoout clone_c3.bsorted.pairs.gz
-eaglec_SV_CNV_neoout clone_c4.bsorted.pairs.gz
-eaglec_SV_CNV_neoout clone_c5.bsorted.pairs.gz
-eaglec_SV_CNV_neoout clone_c6.bsorted.pairs.gz
-eaglec_SV_CNV_neoout clone_c7.bsorted.pairs.gz
 
 ```
+
+# UP TO THIS POINT 230720
 
 ## Automate interSV plotting
 Take in the SV output from EagleC, filter to significant interchr translocations, make unique and plot.
@@ -809,16 +838,13 @@ Bash script for plotting, located in /volumes/seq/projects/gccACT/src
 
 /volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots 
 ```bash
-
 conda activate EagleC
-#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones" 
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
-cd $clone_dir
 
 eaglec_SV_interchr_plots() {
 	chrom_sizes="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/hg38.chrom.sizes"
 	sv_file=$1
 	clone_dir=$(dirname $sv_file)
+	cd $clone_dir
 	basename_sv=$(basename $sv_file)
 	clone=${basename_sv::-11}
 	cool_file=${clone_dir}"/"${clone}".bsorted.500kb.cool"

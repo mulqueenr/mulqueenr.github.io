@@ -3145,7 +3145,7 @@ run_top_TFs<-function(obj=hg38_atac,prefix="hg38_atac",i="cluster_ID",marker_num
 #hg38 TF markers
 hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
 hg38_atac<-subset(hg38_atac,subcluster_x!="NA")
-run_top_TFs(obj=hg38_atac,prefix="hg38_TF",i="seurat_clusters",marker_number=10)
+run_top_TFs(obj=hg38_atac,prefix="hg38_TF_revised",i="seurat_clusters",marker_number=5)
 
 #Marker Genes per celltype
 #for(j in unique(hg38_atac$celltype)){
@@ -3158,7 +3158,7 @@ run_top_TFs(obj=hg38_atac,prefix="hg38_TF",i="seurat_clusters",marker_number=10)
 #mm10 markers
 mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
 mm10_atac<-subset(mm10_atac,subcluster_x!="NA")
-run_top_TFs(obj=mm10_atac,prefix="mm10_TF",i="seurat_clusters",marker_number=10)
+run_top_TFs(obj=mm10_atac,prefix="mm10_TF_revised",i="seurat_clusters",marker_number=3)
 
 #Marker Genes per celltype
 #for(j in unique(mm10_atac$celltype)){
@@ -4118,7 +4118,7 @@ mm10_counts<-read_in_sparse("all_methods_merged_mm10.bbrd.q10.500") # make mm10 
 
 #write out as MM format
 #Read in fragment path for coverage plots
-#mm10_fragment.path="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.fragments.tsv.gz"
+mm10_fragment.path="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.fragments.tsv.gz"
 
 #Generate ChromatinAssay Objects
 mm10_chromatinassay <- CreateChromatinAssay(
@@ -4370,4 +4370,178 @@ pairwise.wilcox.test(dat$effort_5000, dat$tech,
                  p.adjust.method = "bonferroni",alternative="greater")
 ```
 
+## Reviewer Responses
 
+## Correlation between pseudobulked samples
+
+Using gene body count for correlation
+```R
+library(Signac)
+library(Seurat)
+set.seed(1234)
+library(ggplot2)
+library(Matrix)
+library(rliger)
+library(SeuratWrappers)
+library(parallel)
+library(corrplot)
+library(patchwork)
+setwd("/home/groups/CEDAR/mulqueen/mouse_brain_ref")
+mm10_atac<-readRDS("allmethods_merged_SeuratObject.Rds")
+mm10_fragment.path="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.fragments.tsv.gz" #adding this is now for GA and plotting purposes.
+Fragments(mm10_atac)<-CreateFragmentObject(path=mm10_fragment.path)
+
+feat=mm10_atac@assays$peaks@annotation[!duplicated(mm10_atac@assays$peaks@annotation$gene_id),]
+feat_split<-split(feat, rep_len(1:300, length(feat)))
+feat_in<-feat_split[[1]]
+#parallelize gene count to speed up feature matrix generation
+
+split_gene_count<-function(x){
+    FeatureMatrix(fragments = Fragments(mm10_atac),cells=Cells(mm10_atac),
+                              features= feat_split[[x]],
+                              verbose = TRUE,
+                              process_n=20000)
+}
+
+mm10_atac_counts<-mclapply(1:length(feat_split),split_gene_count,mc.cores=30)
+saveRDS(mm10_atac_counts,file="allmethods_merged_SeuratObject_counts.Rds")
+mm10_atac_counts<-readRDS(file="allmethods_merged_SeuratObject_counts.Rds")
+x<-do.call("rbind",mm10_atac_counts)
+mm10_atac_counts<-x
+saveRDS(mm10_atac_counts,file="allmethods_merged_SeuratObject_counts.Rds")
+mm10_atac[['GeneCount']] <- CreateAssayObject(counts = mm10_atac_counts)
+
+mm10_atac <- NormalizeData(
+  object = mm10_atac,
+  assay = 'GeneCount',
+  normalization.method = 'LogNormalize',
+  scale.factor = median(mm10_atac$nCount_GeneCount)
+)
+#normalization.method = 'RC', scale.factor= 1e6 #for CPM but using standard log normalization instead
+
+mm10_atac_genes<-AverageExpression(mm10_atac,assay="GeneCount",group.by="tech")
+cor_out<-cor(mm10_atac$GeneCount,method="spearman")
+
+#testing significance in pairwise manner
+
+for(x in 1:ncol(mm10_atac$GeneCount)){
+    for(y in 1:ncol(mm10_atac$GeneCount)){
+        if(x!=y){
+        print(cor.test(x=mm10_atac$GeneCount[,x],y=mm10_atac$GeneCount[,y],method="spearman"))
+        }
+    }
+}
+#all have p-value < 2.2e-16
+
+pdf("technology_correlations.pdf")
+corrplot(cor_out,type='upper',col = rev(COL2('RdBu', 100)))
+corrplot(cor_out,type='lower',method='number',col = rev(COL2('RdBu', 100)))
+dev.off()
+system("slack -F technology_correlations.pdf ryan_todo")
+```
+
+Plotting on neuronal signal marker
+```R
+library(Signac)
+library(Seurat)
+set.seed(1234)
+library(ggplot2)
+library(Matrix)
+library(rliger)
+library(SeuratWrappers)
+setwd("/home/groups/CEDAR/mulqueen/mouse_brain_ref")
+mm10_atac<-readRDS("allmethods_merged_SeuratObject.Rds")
+mm10_fragment.path="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.fragments.tsv.gz" #adding this is now for GA and plotting purposes.
+Fragments(mm10_atac)<-CreateFragmentObject(path=mm10_fragment.path)
+
+#Slc17a7
+plt<-CoveragePlot(mm10_atac,group.by="tech",region="Slc17a7",extend.upstream=50000,extend.downstream=50000,tile=TRUE)
+ggsave(plt,file="all_methods_Slc17a7_covplot.pdf")
+system("slack -F all_methods_Slc17a7_covplot.pdf ryan_todo")
+```
+
+## Modifying Batch Correction across mouse brain sets
+
+Changing batch (method) correction across methods for the mouse brain from Harmony to LIGER
+based on https://www.nature.com/articles/s41592-021-01336-8/figures/4
+
+maybe use this as a tutorial using the gene body count for clustering? http://htmlpreview.github.io/?https://github.com/welch-lab/liger/blob/master/vignettes/Integrating_scRNA_and_scATAC_data.html
+
+```R
+library(Signac)
+library(Seurat)
+set.seed(1234)
+library(ggplot2)
+library(Matrix)
+library(rliger)
+library(SeuratWrappers)
+setwd("/home/groups/CEDAR/mulqueen/mouse_brain_ref")
+mm10_atac<-readRDS("allmethods_merged_SeuratObject.Rds")
+
+#table(mm10_atac$tech)
+#ddscATAC   s3ATAC  sciATAC  sciDROP   sciMAP   snATAC   tenxv1   tenxv2 
+#    6611      920     4638    38606     8206     3034     4663     9167 
+
+mm10_atac <- NormalizeData(mm10_atac)
+mm10_atac <- FindVariableFeatures(mm10_atac)
+mm10_atac <- ScaleData(mm10_atac, split.by = "tech", do.center = FALSE)
+mm10_atac <- RunOptimizeALS(mm10_atac, k = 30, lambda = 5, split.by = "tech")
+saveRDS(mm10_atac,"allmethods_merged_SeuratObject.LIGER.Rds")
+
+
+mm10_atac.liger <- RunQuantileNorm(mm10_atac, split.by = "tech")
+saveRDS(mm10_atac.liger,"allmethods_merged_SeuratObject.LIGER.Rds")
+
+mm10_atac.liger <- RunUMAP(object = mm10_atac.liger, reduction = 'iNMF', dims = 2:ncol(mm10_atac.liger@reductions$iNMF@cell.embeddings))
+
+plt<-DimPlot(mm10_atac.liger,group.by="tech")
+ggsave(plt,file="allmethods_merged_liger_umap.pdf")
+system("slack -F allmethods_merged_liger_umap.pdf ryan_todo")
+
+```
+
+### Retrying LIGER with gene count instead
+```R
+library(Signac)
+library(Seurat)
+set.seed(1234)
+library(ggplot2)
+library(Matrix)
+library(rliger)
+library(SeuratWrappers)
+setwd("/home/groups/CEDAR/mulqueen/mouse_brain_ref")
+mm10_atac<-readRDS("allmethods_merged_SeuratObject.Rds")
+mm10_atac_counts<-readRDS(file="allmethods_merged_SeuratObject_counts.Rds")
+
+
+mm10_atac[['GeneCount']] <- CreateAssayObject(counts = mm10_atac_counts)
+
+mm10_atac <- NormalizeData(
+  object = mm10_atac,
+  assay = 'GeneCount',
+  normalization.method = 'LogNormalize',
+  scale.factor = median(mm10_atac$nCount_GeneCount)
+)
+#normalization.method = 'RC', scale.factor= 1e6 #for CPM but using standard log normalization instead
+
+DefaultAssay(mm10_atac)<-"GeneCount"
+mm10_atac <- NormalizeData(mm10_atac)
+mm10_atac <- FindVariableFeatures(mm10_atac)
+saveRDS(mm10_atac,"allmethods_merged_SeuratObject.LIGER.genecount.Rds")
+
+mm10_atac <- ScaleData(mm10_atac, split.by = "tech", do.center = FALSE)
+mm10_atac <- RunOptimizeALS(mm10_atac, k = 30, lambda = 5, split.by = "tech")
+saveRDS(mm10_atac,"allmethods_merged_SeuratObject.LIGER.genecount.Rds")
+
+
+mm10_atac.liger <- RunQuantileNorm(mm10_atac, split.by = "tech")
+saveRDS(mm10_atac.liger,"allmethods_merged_SeuratObject.LIGER.genecount.Rds")
+
+mm10_atac.liger <- RunUMAP(object = mm10_atac.liger, reduction = 'iNMF', dims = 1:ncol(mm10_atac.liger@reductions$iNMF@cell.embeddings))
+
+plt<-DimPlot(mm10_atac.liger,group.by="tech")
+ggsave(plt,file="allmethods_merged_liger_umap.pdf")
+system("slack -F allmethods_merged_liger_umap.pdf ryan_todo")
+
+
+```

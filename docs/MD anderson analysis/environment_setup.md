@@ -149,6 +149,10 @@ pip install plotly seaborn
 
 Installing EagleC
 https://github.com/XiaoTaoWang/EagleC
+
+Additionally installing NeoLoopFinder in the same EagleC environment.
+https://github.com/XiaoTaoWang/NeoLoopFinder
+
 ```bash
 conda install mamba -n base -c conda-forge
 conda config --add channels defaults
@@ -157,11 +161,17 @@ conda config --add channels conda-forge
 mamba create -n EagleC scikit-learn statsmodels matplotlib cooler pyBigWig pyensembl python=3.8 joblib=1.0.1 tensorflow=2 cython=0.29.24
 
 conda activate EagleC
+mamba install cooler matplotlib pyensembl pybigwig intervaltree scikit-learn=1.1.2 joblib=1.1.0 rpy2 r-mgcv
+
 pip install eaglec
 pip install numpy==1.21
 download-pretrained-models
 
-#quick start testing
+#mamba install -c anaconda pomegranate=0.14.4
+pip install pomegranate==0.14.4
+pip install -U neoloop TADLib
+
+#quick start testing of eaglec
 cd ~/ref
 wget -O SKNAS-MboI-allReps-filtered.mcool -L https://www.dropbox.com/s/f80bgn11d7wfgq8/SKNAS-MboI-allReps-filtered.mcool?dl=0
 predictSV --hic-5k SKNAS-MboI-allReps-filtered.mcool::/resolutions/5000 \
@@ -169,6 +179,15 @@ predictSV --hic-5k SKNAS-MboI-allReps-filtered.mcool::/resolutions/5000 \
             --hic-50k SKNAS-MboI-allReps-filtered.mcool::/resolutions/50000 \
             -O SK-N-AS -g hg38 --balance-type CNV --output-format full \
             --prob-cutoff-5k 0.8 --prob-cutoff-10k 0.8 --prob-cutoff-50k 0.99999
+
+#testing install of neoloopfinder
+cd ~/ref
+wget -O SKNMC-MboI-allReps-filtered.mcool -L https://www.dropbox.com/s/tuhhrecipkp1u8k/SKNMC-MboI-allReps-filtered.mcool?dl=0
+calculate-cnv -H SKNMC-MboI-allReps-filtered.mcool::resolutions/25000 -g hg38 \
+                -e MboI --output SKNMC_25k.CNV-profile.bedGraph
+
+segment-cnv --cnv-file ~/ref/SKNMC_25k.CNV-profile.bedGraph --binsize 25000 \
+              --ploidy 2 --output ~/ref/SKNMC_25k.CNV-seg.bedGraph --nproc 4
 ```
 
 Installing bedGraphtoBigWig in EagleC environment (for plotting)
@@ -178,31 +197,6 @@ cd ~/tools
 wget http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v369/bedGraphToBigWig
 chmod a+x bedGraphToBigWig
 #add to path
-```
-
-Installing NeoloopFinder
-https://github.com/XiaoTaoWang/NeoLoopFinder
-
-```bash
-conda config --add channels r
-conda config --add channels defaults
-conda config --add channels bioconda
-conda config --add channels conda-forge
-conda config --set channel_priority strict
-mamba create -n neoloop cooler matplotlib pyensembl pybigwig intervaltree scikit-learn=1.1.2 joblib=1.1.0 rpy2 r-mgcv
-mamba activate neoloop
-#mamba install -c anaconda pomegranate=0.14.4
-pip install pomegranate==0.14.4
-pip install -U neoloop TADLib
-
-#testing install
-cd ~/refs
-wget -O SKNMC-MboI-allReps-filtered.mcool -L https://www.dropbox.com/s/tuhhrecipkp1u8k/SKNMC-MboI-allReps-filtered.mcool?dl=0
-calculate-cnv -H SKNMC-MboI-allReps-filtered.mcool::resolutions/25000 -g hg38 \
-                -e MboI --output SKNMC_25k.CNV-profile.bedGraph
-
-segment-cnv --cnv-file ~/ref/SKNMC_25k.CNV-profile.bedGraph --binsize 25000 \
-              --ploidy 2 --output ~/ref/SKNMC_25k.CNV-seg.bedGraph --nproc 4
 ```
 
 Installing HiSV in cooler_env
