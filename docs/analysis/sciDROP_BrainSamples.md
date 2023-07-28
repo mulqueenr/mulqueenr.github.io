@@ -6,7 +6,7 @@ category: alternative
 ---
 
 
-## Processing for sciDROP
+## Processing for txci-ATAC Project
 
 ![sciDROP Overview](/assets/images/sciDROP.png){:width="80%"}
 
