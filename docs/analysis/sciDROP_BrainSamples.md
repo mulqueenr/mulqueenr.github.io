@@ -1,5 +1,5 @@
 ---
-title: sciDROP
+title: txci-ATAC
 layout: analysis
 permalink: /scidrop/
 category: alternative
@@ -9,6 +9,9 @@ category: alternative
 ## Processing for sciDROP
 
 ![sciDROP Overview](/assets/images/sciDROP.png){:width="80%"}
+
+
+Note: sciDROP was renamed to txci-ATAC for final manuscript submission.
 
 
 This notebook details the processing of the "20K" and "70K" loaded mouse brain and human cortex samples. It begins with scitools wrapper functions for intial alignment to a concatenated mouse and human genome, following with splitting of reads and realignment to separate human and mouse genomes. It then follows the established scitools formation of a counts matrix and Signac processing.
