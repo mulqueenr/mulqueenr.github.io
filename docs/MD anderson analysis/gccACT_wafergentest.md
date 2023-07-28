@@ -1374,5 +1374,4 @@ seqtk mergepe read1.fq.gz read2.fq.gz | ~/tools/hickit-0.1_x64-linux/pre-dip-c -
 ~tools/hickit-0.1_x64-linux/hickit-gl -I imput.cpg.3dg.gz --view
 ```
 
-
 -->

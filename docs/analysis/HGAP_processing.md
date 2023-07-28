@@ -1,6 +1,6 @@
 ---
 title: HGAP Processing
-layout: cedar_analysis
+layout: analysis
 author: Ryan Mulqueen
 category: Adey Lab
 ---
