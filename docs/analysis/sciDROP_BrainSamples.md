@@ -1324,49 +1324,6 @@ Mouse
 
 
 ## Cicero for Coaccessible Networks
-<!--
-```R
-  library(Signac)
-  library(Seurat)
-  library(SeuratWrappers)
-  library(ggplot2)
-  library(patchwork)
-  library(monocle3)
-  library(cicero)
-  library(EnsDb.Hsapiens.v86)
-  library(EnsDb.Mmusculus.v79)
-  setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard")
-
-
-hg38_atac<-readRDS("hg38_SeuratObject.Rds")
-gene_activity<-GeneActivity(hg38_atac,process_n=10000)
-saveRDS(gene_activity,"hg38_genebody.GA.Rds")
-gene_activity<-readRDS("hg38_genebody.GA.Rds")
-
-hg38_atac[["GeneActivity"]]<-CreateAssayObject(counts=gene_activity)
-hg38_atac<- NormalizeData(
-  object = hg38_atac,
-  assay = "GeneActivity",
-  normalization.method = 'LogNormalize',
-  scale.factor = median(hg38_atac$nCount_GeneActivity)
-)
-saveRDS(hg38_atac,"hg38_SeuratObject.PF.Rds")
-
-
-
-#Mouse
-
-mm10_atac<-readRDS("mm10_SeuratObject.Rds")
-gene_activity<-GeneActivity(mm10_atac,process_n=100000)
-saveRDS(gene_activity,"mm10_genebody.GA.Rds")
-
-  mm10_atac<-readRDS("mm10_SeuratObject.Rds")
-  mm10_atac<-cicero_processing(object_input=mm10_atac,prefix="mm10")
-  saveRDS(mm10_atac,"mm10_SeuratObject.GA.Rds")
-  mm10_atac<-readRDS("mm10_SeuratObject.GA.Rds")
-  
-```
--->
 
 Full Cicero Processing. Using CCANs to generate Gene Activity
 
@@ -4587,37 +4544,3 @@ system("slack -F allmethods_merged_liger_umap.pdf ryan_todo")
 write.table(mm10_atac@meta.data,file="mm10_brain_all_methods.metadata.tsv",sep="\t",col.names=T,row.names=T)
 system("slack -F mm10_brain_all_methods.metadata.tsv ryan_todo")
 ```
-<!--
-### DNAse HS sites for common overlap across ATAC data sets
-Hao generated the DNAse bed file from 
-mouse brain peaks were combining 6 mouse individuals on 8 weeks (ENCODE ID: ENCSR000COF) 
-human brain peaks were combining 5 embryos aged from 56 days to 117 days (ENCODE ID: ENCSR420RWU; ENCSR507GFJ; ENCSR475VQD; ENCSR595CSH; and ENCSR309FOO) (no adult human data set)
-
-They are both stored in 
-```bash
-/home/groups/CEDAR/mulqueen/human_brain_ref/hg38_brain_dnase_peaks_whitelist.bed 
-/home/groups/CEDAR/mulqueen/mouse_brain_ref/mm10_brain_dnase_peaks_whitelist.bed
-#convert fragments file to gzipped bed file
-zcat /home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/mm10.merged.fragments.tsv.gz | awk 'OFS="\t" {if($3<$2)print $1,$3,$2,$4; else print $1,$2,$3,$4}' > /home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/mm10.merged.fragments.bed
-
-zcat /home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/hg38.merged.fragments.tsv.gz | awk 'OFS="\t" {if($3<$2)print $1,$3,$2,$4; else print $1,$2,$3,$4}' > /home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/hg38.merged.fragments.bed
-```
-```R
-library(Signac)
-library(Seurat)
-set.seed(1234)
-library(ggplot2)
-library(Matrix)
-library(rliger)
-library(SeuratWrappers)
-setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/")
-```
-```python
-import pybedtools
-mm10_dnase = pybedtools.BedTool('/home/groups/CEDAR/mulqueen/mouse_brain_ref/mm10_brain_dnase_peaks_whitelist.bed')
-mm10=pybedtools.BedTool('/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/mm10.merged.fragments.tsv.gz') #reads prefiltered to remove nonnuclear genome
-mm10_dnase.head()
-mm10.head()
-mm10.intersect(mm10_dnase,u=True)
-```
--->

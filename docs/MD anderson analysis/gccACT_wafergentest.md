@@ -814,7 +814,7 @@ clones=`ls *pairs.gz`
 parallel --jobs 1 eaglec_SV_CNV ::: $clones & #parallel doesnt like switching between environments
 
 ```
-
+<!--
 # UP TO THIS POINT 230726
 
 ## Automate interSV plotting
@@ -1254,20 +1254,6 @@ plt<-(plt1|plt2|plt3)/(plt4|plt5|plt6)
 ggsave(plt,file="read_counts.pdf")
 ```
 
-```
-#correlate HiC to WGS output
-#Test for number of split reads compared to HiC data
-#Test for SVs?
---->
-
-<!--
-#Add compartments
-#Add SV detection by contact matrix
-#Use cooltools virtual4c for eccDNA interactions
-#Add 
--->
-<!--
-```
 
 
 
