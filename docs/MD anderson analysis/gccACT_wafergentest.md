@@ -786,7 +786,6 @@ CNV normalized output at single 500kb resolution.
 
 ```bash
 mamba activate EagleC
-#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones" 
 clone_dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/cells/contacts"
 cd $clone_dir
 
@@ -800,35 +799,23 @@ eaglec_SV_CNV() {
 	cooler balance -p 20 --force --name sweight --blacklist $blacklist_bed ${clone_dir}/${clone}.bsorted.500kb.cool
 	
 	#now balance by CNV
-	correct-cnv -H ${clone_dir}/${clone}.bsorted.500kb.cool --cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph --nproc 20 -f
-	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 --output-file ${clone_dir}/${clone}.SV.cnv.tsv --balance-type CNV --region-size 500000 --output-format full --prob-cutoff 0.5 --logFile ${clone}.eaglec.cnv.log  #output default
-	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 --output-file ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv --balance-type CNV --region-size 500000 --output-format NeoLoopFinder --prob-cutoff 0.8 --logFile ${clone}.eaglec.cnv.log #output neoloopfinder
+	correct-cnv -H ${clone_dir}/${clone}.bsorted.500kb.cool --cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph --nproc 20 -f --logFile ${clone}.neolop.cnv_correction.log
+
+	#run predict_SV with both full and neoloopfinder outputs
+	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 --output-file ${clone_dir}/${clone}.SV.cnv.tsv --balance-type CNV --region-size 500000 --output-format full --prob-cutoff 0.5 --cache-folder ${clone_dir} --logFile ${clone}.eaglec.cnv.fullout.log  #output default
+	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 --output-file ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv --balance-type CNV --region-size 500000 --output-format NeoLoopFinder --prob-cutoff 0.5 --cache-folder ${clone_dir} --logFile ${clone}.eaglec.cnv.neoout.log #output neoloopfinder
+
+	#use neoloopfinder to assemble complexSVs
 	assemble-complexSVs -O ${clone_dir}/${clone} -B ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv --balance-type CNV --protocol insitu --nproc 20 -H ${clone_dir}/${clone}.bsorted.500kb.cool --logFile ${clone}.neoloop.log --minimum-size 5000 
-	#--cache-folder ${clone_dir}/${clone}.cache
 }
 export -f eaglec_SV_CNV
 
 clones=`ls *pairs.gz`
 parallel --jobs 1 eaglec_SV_CNV ::: $clones & #parallel doesnt like switching between environments
 
-# eaglec_SV_CNV mdamb231_c0.bsorted.pairs.gz
-# eaglec_SV_CNV mdamb231_c2.bsorted.pairs.gz
-# eaglec_SV_CNV mdamb231_c4.bsorted.pairs.gz
-# eaglec_SV_CNV mdamb231_c6.bsorted.pairs.gz
-# eaglec_SV_CNV skbr3_c0.bsorted.pairs.gz
-# eaglec_SV_CNV skbr3_c2.bsorted.pairs.gz
-# eaglec_SV_CNV skbr3_c4.bsorted.pairs.gz
-# eaglec_SV_CNV mdamb231_c1.bsorted.pairs.gz
-# eaglec_SV_CNV mdamb231_c3.bsorted.pairs.gz
-# eaglec_SV_CNV mdamb231_c5.bsorted.pairs.gz
-# meaglec_SV_CNV damb231_c7.bsorted.pairs.gz
-# eaglec_SV_CNV skbr3_c1.bsorted.pairs.gz
-# eaglec_SV_CNV skbr3_c3.bsorted.pairs.gz
-
-
 ```
 
-# UP TO THIS POINT 230720
+# UP TO THIS POINT 230726
 
 ## Automate interSV plotting
 Take in the SV output from EagleC, filter to significant interchr translocations, make unique and plot.

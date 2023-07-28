@@ -4270,6 +4270,7 @@ mm10_atac<-AddMetaData(mm10_atac,out_df)
 saveRDS(mm10_atac,file="allmethods_merged_SeuratObject.Rds")
 
 ```
+
 QC Plot comparisons
 
 ```R
@@ -4372,7 +4373,8 @@ pairwise.wilcox.test(dat$effort_5000, dat$tech,
 
 ## Reviewer Responses
 
-## Correlation between pseudobulked samples
+### Correlation between pseudobulked samples
+https://theislab.github.io/scib-reproducibility/
 
 Using gene body count for correlation
 ```R
@@ -4386,14 +4388,84 @@ library(SeuratWrappers)
 library(parallel)
 library(corrplot)
 library(patchwork)
+library(GenomicRanges)
 setwd("/home/groups/CEDAR/mulqueen/mouse_brain_ref")
 mm10_atac<-readRDS("allmethods_merged_SeuratObject.Rds")
 mm10_fragment.path="/home/groups/CEDAR/mulqueen/mouse_brain_ref/all_methods_merged_mm10.bbrd.q10.fragments.tsv.gz" #adding this is now for GA and plotting purposes.
 Fragments(mm10_atac)<-CreateFragmentObject(path=mm10_fragment.path)
 
-feat=mm10_atac@assays$peaks@annotation[!duplicated(mm10_atac@assays$peaks@annotation$gene_id),]
-feat_split<-split(feat, rep_len(1:300, length(feat)))
-feat_in<-feat_split[[1]]
+#from https://github.com/stuart-lab/signac/blob/HEAD/R/utilities.R
+CollapseToLongestTranscript <- function(ranges) {
+  range.df <- data.table::as.data.table(x = ranges)
+  range.df$strand <- as.character(x = range.df$strand)
+  range.df$strand <- ifelse(
+    test = range.df$strand == "*",
+    yes = "+",
+    no = range.df$strand
+  )
+  collapsed <- range.df[
+    , .(unique(seqnames),
+        min(start),
+        max(end),
+        strand[[1]],
+        gene_biotype[[1]],
+        gene_name[[1]]),
+    "gene_id"
+  ]
+  colnames(x = collapsed) <- c(
+    "gene_id", "seqnames", "start", "end", "strand", "gene_biotype", "gene_name"
+  )
+  collapsed$gene_name <- make.unique(names = collapsed$gene_name)
+  gene.ranges <- GenomicRanges::makeGRangesFromDataFrame(
+    df = collapsed,
+    keep.extra.columns = TRUE
+  )
+  return(gene.ranges)
+}
+
+#from https://github.com/stuart-lab/signac/blob/HEAD/R/utilities.R
+Extend <- function(
+  x,
+  upstream = 0,
+  downstream = 0,
+  from.midpoint = FALSE
+    ) {
+  if (any(strand(x = x) == "*")) {
+    warning("'*' ranges were treated as '+'")
+  }
+  on_plus <- strand(x = x) == "+" | strand(x = x) == "*"
+  if (from.midpoint) {
+    midpoints <- start(x = x) + (width(x = x) / 2)
+    new_start <- midpoints - ifelse(
+      test = on_plus, yes = upstream, no = downstream
+    )
+    new_end <- midpoints + ifelse(
+      test = on_plus, yes = downstream, no = upstream
+    )
+  } else {
+    new_start <- start(x = x) - ifelse(
+      test = on_plus, yes = upstream, no = downstream
+    )
+    new_end <- end(x = x) + ifelse(
+      test = on_plus, yes = downstream, no = upstream
+    )
+  }
+  ranges(x = x) <- IRanges(start = new_start, end = new_end)
+  x <- trim(x = x)
+  return(x)
+}
+#doing feature setting following signac gene activity calculation
+#filter to protein coding
+#subset to which protein coding gene is longest that has the same name
+#extend 2kb upstream for promoter inclusion
+feat=mm10_atac@assays$peaks@annotation[mm10_atac@assays$peaks@annotation$gene_biotype=="protein_coding",]
+feat<-mclapply(unique(feat$gene_name),function(x) CollapseToLongestTranscript(feat[feat$gene_name==x,]),mc.cores=10) #collapse to longest transcripts
+feat<-unlist(as(feat, "GRangesList"))
+feat<-setNames(feat,feat$gene_name)#set row names as gene names
+feat<-feat[feat@ranges@width<500000,]#filter extra long transcripts
+transcripts <- Extend(x = feat,upstream = 2000,downstream = 0)# extend to include promoters
+
+feat_split<-split(transcripts, rep_len(1:300, length(transcripts)))
 #parallelize gene count to speed up feature matrix generation
 
 split_gene_count<-function(x){
@@ -4403,12 +4475,11 @@ split_gene_count<-function(x){
                               process_n=20000)
 }
 
-mm10_atac_counts<-mclapply(1:length(feat_split),split_gene_count,mc.cores=30)
-saveRDS(mm10_atac_counts,file="allmethods_merged_SeuratObject_counts.Rds")
-mm10_atac_counts<-readRDS(file="allmethods_merged_SeuratObject_counts.Rds")
+mm10_atac_counts<-mclapply(1:length(feat_split),split_gene_count,mc.cores=10)
 x<-do.call("rbind",mm10_atac_counts)
 mm10_atac_counts<-x
 saveRDS(mm10_atac_counts,file="allmethods_merged_SeuratObject_counts.Rds")
+mm10_atac_counts<-readRDS(file="allmethods_merged_SeuratObject_counts.Rds")
 mm10_atac[['GeneCount']] <- CreateAssayObject(counts = mm10_atac_counts)
 
 mm10_atac <- NormalizeData(
@@ -4417,24 +4488,27 @@ mm10_atac <- NormalizeData(
   normalization.method = 'LogNormalize',
   scale.factor = median(mm10_atac$nCount_GeneCount)
 )
-#normalization.method = 'RC', scale.factor= 1e6 #for CPM but using standard log normalization instead
+
+DefaultAssay(mm10_atac)<-"GeneCount"
+mm10_atac <- FindVariableFeatures(mm10_atac)
+mm10_atac <- ScaleData(mm10_atac, split.by = "tech", do.center = FALSE)
 
 mm10_atac_genes<-AverageExpression(mm10_atac,assay="GeneCount",group.by="tech")
-cor_out<-cor(mm10_atac$GeneCount,method="spearman")
+cor_out<-cor(mm10_atac_genes$GeneCount,method="spearman")
 
 #testing significance in pairwise manner
 
-for(x in 1:ncol(mm10_atac$GeneCount)){
-    for(y in 1:ncol(mm10_atac$GeneCount)){
+for(x in 1:ncol(mm10_atac_genes$GeneCount)){
+    for(y in 1:ncol(mm10_atac_genes$GeneCount)){
         if(x!=y){
-        print(cor.test(x=mm10_atac$GeneCount[,x],y=mm10_atac$GeneCount[,y],method="spearman"))
+        print(cor.test(x=mm10_atac_genes$GeneCount[,x],y=mm10_atac_genes$GeneCount[,y],method="spearman"))
         }
     }
 }
 #all have p-value < 2.2e-16
 
 pdf("technology_correlations.pdf")
-corrplot(cor_out,type='upper',col = rev(COL2('RdBu', 100)))
+#corrplot(cor_out,type='upper',col = rev(COL2('RdBu', 100)))
 corrplot(cor_out,type='lower',method='number',col = rev(COL2('RdBu', 100)))
 dev.off()
 system("slack -F technology_correlations.pdf ryan_todo")
@@ -4464,43 +4538,9 @@ system("slack -F all_methods_Slc17a7_covplot.pdf ryan_todo")
 
 Changing batch (method) correction across methods for the mouse brain from Harmony to LIGER
 based on https://www.nature.com/articles/s41592-021-01336-8/figures/4
+Retrying LIGER replicating scIB's large peak analysis instead:
+https://github.com/theislab/scib-reproducibility/blob/main/notebooks/data_preprocessing/mouse_brain_atac/preprocessing_large_dataset.ipynb
 
-maybe use this as a tutorial using the gene body count for clustering? http://htmlpreview.github.io/?https://github.com/welch-lab/liger/blob/master/vignettes/Integrating_scRNA_and_scATAC_data.html
-
-```R
-library(Signac)
-library(Seurat)
-set.seed(1234)
-library(ggplot2)
-library(Matrix)
-library(rliger)
-library(SeuratWrappers)
-setwd("/home/groups/CEDAR/mulqueen/mouse_brain_ref")
-mm10_atac<-readRDS("allmethods_merged_SeuratObject.Rds")
-
-#table(mm10_atac$tech)
-#ddscATAC   s3ATAC  sciATAC  sciDROP   sciMAP   snATAC   tenxv1   tenxv2 
-#    6611      920     4638    38606     8206     3034     4663     9167 
-
-mm10_atac <- NormalizeData(mm10_atac)
-mm10_atac <- FindVariableFeatures(mm10_atac)
-mm10_atac <- ScaleData(mm10_atac, split.by = "tech", do.center = FALSE)
-mm10_atac <- RunOptimizeALS(mm10_atac, k = 30, lambda = 5, split.by = "tech")
-saveRDS(mm10_atac,"allmethods_merged_SeuratObject.LIGER.Rds")
-
-
-mm10_atac.liger <- RunQuantileNorm(mm10_atac, split.by = "tech")
-saveRDS(mm10_atac.liger,"allmethods_merged_SeuratObject.LIGER.Rds")
-
-mm10_atac.liger <- RunUMAP(object = mm10_atac.liger, reduction = 'iNMF', dims = 2:ncol(mm10_atac.liger@reductions$iNMF@cell.embeddings))
-
-plt<-DimPlot(mm10_atac.liger,group.by="tech")
-ggsave(plt,file="allmethods_merged_liger_umap.pdf")
-system("slack -F allmethods_merged_liger_umap.pdf ryan_todo")
-
-```
-
-### Retrying LIGER with gene count instead
 ```R
 library(Signac)
 library(Seurat)
@@ -4512,25 +4552,23 @@ library(SeuratWrappers)
 setwd("/home/groups/CEDAR/mulqueen/mouse_brain_ref")
 mm10_atac<-readRDS("allmethods_merged_SeuratObject.Rds")
 mm10_atac_counts<-readRDS(file="allmethods_merged_SeuratObject_counts.Rds")
+mm10_atac_txsciatac<-readRDS("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/mm10_SeuratObject.PF.Rds")
 
+#table(mm10_atac$tech)
+#ddscATAC   s3ATAC  sciATAC  sciDROP   sciMAP   snATAC   tenxv1   tenxv2 
+#    6611      920     4638    38606     8206     3034     4663     9167 
 
-mm10_atac[['GeneCount']] <- CreateAssayObject(counts = mm10_atac_counts)
+mm10_atac<-AddMetaData(mm10_atac,mm10_atac_txsciatac$celltype,col.name="txsciatac_celltype")
 
-mm10_atac <- NormalizeData(
-  object = mm10_atac,
-  assay = 'GeneCount',
-  normalization.method = 'LogNormalize',
-  scale.factor = median(mm10_atac$nCount_GeneCount)
-)
-#normalization.method = 'RC', scale.factor= 1e6 #for CPM but using standard log normalization instead
-
-DefaultAssay(mm10_atac)<-"GeneCount"
-mm10_atac <- NormalizeData(mm10_atac)
-mm10_atac <- FindVariableFeatures(mm10_atac)
-saveRDS(mm10_atac,"allmethods_merged_SeuratObject.LIGER.genecount.Rds")
-
-mm10_atac <- ScaleData(mm10_atac, split.by = "tech", do.center = FALSE)
-mm10_atac <- RunOptimizeALS(mm10_atac, k = 30, lambda = 5, split.by = "tech")
+#following scIB filtering
+mm10_atac<-BinarizeCounts(mm10_atac) # binarize peak accessibility
+FindTopFeatures(mm10_atac,assay="peaks",min.cutoff=50)# minimum number of cells sharing a feature min_cells = 50 #all features pass so not doign proper subsetting function call
+mm10_atac <- subset(x = mm10_atac,subset = nFeature_peaks  > 500) # set a minimum number of cells to keep min_features = 500
+mm10_atac <- FindVariableFeatures(mm10_atac,nfeatures=50000) # 150000 most variable windows used in scIB
+mm10_atac<-SetAssayData(mm10_atac,assay="peaks",slot="scale.data",new.data=as.matrix(mm10_atac@assays$peaks@data[mm10_atac@assays$peaks@var.features,]))
+table()
+#mm10_atac <- ScaleData(mm10_atac, split.by = "tech", do.center = FALSE) #scale data, maybe in the future just write @counts to @data
+mm10_atac <- RunOptimizeALS(mm10_atac, k = 20, lambda = 5, split.by = "tech")
 saveRDS(mm10_atac,"allmethods_merged_SeuratObject.LIGER.genecount.Rds")
 
 
@@ -4539,9 +4577,44 @@ saveRDS(mm10_atac.liger,"allmethods_merged_SeuratObject.LIGER.genecount.Rds")
 
 mm10_atac.liger <- RunUMAP(object = mm10_atac.liger, reduction = 'iNMF', dims = 1:ncol(mm10_atac.liger@reductions$iNMF@cell.embeddings))
 
-plt<-DimPlot(mm10_atac.liger,group.by="tech")
-ggsave(plt,file="allmethods_merged_liger_umap.pdf")
+plt<-DimPlot(mm10_atac.liger,group.by=c("tech","txsciatac_celltype"))
+ggsave(plt,file="allmethods_merged_liger_umap.pdf",width=10)
 system("slack -F allmethods_merged_liger_umap.pdf ryan_todo")
 
-
+write.table(mm10_atac@meta.data,file="mm10_brain_all_methods.metadata.tsv",sep="\t",col.names=T,row.names=T)
+system("slack -F mm10_brain_all_methods.metadata.tsv ryan_todo")
 ```
+<!--
+### DNAse HS sites for common overlap across ATAC data sets
+Hao generated the DNAse bed file from 
+mouse brain peaks were combining 6 mouse individuals on 8 weeks (ENCODE ID: ENCSR000COF) 
+human brain peaks were combining 5 embryos aged from 56 days to 117 days (ENCODE ID: ENCSR420RWU; ENCSR507GFJ; ENCSR475VQD; ENCSR595CSH; and ENCSR309FOO) (no adult human data set)
+
+They are both stored in 
+```bash
+/home/groups/CEDAR/mulqueen/human_brain_ref/hg38_brain_dnase_peaks_whitelist.bed 
+/home/groups/CEDAR/mulqueen/mouse_brain_ref/mm10_brain_dnase_peaks_whitelist.bed
+#convert fragments file to gzipped bed file
+zcat /home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/mm10.merged.fragments.tsv.gz | awk 'OFS="\t" {if($3<$2)print $1,$3,$2,$4; else print $1,$2,$3,$4}' > /home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/mm10.merged.fragments.bed
+
+zcat /home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/hg38.merged.fragments.tsv.gz | awk 'OFS="\t" {if($3<$2)print $1,$3,$2,$4; else print $1,$2,$3,$4}' > /home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/hg38.merged.fragments.bed
+```
+```R
+library(Signac)
+library(Seurat)
+set.seed(1234)
+library(ggplot2)
+library(Matrix)
+library(rliger)
+library(SeuratWrappers)
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/")
+```
+```python
+import pybedtools
+mm10_dnase = pybedtools.BedTool('/home/groups/CEDAR/mulqueen/mouse_brain_ref/mm10_brain_dnase_peaks_whitelist.bed')
+mm10=pybedtools.BedTool('/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/mm10.merged.fragments.tsv.gz') #reads prefiltered to remove nonnuclear genome
+mm10_dnase.head()
+mm10.head()
+mm10.intersect(mm10_dnase,u=True)
+```
+-->
