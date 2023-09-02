@@ -163,6 +163,8 @@ mamba create -n EagleC scikit-learn statsmodels matplotlib cooler pyBigWig pyens
 conda activate EagleC
 mamba install cooler matplotlib pyensembl pybigwig intervaltree scikit-learn=1.1.2 joblib=1.1.0 rpy2 r-mgcv
 
+mamba install -c bioconda bedtools
+
 pip install eaglec
 pip install numpy==1.21
 download-pretrained-models
@@ -170,6 +172,7 @@ download-pretrained-models
 #mamba install -c anaconda pomegranate=0.14.4
 pip install pomegranate==0.14.4
 pip install -U neoloop TADLib
+pip install cooltools
 
 #quick start testing of eaglec
 cd ~/ref
@@ -326,3 +329,308 @@ bwa index ~/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa &
 
 bismark_genome_preparation ~/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta &
 ```
+
+## Installing Singularity, Nextflow and ONT Analysis Pipeline
+Necessary tools for ONT validation of structural variant calls
+
+```bash
+#install singularity (conda)
+conda install -c conda-forge singularity
+
+
+
+#initialize epi2me
+./nextflow run epi2me-labs/wf-human-variation --help
+
+#test
+OUTPUT=output
+nextflow run epi2me-labs/wf-human-variation \
+    -w ${OUTPUT}/workspace \
+    -profile standard \
+    --snp --sv \
+    --bam demo_data/demo.bam \
+    --bed demo_data/demo.bed \
+    --ref demo_data/demo.fasta \
+    --basecaller_cfg 'dna_r10.4.1_e8.2_400bps_hac@v4.1.0'  \
+    --sample_name MY_SAMPLE \
+    --out_dir ${OUTPUT} \
+    -with-singularity \
+    -without-docker
+
+#success!
+```
+
+# run on local terminal but use 10.132.80.157 files and directories
+
+```zsh
+bash
+
+#install dorado (prebuilt binary)
+"""
+mkdir ~/src
+cd ~/src
+wget https://cdn.oxfordnanoportal.com/software/analysis/dorado-0.3.4-linux-x64.tar.gz
+tar -xvf dorado-0.3.4-linux-x64.tar.gz
+#add to path in ~/.bashrc
+#PATH=$PATH:/volumes/USR2/Ryan/tools/dorado-0.3.4-linux-x64/bin
+#download dorado models
+#dorado download --model dna_r10.4.1_e8.2_400bps_hac@v4.2.0
+#dorado download --model dna_r10.4.1_e8.2_400bps_hac@v4.2.0_5mCG_5hmCG@v2 #5khz
+"""
+
+#install nextflow
+"""
+cd ~/
+curl -s "https://get.sdkman.io" | bash
+source "$HOME/.sdkman/bin/sdkman-init.sh"
+sdk install java 17.0.6-amzn
+curl -s https://get.nextflow.io | bash
+./nextflow self-update
+mv ~/nextflow ~/tools #moving to in PATH
+"""
+
+
+#install docker from https://www.docker.com/products/docker-desktop/ using apple chip
+"""
+#run docker and it should be in the path
+docker version
+"""
+#connect to server both USR2 and seq
+ref="/Volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
+wd_out="/Volumes/seq/projects/gccACT/230808_mdamb231_ONT"
+output_name="20230726_1239_2D_PAO38369_output" #change to each flowcell
+pod5_dir="/Volumes/seq/projects/gccACT/230808_mdamb231_ONT/MDA_MB_231/20230726_1239_2D_PAO38369_dde6ac95" #change to each flowcell
+
+#connect through Finder to seq and USR2 (for reference genome.fa)
+
+nextflow run epi2me-labs/wf-basecalling \
+    --input $pod5_dir \
+    --dorado_ext "pod5" \
+    --output_bam \
+    --cuda-device cuda:all \
+    --ref $ref \
+    --verbose \
+    --out_dir ${wd_out}/${output_name} \
+    --basecaller_cfg "dna_r10.4.1_e8.2_400bps_hac@v4.2.0" \
+    --remora_cfg "dna_r10.4.1_e8.2_400bps_hac@v4.2.0_5mCG_5hmCG@v2"
+
+
+```
+
+
+
+trying Higashi for scHiC
+```bash
+cd ~/tools 
+git clone https://github.com/ma-compbio/Higashi/
+cd Higashi
+python setup.py install
+
+ssh seadragon
+bsub -Is -W 4:00 -q gpu-medium -n 1 -gpu num=1:gmem=4 -M 16 -R rusage[mem=16] /bin/bash #get interactive gpu node
+
+
+bsub -Is -W 4:00 -q transfer -n 1 -M 16 -R rusage[mem=16] /bin/bash #get interactive transfer node this has internet access for environment set up
+module load miniconda3/39_23.5.0; eval "$(/risapps/rhel7/miniconda3/py39_4.12.0/bin/conda shell.bash hook)"
+module load cuda11.5/toolkit/11.5.1
+
+
+conda create --name hic python=3.11 #installing to conda base
+#install higashi from 4dn
+conda activate hic
+conda install -c conda-forge mamba
+mamba install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
+mamba install -c bioconda pybedtools cooler
+conda install -c bioconda pybedtools
+
+mamba install -c conda-forge zlib
+
+mamba install -c ruochiz fasthigashi
+# CUDA 10.2 (version of cuda in modules)
+conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=10.2 -c pytorch
+
+mkdir ~/tools
+cd ~/tools 
+git clone https://github.com/ma-compbio/Higashi/
+cd Higashi
+conda install python==3.9 numpy==1.16.5
+python setup.py install
+```
+
+
+conda create --name hic 
+conda activate hic
+mamba install -c ruochiz fasthigashi
+    q
+
+wget https://cdn.oxfordnanoportal.com/software/analysis/dorado-0.3.4-linux-x64.tar.gz
+
+
+Download data via transfer node
+```bash
+bsub -Is -W 4:00 -q transfer -n 1 -M 16 -R rusage[mem=16] /bin/bash #get interactive transfer node this has internet access for environment set up
+
+#ONT data
+rsync  \
+-LPr mulqueen@10.132.80.157:/volumes/seq/projects/gccACT/230808_mdamb231_ONT ~/projects/gccACT
+
+#dorado prebuilt
+rsync \
+-LPr mulqueen@10.132.80.157:/volumes/USR2/Ryan/tools/dorado-0.3.4-linux-x64.tar.gz ~/tools
+#dorado reference genome
+#download model for base calling
+#wget https://cdn.oxfordnanoportal.com/software/analysis/dorado-0.3.4-linux-x64.tar.gz
+#dorado download --model dna_r10.4.1_e8.2_400bps_hac@v4.2.0_5mCG_5hmCG@v2 #5khz #cpg??
+#dorado download --model dna_r10.4.1_e8.2_400bps_hac@v4.2.0
+rsync \
+-LPr mulqueen@10.132.80.157:/volumes/USR2/Ryan/dna_r10.4.1_e8.2_400bps_hac@v4.2.0 ~/
+rsync \
+-LPr mulqueen@10.132.80.157:/volumes/USR2/Ryan/dna_r10.4.1_e8.2_400bps_hac@v4.2.0_5mCG_5hmCG@v2 ~/
+
+#nextflow epi2me download
+rsync \
+-LPr mulqueen@10.132.80.157:/volumes/USR2/Ryan/wf-human-variation-master ~/
+
+#my 10.132.80.157 references
+rsync \
+-LPr mulqueen@10.132.80.157:/volumes/USR2/Ryan/ref ~/
+
+
+```
+
+Use CUDA node
+```bash
+bsub -Is -W 6:00 -q gpu-medium -n 1 -gpu num=2:gmem=4 -M 16 -R rusage[mem=16] /bin/bash #get interactive gpu node
+
+module load singularity/3.7.0
+module load nextflow/23.04.3
+module load cuda11.5/toolkit/11.5.1
+module load samtools/1.15 
+#module load dorado
+#module load wf-human-variation
+
+OUTPUT=output
+nextflow run ./wf-human-variation-master/main.nf \
+    -w ${OUTPUT}/workspace \
+    --snp --sv --bam demo_data/demo.bam \
+    --bed demo_data/demo.bed \
+    --ref demo_data/demo.fasta \
+    --basecaller_cfg 'dna_r10.4.1_e8.2_400bps_hac@v4.1.0' \
+    --sample_name MY_SAMPLE \
+    --out_dir ${OUTPUT} \
+    -with-singularity -without-docker
+
+
+# If you want to start with a FASTQ, you can generate an unaligned BAM from FASTQ with samtools import http://www.htslib.org/doc/samtools-import.html and allow the workflow to take care of mapping.
+
+#CPU Node Run
+bsub -Is -W 6:00 -q medium -n 1 -M 16 -R rusage[mem=16] /bin/bash #get interactive cpu node
+
+#module load singularity/3.7.0
+#module load nextflow/23.04.3
+#module load cuda11.5/toolkit/11.5.1
+module load samtools/1.15 
+#module load dorado
+
+ref="/rsrch4/home/genetics/rmulqueen/ref/genome.fa"
+wd_out="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT"
+output_name="20230726_1239_2D_PAO38369_output" #change to each flowcell
+pod5_dir="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT/MDA_MB_231/20230726_1239_2D_PAO38369_dde6ac95" #change to each flowcell
+
+dorado basecaller \
+    --verbose \
+    --device cpu \
+    --reference ${ref} \
+    --emit-sam \
+    --max-reads 100 \
+    --batchsize 64 \
+    'dna_r10.4.1_e8.2_400bps_hac@v4.2.0' \
+    ${pod5_dir}/pod5_pass/ \
+
+#untested for this part, but use bam from wf-basecalling output as input
+nextflow run ~/wf-human-variation-master/main.nf \
+    -w ${wd_out}/${output_name}/workspace \
+    -profile singularity \
+    --snp --sv --cnv --methyl \
+    --ref ${ref} \
+    --bam ${wd_out}/${output_name}.bam \
+    --dorado_ext pod5 \
+    --basecaller_basemod_threads 40 \
+    --basecaller_cfg 'dna_r10.4.1_e8.2_400bps_hac@v4.2.0'  \
+    --remora_cfg 'dna_r10.4.1_e8.2_400bps_sup@v4.2.0_5mCG_5hmCG@v2' \
+    --sample_name ${output_name} \
+    --out_dir ${wd_out}/${output_name}/ \
+    -with-singularity \
+    -without-docker
+
+```
+
+This one works! vvvvvv
+```bash
+#BSUB -J dorado_test_gpu
+#BSUB -W 6:00
+#BSUB -o /rsrch4/home/genetics/rmulqueen/
+#BSUB -e /rsrch4/home/genetics/rmulqueen/
+#BSUB -cwd /rsrch4/home/genetics/rmulqueen/
+#BSUB -q gpu-medium
+#BSUB -gpu num=2:gmem=4 
+#BSUB -M 160
+#BSUB -R "rusage[mem=160]"
+#BSUB -B
+#BSUB -N
+#BSUB -u rmulqueen@mdanderson.org
+
+#bsub -Is -W 4:00 -q short -n 1 num=2:gmem=4 -M 16 -R rusage[mem=16] /bin/bash #get interactive gpu node
+
+pwd
+module load nextflow/23.04.3
+module load cuda11.5/toolkit/11.5.1
+module load samtools/1.15 
+echo $(hostname)
+
+ref="/rsrch4/home/genetics/rmulqueen/ref/genome.fa"
+wd_out="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT"
+output_name="20230726_1239_2D_PAO38369_output" #change to each flowcell
+pod5_dir="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT/MDA_MB_231/20230726_1239_2D_PAO38369_dde6ac95" #change to each flowcell
+
+~/tools/dorado-0.3.4-linux-x64/bin/dorado basecaller \
+    --verbose \
+    --reference ${ref} \
+    --emit-sam \
+    dna_r10.4.1_e8.2_400bps_hac@v4.2.0 \
+    ${pod5_dir}/pod5_pass/ | samtools view -b - > ${wd_out}/${output_name}.bam
+
+```
+
+
+```bash
+ssh r1prpsciapp13 
+module purge
+module load nextflow/23.04.3
+module load singularity/3.7.0
+
+#manually pull singularity image?
+nextflow pull epi2me-labs/wf-human-variation
+singularity pull --name ontresearch-wf-human-variation-shac4db03c19b6ff1277a24ec28a19e564d628d478f.img.pulling.1669977561040 docker://ontresearch/wf-human-variation:shac4db03c19b6ff1277a24ec28a19e564d628d478f
+ > /dev/null
+
+sif_in="ontresearch-wf-human-variation-shac4db03c19b6ff1277a24ec28a19e564d628d478f.img.pulling.1669977561040"
+nextflow run ~/wf-human-variation-master/main.nf 
+OUTPUT=output
+nextflow run ~/wf-human-variation-master/main.nf \
+     -w ${OUTPUT}/workspace \
+     -profile standard \
+     --snp --sv --bam demo_data/demo.bam \
+     --bed demo_data/demo.bed \
+     --ref demo_data/demo.fasta \
+     --basecaller_cfg 'dna_r10.4.1_e8.2_400bps_hac@v4.1.0' \
+     --sample_name MY_SAMPLE --out_dir ${OUTPUT} \
+     -without-docker -with-singularity $sif_in
+
+tar -xzf /risapps/tps_source/tps_source/wf-human-variation/demo_data.tar.gz
+OUTPUT=output
+nextflow run wf-human-variation-master -w ${OUTPUT}/workspace -profile standard --snp --sv --bam demo_data/demo.bam --bed demo_data/demo.bed --ref demo_data/demo.fasta --basecaller_cfg 'dna_r10.4.1_e8.2_400bps_hac@v4.1.0' --sample_name MY_SAMPLE --out_dir ${OUTPUT} -with-singularity -without-docker
+```
+
+
+bsub -q "gpu-medium" dorado_test.bsub

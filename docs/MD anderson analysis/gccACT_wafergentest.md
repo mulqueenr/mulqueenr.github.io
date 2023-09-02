@@ -273,7 +273,7 @@ k_clones<-findSuggestedK(tumor) #16
 
 # Find clusters of similar copy number profiles and plot the results
 # If no k_subclones value is provided, automatically detect it from findSuggestedK()
-tumor  <- findClusters(tumor,k_superclones=16, k_subclones=10)#output from k_clones
+tumor  <- findClusters(tumor,k_superclones=16, k_subclones=20)#output from k_clones
 
 pdf("all_cells.subclone.umap.pdf")
 plotUmap(tumor, label = 'subclones')
@@ -287,6 +287,11 @@ dev.off()
 # and order cells by cluster for visualization with plotHeatmap
 tumor <- calcConsensus(tumor)
 tumor <- runConsensusPhylo(tumor)
+tumor <- runPhylo(tumor, metric = 'manhattan')
+
+pdf("all_cells.subclone.phylo.pdf")
+plotPhylo(tumor, label = 'subclones')
+dev.off()
 
 # Plot a copy number heatmap with clustering annotation
 pdf("all_cells.subclone.heatmap.pdf")
@@ -813,9 +818,40 @@ export -f eaglec_SV_CNV
 clones=`ls *pairs.gz`
 parallel --jobs 1 eaglec_SV_CNV ::: $clones & #parallel doesnt like switching between environments
 
+#if run twice will replace cnv.txt with empty file for some reason. so make sure directory is clean.
 ```
-<!--
+
+### Generate eigengenes for compartments across chromosomes
+```bash
+#note this requires the cooler matrix be balanced and normalized already
+#Phasing track for orienting and ranking eigenvectors,provided as /path/to/track::track_value_column_name.
+#--phasing-track GC content per window GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.gc.bins"
+
+#--clr-weight-name sweight
+#--out-prefix output name
+mamba activate EagleC
+
+
+cooler_eigen() {
+	clone_dir="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/cells/contacts"
+	GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.gc.bins"
+	BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
+	in=$1
+	clone=${in::-17}
+	cooltools eigs-cis -o ${clone_dir}/${clone}.eig --clr-weight-name sweight --phasing-track $GC_BINS_PATH --n-eigs 1 ${clone_dir}/${clone}.bsorted.500kb.cool
+}
+export -f cooler_eigen
+
+clones=`ls *pairs.gz`
+parallel --jobs 1 cooler_eigen ::: $clones & 
+
+```
+
+
 # UP TO THIS POINT 230726
+
+<!--
+
 
 ## Automate interSV plotting
 Take in the SV output from EagleC, filter to significant interchr translocations, make unique and plot.
@@ -1081,18 +1117,6 @@ export -f eaglec_SV_CNV
 
 
 
-```
-### Generate eigengenes for compartments across chromosomes
-```bash
-#note this requires the cooler matrix be balanced and normalized already
-
-cooler_eigen() {
-cooltools eigs-cis -o outputs/test.eigs.100000 --view data/view_hg38.tsv --phasing-track outputs/gc.100000.tsv --n-eigs 1 $cool_file::resolutions/100000
-}
-export -f cooler_balance
-
-
-```
 
 
 

@@ -6,6 +6,15 @@ permalink: /organoid/
 category: sciATAC
 ---
 
+
+```bash
+moved files to /home/groups/CEDAR/mulqueen/oroak_organoid
+so search replace
+/home/groups/oroaklab/adey_lab/projects/BRAINS_Oroak_Collab
+with 
+/home/groups/CEDAR/mulqueen/oroak_organoid
+```
+
 ## Processing for sciATAC portion for organoid analysis.
 I ran multiple sequecing runs for the sciATAC. For now I am just processing the most recent, but I will loop back to the original Pitstop2 experiments.
 

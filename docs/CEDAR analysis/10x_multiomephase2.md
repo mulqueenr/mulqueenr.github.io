@@ -4833,6 +4833,276 @@ harmony_sample_integration(x="immune.SeuratObject.rds",outname="immune",res=0.1)
 
 ```
 
+### Using LIGER to cluster also
+
+Following http://htmlpreview.github.io/?https://github.com/welch-lab/liger/blob/master/vignettes/Integrating_scRNA_and_scATAC_data.html 
+Using a parallelized Signac GeneActivity function for the scATAC.
+
+```R
+library(Signac)
+library(Seurat)
+set.seed(1234)
+library(ggplot2)
+library(Matrix)
+library(rliger)
+library(SeuratWrappers)
+library(parallel)
+library(GenomicRanges)
+setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
+
+
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+
+#RNA liger
+rna_liger<-function(nfeat=1000,dims=10,k_in=10){
+  DefaultAssay(dat)<-"RNA"
+  dat <- NormalizeData(dat)
+  dat <- FindVariableFeatures(dat,nfeatures=nfeat)
+  dat <- ScaleData(dat, split.by = "sample", do.center = FALSE)
+  dat <- RunOptimizeALS(dat, k = k_in, lambda = 5, split.by = "sample")
+  dat <- RunQuantileNorm(dat, split.by = "sample")
+  dat <- FindNeighbors(dat, reduction = "iNMF", dims = seq(1,dims,1))
+  dat <- FindClusters(dat, resolution = 0.3)
+  dat <- RunUMAP(dat, dims = 1:ncol(dat[["iNMF"]]), reduction = "iNMF")
+  plt<-DimPlot(dat, group.by = c("sample", "EMBO_predicted.id","diagnosis"), ncol = 2)+ggtitle(paste("nfeat:",as.character(nfeat),"dim:",as.character(dims),"k:",as.character(k_in)))
+  ggsave(plt,file="phase2.QC.liger.RNAonly.pdf",width=20,height=20)
+  system("slack -F phase2.QC.liger.RNAonly.pdf ryan_todo")
+}
+
+#for(i in c(1000,2000,5000,10000)){
+#  for(j in c(10,20,30)){
+#    for(k in c(10,20,30,50)){
+#      if(k>=j){
+#      rna_liger(nfeat=i,dims=j,k_in=k)
+#      }
+#    }
+#  }
+#}
+#nfeat 5000, dim 30 and k 30 seems to have the best cell type separation
+
+
+rna_liger(nfeat=5000,dims=30,k_in=30)
+
+
+
+
+
+#repeat with GA
+
+#from https://github.com/stuart-lab/signac/blob/HEAD/R/utilities.R
+CollapseToLongestTranscript <- function(ranges) {
+  range.df <- data.table::as.data.table(x = ranges)
+  range.df$strand <- as.character(x = range.df$strand)
+  range.df$strand <- ifelse(
+    test = range.df$strand == "*",
+    yes = "+",
+    no = range.df$strand
+  )
+  collapsed <- range.df[
+    , .(unique(seqnames),
+        min(start),
+        max(end),
+        strand[[1]],
+        gene_biotype[[1]],
+        gene_name[[1]]),
+    "gene_id"
+  ]
+  colnames(x = collapsed) <- c(
+    "gene_id", "seqnames", "start", "end", "strand", "gene_biotype", "gene_name"
+  )
+  collapsed$gene_name <- make.unique(names = collapsed$gene_name)
+  gene.ranges <- GenomicRanges::makeGRangesFromDataFrame(
+    df = collapsed,
+    keep.extra.columns = TRUE
+  )
+  return(gene.ranges)
+}
+
+#from https://github.com/stuart-lab/signac/blob/HEAD/R/utilities.R
+Extend <- function(
+  x,
+  upstream = 0,
+  downstream = 0,
+  from.midpoint = FALSE
+    ) {
+  if (any(strand(x = x) == "*")) {
+    warning("'*' ranges were treated as '+'")
+  }
+  on_plus <- strand(x = x) == "+" | strand(x = x) == "*"
+  if (from.midpoint) {
+    midpoints <- start(x = x) + (width(x = x) / 2)
+    new_start <- midpoints - ifelse(
+      test = on_plus, yes = upstream, no = downstream
+    )
+    new_end <- midpoints + ifelse(
+      test = on_plus, yes = downstream, no = upstream
+    )
+  } else {
+    new_start <- start(x = x) - ifelse(
+      test = on_plus, yes = upstream, no = downstream
+    )
+    new_end <- end(x = x) + ifelse(
+      test = on_plus, yes = downstream, no = upstream
+    )
+  }
+  ranges(x = x) <- IRanges(start = new_start, end = new_end)
+  x <- trim(x = x)
+  return(x)
+}
+
+#doing feature setting following signac gene activity calculation
+#filter to protein coding
+#subset to which protein coding gene is longest that has the same name
+#extend 2kb upstream for promoter inclusion
+feat=dat@assays$peaks@annotation[dat@assays$peaks@annotation$gene_biotype=="protein_coding",]
+feat<-mclapply(unique(feat$gene_name),function(x) CollapseToLongestTranscript(feat[feat$gene_name==x,]),mc.cores=10) #collapse to longest transcripts
+
+feat<-unlist(as(feat, "GRangesList"))
+feat<-setNames(feat,feat$gene_name)#set row names as gene names
+feat<-feat[feat@ranges@width<500000,]#filter extra long transcripts
+transcripts <- Extend(x = feat,upstream = 2000,downstream = 0)# extend to include promoters
+
+feat_split<-split(transcripts, rep_len(1:300, length(transcripts)))
+#parallelize gene count to speed up feature matrix generation
+
+split_gene_count<-function(x,obj=dat){
+    FeatureMatrix(fragments = Fragments(obj),cells=Cells(obj),
+                              features= feat_split[[x]],
+                              verbose = TRUE,
+                              process_n=20000)
+}
+
+dat_atac_counts<-mclapply(1:length(feat_split),split_gene_count,mc.cores=10)
+x<-do.call("rbind",dat_atac_counts)
+dat_atac_counts<-x
+#row.names(dat_atac_counts)<-transcripts$gene_name
+saveRDS(dat_atac_counts,file="phase2.QC.filt.SeuratObject.genecounts.rds") #saved data on 230814
+
+dat[['GeneCount']] <- CreateAssayObject(counts = dat_atac_counts)
+saveRDS(dat,file="phase2.QC.filt.SeuratObject.rds")
+
+
+#GA liger
+GA_liger<-function(nfeat=1000,dims=10,k_in=10){
+  DefaultAssay(dat)<-"GeneCount"
+  dat <- NormalizeData(dat)
+  dat <- FindVariableFeatures(dat,nfeatures=nfeat)
+  dat <- ScaleData(dat, split.by = "sample", do.center = FALSE)
+  dat <- RunOptimizeALS(dat, k = k_in, lambda = 5, split.by = "sample")
+  dat <- RunQuantileNorm(dat, split.by = "sample")
+  dat <- FindNeighbors(dat, reduction = "iNMF", dims = seq(1,dims,1))
+  dat <- FindClusters(dat, resolution = 0.3)
+  dat <- RunUMAP(dat, dims = 1:ncol(dat[["iNMF"]]), reduction = "iNMF")
+  plt<-DimPlot(dat, group.by = c("sample", "EMBO_predicted.id","diagnosis"), ncol = 2)+ggtitle(paste("nfeat:",as.character(nfeat),"dim:",as.character(dims),"k:",as.character(k_in)))
+  ggsave(plt,file="phase2.QC.liger.GAonly.pdf",width=30)
+  system("slack -F phase2.QC.liger.GAonly.pdf ryan_todo")
+}
+
+for(i in c(1000,2000,5000,10000)){
+  for(j in c(10,20,30)){
+    for(k in c(10,20,30,50)){
+      if(k>=j){
+      GA_liger(nfeat=i,dims=j,k_in=k)
+      }
+    }
+  }
+}
+
+#nfeat 10000, dim 20 and k 20 seems to have the best cell type separation (not as good as RNA)
+
+
+
+
+#Peak Liger
+#add peak exclusion for sample specific peaks?
+
+peak_liger<-function(nfeat=1000,dims=10,k_in=10){
+  #following scIB filtering and no scaling of peaks
+  DefaultAssay(dat)<-"peaks"
+  dat<-BinarizeCounts(dat) # binarize peak accessibility
+  dat<-FindTopFeatures(dat,assay="peaks",min.cutoff=200)
+  dat <- FindVariableFeatures(dat,nfeatures=nfeat)
+  dat<-SetAssayData(dat,assay="peaks",slot="scale.data",new.data=as.matrix(dat@assays$peaks@data[dat@assays$peaks@var.features,]))
+  dat <- RunOptimizeALS(dat, k = k_in, lambda = 5, split.by = "sample")
+  dat <- RunQuantileNorm(dat, split.by = "sample")
+  dat <- FindNeighbors(dat, reduction = "iNMF", dims = seq(1,dims,1))
+  dat <- FindClusters(dat, resolution = 0.3)
+  dat <- RunUMAP(dat, dims = 1:ncol(dat[["iNMF"]]), reduction = "iNMF")
+  plt<-DimPlot(dat, group.by = c("sample", "EMBO_predicted.id","diagnosis"), ncol = 2)+ggtitle(paste("nfeat:",as.character(nfeat),"dim:",as.character(dims),"k:",as.character(k_in)))
+  ggsave(plt,file="phase2.QC.liger.peakonly.pdf",width=20,height=20)
+  system("slack -F phase2.QC.liger.peakonly.pdf ryan_todo")
+}
+
+for(i in c(1000,2000,5000,10000)){
+    for(k in c(10,20,30,50)){
+      peak_liger(nfeat=i,dims=k,k_in=k)
+      }
+    }
+
+#nfeat ## and k ## seems to have the best cell type separation 
+
+#combine for liger multi embedding
+
+#http://htmlpreview.github.io/?https://github.com/welch-lab/liger/blob/master/vignettes/Integrating_scRNA_and_scATAC_data.html
+RNA_and_GA_liger<-function(nfeat_rna=1000,nfeat_peaks=1000,dim_in=10,k_in=10){
+  DefaultAssay(dat)<-"RNA"
+  dat <- NormalizeData(dat)
+  dat <- FindVariableFeatures(dat,nfeatures=nfeat_rna)
+  dat <- ScaleData(dat, split.by = "sample", do.center = FALSE)
+
+  DefaultAssay(dat)<-"GeneCount"
+  dat <- NormalizeData(dat)
+  dat <- FindVariableFeatures(dat,nfeatures=nfeat_peaks)
+  dat <- ScaleData(dat, split.by = "sample", do.center = FALSE)
+
+  #DefaultAssay(dat)<-"peaks"
+  #dat<-BinarizeCounts(dat) # binarize peak accessibility
+  #dat<-FindTopFeatures(dat,assay="peaks",min.cutoff=200)
+  #dat <- FindVariableFeatures(dat,nfeatures=nfeat)
+  #dat<-SetAssayData(dat,assay="peaks",slot="scale.data",new.data=as.matrix(dat@assays$peaks@data[dat@assays$peaks@var.features,]))
+
+  dat_in<-dat
+  ga<-dat@assays$GeneCount@scale.data
+  rna<-dat@assays$RNA@scale.data
+  row.names(ga)<-paste0("GA_",row.names(ga))
+  row.names(rna)<-paste0("RNA",row.names(rna))
+  merged_dat<-as.matrix(rbind(ga,rna))
+
+  dat_in[["liger_in"]]<-CreateAssayObject(counts = merged_dat)
+
+  dat_in<-SetAssayData(dat_in,assay="liger_in",slot="scale.data",new.data=as.matrix(dat_in@assays$liger_in@counts))
+  DefaultAssay(dat_in)<-"liger_in"
+  dat_in <- RunOptimizeALS(dat_in, k = k_in, lambda = 5, split.by = "sample")
+  dat_in <- RunQuantileNorm(dat_in, split.by = "sample")
+  dat_in <- FindNeighbors(dat_in, reduction = "iNMF", dims = seq(1,dim_in,1))
+  dat_in <- FindClusters(dat_in, resolution = 0.3)
+  dat_in <- RunUMAP(dat_in, dims = 1:ncol(dat_in[["iNMF"]]), reduction = "iNMF")
+  plt<-DimPlot(dat_in, group.by = c("sample", "EMBO_predicted.id","diagnosis"), ncol = 2)+
+  ggtitle(paste("nfeat_rna:",as.character(nfeat_rna),
+      "nfeat_ga:",as.character(nfeat_peaks),
+      "dim:",as.character(dim_in),
+      "k:",as.character(k_in)))
+  ggsave(plt,file="phase2.QC.liger.RNA_ga.pdf",width=20,height=20)
+  system("slack -F phase2.QC.liger.RNA_ga.pdf ryan_todo")
+  return(dat_in)
+}
+
+for(i in c(10000)){
+    for(k in c(10,20,30,50)){
+      RNA_and_GA_liger(nfeat_rna=10000,nfeat_peaks=10000,dim_in=k,k_in=k)
+      }
+    }
+
+
+dat_in<-RNA_and_GA_liger(nfeat_rna=10000,nfeat_peaks=10000,dim_in=k,k_in=k)
+
+
+saveRDS(dat_in,file="phase2.QC.filt.liger.SeuratObject.rds")
+
+```
+
+
+
 ## Cell Subtyping
 <!-- DONE -->
 
@@ -5248,8 +5518,10 @@ lapply(c("cell_subtype_assignment","diagnosis","molecular_type","PAM50_epi_desig
 
 lapply(c("cell_subtype_assignment","diagnosis","molecular_type","PAM50_epi_designation","SCSubtype_epi_designation","pseudobulk_pam50","pseudobulk_genefu_pam50","pseudobulk_sspbc_PAM50"), function(x) system(paste0("slack -F ",paste0(x,"_*","_DE_table.tsv")," ryan_todo")))
 ```
+
 ### Normal Epithelial Subtyping
 Continued session. 
+
 ```R
 #Plotting Normal Epithelial Marker genes
   normal_epithelial_marker_genes<-c("KRT5", "ACTA2", "MYLK", "SNAI2", "NOTCH4", "DKK3", "ESR1", "PGR", "FOXA1", "TNFRSF11A", "KIT", "SOX10")
@@ -5533,7 +5805,7 @@ dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
    opts = list(species = 9606, all_versions = FALSE)
  )
 
-subclone_tf_footpints<-function(x){
+subclone_tf_footpints<-function(x, tf){
   print(paste("Running sample ",x))
   if(x %in% 1:20){
     sample_name<-paste0("sample_",x)
@@ -5557,9 +5829,8 @@ subclone_tf_footpints<-function(x){
      pfm = pwm
    )
 
-    da_tf_markers<-readRDS(paste0(prefix,"_celltype_TF_markers.RDS"))
-    tfs<-da_tf_markers$gene
     #select list of TF genes with motifs
+    tfs<-c("ZN770","ZNF449","KLF5","CTCF","SP2","AHR","USF2","SUH")
     tfs<-tfs[tfs %in% dat_tmp@assays$ATAC@motifs@motif.names]
 
     # gather the footprinting information for sets of motifs
@@ -5744,20 +6015,81 @@ library(parallel)
 setwd("/home/groups/CEDAR/mulqueen/projects/multiome/220715_multiome_phase2")
 
 
+dat<-readRDS("phase2.QC.filt.SeuratObject.rds")
+dat$diagnosis<-factor(dat$diagnosis, 
+                            levels=rev(c("NAT","DCIS","IDC","ILC")))
+Idents(dat)<-dat$diagnosis
 
-atac_sub<-readRDS("epithelial.SeuratObject.rds")
-Idents(atac_sub)<-atac_sub$diagnosis
-DefaultAssay(atac_sub)<-"SoupXRNA"
-RNA_markers <- FindMarkers(atac_sub, ident.1 = "IDC", ident.2 = c("DCIS","NAT"), min.pct = 0.1)
-RNA_markers$gene_name<-row.names(RNA_markers)
-DefaultAssay(atac_sub)<-"ATAC"
-ATAC_markers <- FindMarkers(atac_sub,ident.1 = "IDC", ident.2 = c("DCIS","NAT"), min.pct = 0.1)
-ATAC_markers$da_region<-row.names(ATAC_markers)
-closest_genes <- ClosestFeature(atac_sub,ATAC_markers$da_region)
-ATAC_markers<-cbind(ATAC_markers,closest_genes)
 
-rna<-RNA_markers[RNA_markers$gene_name %in% ATAC_markers$gene_name,]
-atac<-ATAC_markers[ATAC_markers$gene_name %in% rna$gene_name,]
+da_plot<-function(dat_in=dat,celltype){
+  dat_in<-subset(dat_in,EMBO_predicted.id==celltype)
+  DefaultAssay(dat_in)<-"SoupXRNA"
+  RNA_markers <- FindMarkers(dat_in, ident.1 = "IDC", ident.2 = c("DCIS","NAT"), min.pct = 0.1)
+  RNA_markers$gene_name<-row.names(RNA_markers)
+  DefaultAssay(dat_in)<-"GeneActivity"
+  ATAC_markers <- FindMarkers(dat_in,ident.1 = "IDC", ident.2 = c("DCIS","NAT"), min.pct = 0.1)
+  ATAC_markers$gene_name<-row.names(ATAC_markers)
+  DefaultAssay(dat_in)<-"chromvar"
+  chromvar_markers<-FindMarkers(dat_in,ident.1 = "IDC", ident.2 = c("DCIS","NAT"), min.pct = 0.1)
+
+  write.table(RNA_markers,file=paste0("diagnosis",celltype,"_markers.IDC_enriched.rna.tsv"),row.names=T,col.names=T,sep="\t")
+  system(paste0("slack -F ",paste0("diagnosis",celltype,"_markers.IDC_enriched.rna.tsv")," ryan_todo"))
+  write.table(ATAC_markers,file=paste0("diagnosis",celltype,"_markers.IDC_enriched.atac.tsv"),row.names=T,col.names=T,sep="\t")
+  system(paste0("slack -F ",paste0("diagnosis",celltype,"_markers.IDC_enriched.atac.tsv")," ryan_todo"))
+  write.table(chromvar_markers,file=paste0("diagnosis",celltype,"_markers.IDC_enriched.chromvar.tsv"),row.names=T,col.names=T,sep="\t")
+  system(paste0("slack -F ",paste0("diagnosis",celltype,"_markers.IDC_enriched.chromvar.tsv")," ryan_todo"))
+
+  plt<-DotPlot(dat_in, assay="SoupXRNA",features = row.names(RNA_markers[order(RNA_markers$avg_log2FC),]),group.by="diagnosis",cols=c("#fee8c8","#e34a33")) + RotatedAxis()
+  ggsave(plt,file=paste0("diagnosis.",celltype,"_markers.IDC_enriched.rna.pdf"),width=60,height=10,limitsize=FALSE)
+  system(paste0("slack -F ",paste0("diagnosis.",celltype,"_markers.IDC_enriched.rna.pdf")," ryan_todo"))
+
+  plt<-DotPlot(dat_in, assay="GeneActivity",features = row.names(ATAC_markers[order(ATAC_markers$avg_log2FC),]),group.by="diagnosis") + RotatedAxis()
+  ggsave(plt,file=paste0("diagnosis.",celltype,"_markers.IDC_enriched.atac.pdf"),width=60,height=10,limitsize=FALSE)
+  system(paste0("slack -F ",paste0("diagnosis.",celltype,"_markers.IDC_enriched.atac.pdf")," ryan_todo"))
+
+  plt<-DotPlot(dat_in, assay="chromvar",features = row.names(chromvar_markers[order(chromvar_markers$avg_log2FC),]),group.by="diagnosis") + RotatedAxis()
+  ggsave(plt,file=paste0("diagnosis.",celltype,"_markers.IDC_enriched.chromvar.pdf"),width=60,height=10,limitsize=FALSE)
+  system(paste0("slack -F ",paste0("diagnosis.",celltype,"_markers.IDC_enriched.chromvar.pdf")," ryan_todo"))
+}
+
+lapply(c("epithelial"),function(x) da_plot(dat_in=dat,celltype=x))
+
+
+
+#"B.cells","CAFs","Endothelial",,"Pericytes","Plasma.cells","T.cells","TAMs"
+da_plot_DCIS<-function(dat_in=dat,celltype){
+  dat_in<-subset(dat_in,EMBO_predicted.id==celltype)
+  DefaultAssay(dat_in)<-"SoupXRNA"
+  RNA_markers <- FindMarkers(dat_in, ident.1 = "DCIS", ident.2 = c("IDC","NAT"), min.pct = 0.1)
+  RNA_markers$gene_name<-row.names(RNA_markers)
+  DefaultAssay(dat_in)<-"GeneActivity"
+  ATAC_markers <- FindMarkers(dat_in,ident.1 = "DCIS", ident.2 = c("IDC","NAT"), min.pct = 0.1)
+  ATAC_markers$gene_name<-row.names(ATAC_markers)
+  DefaultAssay(dat_in)<-"chromvar"
+  chromvar_markers<-FindMarkers(dat_in,ident.1 = "DCIS", ident.2 = c("IDC","NAT"), min.pct = 0.1)
+
+  write.table(RNA_markers,file=paste0("diagnosis",celltype,"_markers.DCIS_enriched.rna.tsv"),row.names=T,col.names=T,sep="\t")
+  system(paste0("slack -F ",paste0("diagnosis",celltype,"_markers.DCIS_enriched.rna.tsv")," ryan_todo"))
+  write.table(ATAC_markers,file=paste0("diagnosis",celltype,"_markers.DCIS_enriched.atac.tsv"),row.names=T,col.names=T,sep="\t")
+  system(paste0("slack -F ",paste0("diagnosis",celltype,"_markers.DCIS_enriched.atac.tsv")," ryan_todo"))
+  write.table(chromvar_markers,file=paste0("diagnosis",celltype,"_markers.DCIS_enriched.chromvar.tsv"),row.names=T,col.names=T,sep="\t")
+  system(paste0("slack -F ",paste0("diagnosis",celltype,"_markers.DCIS_enriched.chromvar.tsv")," ryan_todo"))
+
+  plt<-DotPlot(dat_in, assay="SoupXRNA",features = row.names(RNA_markers),group.by="diagnosis",cols=c("#fee8c8","#e34a33")) + RotatedAxis()
+  ggsave(plt,file=paste0("diagnosis.",celltype,"_markers.DCIS_enriched.rna.pdf"),width=60,height=10,limitsize=FALSE)
+  system(paste0("slack -F ",paste0("diagnosis.",celltype,"_markers.DCIS_enriched.rna.pdf")," ryan_todo"))
+
+  plt<-DotPlot(dat_in, assay="GeneActivity",features = row.names(ATAC_markers),group.by="diagnosis") + RotatedAxis()
+  ggsave(plt,file=paste0("diagnosis.",celltype,"_markers.DCIS_enriched.atac.pdf"),width=60,height=10,limitsize=FALSE)
+  system(paste0("slack -F ",paste0("diagnosis.",celltype,"_markers.DCIS_enriched.atac.pdf")," ryan_todo"))
+
+
+  plt<-DotPlot(dat_in, assay="chromvar",features = row.names(chromvar_markers),group.by="diagnosis") + RotatedAxis()
+  ggsave(plt,file=paste0("diagnosis.",celltype,"_markers.DCIS_enriched.chromvar.pdf"),width=60,height=10,limitsize=FALSE)
+  system(paste0("slack -F ",paste0("diagnosis.",celltype,"_markers.DCIS_enriched.chromvar.pdf")," ryan_todo"))
+}
+
+lapply(c("epithelial"),function(x) da_plot_DCIS(dat_in=dat,celltype=x))
 
 
 
