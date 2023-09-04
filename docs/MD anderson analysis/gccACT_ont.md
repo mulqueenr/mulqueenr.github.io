@@ -13,12 +13,7 @@ https://github.com/epi2me-labs/wf-human-variation
 
 Using ONT software for analysis of data.
 
-First testing pipeline on test data
-
-```bash
-ssh r1prpsciapp13
-
-```
+First testing pipeline on test data. This is all written for seadragon.
 
 Basecalling: https://github.com/nanoporetech/dorado
 Methylation calling: https://github.com/nanoporetech/remora
@@ -30,6 +25,8 @@ Now our data:
 ## Set up seadragon for data processing
 Download data via transfer node
 ```bash
+ssh seadragon
+
 bsub -Is -W 4:00 -q transfer -n 1 -M 16 -R rusage[mem=16] /bin/bash #get interactive transfer node this has internet access for environment set up
 
 
