@@ -84,12 +84,12 @@ or use the commented out call for an interative gpu node and run line by line.
 20230731_1851_3E_PAO38479_822d79b2.dorado.bsub
 ```bash
 #BSUB -J 20230731_1851_3E_PAO38479_822d79b2
-#BSUB -W 6:00
+#BSUB -W 12:00
 #BSUB -o /rsrch4/home/genetics/rmulqueen/
 #BSUB -e /rsrch4/home/genetics/rmulqueen/
 #BSUB -cwd /rsrch4/home/genetics/rmulqueen/
 #BSUB -q gpu-medium
-#BSUB -gpu num=2:gmem=4 
+#BSUB -gpu num=4:gmem=16 
 #BSUB -M 160
 #BSUB -R "rusage[mem=160]"
 #BSUB -B
@@ -117,7 +117,7 @@ pod5_dir="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT/MD
     ${pod5_dir}/pod5_pass/ | samtools view -b - > ${wd_out}/${output_name}.bam
 
 ```
-
+<!--
 20230802_1920_2D_PAO38925_a09c109d.dorado.bsub
 ```bash
 #BSUB -J 20230802_1920_2D_PAO38925_a09c109d
@@ -192,7 +192,7 @@ pod5_dir="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT/MD
     ${pod5_dir}/pod5_pass/ | samtools view -b - > ${wd_out}/${output_name}.bam
 
 ```
-
+-->
 ## Running ONT nextflow pipeline.
 
 Local install and run using GPUs on seadragon
@@ -201,8 +201,24 @@ Note for some, the pod5 files are so big (600gb) that they need to be uploaded a
 
 Written as interactive node, but can be formatted for bsub job submisison as well. Run in a screen so you don't have to keep an active terminal through it.
 
+20230726_1239_2D_PAO38369_dde6ac95.nextflow.bsub
+
 ```bash
-bsub -Is -W 4:00 -q gpu -n 1 -gpu num=2:gmem=4 -M 160 -R rusage[mem=160] /bin/bash #get interactive gpu node
+#BSUB -J 20230726_1239_2D_PAO38369_dde6ac95_nextflow
+#BSUB -W 12:00
+#BSUB -o /rsrch4/home/genetics/rmulqueen/
+#BSUB -e /rsrch4/home/genetics/rmulqueen/
+#BSUB -cwd /rsrch4/home/genetics/rmulqueen/
+#BSUB -q gpu-medium
+#BSUB -gpu num=4:gmem=16 
+#BSUB -M 160
+#BSUB -R "rusage[mem=160]"
+#BSUB -B
+#BSUB -N
+#BSUB -u rmulqueen@mdanderson.org
+
+
+#bsub -Is -W 4:00 -q gpu -n 1 -gpu num=2:gmem=4 -M 160 -R rusage[mem=160] /bin/bash #get interactive gpu node
 
 module load nextflow/23.04.3
 module load cuda11.5/toolkit/11.5.1
@@ -238,7 +254,6 @@ export CWL_SINGULARITY_CACHE=$SINGULARITY_PULLDIR
     dna_r10.4.1_e8.2_400bps_hac@v4.2.0 \
     ${pod5_dir}/pod5_pass/ | samtools sort -@ 10 -T $HOME | samtools view -b - > ${wd_out}/${output_name}.sorted.bam
 
-
 nextflow run /home/rmulqueen/wf-human-variation-master/main.nf \
     -w ${wd_out}/${output_name}/workspace \
     -profile singularity \
@@ -254,4 +269,8 @@ nextflow run /home/rmulqueen/wf-human-variation-master/main.nf \
     -without-docker
 
 
+```
+
+```bash
+bsub < 20230726_1239_2D_PAO38369_dde6ac95.nextflow.bsub
 ```
