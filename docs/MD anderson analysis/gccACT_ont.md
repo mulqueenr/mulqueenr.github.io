@@ -212,7 +212,8 @@ module load samtools/1.15
 ref="/rsrch4/home/genetics/rmulqueen/ref/genome.fa"
 wd_out="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT"
 output_name="20230726_1239_2D_PAO38369_output" #change to each flowcell
-pod5_dir="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT/MDA_MB_231/20230726_1239_2D_PAO38369_dde6ac95" #change to each flowcell
+
+pod5_dir="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT/20230726_1239_2D_PAO38369_dde6ac95" #change to each flowcell
 #download model for base calling
 #dorado download --model dna_r10.4.1_e8.2_400bps_hac@v4.2.0_5mCG_5hmCG@v2 #5khz #cpg??
 #dorado download --model dna_r10.4.1_e8.2_400bps_hac@v4.2.0
@@ -227,8 +228,16 @@ export SINGULARITY_TMPDIR=$SINGULARITY_CACHEDIR/tmp
 export SINGULARITY_PULLDIR=$SINGULARITY_CACHEDIR/pull
 export CWL_SINGULARITY_CACHE=$SINGULARITY_PULLDIR
 
+#dorado run
 #output bam file from dorado caller has to be sorted before it can be used in the pipeline.
-samtools sort -@ 10 -T $HOME ${wd_out}/${output_name}.bam > ${wd_out}/${output_name}.sorted.bam
+~/tools/dorado-0.3.4-linux-x64/bin/dorado basecaller \
+    --verbose \
+    --reference ${ref} \
+    --emit-sam \
+    --modified-bases-models dna_r10.4.1_e8.2_400bps_hac@v4.2.0_5mCG_5hmCG@v2 \
+    dna_r10.4.1_e8.2_400bps_hac@v4.2.0 \
+    ${pod5_dir}/pod5_pass/ | samtools sort -@ 10 -T $HOME | samtools view -b - > ${wd_out}/${output_name}.sorted.bam
+
 
 nextflow run /home/rmulqueen/wf-human-variation-master/main.nf \
     -w ${wd_out}/${output_name}/workspace \

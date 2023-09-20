@@ -565,42 +565,6 @@ nextflow run ~/wf-human-variation-master/main.nf \
 
 ```
 
-This one works! vvvvvv
-```bash
-#BSUB -J dorado_test_gpu
-#BSUB -W 6:00
-#BSUB -o /rsrch4/home/genetics/rmulqueen/
-#BSUB -e /rsrch4/home/genetics/rmulqueen/
-#BSUB -cwd /rsrch4/home/genetics/rmulqueen/
-#BSUB -q gpu-medium
-#BSUB -gpu num=2:gmem=4 
-#BSUB -M 160
-#BSUB -R "rusage[mem=160]"
-#BSUB -B
-#BSUB -N
-#BSUB -u rmulqueen@mdanderson.org
-
-#bsub -Is -W 4:00 -q short -n 1 num=2:gmem=4 -M 16 -R rusage[mem=16] /bin/bash #get interactive gpu node
-
-pwd
-module load nextflow/23.04.3
-module load cuda11.5/toolkit/11.5.1
-module load samtools/1.15 
-echo $(hostname)
-
-ref="/rsrch4/home/genetics/rmulqueen/ref/genome.fa"
-wd_out="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT"
-output_name="20230726_1239_2D_PAO38369_output" #change to each flowcell
-pod5_dir="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT/MDA_MB_231/20230726_1239_2D_PAO38369_dde6ac95" #change to each flowcell
-
-~/tools/dorado-0.3.4-linux-x64/bin/dorado basecaller \
-    --verbose \
-    --reference ${ref} \
-    --emit-sam \
-    dna_r10.4.1_e8.2_400bps_hac@v4.2.0 \
-    ${pod5_dir}/pod5_pass/ | samtools view -b - > ${wd_out}/${output_name}.bam
-
-```
 
 
 ```bash

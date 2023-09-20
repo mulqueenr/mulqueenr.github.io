@@ -383,7 +383,8 @@ GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/
 BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
 cooltools genome binnify $CHROMSIZES_FILE 1000000 > $BINS_PATH & #1mb bins, 
 tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
-cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
+cooltools genome gc $BINS_PATH $FASTA_PATH | tail -n +2 | head -n -1  > $GC_BINS_PATH &
+
 
 #5KB Bins
 BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins"
@@ -1017,16 +1018,27 @@ export -f eaglec_SV_CNV
 
 
 ```
+
 ### Generate eigengenes for compartments across chromosomes
 ```bash
 #note this requires the cooler matrix be balanced and normalized already
+conda activate EagleC
+
+BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins"
+GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.gc.head.bins"
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.head.bed"
+
 
 cooler_eigen() {
-cooltools eigs-cis -o outputs/test.eigs.100000 --view data/view_hg38.tsv --phasing-track outputs/gc.100000.tsv --n-eigs 1 $cool_file::resolutions/100000
+clone=${1::-13}
+cool_file=${clone_dir}/${clone}.bsorted.500kb.cool 
+cooltools eigs-cis -o test.eigs.100000 --view $BINS_BED_PATH --phasing-track $GC_BINS_PATH --n-eigs 1 $cool_file
 }
-export -f cooler_balance
+#convert $BINS_BED_PATH to viewframe
+export -f cooler_eigen
 
 
+cooler_eigen clone_c4.bsorted.cool
 ```
 
 
@@ -1189,6 +1201,56 @@ plt<-(plt1|plt2|plt3)/(plt4|plt5|plt6)
 ggsave(plt,file="read_counts.pdf")
 ```
 
+https://github.com/tanlongzhi/dip-c/#workflow
+
+```bash
+# align reads
+bwa mem -5SP genome.fa R1.fq.gz R2.fq.gz | gzip > aln.sam.gz # for Nextera
+#seqtk mergepe R1.fq.gz R2.fq.gz | pre-meta - | bwa mem -5SP -p genome.fa - | gzip > aln.sam.gz # for META
+
+# extract segments
+hickit.js sam2seg -v snp.txt.gz aln.sam.gz | hickit.js chronly -y - | gzip > contacts.seg.gz # for female
+#hickit.js sam2seg -v snp.txt.gz aln.sam.gz | hickit.js chronly - | hickit.js bedflt par.bed - | gzip > contacts.seg.gz # for male
+
+# resolve haplotypes via imputation
+hickit -i contacts.seg.gz -o - | bgzip > contacts.pairs.gz
+hickit -i contacts.pairs.gz -u -o - | bgzip > impute.pairs.gz
+
+# generate 3D structures (with 3 replicates)
+for rep in `seq 1 3`
+do
+  hickit -s${rep} -M -i impute.pairs.gz -Sr1m -c1 -r10m -c2 -b4m -b1m -O 1m.${rep}.3dg -b200k -O 200k.${rep}.3dg -D5 -b50k -O 50k.${rep}.3dg -D5 -b20k -O 20k.${rep}.3dg
+done
+
+# convert from hickit to dip-c formats, and remove repetitive regions from 3D structures
+scripts/hickit_pairs_to_con.sh contacts.pairs.gz
+scripts/hickit_impute_pairs_to_con.sh impute.pairs.gz
+for rep in `seq 1 3`
+do
+  scripts/hickit_3dg_to_3dg_rescale_unit.sh 20k.${rep}.3dg
+  dip-c clean3 -c impute.con.gz 20k.${rep}.dip-c.3dg > 20k.${rep}.clean.3dg # remove repetitive (contact-less) regions
+done
+
+# align replicate structures and calculate RMSD (overall value in .log file)
+dip-c align -o aligned.20k. 20k.[1-3].clean.3dg 2> 20k.align.log > 20k.align.color
+
+# convert to juicebox format for interactive viewing
+# raw contacts
+java -Xmx2g -jar juicer_tools.jar pre -n contacts.pairs.gz contacts.hic mm10
+# haplotype-resolved contacts
+scripts/con_imputed_to_juicer_pre_short.sh impute.con.gz
+java -Xmx2g -jar juicer_tools.jar pre -n impute.juicer.txt.gz impute.hic color/mm10.chr.hom.len
+
+# calculate single-cell chromatin compartment values along the genome
+dip-c color2 -b1000000 -H -c color/mm10.cpg.1m.txt -s contacts.con.gz > cpg_b1m.color2 # contact-based
+dip-c color -c color/mm10.cpg.20k.txt -s3 20k.1.clean.3dg > cpg_s3.color # 3D-structure-based
+
+# calculate radial positioning
+dip-c color -C 20k.1.clean.3dg > C.color
+
+# color by chromosome number and visualize as mmCIF (viewable with pymol)
+dip-c color -n color/mm10.chr.txt 20k.1.clean.3dg | dip-c vis -c /dev/stdin 20k.1.clean.3dg > 20k.1.clean.n.cif
+```
 ```
 #correlate HiC to WGS output
 #Test for number of split reads compared to HiC data
