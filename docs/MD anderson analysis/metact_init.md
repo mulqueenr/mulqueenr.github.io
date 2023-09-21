@@ -111,21 +111,19 @@ Undetermined_S0_L001_I2_001.fastq.gz
 for i in *fastq; do gzip $i & done &
 ```
 
-
-<!--
 # Processing Samples via Copykit to start
 ## Alignment
 ```bash
 #set up variables and directory
-mkdir /volumes/seq/projects/gccACT/230306_mdamb231_test
 ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
-fq1="/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R1_001.barc.fastq.gz"
-fq2="/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R2_001.barc.fastq.gz"
+dir="/volumes/seq/projects/metACT/230913_metACT_benchmark"
+fq1="/volumes/seq/projects/metACT/230913_metACT_benchmark/Undetermined_S0_L001_R1_001.barc.fastq.gz"
+fq2="/volumes/seq/projects/metACT/230913_metACT_benchmark/Undetermined_S0_L001_R2_001.barc.fastq.gz"
 
 #Map reads with BWA Mem
-bwa mem -t 20 $ref $fq1 $fq2 | samtools view -b - > $dir/230306_gccact.bam
+bwa mem -t 50 $ref $fq1 $fq2 | samtools view -b - > $dir/230921_metact_benchmark.bam
 ```
+
 
 ## Split out single-cells
 ```bash
@@ -135,7 +133,7 @@ mkdir $dir/cells
 Split by readname bam field into cells subdir and add metadata column
 
 ```bash
-samtools view $dir/230306_gccact.bam | awk -v dir=$dir 'OFS="\t" {split($1,a,":"); print $0,"XM:Z:"a[1] > "./cells/"a[1]".230306_gccact.sam"}'
+samtools view $dir/230921_metact_benchmark.bam| awk -v dir=$dir 'OFS="\t" {split($1,a,":"); print $0,"XM:Z:"a[1] > "./cells/"a[1]".230921_metact_benchmark.sam"}' &
  #split out bam to cell level sam
 ```
 
@@ -143,16 +141,18 @@ samtools view $dir/230306_gccact.bam | awk -v dir=$dir 'OFS="\t" {split($1,a,":"
 Using parallel to save time
 ```bash
 ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+dir="/volumes/seq/projects/metACT/230913_metACT_benchmark"
 
 add_header() {
 	samtools view -bT $ref $1 | samtools sort -T $dir -o ${1::-4}.bam -
 }
 export -f add_header
-sam_in=`ls *sam`
+cd $dir
+sam_in=`ls ./cells/*sam`
 parallel --jobs 30 add_header ::: $sam_in
 ```
 
+<!--
 ## Mark duplicate reads
 ```bash
 #name sort, fix mates, sort by position, mark dup

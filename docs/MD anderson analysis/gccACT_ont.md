@@ -29,8 +29,6 @@ ssh seadragon
 
 bsub -Is -W 4:00 -q transfer -n 1 -M 16 -R rusage[mem=16] /bin/bash #get interactive transfer node this has internet access for environment set up
 
-
-
 #ONT data
 #rsync  -LPr mulqueen@10.132.80.157:/volumes/seq/projects/gccACT/230808_mdamb231_ONT ~/projects/gccACT
 #just focusing on the big pod5 files
@@ -48,16 +46,16 @@ tar -xzvf demo_data.tar.gz
 
 #dorado reference genome
 #download model for base calling
-#ran on navin 10.132.80.157 cluster first and pulled to seadragon
+#ran on navin 10.132.80.157 cluster first and pulled to seadragon, can also be done on transfer node
 #dorado download --model dna_r10.4.1_e8.2_400bps_hac@v4.2.0_5mCG_5hmCG@v2 
 #dorado download --model dna_r10.4.1_e8.2_400bps_hac@v4.2.0
 rsync -LPr mulqueen@10.132.80.157:/volumes/USR2/Ryan/dna_r10.4.1_e8.2_400bps_hac@v4.2.0 ~/
 rsync -LPr mulqueen@10.132.80.157:/volumes/USR2/Ryan/dna_r10.4.1_e8.2_400bps_hac@v4.2.0_5mCG_5hmCG@v2 ~/
 
-#nextflow epi2me download
+#nextflow epi2me download (pulled from github originally)
 rsync -LPr mulqueen@10.132.80.157:/volumes/USR2/Ryan/wf-human-variation-master ~/
 
-#my 10.132.80.157 references
+#my 10.132.80.157 references (used just for genome.fa of hg38 which i pulled from the 10x website for consistency)
 rsync -LPr mulqueen@10.132.80.157:/volumes/USR2/Ryan/ref ~/
 
 mkdir ~/singularity
@@ -66,7 +64,7 @@ export NXF_SINGULARITY_CACHEDIR="~/singularity/"
 cd ~/singularity
 module load singularity/3.7.0
 
-#manual pull of singularity containers so i can run on gpu nodes (taking these from output log of test data ran on seadragon transfer node to see what docker containers it was pulling.)
+#manual pull of singularity containers so i can run on gpu nodes (taking these from output log of test data ran on seadragon transfer node to see what docker containers it was pulling.) I'm not sure if this step is necessary anymore, since i set env variables to tell it not to pull these in the job submissions
 singularity pull docker://ontresearch/wf-human-variation-sv:shabc3ac908a14705f248cdf49f218956ec33e93ef9 
 singularity pull docker://ontresearch/wf-human-variation:sha0337567399c09ef14d1ab9cc114f77de86398e12 
 singularity pull docker://ontresearch/wf-cnv:sha428cb19e51370020ccf29ec2af4eead44c6a17c2 
@@ -74,125 +72,6 @@ singularity pull docker://ontresearch/wf-human-variation-snp:sha0d7e7e8e8207d9d2
 
 ```
 
-## Dorado basecalling and alignment
-Run these scripts with command:
-```bash
-bsub < 20230731_1851_3E_PAO38479_822d79b2.dorado.bsub 
-```
-or use the commented out call for an interative gpu node and run line by line.
-
-20230731_1851_3E_PAO38479_822d79b2.dorado.bsub
-```bash
-#BSUB -J 20230731_1851_3E_PAO38479_822d79b2
-#BSUB -W 12:00
-#BSUB -o /rsrch4/home/genetics/rmulqueen/
-#BSUB -e /rsrch4/home/genetics/rmulqueen/
-#BSUB -cwd /rsrch4/home/genetics/rmulqueen/
-#BSUB -q gpu-medium
-#BSUB -gpu num=4:gmem=16 
-#BSUB -M 160
-#BSUB -R "rusage[mem=160]"
-#BSUB -B
-#BSUB -N
-#BSUB -u rmulqueen@mdanderson.org
-
-#bsub -Is -W 4:00 -q gpu-medium -n 1 -gpu num=2:gmem=4 -M 160 -R rusage[mem=160] /bin/bash #get interactive gpu node
-
-pwd
-module load nextflow/23.04.3
-module load cuda11.5/toolkit/11.5.1
-module load samtools/1.15 
-echo $(hostname)
-
-ref="/rsrch4/home/genetics/rmulqueen/ref/genome.fa"
-wd_out="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT"
-output_name="20230731_1851_3E_PAO38479_822d79b2_output" #change to each flowcell
-pod5_dir="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT/MDA_MB_231/20230731_1851_3E_PAO38479_822d79b2" #change to each flowcell
-
-~/tools/dorado-0.3.4-linux-x64/bin/dorado basecaller \
-    --verbose \
-    --reference ${ref} \
-    --emit-sam \
-    dna_r10.4.1_e8.2_400bps_hac@v4.2.0 \
-    ${pod5_dir}/pod5_pass/ | samtools view -b - > ${wd_out}/${output_name}.bam
-
-```
-<!--
-20230802_1920_2D_PAO38925_a09c109d.dorado.bsub
-```bash
-#BSUB -J 20230802_1920_2D_PAO38925_a09c109d
-#BSUB -W 6:00
-#BSUB -o /rsrch4/home/genetics/rmulqueen/
-#BSUB -e /rsrch4/home/genetics/rmulqueen/
-#BSUB -cwd /rsrch4/home/genetics/rmulqueen/
-#BSUB -q gpu-medium
-#BSUB -gpu num=2:gmem=4 
-#BSUB -M 160
-#BSUB -R "rusage[mem=160]"
-#BSUB -B
-#BSUB -N
-#BSUB -u rmulqueen@mdanderson.org
-
-#bsub -Is -W 4:00 -q gpu-medium -n 1 -gpu num=2:gmem=4 -M 160 -R rusage[mem=160] /bin/bash #get interactive gpu node
-
-pwd
-module load nextflow/23.04.3
-module load cuda11.5/toolkit/11.5.1
-module load samtools/1.15 
-echo $(hostname)
-
-ref="/rsrch4/home/genetics/rmulqueen/ref/genome.fa"
-wd_out="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT"
-output_name="20230802_1920_2D_PAO38925_a09c109d_output" #change to each flowcell
-pod5_dir="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT/MDA_MB_231_2/MDA_MB_231/20230802_1920_2D_PAO38925_a09c109d" #change to each flowcell
-
-~/tools/dorado-0.3.4-linux-x64/bin/dorado basecaller \
-    --verbose \
-    --reference ${ref} \
-    --emit-sam \
-    dna_r10.4.1_e8.2_400bps_hac@v4.2.0 \
-    ${pod5_dir}/pod5_pass/ | samtools view -b - > ${wd_out}/${output_name}.bam
-
-```
-
-20230726_1239_2D_PAO38369_dde6ac95.dorado.bsub
-```bash
-#BSUB -J 20230726_1239_2D_PAO38369_dde6ac95
-#BSUB -W 6:00
-#BSUB -o /rsrch4/home/genetics/rmulqueen/
-#BSUB -e /rsrch4/home/genetics/rmulqueen/
-#BSUB -cwd /rsrch4/home/genetics/rmulqueen/
-#BSUB -q gpu-medium
-#BSUB -gpu num=2:gmem=4 
-#BSUB -M 160
-#BSUB -R "rusage[mem=160]"
-#BSUB -B
-#BSUB -N
-#BSUB -u rmulqueen@mdanderson.org
-
-#bsub -Is -W 4:00 -q gpu-medium -n 1 -gpu num=2:gmem=4 -M 160 -R rusage[mem=160] /bin/bash #get interactive gpu node
-
-pwd
-module load nextflow/23.04.3
-module load cuda11.5/toolkit/11.5.1
-module load samtools/1.15 
-echo $(hostname)
-
-ref="/rsrch4/home/genetics/rmulqueen/ref/genome.fa"
-wd_out="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT"
-output_name="20230726_1239_2D_PAO38369_output" #change to each flowcell
-pod5_dir="/rsrch4/home/genetics/rmulqueen/projects/gccACT/230808_mdamb231_ONT/MDA_MB_231/20230726_1239_2D_PAO38369_dde6ac95" #change to each flowcell
-
-~/tools/dorado-0.3.4-linux-x64/bin/dorado basecaller \
-    --verbose \
-    --reference ${ref} \
-    --emit-sam \
-    --modified-bases-models dna_r10.4.1_e8.2_400bps_hac@v4.2.0_5mCG_5hmCG@v2 \
-    dna_r10.4.1_e8.2_400bps_hac@v4.2.0 \
-    ${pod5_dir}/pod5_pass/ | samtools view -b - > ${wd_out}/${output_name}.bam
-
-```
--->
 ## Running ONT nextflow pipeline.
 
 Local install and run using GPUs on seadragon
@@ -209,7 +88,7 @@ Written as interactive node, but can be formatted for bsub job submisison as wel
 #BSUB -o /rsrch4/home/genetics/rmulqueen/
 #BSUB -e /rsrch4/home/genetics/rmulqueen/
 #BSUB -cwd /rsrch4/home/genetics/rmulqueen/
-#BSUB -q gpu-medium
+#BSUB -q gpu
 #BSUB -gpu num=4:gmem=16 
 #BSUB -M 160
 #BSUB -R "rusage[mem=160]"
