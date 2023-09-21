@@ -47,35 +47,21 @@ from Bio.SeqIO.QualityIO import FastqGeneralIterator
 import pandas as pd
 
 #set up plate
-idx_list="/volumes/seq/projects/metACT/230913_metACT_benchmark/230830_metACT_sequencing_indexes.csv"
+idx_list="/volumes/seq/projects/metACT/230913_metACT_benchmark/230830_metACT_sequencing_indexes.tsv"
 
-idx_in=pd.read_csv(idx_list)
+idx_in=pd.read_csv(idx_list,sep="\t")
 
 plate_i7=idx_in["i7_idx_seq"].unique()
 plate_i5=idx_in["i5_idx_seq"].unique()
 
-#code from https://www.geeksforgeeks.org/reverse-complement-of-dna-strand-using-python/#
-#def rev_comp_st(seq):
-#    '''This function returns a reverse complement
-#    of a DNA or RNA strand'''
-#    # complement strand
-#    seq = seq.upper()
-#    seq = seq.replace("A", "t").replace("C", "g").replace("T", "a").replace("G", "c")
-#    seq = seq.upper()
-#    # reverse strand
-#    seq = seq[::-1]
-#    return seq
- 
 plate_i7=[i.strip() for i in plate_i7]
 plate_i5=[i.strip() for i in plate_i5]
-
-#plate_i7=[rev_comp_st(i) for i in plate_i7] #indexes in csv file already corrected
-#plate_i5=[rev_comp_st(i) for i in plate_i5]
 
 fq1=sys.argv[1] 
 fq2=sys.argv[2] 
 idx3=sys.argv[3] 
 idx4=sys.argv[4] 
+#examples
 #fq1="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_R1_001.fastq.gz"
 #fq2="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_R2_001.fastq.gz"
 #idx3="/volumes/seq/projects/gccACT/230612_MDAMB231_SKBR3_Wafergentest/Undetermined_S0_L001_I1_001.fastq.gz"
@@ -140,19 +126,22 @@ samtools view $dir/230921_metact_benchmark.bam| awk -v dir=$dir 'OFS="\t" {split
 ## Add header to each sam and convert to bam and sort
 Using parallel to save time
 ```bash
-ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
-dir="/volumes/seq/projects/metACT/230913_metACT_benchmark"
 
 add_header() {
+	ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
+	dir="/volumes/seq/projects/metACT/230913_metACT_benchmark"
 	samtools view -bT $ref $1 | samtools sort -T $dir -o ${1::-4}.bam -
 }
 export -f add_header
-cd $dir
-sam_in=`ls ./cells/*sam`
+cd $dir/cells
+sam_in=`ls ./*sam`
 parallel --jobs 30 add_header ::: $sam_in
+
+#remove sam files to clear up space
+rm -f $dir/cells/*sam
 ```
 
-<!--
+
 ## Mark duplicate reads
 ```bash
 #name sort, fix mates, sort by position, mark dup
@@ -162,8 +151,25 @@ sort_and_markdup() {
 export -f sort_and_markdup
 
 bam_in=`ls *bam`
-parallel --jobs 30 sort_and_markdup ::: $bam_in
+parallel --jobs 50 sort_and_markdup ::: $bam_in
 ```
+
+
+## Project Library Complexity
+Using Picard Tools
+```bash
+dir="/volumes/seq/projects/metACT/230913_metACT_benchmark"
+
+project_count() {
+java -jar /volumes/seq/code/3rd_party/picard/picard-2.20.4/picard.jar EstimateLibraryComplexity I=$1 O=${1::-4}.complex_metrics.txt
+}
+export -f project_count
+
+cd $dir/cells
+bam_in=`ls *bam`
+parallel --jobs 50 project_count ::: $bam_in
+```
+
 
 ## Run Fastqc on everything and clean up
 
@@ -174,13 +180,34 @@ parallel --jobs 30 fastqc ::: $bam_in
 mkdir $dir/cells/fastqc
 mv *fastqc* $dir/cells/fastqc
 mv *stats.txt $dir/cells/fastqc
-rm -rf *gccact.bam #only keep duplicate marked bams
+rm -rf *benchmark.bam #only keep duplicate marked bams
 
 #run multiqc to aggregate
 multiqc . 
 #C100 had zero reads, gzipping to prevent copykit from reading in
 
 ```
+
+```R
+library(ggplot2)
+
+metadat<-read.table("/volumes/seq/projects/metACT/230913_metACT_benchmark/230830_metACT_sequencing_indexes.csv",sep=",",header=T)
+metadat$cellID<-paste0(metadat$i7_idx_seq,metadat$i5_idx_seq)
+projected_complexity<-list.files("/volumes/seq/projects/metACT/230913_metACT_benchmark/cells",pattern=".complex_metrics.txt$")
+
+metadat$proj_compl<-NA
+
+for(x in projected_complexity){
+	print(x)
+	tmp<-read.table(x,nrows=1,sep="\t",header=T)
+	tmp$cellID<-lapply(strsplit(basename(x),"[.]"),"[[",1)
+	if(!is.na(tmp$ESTIMATED_LIBRARY_SIZE)){
+	metadat[metadat$cellID==tmp$cellID,]$proj_compl<-tmp$ESTIMATED_LIBRARY_SIZE
+	}
+}
+
+```
+<!--
 
 ## Run CopyKit for WGS portion
 Analysis from 
@@ -250,19 +277,5 @@ for (i in unique(clone_out$clone)){
 }
 ```
 
-
-## Project Library Complexity
-Using Picard Tools
-```bash
-dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
-project_count() {
-java -jar /volumes/seq/code/3rd_party/picard/picard-2.20.4/picard.jar EstimateLibraryComplexity I=$1 O=${1::-4}.complex_metrics.txt
-}
-export -f project_count
-
-cd $dir/cells
-bam_in=`ls *bam`
-parallel --jobs 20 project_count ::: $bam_in
-```
 
 -->
