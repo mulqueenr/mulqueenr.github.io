@@ -135,7 +135,7 @@ add_header() {
 export -f add_header
 cd $dir/cells
 sam_in=`ls ./*sam`
-parallel --jobs 30 add_header ::: $sam_in
+parallel --jobs 50 add_header ::: $sam_in
 
 #remove sam files to clear up space
 rm -f $dir/cells/*sam
@@ -180,6 +180,7 @@ parallel --jobs 30 fastqc ::: $bam_in
 mkdir $dir/cells/fastqc
 mv *fastqc* $dir/cells/fastqc
 mv *stats.txt $dir/cells/fastqc
+mv *txt $dir/cells/fastqc
 rm -rf *benchmark.bam #only keep duplicate marked bams
 
 #run multiqc to aggregate
@@ -190,10 +191,10 @@ multiqc .
 
 ```R
 library(ggplot2)
-
-metadat<-read.table("/volumes/seq/projects/metACT/230913_metACT_benchmark/230830_metACT_sequencing_indexes.csv",sep=",",header=T)
+library(dplyr)
+metadat<-read.table("/volumes/seq/projects/metACT/230913_metACT_benchmark/230830_metACT_sequencing_indexes.tsv",sep="\t",header=T)
 metadat$cellID<-paste0(metadat$i7_idx_seq,metadat$i5_idx_seq)
-projected_complexity<-list.files("/volumes/seq/projects/metACT/230913_metACT_benchmark/cells",pattern=".complex_metrics.txt$")
+projected_complexity<-list.files("/volumes/seq/projects/metACT/230913_metACT_benchmark/cells/fastqc",pattern=".complex_metrics.txt$",full.names=T)
 
 metadat$proj_compl<-NA
 
@@ -201,13 +202,37 @@ for(x in projected_complexity){
 	print(x)
 	tmp<-read.table(x,nrows=1,sep="\t",header=T)
 	tmp$cellID<-lapply(strsplit(basename(x),"[.]"),"[[",1)
-	if(!is.na(tmp$ESTIMATED_LIBRARY_SIZE)){
+	if(!is.na(tmp$ESTIMATED_LIBRARY_SIZE) && tmp$cellID %in% metadat$cellID){
 	metadat[metadat$cellID==tmp$cellID,]$proj_compl<-tmp$ESTIMATED_LIBRARY_SIZE
 	}
 }
 
+write.table(metadat,"/volumes/seq/projects/metACT/230913_metACT_benchmark/230830_metACT_sequencing_indexes.tsv",col.names=T,row.names=F,sep="\t")
+plt<-ggplot(metadat,aes(x=assay,y=log10(proj_compl)))+geom_violin()+geom_jitter()
+ggsave(plt,file="ligation_benchmark_projected_complexity.pdf")
+
+metadat %>% group_by(assay,cell_count,ligation_concentration) %>% summarize(median(proj_compl,na.rm=T))
+
+#   assay  cell_count ligation_concentration `median(proj_compl, na.rm = T)`
+#   <chr>       <int> <chr>                                            <dbl>
+# 1 act             0 na                                                 NA 
+# 2 act             1 na                                            1110743 
+# 3 act            10 na                                            7495187 
+# 4 metact          0 0.1                                                NA 
+# 5 metact          1 0.05                                           210127 
+# 6 metact          1 0.1                                            195268.
+# 7 metact          1 0.2                                            203138 
+# 8 metact          1 0.3                                            180872.
+# 9 metact          1 0.4                                            268436 
+#10 metact          1 0.5                                            164760.
+#11 metact          1 0.6                                            219330.
+#12 metact          1 0.7                                            223688.
+#13 metact          1 0.8                                            253306.
+#14 metact          1 0.9                                            240320.
+#15 metact         10 1                                              679716.
+
 ```
-<!--
+
 
 ## Run CopyKit for WGS portion
 Analysis from 
@@ -219,9 +244,9 @@ library(BiocParallel)
 library(EnsDb.Hsapiens.v86)
 register(MulticoreParam(progressbar = T, workers = 50), default = T)
 BiocParallel::bpparam()
-setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells")
+setwd("/volumes/seq/projects/metACT/230913_metACT_benchmark/")
 
-tumor2 <- runVarbin("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells",
+tumor2 <- runVarbin("/volumes/seq/projects/metACT/230913_metACT_benchmark/cells/",
                  remove_Y = TRUE,
                  genome="hg38",
                  is_paired_end=TRUE)
@@ -230,25 +255,26 @@ tumor2 <- runVarbin("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells",
 tumor2 <- findAneuploidCells(tumor2)
 
 # Mark low-quality cells for filtering
-tumor <- findOutliers(tumor)
+tumor <- findOutliers(tumor2)
 
 # Visualize cells labeled by filter and aneuploid status
 pdf("outlier_qc.heatmap.pdf")
 plotHeatmap(tumor, label = c('outlier', 'is_aneuploid'), row_split = 'outlier')
 dev.off()
 
+####SKIPPED###
 # Remove cells marked as low-quality and/or aneuploid from the copykit object
-tumor <- tumor[,SummarizedExperiment::colData(tumor)$outlier == FALSE]
-tumor <- tumor[,SummarizedExperiment::colData(tumor)$is_aneuploid == TRUE]
+#tumor <- tumor[,SummarizedExperiment::colData(tumor)$outlier == FALSE]
+#tumor <- tumor[,SummarizedExperiment::colData(tumor)$is_aneuploid == TRUE]
 
 
 # kNN smooth profiles
 tumor <- knnSmooth(tumor)
 
 
-k_clones<-findSuggestedK(tumor)
 # Create a umap embedding 
 tumor <- runUmap(tumor)
+tumor<-findSuggestedK(tumor)
 
 # Find clusters of similar copy number profiles and plot the results
 # If no k_subclones value is provided, automatically detect it from findSuggestedK()
@@ -268,13 +294,22 @@ pdf("subclone.heatmap.pdf")
 plotHeatmap(tumor, label = 'subclones',order='hclust')
 dev.off()
 
-saveRDS(tumor,file="/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
-tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
-clone_out<-data.frame(bam=paste0(row.names(tumor@colData),".bam"),clone=tumor@colData$subclones)
-for (i in unique(clone_out$clone)){
-	tmp<-clone_out[clone_out$clone==i,]
-	write.table(tmp$bam,file=paste0("clone_",i,".bam_list.txt"),row.names=F,col.names=F,quote=F)
-}
+#read in metadata
+metadat<-read.table("/volumes/seq/projects/metACT/230913_metACT_benchmark/230830_metACT_sequencing_indexes.tsv",sep="\t",header=T)
+metadat$cellID<-paste0(metadat$i7_idx_seq,metadat$i5_idx_seq)
+tumor@colData$cellID<-unlist(lapply(strsplit(row.names(tumor@colData),"[.]"),"[[",1))
+#merge to rds
+tumor@colData<-merge(tumor@colData,metadat,by="cellID")
+row.names(tumor@colData)<-tumor@colData$sample
+tumor@colData$proj_compl_log10<-log10(tumor@colData$proj_compl)
+tumor@colData$reads_assigned_bins_log10<-log10(tumor@colData$reads_assigned_bins)
+saveRDS(tumor,file="/volumes/seq/projects/metACT/230913_metACT_benchmark/scCNA.rds")
+
+# Plot a copy number heatmap with clustering annotation
+pdf("subclone.heatmap.pdf")
+plotHeatmap(tumor, label = c('assay',"cell_count","ligation_concentration","proj_compl_log10","reads_assigned_bins_log10"),order='hclust')
+dev.off()
+
 ```
 
 

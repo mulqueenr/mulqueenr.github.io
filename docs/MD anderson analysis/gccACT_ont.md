@@ -65,10 +65,19 @@ cd ~/singularity
 module load singularity/3.7.0
 
 #manual pull of singularity containers so i can run on gpu nodes (taking these from output log of test data ran on seadragon transfer node to see what docker containers it was pulling.) I'm not sure if this step is necessary anymore, since i set env variables to tell it not to pull these in the job submissions
-singularity pull docker://ontresearch/wf-human-variation-sv:shabc3ac908a14705f248cdf49f218956ec33e93ef9 
+
 singularity pull docker://ontresearch/wf-human-variation:sha0337567399c09ef14d1ab9cc114f77de86398e12 
+
+#cnv
 singularity pull docker://ontresearch/wf-cnv:sha428cb19e51370020ccf29ec2af4eead44c6a17c2 
+
+#sv
+singularity pull docker://ontresearch/wf-human-variation-sv:shabc3ac908a14705f248cdf49f218956ec33e93ef9 
+
+#snp
 singularity pull docker://ontresearch/wf-human-variation-snp:sha0d7e7e8e8207d9d23fdf50a34ceb577da364373e 
+#methyl
+singularity pull docker://ontresearch/wf-human-variation-methyl:sha44a13bcf48db332b2277bb9f95b56d64e393a1d5 > /dev/null
 
 ```
 
@@ -123,15 +132,15 @@ export SINGULARITY_TMPDIR=$SINGULARITY_CACHEDIR/tmp
 export SINGULARITY_PULLDIR=$SINGULARITY_CACHEDIR/pull
 export CWL_SINGULARITY_CACHE=$SINGULARITY_PULLDIR
 
-#dorado run
+#dorado run (succeeded previously so commenting out here)
 #output bam file from dorado caller has to be sorted before it can be used in the pipeline.
-~/tools/dorado-0.3.4-linux-x64/bin/dorado basecaller \
-    --verbose \
-    --reference ${ref} \
-    --emit-sam \
-    --modified-bases-models dna_r10.4.1_e8.2_400bps_hac@v4.2.0_5mCG_5hmCG@v2 \
-    dna_r10.4.1_e8.2_400bps_hac@v4.2.0 \
-    ${pod5_dir}/pod5_pass/ | samtools sort -@ 10 -T $HOME | samtools view -b - > ${wd_out}/${output_name}.sorted.bam
+#~/tools/dorado-0.3.4-linux-x64/bin/dorado basecaller \
+#    --verbose \
+#    --reference ${ref} \
+#    --emit-sam \
+#    --modified-bases-models dna_r10.4.1_e8.2_400bps_hac@v4.2.0_5mCG_5hmCG@v2 \
+#    dna_r10.4.1_e8.2_400bps_hac@v4.2.0 \
+#    ${pod5_dir}/pod5_pass/ | samtools sort -@ 10 -T $HOME | samtools view -b - > ${wd_out}/${output_name}.sorted.bam
 
 nextflow run /home/rmulqueen/wf-human-variation-master/main.nf \
     -w ${wd_out}/${output_name}/workspace \
@@ -147,7 +156,7 @@ nextflow run /home/rmulqueen/wf-human-variation-master/main.nf \
     -with-singularity \
     -without-docker
 
-
+#note sif files may need to be manually pulled (as above) for updates to wf-human-variation-master in the future
 ```
 
 ```bash
