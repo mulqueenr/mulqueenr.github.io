@@ -79,6 +79,10 @@ singularity pull docker://ontresearch/wf-human-variation-snp:sha0d7e7e8e8207d9d2
 #methyl
 singularity pull docker://ontresearch/wf-human-variation-methyl:sha44a13bcf48db332b2277bb9f95b56d64e393a1d5 > /dev/null
 
+singularity pull  --name ontresearch-wf-human-variation-methyl-sha44a13bcf48db332b2277bb9f95b56d64e393a1d5.img.pulling.1695478159368 docker://ontresearch/wf-human-variation-methyl:sha44a13bcf48db332b2277bb9f95b56d64e393a1d5 > /dev/null
+
+#all together at once
+nextflow download /home/rmulqueen/wf-human-variation-master/main.nf --container singularity
 ```
 
 ## Running ONT nextflow pipeline.
@@ -131,6 +135,7 @@ export SINGULARITY_CACHEDIR="/rsrch4/home/genetics/rmulqueen/singularity/"
 export SINGULARITY_TMPDIR=$SINGULARITY_CACHEDIR/tmp
 export SINGULARITY_PULLDIR=$SINGULARITY_CACHEDIR/pull
 export CWL_SINGULARITY_CACHE=$SINGULARITY_PULLDIR
+export NXF_OFFLINE='TRUE' #https://nf-co.re/docs/usage/offline
 
 #dorado run (succeeded previously so commenting out here)
 #output bam file from dorado caller has to be sorted before it can be used in the pipeline.
@@ -154,7 +159,8 @@ nextflow run /home/rmulqueen/wf-human-variation-master/main.nf \
     --sample_name ${output_name} \
     --out_dir ${wd_out}/${output_name}/ \
     -with-singularity \
-    -without-docker
+    -without-docker \
+    -offline
 
 #note sif files may need to be manually pulled (as above) for updates to wf-human-variation-master in the future
 ```

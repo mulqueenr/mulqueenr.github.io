@@ -168,21 +168,24 @@ multiqc .
 Analysis from 
 https://navinlabcode.github.io/CopyKit-UserGuide/quick-start.html
 
+```bash
+conda activate r4.2
+```
 ```R
 library(copykit)
 library(BiocParallel)
 library(EnsDb.Hsapiens.v86)
 register(MulticoreParam(progressbar = T, workers = 50), default = T)
 BiocParallel::bpparam()
-setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells")
+setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test")
 
-tumor2 <- runVarbin("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells",
+tumor <- runVarbin("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells",
                  remove_Y = TRUE,
                  genome="hg38",
                  is_paired_end=TRUE)
 
 # Mark euploid cells if they exist
-tumor2 <- findAneuploidCells(tumor2)
+tumor <- findAneuploidCells(tumor)
 
 # Mark low-quality cells for filtering
 tumor <- findOutliers(tumor)
@@ -200,10 +203,9 @@ tumor <- tumor[,SummarizedExperiment::colData(tumor)$is_aneuploid == TRUE]
 # kNN smooth profiles
 tumor <- knnSmooth(tumor)
 
-
+tumor <- runUmap(tumor)
 k_clones<-findSuggestedK(tumor)
 # Create a umap embedding 
-tumor <- runUmap(tumor)
 
 # Find clusters of similar copy number profiles and plot the results
 # If no k_subclones value is provided, automatically detect it from findSuggestedK()
@@ -230,6 +232,61 @@ for (i in unique(clone_out$clone)){
 	tmp<-clone_out[clone_out$clone==i,]
 	write.table(tmp$bam,file=paste0("clone_",i,".bam_list.txt"),row.names=F,col.names=F,quote=F)
 }
+```
+
+
+## Correlating our HiC Data to ONT Data
+See /gccACT_ONT/ for more details on ONT processing.
+
+```bash
+#Data stored here:
+/volumes/seq/projects/gccACT/230808_mdamb231_ONT/20230726_1239_2D_PAO38369_output
+
+#CNV calls using QDNA algorithm:
+/volumes/seq/projects/gccACT/230808_mdamb231_ONT/20230726_1239_2D_PAO38369_output/qdna_seq/20230726_1239_2D_PAO38369_output_combined.bed
+
+
+#SV calls using Sniffles2:
+/volumes/seq/projects/gccACT/230808_mdamb231_ONT/20230726_1239_2D_PAO38369_output/20230726_1239_2D_PAO38369_output.wf_sv.vcf.gz
+```
+
+```R
+library(copykit)
+library(BiocParallel)
+library(EnsDb.Hsapiens.v86)
+library(GenomicRanges)
+setwd("/volumes/seq/projects/gccACT/230306_mdamb231_test")
+tumor<-readRDS(file="/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
+ont<-read.table("/volumes/seq/projects/gccACT/230808_mdamb231_ONT/20230726_1239_2D_PAO38369_output/qdna_seq/20230726_1239_2D_PAO38369_output_combined.bed",sep="\t",skip=1)
+
+colnames(ont)<-c("chrom","start","end","range","log2ratio","pass_filt","cnv")
+ont$chrom<-paste0("chr",ont$chrom)
+ont<-makeGRangesFromDataFrame(ont,keep.extra.columns=TRUE)
+
+#https://rdrr.io/github/navinlabcode/copykit/src/R/plotHeatmap.R
+copykit_ranges<-makeGRangesFromDataFrame(tumor@rowRanges,keep.extra.columns=TRUE)
+overlap<-findOverlaps(subject=ont,query=copykit_ranges,select="first")
+
+ont_overlaps<-cbind(as.data.frame(copykit_ranges),as.data.frame(ont)[overlap,c("log2ratio","cnv")])
+
+plt<-plotHeatmap(tumor, label = 'subclones',order='hclust')
+
+# Plot a copy number heatmap with clustering annotation
+pdf("subclone.heatmap.pdf")
+print(plt)
+dev.off()
+
+seg_data_ont<-t(as.data.frame(ont_overlaps$log2ratio))
+seg_data <- t(SummarizedExperiment::assay(tumor, "logr"))
+dim(seg_data_ont)[2]==dim(seg_data)[2]
+
+plt@matrix<-seg_data_ont
+plt@row_order<-c(1)
+# Plot a copy number heatmap with clustering annotation
+pdf("subclone.heatmap.ont.pdf")
+print(plt)
+dev.off()
+#manipulated pdf in illustrator to make the ONT data in line with other data, both pdfs are printed to match width so they can be stacked for easy viewing
 ```
 
 ### Count of WGS and GCC Reads
@@ -1263,7 +1320,6 @@ dip-c color -n color/mm10.chr.txt 20k.1.clean.3dg | dip-c vis -c /dev/stdin 20k.
 #Add 
 -->
 ```
-
 
 
 <!--
