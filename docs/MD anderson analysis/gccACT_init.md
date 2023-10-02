@@ -209,7 +209,7 @@ k_clones<-findSuggestedK(tumor)
 
 # Find clusters of similar copy number profiles and plot the results
 # If no k_subclones value is provided, automatically detect it from findSuggestedK()
-tumor  <- findClusters(tumor,k_subclones=17)#output from k_clones
+tumor  <- findClusters(tumor,k_subclones=25)#output from k_clones
 
 pdf("subclone.umap.pdf")
 plotUmap(tumor, label = 'subclones')
@@ -225,9 +225,9 @@ pdf("subclone.heatmap.pdf")
 plotHeatmap(tumor, label = 'subclones',order='hclust')
 dev.off()
 
-saveRDS(tumor,file="/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
-tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
-clone_out<-data.frame(bam=paste0(row.names(tumor@colData),".bam"),clone=tumor@colData$subclones)
+saveRDS(tumor,file="scCNA.rds")
+tumor<-readRDS("scCNA.rds")
+clone_out<-data.frame(bam=paste0(getwd(),"/cells/",row.names(tumor@colData),".bam"),clone=tumor@colData$subclones)
 for (i in unique(clone_out$clone)){
 	tmp<-clone_out[clone_out$clone==i,]
 	write.table(tmp$bam,file=paste0("clone_",i,".bam_list.txt"),row.names=F,col.names=F,quote=F)
@@ -248,8 +248,10 @@ See /gccACT_ONT/ for more details on ONT processing.
 
 #SV calls using Sniffles2:
 /volumes/seq/projects/gccACT/230808_mdamb231_ONT/20230726_1239_2D_PAO38369_output/20230726_1239_2D_PAO38369_output.wf_sv.vcf.gz
-```
 
+
+```
+Plotting CNV calls from ONT data together with gccACT data
 ```R
 library(copykit)
 library(BiocParallel)
@@ -289,6 +291,26 @@ dev.off()
 #manipulated pdf in illustrator to make the ONT data in line with other data, both pdfs are printed to match width so they can be stacked for easy viewing
 ```
 
+Reading in SV VCF file
+
+```R
+library(vcfR)
+library(dplyr)
+vcf_file <- "/volumes/seq/projects/gccACT/230808_mdamb231_ONT/20230726_1239_2D_PAO38369_output/20230726_1239_2D_PAO38369_output.wf_sv.vcf.gz"
+vcf <- read.vcfR(vcf_file, verbose = TRUE)
+vcf_field_names(vcf, tag = "FORMAT")
+vcf_field_names(vcf, tag = "INFO")
+Z <- vcfR2tidy(vcf, format_fields = c("GT", "DP"))
+dat<-Z$fix
+dat %>% group_by(SVTYPE) %>% summarize(mean(SVLEN))
+
+dat_transloc<-dat[dat$SVTYPE=="BND",]
+dat_dup_inv_del<-dat[(!is.na(dat$SVLEN)),]
+dat_dup_inv_del<-dat_dup_inv_del[(abs(dat_dup_inv_del$SVLEN)>1000000),]
+dat_out<-rbind(dat_transloc,dat_dup_inv_del)
+write.table(as.data.frame(dat_out),file="/volumes/seq/projects/gccACT/230808_mdamb231_ONT/20230726_1239_2D_PAO38369_output/20230726_1239_2D_PAO38369_output.1mb_SVs.tsv",col.names=T,row.names=T,sep="\t")
+
+```
 ### Count of WGS and GCC Reads
 ```bash
 dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
@@ -362,15 +384,19 @@ bam_in=`ls *bam`
 echo "cellid,near_cis,distal_cis,trans" > read_count.csv; parallel --jobs 10 readtype_count ::: $bam_in >> read_count.csv
 ```
 
+https://github.com/mdozmorov/HiC_tools#cnv-aware-normalization
 
 ### Generation of HiC Contact Matrices
 Merge bam files based on CopyKit output. Then using bam2pairs from pairix to generate contacts
+
+
 ```bash
+conda activate EagleC
 dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
 
 #filter reads to HiC contacts, then perform bam2pairs 
-mkdir $dir/cells/contacts
+mkdir $dir/contacts
 
 #### For generation of pairix per cell
 #bam_to_pairs() {
@@ -387,15 +413,16 @@ mkdir $dir/cells/contacts
 # third is bam file input
 
 bamlist_merge_to_pairs() {
-	samtools merge -b $3 -O SAM -@ 20 - | awk '{if (sqrt(($9^2))>=1000 || $7 != "=") print $0}' | samtools view -bT $2 - > $1/cells/contacts/${3::-13}.contacts.bam && wait;
-	bam2pairs $1/cells/contacts/${3::-13}.contacts.bam $1/cells/contacts/${3::-13}
+	samtools merge -b $3 -O SAM -@ 20 - | awk '{if (sqrt(($9^2))>=1000 || $7 != "=") print $0}' | samtools view -bT $2 - > $1/contacts/${3::-13}.contacts.bam && wait;
+	bam2pairs $1/contacts/${3::-13}.contacts.bam $1/contacts/${3::-13}
 }
 export -f bamlist_merge_to_pairs
 
+bamlist_merge_to_pairs $dir $ref clone_c0.bam_list.txt 
 bamlist_merge_to_pairs $dir $ref clone_c1.bam_list.txt 
 bamlist_merge_to_pairs $dir $ref clone_c2.bam_list.txt 
 bamlist_merge_to_pairs $dir $ref clone_c3.bam_list.txt 
-bamlist_merge_to_pairs $dir $ref clone_c4.bam_list.txt 
+
 
 #set variable for bam list in function
 
@@ -418,7 +445,7 @@ https://github.com/XiaoTaoWang/NeoLoopFinder
 Change to cooler environment ::sunglasses::
 ```bash
 conda deactivate #get out of r3.4 env
-conda activate cooler_env #use cooler env (lower python version)
+conda activate EagleC #use cooler env (lower python version)
 ```
 
 ### Set up reference and bins
@@ -437,43 +464,45 @@ CHROMSIZES_FILE="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0
 #1MB Bins
 BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins"
 GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.gc.bins"
+GC_BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.gc.bed"
 BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
 cooltools genome binnify $CHROMSIZES_FILE 1000000 > $BINS_PATH & #1mb bins, 
 tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
-cooltools genome gc $BINS_PATH $FASTA_PATH | tail -n +2 | head -n -1  > $GC_BINS_PATH &
+bedtools nuc -fi $ref -bed $BINS_BED_PATH > $GC_BINS_PATH
+awk 'OFS="\t" {print $1,$2,$3,$5}' $GC_BINS_PATH > $GC_BINS_BED_PATH
 
+# #5KB Bins
+# BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins"
+# GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.gc.bins"
+# BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins.bed"
+# cooltools genome binnify $CHROMSIZES_FILE 5000 > $BINS_PATH  #5kb bins, 
+# tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
+# cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
+# #10KB Bins
+# BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins"
+# GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.gc.bins"
+# BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins.bed"
+# cooltools genome binnify $CHROMSIZES_FILE 10000 > $BINS_PATH #10kb bins, 
+# tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
+# cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
 
-#5KB Bins
-BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins"
-GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.gc.bins"
-BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins.bed"
-cooltools genome binnify $CHROMSIZES_FILE 5000 > $BINS_PATH  #5kb bins, 
-tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
-cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
-
-#10KB Bins
-BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins"
-GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.gc.bins"
-BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins.bed"
-cooltools genome binnify $CHROMSIZES_FILE 10000 > $BINS_PATH #10kb bins, 
-tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
-cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
-
-#50KB Bins
-BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins"
-GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.gc.bins"
-BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins.bed"
-cooltools genome binnify $CHROMSIZES_FILE 50000 > $BINS_PATH #50kb bins, 
-tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
-cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
+# #50KB Bins
+# BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins"
+# GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.gc.bins"
+# BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins.bed"
+# cooltools genome binnify $CHROMSIZES_FILE 50000 > $BINS_PATH #50kb bins, 
+# tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
+# cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
 
 #500KB Bins
 BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins"
 GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.gc.bins"
+GC_BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.gc.bed"
 BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
 cooltools genome binnify $CHROMSIZES_FILE 500000 > $BINS_PATH #50kb bins, 
 tail -n +2 $BINS_PATH |  head -n -1 > $BINS_BED_PATH #remove the header and hanging line to make it a proper bed file
-cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
+bedtools nuc -fi $ref -bed $BINS_BED_PATH > $GC_BINS_PATH
+awk 'OFS="\t" {print $1,$2,$3,$5}' $GC_BINS_PATH > $GC_BINS_BED_PATH
 
 ```
 
@@ -482,26 +511,26 @@ cooltools genome gc $BINS_PATH $FASTA_PATH > $GC_BINS_PATH &
 # Note that the input pairs file happens to be space-delimited, so we convert to tab-delimited with `tr`.
 dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
 
-pairix_to_cooler_5kb() {
-BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins.bed"
-out_name="5kb"
-cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
-}
-export -f pairix_to_cooler_5kb
+# pairix_to_cooler_5kb() {
+# BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/5kb.bins.bed"
+# out_name="5kb"
+# cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
+# }
+# export -f pairix_to_cooler_5kb
 
-pairix_to_cooler_10kb() {
-BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins.bed"
-out_name="10kb"
-cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
-}
-export -f pairix_to_cooler_10kb
+# pairix_to_cooler_10kb() {
+# BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/10kb.bins.bed"
+# out_name="10kb"
+# cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
+# }
+# export -f pairix_to_cooler_10kb
 
-pairix_to_cooler_50kb() {
-BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins.bed"
-out_name="50kb"
-cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
-}
-export -f pairix_to_cooler_50kb
+# pairix_to_cooler_50kb() {
+# BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/50kb.bins.bed"
+# out_name="50kb"
+# cooler cload pairix -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
+# }
+# export -f pairix_to_cooler_50kb
 
 
 pairix_to_cooler_500kb() {
@@ -512,20 +541,32 @@ cooler cload pairix -0 -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_na
 export -f pairix_to_cooler_500kb
 
 
-cd $dir/rm_archive/contacts/clones
+pairix_to_cooler_1mb() {
+BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
+out_name="1mb"
+cooler cload pairix -0 -p 10 --assembly hg38 $BINS_BED_PATH $1 ${1::-9}.${out_name}.cool
+}
+export -f pairix_to_cooler_1mb
+
+
+
+cd $dir/contacts
 pairix_in=`ls clone_*pairs.gz`
 
 #5kb
-parallel --jobs 5 pairix_to_cooler_5kb ::: $pairix_in & #uses 10 cores per job
+#parallel --jobs 6 pairix_to_cooler_5kb ::: $pairix_in & #uses 10 cores per job
 
 #10kb
-parallel --jobs 5 pairix_to_cooler_10kb ::: $pairix_in & #uses 10 cores per job
+#parallel --jobs 6 pairix_to_cooler_10kb ::: $pairix_in & #uses 10 cores per job
 
 #50kb
-parallel --jobs 5 pairix_to_cooler_50kb ::: $pairix_in & #uses 10 cores per job
+#parallel --jobs 6 pairix_to_cooler_50kb ::: $pairix_in & #uses 10 cores per job
 
 #500kb
-parallel --jobs 5 pairix_to_cooler_500kb ::: $pairix_in & #uses 10 cores per job
+parallel --jobs 6 pairix_to_cooler_500kb ::: $pairix_in & #uses 10 cores per job
+
+#1mb
+parallel --jobs 6 pairix_to_cooler_1mb ::: $pairix_in & #uses 10 cores per job
 
 # first argument is pairix gzipped file
 ```
@@ -533,15 +574,18 @@ parallel --jobs 5 pairix_to_cooler_500kb ::: $pairix_in & #uses 10 cores per job
 ### CNV normalization on HiC Data
 Write out CNV segments as bedfiles at multiple resolutions for cnv correction via NeoLoopFinder
 NeoLoopFinder also reports CNVs through log2 changes, making this a direct comparison.
+```bash
+conda activate r4.2
+```
 
 ```R
 library(copykit)
 library(GenomicRanges)
 library(parallel)
-wd_out="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
+wd_out="/volumes/seq/projects/gccACT/230306_mdamb231_test/"
 
 setwd(wd_out)
-tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/scCNA.rds")
+tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
 tumor <- calcInteger(tumor, method = 'scquantum', assay = 'smoothed_bincounts') #calculate ploidy
 tumor <- calcConsensus(tumor) #generate consensus
 
@@ -560,21 +604,21 @@ plotHeatmap(tumor,
             label = 'subclones',
             assay = 'integer')
 dev.off()
-saveRDS(tumor,file="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/scCNA.consensus.rds") #save categorical consensus scCNA object
+saveRDS(tumor,file="scCNA.consensus.rds") #save categorical consensus scCNA object
 
 
 #function to define blacklist regions
 make_black_list<-function(bed_in,copykit_obj){
-#bins in bin bed file that are not in the copykit filtered list are considered black list,
-#generate per bins.bed resolution
-bins_bed<-read.table(bed_in,header=F,sep="\t")
-colnames(bins_bed)<-c("chr","start","end")
-bins_bed<-GRanges(bins_bed)
-accepted_bed_ranges<-GRanges(copykit_obj@rowRanges) #row ranges for bedgraph
-overlaps<-findOverlaps(query=bins_bed,subject=accepted_bed_ranges,minoverlap=1,ignore.strand=T)
-blacklist<-bins_bed[!(range(1,nrow(bins_bed)) %in% overlaps@from),]
-write.table(as.data.frame(blacklist)[1:3],col.names=F,row.names=F,quote=F,file=paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed"))
-print(paste("Wrote out",paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed")))
+	#bins in bin bed file that are not in the copykit filtered list are considered black list,
+	#generate per bins.bed resolution
+	bins_bed<-read.table(bed_in,header=F,sep="\t")
+	colnames(bins_bed)<-c("chr","start","end")
+	bins_bed<-GRanges(bins_bed)
+	accepted_bed_ranges<-GRanges(copykit_obj@rowRanges) #row ranges for bedgraph
+	overlaps<-findOverlaps(query=bins_bed,subject=accepted_bed_ranges,minoverlap=1,ignore.strand=T)
+	blacklist<-bins_bed[!(range(1,nrow(bins_bed)) %in% overlaps@from),]
+	write.table(as.data.frame(blacklist)[1:3],col.names=F,row.names=F,quote=F,file=paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed"))
+	print(paste("Wrote out",paste0(substr(bed_in,1,nchar(bed_in)-3),"blacklist.bed")))
 }
 
 #function to generate consensus bedGraphs for CNV correction.
@@ -623,15 +667,19 @@ make_consensus_bedgraph<-function(bed_in,res,copykit_obj,clone,cores=10){
 }
 
 
-#Make blacklist
-lapply(bed_in_list, function(x) make_black_list(x,copykit_obj=tumor))
-
 BINS_BED_PATH_500kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
+BINS_BED_PATH_1mb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
+
+#Make blacklist
+lapply(c(BINS_BED_PATH_500kb,BINS_BED_PATH_1mb), function(x) make_black_list(x,copykit_obj=tumor))
+
+
 clone_list<-colnames(tumor@consensus)
 
 #Make clone specific bedgraph format for HiC windows
 for(clone in clone_list){
 	make_consensus_bedgraph(bed_in=BINS_BED_PATH_500kb,res="500kb",clone=clone,copykit_obj=tumor,cores=50)
+	make_consensus_bedgraph(bed_in=BINS_BED_PATH_1mb,res="1mb",clone=clone,copykit_obj=tumor,cores=50)
 }
 
 #output values at matched bin resolutions for neoloop finder, then use segment-cnv and correct-cnv from neoloop finder afterwards
@@ -648,7 +696,7 @@ library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
 wd_out="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
 setwd(wd_out)
-tumor<-readRDS("scCNA.rds")
+tumor<-readRDS("scCNA.consensus.rds")
 
 
 #function to define blacklist regions
@@ -699,15 +747,19 @@ make_consensus_bigwig<-function(bed_in,res,copykit_obj,clone,cores=10){
 
 
 BINS_BED_PATH_500kb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/500kb.bins.bed"
+BINS_BED_PATH_1mb="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.bed"
+
 clone_list<-colnames(tumor@consensus)
 
 #Make clone specific bedgraph format for HiC windows
 for(clone in clone_list){
 	make_consensus_bigwig(bed_in=BINS_BED_PATH_500kb,res="500kb",clone=clone,copykit_obj=tumor,cores=50)
+	make_consensus_bigwig(bed_in=BINS_BED_PATH_1mb,res="1mb",clone=clone,copykit_obj=tumor,cores=50)
 }
 
 ```
 
+<!--
 ### Detection of structural variants using Eagle C
 ICE normalized output at multiresolution
 ```bash
@@ -737,184 +789,65 @@ clones=`ls clone*pairs.gz`
 
 parallel --jobs 1 eaglec_SV_detect ::: $clones &
 ```
+-->
 
 CNV normalized output at single 500kb resolution.
 
 ```bash
-mamba activate EagleC
-#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones" 
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
-cd $clone_dir
-
-eaglec_SV_CNV() {
-	#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
-	#bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
-	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
-	in=$1
-	clone=${in::-17}
-	#balance through ICE first
-	cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.500kb.cool
-	
-	#now balance by CNV
-	conda activate neoloop
-	correct-cnv -H ${clone_dir}/${clone}.bsorted.500kb.cool --cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph --nproc 20 -f
-	
-	conda activate EagleC
-	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 --output-file ${clone_dir}/${clone}.SV.cnv.tsv --balance-type CNV --region-size 500000 --output-format full --prob-cutoff 0.5 --logFile ${clone}.eaglec.cnv.log 
-	#--cache-folder ${clone_dir}/${clone}.cache
-}
-export -f eaglec_SV_CNV
-
-
-#clones=`ls clone*pairs.gz`
-
-#parallel --jobs 1 eaglec_SV_CNV ::: $clones & #parallel doesnt like switching between environments
-eaglec_SV_CNV clone_c1.bsorted.pairs.gz
-eaglec_SV_CNV clone_c2.bsorted.pairs.gz
-eaglec_SV_CNV clone_c3.bsorted.pairs.gz
-eaglec_SV_CNV clone_c4.bsorted.pairs.gz
-eaglec_SV_CNV clone_c5.bsorted.pairs.gz
-eaglec_SV_CNV clone_c6.bsorted.pairs.gz
-eaglec_SV_CNV clone_c7.bsorted.pairs.gz
-
-#Rerun with neoloopfinder output 
 conda activate EagleC
-#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones" 
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
+```
+
+```bash
 
 eaglec_SV_CNV_neoout() {
-	#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
-	#bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
-	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
-	clone=${1::-17}
-	#now balance by CNV
-	conda activate EagleC
-	predictSV-single-resolution -H ${clone_dir}/${clone}.bsorted.500kb.cool -g hg38 --output-file ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv --balance-type CNV --region-size 500000 --output-format NeoLoopFinder --prob-cutoff 0.8 --logFile ${clone}.eaglec.cnv.log
-	conda activate neoloop
-	assemble-complexSVs -O ${clone_dir}/${clone} -B ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv --balance-type CNV --protocol insitu --nproc 20 -H ${clone_dir}/${clone}.bsorted.500kb.cool --logFile ${clone}.neoloop.log --minimum-size 5000
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/contacts"
+bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+clone=${1::-17}
+
+#balance through ICE first
+cooler balance \
+	--ignore-diags 5 \
+	--force \
+	--nproc $2 \
+	${clone_dir}/${clone}.bsorted.500kb.cool
+
+#now balance by CNV
+correct-cnv \
+	--ignore-diags 5 \
+	-H ${clone_dir}/${clone}.bsorted.500kb.cool \
+	--cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph \
+	-force \
+	--nproc $2 \
+	--logFile ${clone}.cnv.norm.log
+
+#predict SV breakpoints by cnv corrected data
+predictSV-single-resolution \
+	-H ${clone_dir}/${clone}.bsorted.500kb.cool \
+	-g hg38 \
+	--output-file ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv \
+	--balance-type CNV \
+	--output-format NeoLoopFinder \
+	--prob-cutoff 0.8 \
+	--logFile ${clone}.eaglec.cnv.log \
+	--cache-folder ${clone}.cache
+
+#assemble cnv breakpoints
+assemble-complexSVs \
+	-H ${clone_dir}/${clone}.bsorted.500kb.cool \
+	-O ${clone_dir}/${clone} \
+	-B ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv \
+	--balance-type CNV \
+	--protocol insitu \
+	--nproc $2 \
+	--region-size 1000000 \
+	--minimum-size 1000000 \
+	--logFile ${clone}.neoloop.log 
 }
 export -f eaglec_SV_CNV_neoout
 
-eaglec_SV_CNV_neoout clone_c1.bsorted.pairs.gz
-eaglec_SV_CNV_neoout clone_c2.bsorted.pairs.gz
-eaglec_SV_CNV_neoout clone_c3.bsorted.pairs.gz
-eaglec_SV_CNV_neoout clone_c4.bsorted.pairs.gz
-eaglec_SV_CNV_neoout clone_c5.bsorted.pairs.gz
-eaglec_SV_CNV_neoout clone_c6.bsorted.pairs.gz
-eaglec_SV_CNV_neoout clone_c7.bsorted.pairs.gz
-
-```
-
-## Automate interSV plotting
-Take in the SV output from EagleC, filter to significant interchr translocations, make unique and plot.
-
-NOTE: I'll make this less specific in terms of directories, and maintain defaults in the future.
-Bash script for plotting, located in /volumes/seq/projects/gccACT/src
-
-/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots 
-```bash
-
-conda activate EagleC
-#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones" 
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
-cd $clone_dir
-
-eaglec_SV_interchr_plots() {
-	chrom_sizes="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/hg38.chrom.sizes"
-	sv_file=$1
-	clone_dir=$(dirname $sv_file)
-	basename_sv=$(basename $sv_file)
-	clone=${basename_sv::-11}
-	cool_file=${clone_dir}"/"${clone}".bsorted.500kb.cool"
-	if [ ! -d ${clone_dir}"/"${clone}"_interSVs" ] 
-	then
-    echo "Directory ${clone_dir}"/"${clone}"_interSVs" DOES NOT exist. Creating.."
-    mkdir ${clone_dir}"/"${clone}"_interSVs"
-	fi	
-
-	cat $chrom_sizes | while read chrA end_size1 ; do cat $chrom_sizes | while read chrB end_size2 ;
-			do outname="${clone_dir}/${clone}_interSVs/${clone}.interSV.${chrA}_${chrB}.png"
-			plot-interSVs --cool-uri $cool_file --full-sv-file $sv_file -C $chrA $chrB --output-figure-name $outname --balance-type ICE --dpi 800
-			echo "Completed file ${clone_dir}/${clone}_interSVs/${clone}.interSV.${chrA}_${chrB}.png"
-		done ; done
-}
-
-export -f eaglec_SV_interchr_plots
-eaglec_SV_interchr_plots $1
-
-```
-
-Running the bash script
-```bash
-#eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c1.SV.cnv.tsv
-
-/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c2.SV.cnv.tsv
-/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c3.SV.cnv.tsv
-/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c4.SV.cnv.tsv
-/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c5.SV.cnv.tsv
-/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c6.SV.cnv.tsv
-/volumes/seq/projects/gccACT/src/eaglec_SV_interchr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c7.SV.cnv.tsv
-
-```
-
-## Automate intraSV plotting
-Bash script for plotting, located in /volumes/seq/projects/gccACT/src
-NOTE: I'll make this less specific in terms of directories, and maintain defaults in the future.
-
-/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots 
-
-```bash
-#!/bin/bash
-conda activate EagleC
-#clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
-#bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
-cd $clone_dir
-
-eaglec_SV_intrachr_plots() {
-	sv_file=$1
-	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts"
-	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
-	chrom_sizes="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/hg38.chrom.sizes"
-	clone_dir=$(dirname $sv_file)
-	basename_sv=$(basename $sv_file)
-	clone=${basename_sv::-11}
-	cool_file=${clone_dir}"/"${clone}".bsorted.500kb.cool"
-	bedgraph_cnv=${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph
-
-	if [ ! -f ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bigwig ] 
-	then
-	    echo "File ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph DOES NOT exist. Creating from bedgraph..."
-	    sort -k1,1 -k2,2n $bedgraph_cnv > ${bedgraph_cnv}.sorted.bedgraph
-	    bedGraphToBigWig ${bedgraph_cnv}.sorted.bedgraph $chrom_sizes ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bigwig
-	fi	
-
-	if [ ! -d ${clone_dir}"/"${clone}"_intraSVs" ] 
-	then
-	  echo "Directory ${clone_dir}"/"${clone}"_intraSVs" DOES NOT exist. Creating.."
-	  mkdir ${clone_dir}"/"${clone}"_intraSVs"
-	fi	
-
-	cat $chrom_sizes | while read chr_in_size end_size ; 
-	do plot-intraSVs --cool-uri $cool_file --full-sv-file $sv_file --region ${chr_in_size}:1-${end_size} --output-figure-name ${clone_dir}/${clone}_intraSVs/${clone}.intraSV.${chr_in_size}.png --cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bigwig --coordinates-to-display 1 ${end_size} --cnv-max-value 6 --balance-type ICE --dpi 800 ; 
-	echo "Completed file ${clone_dir}/${clone}_intraSVs/${clone}.intraSV.${chr_in_size}.png"
-	done
-}
-
-export -f eaglec_SV_intrachr_plots
-
-eaglec_SV_intrachr_plots $1
-```
-
-```bash
-/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c2.SV.cnv.tsv
-/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c3.SV.cnv.tsv
-/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c4.SV.cnv.tsv
-/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c5.SV.cnv.tsv
-/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c6.SV.cnv.tsv
-/volumes/seq/projects/gccACT/src/eaglec_SV_intrachr_plots /volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts/clone_c7.SV.cnv.tsv
+cd /volumes/seq/projects/gccACT/230306_mdamb231_test/contacts
+clones=`ls clone*pairs.gz`
+parallel --jobs 1 eaglec_SV_CNV_neoout {} 50 ::: $clones & 
 
 ```
 
@@ -922,6 +855,10 @@ eaglec_SV_intrachr_plots $1
 Use this for all chromosomes plots, code adapted from cooltools and inspired by:
 https://github.com/bianlab-hub/zuo_ncomms_2021/blob/Hi-C_data_analysis/fig1f_plot_obs_heatmap.py
 
+
+```bash
+conda activate EagleC
+```
 
 ```python
 import numpy as np
@@ -933,172 +870,520 @@ import os
 import seaborn as sns
 import cooltools.lib.plotting
 import matplotlib
+import bioframe
 
-def trans_chr_plot(mat,chr_row,chr_col,ax_row,ax_col,axes,out,zmin,zmax,cmap,xlim,ylim):
+###Prepare Input Files Functions###
+#read in eagleC called translocations, plot on top of diagonal
+def prepare_eaglec_file(eaglec_in="clone_c3.SV.cnv.neoloopfinder.tsv"):
+	""" Function to take in string file name of neoloopfinder output from eaglec_SV_CNV_neoout function (run above in page). Reads in files. 
+	Sets transchr SVs to be above diagonal. Currently ignores cis SVs."""
+	eaglec_dat=pd.read_csv(eaglec_in,sep="\t",names=["CHROM","CHR2","DIR","POS","CHR2POS","SVTYPE"])
+	eaglec_dat_cis=eaglec_dat[eaglec_dat["CHROM"]==eaglec_dat["CHR2"]]
+	for index, i in eaglec_dat_cis.iterrows():
+		if eaglec_dat_cis.loc[index,"POS"] > eaglec_dat_cis.loc[index,"CHR2POS"]:
+				print("Swapping "+eaglec_dat_cis.loc[index,"CHROM"]+" start and end cis SV.")
+				tmp=eaglec_dat_cis.loc[index,:]
+				eaglec_dat_cis.loc[index,"CHR2POS"]=tmp.POS
+				eaglec_dat_cis.loc[index,"POS"]=tmp.CHR2POS
+	eaglec_dat_trans=eaglec_dat[eaglec_dat["CHROM"]!=eaglec_dat["CHR2"]]
+	for index, i in eaglec_dat_trans.iterrows():
+		if (eaglec_dat_trans.loc[index,"CHROM"] in chr_number.keys()) & (eaglec_dat_trans.loc[index,"CHR2"] in chr_number.keys()):
+			if chr_number[eaglec_dat_trans.loc[index,"CHROM"]] < chr_number[eaglec_dat_trans.loc[index,"CHR2"]]:
+				print("Swapping "+eaglec_dat_trans.loc[index,"CHROM"]+" and "+eaglec_dat_trans.loc[index,"CHR2"])
+				tmp=eaglec_dat_trans.loc[index,:]
+				eaglec_dat_trans.loc[index,"CHROM"]=tmp.CHR2
+				eaglec_dat_trans.loc[index,"CHR2"]=tmp.CHROM
+				eaglec_dat_trans.loc[index,"POS"]=tmp.CHR2POS
+				eaglec_dat_trans.loc[index,"CHR2POS"]=tmp.POS
+	return([eaglec_dat_cis,eaglec_dat_trans])
+
+#read in ont data and split for cis and trans interactions
+def setup_ont_data(ont_in):
+	ont_dat=pd.read_csv(ont_in,sep="\t")
+	ont_dat_trans=ont_dat[(ont_dat['SVTYPE'] == "BND")]
+	ont_dat_cis=ont_dat[((ont_dat['SVTYPE'].isin(['INV', 'DEL', 'DUP'])) & (ont_dat['SVLEN']>1000000))]
+	for index, i in ont_dat_cis.iterrows(): #set chr and position order, so its always plotted below diagonal
+		if ont_dat_cis.loc[index,"POS"] > ont_dat_cis.loc[index,"END"]:
+				print("Swapping "+ont_dat_cis.loc[index,"CHROM"]+" start and end cis SV.")
+				tmp=ont_dat_cis.loc[index,:]
+				ont_dat_cis.loc[index,"END"]=tmp.POS
+				ont_dat_cis.loc[index,"POS"]=tmp.END
+	ont_dat_trans.loc[:,'CHR2POS']=[int(x.replace("[",",").replace("]",",").split(",")[1].split(":")[1]) for x in ont_dat_trans['ALT'].tolist()]
+	for index, i in ont_dat_trans.iterrows(): #set chr and position order, so its always plotted below diagonal
+		if (ont_dat_trans.loc[index,"CHROM"] in chr_number.keys()) & (ont_dat_trans.loc[index,"CHR2"] in chr_number.keys()):
+			if chr_number[ont_dat_trans.loc[index,"CHROM"]]<chr_number[ont_dat_trans.loc[index,"CHR2"]]:
+				print("Swapping "+ont_dat_trans.loc[index,"CHROM"]+" and "+ont_dat_trans.loc[index,"CHR2"])
+				tmp=ont_dat_trans.loc[index,:]
+				ont_dat_trans.loc[index,"CHROM"]=tmp.CHR2
+				ont_dat_trans.loc[index,"CHR2"]=tmp.CHROM
+				ont_dat_trans.loc[index,"POS"]=tmp.CHR2POS
+				ont_dat_trans.loc[index,"CHR2POS"]=tmp.POS
+	return([ont_dat_cis,ont_dat_trans])
+
+###Contact Map Plotting Functions###
+#function to plot chromosomes
+def trans_chr_plot(mat,chr_row,chr_col,ax_row,ax_col,axes,zmin,zmax,cmap,xlim,ylim,mat_bins,ont_dat_trans,ont_dat_cis,eaglec_dat_cis,eaglec_dat_trans):
 	""" Function to plot chr by chr trans interactions (or chr by chr cis interactions if same chr given)
 	Takes in c for cooler file and str for chr_row and chr_col (format "chr1","chrX", etc.)
 	Takes in integers for ax_row and ax_col to add output plot as subplot.
 	"""
-	mat=np.log10(mat)
-	ax=sns.heatmap(ax=axes[ax_row,ax_col],data=mat,cbar=False,yticklabels=False,square=False,xticklabels=False,vmin=zmin,vmax=zmax,cmap=cmap)#,
-		#gridspec_kw={"truncate":False})
+	mat=np.log10(mat+1e-9)#adding small value for log
+	ax=sns.heatmap(ax=axes[ax_row,ax_col],data=mat,cbar=False,yticklabels=False,square=False,xticklabels=False,vmin=zmin,vmax=zmax,cmap=cmap)
 	ax.set_ylim(ylim,0)
 	ax.set_xlim(0,xlim)
-	if ax_row==0:
-		axes[ax_row,ax_col].set_title(chr_col)
-	if ax_col==0:
-		axes[ax_row,ax_col].set_ylabel(chr_row)
-	print("Completed "+chr_row+" by "+chr_col+" plot:"+out)
+	if ax_col==0: #set chr name if it is first column
+		axes[ax_row,ax_col].set_ylabel(chr_row,fontsize=24)
+	print("Completed "+chr_row+" by "+chr_col+" plot")
+	if (chr_col==chr_row): #cis SVs
+		if chr_row in ont_dat_cis.CHROM.tolist(): #ONT data
+			print("Adding ONT data cis annotations for "+chr_row)
+			add_ont_sv_cis(ax,mat_bins,
+				chr_row=chr_row,chr_col=chr_col,
+				ont_dat_cis=ont_dat_cis)
+		if chr_row in eaglec_dat_cis.CHROM.tolist(): #Eagle C data
+			print("Adding EagleC data cis annotations for "+chr_row)
+			add_eaglec_sv_cis(ax,mat_bins,
+				chr_row=chr_row,chr_col=chr_col,
+				eaglec_dat_cis=eaglec_dat_cis)
+	else: #trans SVs
+		if any((ont_dat_trans["CHROM"]==chr_row) & (ont_dat_trans["CHR2"]==chr_col)): #ont data
+			print("Adding ONT data trans annotations for "+chr_row+" and "+chr_col)
+			add_ont_sv_trans(ax,mat_bins,
+				chr_row=chr_row,chr_col=chr_col,
+				ont_dat_trans=ont_dat_trans)
+		if any((eaglec_dat_trans["CHROM"]==chr_row) & (eaglec_dat_trans["CHR2"]==chr_col)): #eagle C data
+			print("Adding EagleC trans annotations for "+chr_row+" and "+chr_col)
+			add_eaglec_sv_trans(ax,mat_bins,
+				chr_row=chr_row,chr_col=chr_col,
+				eaglec_dat_trans=eaglec_dat_trans)
 	return(ax)
 
-
-def all_by_all_plot(infile_name,chr_count,zmin,zmax,cmap):
+#wrapper function to make panels and loop through chromosome pairs
+def all_by_all_plot(ont_dat_cis, ont_dat_trans,eaglec_dat_trans,eaglec_dat_cis,cnv_dat,infile_name="clone_c0.bsorted.1mb.cool", chr_count=4, zmin=-3, zmax=-1, cmap="Reds", dpi=300): 
 	"""Function to read in cooler file from given string name. And run all by all chr comparison"""
 	#Read in Cooler File
 	in_file=infile_name
 	in_name=in_file.split(sep=".")[0]
 	coolfile=in_file
+	print("Reading in "+infile_name)
 	c = cooler.Cooler(coolfile)
-	cooler.coarsen_cooler(coolfile,in_name+"_5mb.cool",factor=2,chunksize=10000000) #coarsen to 5mb
-	c = cooler.Cooler(in_name+"_5mb.cool")
-	cooler.balance_cooler(c,store=True,rescale_marginals=True)#rescale_margines=True #balance matrix ignore_diags=10,
+	#cooler.coarsen_cooler(coolfile,in_name+"_5mb.cool",factor=2,chunksize=10000000) #coarsen to 5mb
+	#c = cooler.Cooler(in_name+"_5mb.cool")
+	print("Balancing matrix.")
+	cooler.balance_cooler(c,store=True,rescale_marginals=True,ignore_diags=1)#balance matrix ignore_diags=10,
 	obs_mat = c.matrix()[:]
 	chr_list=list(c.bins()[:]["chrom"].unique())
-	out=''.join([in_name,'_all_by_all_log2_1Mb_obs.png'])
+	out=''.join([in_name,'_all_by_all_log2_1Mb_obs.test.png'])
 	#init subplot
 	chr_in=len(chr_list)
 	chr_sizes=pd.DataFrame(c.bins()[:]).groupby(["chrom"])["chrom"].count()
 	chr_ratios=list(chr_sizes/chr_sizes[0])
-	fig, axes = plt.subplots(chr_count, chr_count, figsize=(40, 40),sharex=True,sharey=True,
-			gridspec_kw={'width_ratios': chr_ratios[0:chr_count],'height_ratios':chr_ratios[0:chr_count]})
-		#plt.subplots_adjust(hspace=0.1,wspace=0.1)
-	for i in range(0,chr_count):
-		row_chrom=chr_list[i]
-		ax_row=i
-		xlim=chr_sizes[i]
-		for j in range(0,chr_count):
+	height_ratio=[chr_ratios[0]/4]+[chr_ratios[0]/4]+chr_ratios[0:chr_count]#added for insulation score and cnv rows
+	width_ratio=chr_ratios[0:chr_count]
+	print("Calculating Insulation Values.")
+	resolution=cnv_dat.loc[0,"end"]-cnv_dat.loc[0,"start"]
+	windows = [1*resolution,3*resolution, 5*resolution, 10*resolution]
+	insulation_table = cooltools.insulation(c, windows, verbose=True)
+	fig, axes = plt.subplots(nrows=chr_count+2, ncols=chr_count, figsize=(sum(height_ratio)*5, sum(width_ratio)*5),sharex='col', sharey='row',
+		gridspec_kw={'height_ratios':height_ratio,
+		'width_ratios': width_ratio}) #,sharex=True,sharey=True,
+	print("Adding column annotations.")
+	for j in range(0,chr_count):
 			col_chrom=chr_list[j]
+			ax_row=0 #0 row is for cnv data
 			ax_col=j
-			ylim=chr_sizes[j]
-			mat=c.matrix().fetch(row_chrom,col_chrom)
-			im=trans_chr_plot(mat,row_chrom,col_chrom,ax_row,ax_col,axes,in_name,zmin,zmax,cmap,xlim,ylim)
-	plt.tight_layout()
-	plt.savefig(out, dpi=dpi, format='png',bbox_inches="tight")
-	plt.close("all")
-
-
-def all_by_all_plot_subtract(infile_name1,infile_name2,chr_count,cmap):
-	"""Function to read in cooler file from given string name. And run all by all chr comparison"""
-	#Read in Cooler File
-	in_file1=infile_name1
-	in_file2=infile_name2
-	in_name1=in_file1.split(sep=".")[0]
-	in_name2=in_file2.split(sep=".")[0]
-	coolfile1=in_file1
-	coolfile2=in_file2
-	c1 = cooler.Cooler(coolfile1)
-	c2 = cooler.Cooler(coolfile2)
-	cooler.balance_cooler(c1,store=True) #balance matrix
-	cooler.balance_cooler(c2,store=True) 
-	chr_list=list(c1.bins()[:]["chrom"].unique())
-	out=''.join([in_name1,"_",in_name2,'_all_by_all_log2_1Mb_obs.pdf'])
-	#init subplot
-	chr_in=len(chr_list)
-	fig, axes = plt.subplots(chr_count, chr_count, figsize=(10, 10),sharex=True,sharey=True)
-	plt.subplots_adjust(hspace=0.1,wspace=0.1)
-	subplot_chr_list=[]
+			mat=c.matrix().fetch(col_chrom)
+			mat_bins=c.bins()[:]
+			mat_bins=mat_bins[mat_bins["chrom"].isin([col_chrom])]
+			cnv_plot(mat=mat,
+				chr_col=col_chrom,
+				ax_row=ax_row,
+				ax_col=ax_col,
+				axes=axes,
+				mat_bins=mat_bins,
+				cnv_dat=cnv_dat)
+			add_insulation_scores(mat=mat,
+				chr_col=col_chrom,
+				ax_row=ax_row+1,
+				ax_col=ax_col,
+				axes=axes,
+				mat_bins=mat_bins,
+				insulation_table=insulation_table,
+				resolution=resolution,
+				windows=windows)
+	print("Adding subpanels of chr-chr contacts.")
 	for i in range(0,chr_count):
-		row_chrom=chr_list[i]
-		ax_row=i
-		for j in range(0,chr_count):
-			col_chrom=chr_list[j]
-			ax_col=j
-			obs_mat1 = c1.matrix().fetch(row_chrom,col_chrom)
-			obs_mat2 = c2.matrix().fetch(row_chrom,col_chrom)
-			mat=np.log2(obs_mat1) / np.log2(obs_mat2)
-			trans_chr_plot(mat,row_chrom,col_chrom,ax_row,ax_col,axes,out,cmap) 
-	print(plt)
-	plt.savefig(out, dpi=dpi, format='pdf')
+			row_chrom=chr_list[i]
+			ax_row=i+2
+			xlim=chr_sizes[i]
+			for j in range(0,chr_count):
+				col_chrom=chr_list[j]
+				ax_col=j
+				ylim=chr_sizes[j]
+				mat=c.matrix().fetch(row_chrom,col_chrom)
+				mat_bins=c.bins()[:]
+				mat_bins=mat_bins[mat_bins["chrom"].isin([row_chrom,col_chrom])]
+				trans_chr_plot(mat=mat,
+					chr_row=row_chrom,chr_col=col_chrom,
+					ax_row=ax_row,ax_col=ax_col,axes=axes,
+					zmin=zmin,zmax=zmax,cmap=cmap,xlim=xlim,ylim=ylim,
+					mat_bins=mat_bins,
+					ont_dat_trans=ont_dat_trans,ont_dat_cis=ont_dat_cis,
+					eaglec_dat_trans=eaglec_dat_trans,eaglec_dat_cis=eaglec_dat_cis)
+	plt.subplots_adjust(wspace=0.02, hspace=0.02)
+	plt.savefig(out, dpi=dpi, format='png',bbox_inches='tight')
 	plt.close("all")
+	return(insulation_table)
 
-#wd 
-os.chdir('/volumes/seq/projects/gccACT/230306_mdamb231_test/cells/contacts')
+###Add circle patches over detected SVs Functions###
+#adds ont circles around cis SVs
+def add_ont_sv_cis(ax,mat_bins,chr_row,chr_col,ont_dat_cis,col="green"):
+		"""Function to add SV from input ont_dat_cis on same chr. Adds as a circle around the contact map. """			
+		for index, i in ont_dat_cis[ont_dat_cis["CHROM"]==chr_row].iterrows():
+			if ont_dat_cis.loc[index,"SVTYPE"] == "INV":
+				circle_col=col #inversions
+			elif ont_dat_cis.loc[index,"SVTYPE"] == "DUP":
+				circle_col=col #duplications
+			else:
+				circle_col=col #deletions
+			chr_bin_start=mat_bins[(mat_bins.chrom==chr_row)].index.min()
+			bin_annot=mat_bins.loc[(mat_bins.chrom==chr_row) & (mat_bins.start>=ont_dat_cis.loc[index,"POS"]) & (mat_bins.end<ont_dat_cis.loc[index,"END"])]
+			bin_annot_x=bin_annot.index.min()-chr_bin_start
+			bin_annot_y=bin_annot.index.max()-chr_bin_start
+			patch=plt.Circle((bin_annot_x,bin_annot_y), alpha=0.5, radius=10, clip_box=False,linestyle=":", color=circle_col,lw=3,fill=False)
+			ax.add_patch(patch)
 
-#in files
-in_files=["clone_c1.bsorted.cool",
-	"clone_c2.bsorted.cool",
-	"clone_c3.bsorted.cool",
-	"clone_c4.bsorted.cool",
-	"clone_c5.bsorted.cool",
-	"clone_c6.bsorted.cool"]
+#adds ont circles around trans SVs
+def add_ont_sv_trans(ax,mat_bins,chr_row,chr_col,ont_dat_trans,col="green"):
+		"""Function to add SV from input ont_dat_trans on chr-chr pairs. Adds as a circle around the contact map. """			
+		for index, i in ont_dat_trans[(ont_dat_trans["CHROM"]==chr_row) & (ont_dat_trans["CHR2"]==chr_col)].iterrows():
+			circle_col=col #translocations
+			chr_bin_start_x=mat_bins[(mat_bins.chrom==chr_row)].index.min()
+			chr_bin_start_y=mat_bins[(mat_bins.chrom==chr_col)].index.min()
+			bin_annot_x=mat_bins.loc[(mat_bins.chrom==chr_row) & (mat_bins.start>=ont_dat_trans.loc[index,"POS"])]
+			bin_annot_y=mat_bins.loc[(mat_bins.chrom==chr_col) & (mat_bins.start>=ont_dat_trans.loc[index,"CHR2POS"])]
+			bin_annot_x=bin_annot_x.index.min()-chr_bin_start_x
+			bin_annot_y=bin_annot_y.index.min()-chr_bin_start_y
+			patch=plt.Circle((bin_annot_y,bin_annot_x), alpha=0.5,radius=10, clip_box=False,linestyle=":", color=circle_col,lw=3,fill=False)
+			ax.add_patch(patch)
 
-#Set up settings for plot
-dpi= 300
-colormap='Reds'
-zmin=-3
-zmax=-1
+#adds ont circles around cis SVs
+def add_eaglec_sv_cis(ax,mat_bins,chr_row,chr_col,eaglec_dat_cis,col="blue"):
+		"""Function to add SV from input eagleC_dat_cis on same chr. Adds as a circle around the contact map. """			
+		for index, i in eaglec_dat_cis[eaglec_dat_cis["CHROM"]==chr_row].iterrows():
+			if eaglec_dat_cis.loc[index,"SVTYPE"] == "inversion":
+				circle_col=col #inversions
+			elif eaglec_dat_cis.loc[index,"SVTYPE"] == "duplication":
+				circle_col=col #duplications
+			else:
+				circle_col=col #deletions and translocations
+			chr_bin_start=mat_bins[(mat_bins.chrom==chr_row)].index.min()
+			bin_annot=mat_bins.loc[(mat_bins.chrom==chr_row) & (mat_bins.start>=eaglec_dat_cis.loc[index,"POS"]) & (mat_bins.end<eaglec_dat_cis.loc[index,"CHR2POS"])]
+			bin_annot_x=bin_annot.index.min()-chr_bin_start
+			bin_annot_y=bin_annot.index.max()-chr_bin_start
+			patch=plt.Circle((bin_annot_x,bin_annot_y), alpha=0.5,radius=10, clip_box=False,linestyle='--', color=circle_col,lw=3,fill=False)
+			ax.add_patch(patch)
 
-#make all by all plot for all clones
-[all_by_all_plot(x,23,zmin,zmax,cmap=colormap) for x in in_files]
+#adds eagleC circles around trans SVs
+def add_eaglec_sv_trans(ax,mat_bins,chr_row,chr_col,eaglec_dat_trans,col="blue"):
+		"""Function to add SV from input eagleC on chr-chr pairs. Adds as a circle around the contact map. """					
+		for index, i in eaglec_dat_trans[(eaglec_dat_trans["CHROM"]==chr_row) & (eaglec_dat_trans["CHR2"]==chr_col)].iterrows():
+			circle_col=col #translocations
+			chr_bin_start_x=mat_bins[(mat_bins.chrom==chr_row)].index.min()
+			chr_bin_start_y=mat_bins[(mat_bins.chrom==chr_col)].index.min()
+			bin_annot_x=mat_bins.loc[(mat_bins.chrom==chr_row) & (mat_bins.start>=eaglec_dat_trans.loc[index,"POS"])]
+			bin_annot_y=mat_bins.loc[(mat_bins.chrom==chr_col) & (mat_bins.start>=eaglec_dat_trans.loc[index,"CHR2POS"])]
+			bin_annot_x=bin_annot_x.index.min()-chr_bin_start_x
+			bin_annot_y=bin_annot_y.index.min()-chr_bin_start_y
+			patch=plt.Circle((bin_annot_y,bin_annot_x), alpha=0.5,radius=10, clip_box=False,linestyle='--', color=circle_col,lw=3,fill=False)
+			ax.add_patch(patch)
 
-#colormap="coolwarm"
-#for x in in_files:
-#	for y in in_files:
-#		all_by_all_plot_subtract(x,y,4)
+#adds bedgraph cnv over the heatmap plot
+def setup_cnv_bedgraph(cnv_in,col):
+	"""Function to read in CNV bedgraph as pandas DF"""
+	cnv_dat=pd.read_csv(cnv_in,sep="\t",names=["chrom","start","end","cnv"])
+	cnv_col_dict=dict(zip(["0","1","2","3","4","5","6"],col))
+	cnv_dat["cnv_col"]=[cnv_col_dict[str(x)] for x in cnv_dat.cnv]
+	return(cnv_dat)
 
-#
+#adds cnv plots as annotation in top row
+def cnv_plot(mat,chr_col,ax_row,ax_col,axes,mat_bins,cnv_dat):
+	"""Function to add CNV profiles on top row of contact heatmaps"""
+	print("Adding CNV Profile of "+chr_col)
+	cnv_dat_tmp=cnv_dat[cnv_dat["chrom"].isin([chr_col])].copy()
+	cnv_dat_tmp["cnv_one"]=[1 for x in cnv_dat_tmp.cnv]
+	sns.barplot(ax=axes[ax_row,ax_col],x=cnv_dat_tmp.start,y=cnv_dat_tmp.cnv_one,palette=cnv_dat_tmp.cnv_col,saturation=1,lw=0)
+	axes[ax_row,ax_col].set_xticks([])
+	axes[ax_row,ax_col].set_yticks([])
+	if ax_col==0:
+		axes[ax_row,ax_col].set_ylabel("Copy \n Number")
+	else:
+		axes[ax_row,ax_col].set_ylabel(None)
+	axes[ax_row,ax_col].set_ylim([0,1])
+	axes[ax_row,ax_col].set_title(chr_col,fontsize=24)
+	return(axes[ax_row,ax_col])
 
-```
+#adds detected TAD boundaries in second from top row
+def add_insulation_scores(mat,chr_col,ax_row,ax_col,axes,mat_bins,insulation_table,resolution,windows):
+	print("Adding insulation score for "+chr_col)
+	region = (chr_col, min(mat_bins["start"]), max(mat_bins["end"]))
+	insul_region = bioframe.select(insulation_table, region)
+	insul_region=insul_region.assign(boundary_col=["black" if x is True else "white" for x in insul_region.loc[:,"is_boundary_"+str(resolution*3)]])
+	insul_region=insul_region.assign(bound_one=[1 for x in range(0,insul_region.shape[0])])
+	sns.barplot(ax=axes[ax_row,ax_col],x=insul_region.start,y=insul_region.bound_one,palette=insul_region.boundary_col,saturation=1,lw=0)
+	axes[ax_row,ax_col].set_xticks([])
+	axes[ax_row,ax_col].set_yticks([])
+	if ax_col==0:
+		axes[ax_row,ax_col].set_ylabel("TAD \n Boundaries")
+	else:
+		axes[ax_row,ax_col].set_ylabel(None)
+	axes[ax_row,ax_col].set_ylim([0,1])
+	print("Found "+str(sum(insul_region.loc[:,"is_boundary_"+str(resolution*3)]))+" boundaries in "+chr_col)
+	return(axes[ax_row,ax_col])
 
-### Use NeoLoopFinder to annotate complex SVs
-```bash
-conda activate neoloop
+os.chdir('/volumes/seq/projects/gccACT/230306_mdamb231_test/contacts')#wd 
 
-assemble-complexSVs -O ${clone_dir}/${clone} -B ${clone_dir}/${clone}.SV.neoloopfinder.tsv --balance-type CNV --protocol insitu --nproc 20 -H ${clone_dir}/${clone}.bsorted.500kb.cool 
+#list chromosomes and set dictionary of order
+L1=["chr"+str(x) for x in list(range(1,23))+["X","Y"]]
+L2=list(range(1,25))
+chr_number={k:v for k,v in zip(L1,L2)}
+
+#read in ont data
+ont_in="/volumes/seq/projects/gccACT/230808_mdamb231_ONT/20230726_1239_2D_PAO38369_output/20230726_1239_2D_PAO38369_output.1mb_SVs.tsv"
+ont_dat=setup_ont_data(ont_in)
+
+cnv_col_palette=["#053061","#4393c3","#f7f7f7","#fddbc7","#d6604d","#b2182b","#67001f"]
+
+#make all by all plot for all clones, set up looping list
+in_cool=[
+"clone_c0.bsorted.1mb.cool",
+"clone_c1.bsorted.1mb.cool",
+"clone_c2.bsorted.1mb.cool",
+"clone_c3.bsorted.1mb.cool"]
+
+in_eaglec=[
+"clone_c0.SV.cnv.neoloopfinder.tsv",
+"clone_c1.SV.cnv.neoloopfinder.tsv",
+"clone_c2.SV.cnv.neoloopfinder.tsv",
+"clone_c3.SV.cnv.neoloopfinder.tsv"]
+
+in_bedgraph=[
+"/volumes/seq/projects/gccACT/230306_mdamb231_test/clone_c0.cnv.1mb.segmented.bedgraph",
+"/volumes/seq/projects/gccACT/230306_mdamb231_test/clone_c1.cnv.1mb.segmented.bedgraph",
+"/volumes/seq/projects/gccACT/230306_mdamb231_test/clone_c2.cnv.1mb.segmented.bedgraph",
+"/volumes/seq/projects/gccACT/230306_mdamb231_test/clone_c3.cnv.1mb.segmented.bedgraph"]
+
+for clone in range(0,len(in_cool)):
+	eaglec_dat=prepare_eaglec_file(eaglec_in=in_eaglec[clone])
+	cnv_dat=setup_cnv_bedgraph(in_bedgraph[clone],col=cnv_col_palette)
+	all_by_all_plot(infile_name=in_cool[clone],
+	chr_count=23,
+	ont_dat_cis=ont_dat[0],
+	ont_dat_trans=ont_dat[1],
+	eaglec_dat_cis=eaglec_dat[0],
+	eaglec_dat_trans=eaglec_dat[1],
+	cnv_dat=cnv_dat,
+	zmin=-3.5,
+	cmap="fall")
 
 
 
-eaglec_SV_CNV() {
-	clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-	bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive"
-	clone=${1::-17}
-	#balance through ICE first
-	
-	#now balance by CNV
-	conda activate neoloop
+eaglec_dat=prepare_eaglec_file(eaglec_in="clone_c3.SV.cnv.neoloopfinder.tsv")
+cnv_dat=setup_cnv_bedgraph("/volumes/seq/projects/gccACT/230306_mdamb231_test/clone_c3.cnv.500kb.segmented.bedgraph",
+	col=cnv_col_palette)
 
-assemble-complexSVs -O ${clone_dir}/${clone} -B ${clone_dir}/${clone}.SV.neoloopfinder.tsv --balance-type CNV --protocol insitu --nproc 20 -H ${clone_dir}/${clone}.bsorted.500kb.cool 
-
-}
-export -f eaglec_SV_CNV
-
+tab=all_by_all_plot(infile_name="clone_c3.bsorted.500kb.cool",
+chr_count=23,
+ont_dat_cis=ont_dat[0],
+ont_dat_trans=ont_dat[1],
+eaglec_dat_cis=eaglec_dat[0],
+eaglec_dat_trans=eaglec_dat[1],
+cnv_dat=cnv_dat,
+zmin=-3.5,
+cmap="Reds")
 
 
 ```
 
 ### Generate eigengenes for compartments across chromosomes
 ```bash
-#note this requires the cooler matrix be balanced and normalized already
 conda activate EagleC
-
-BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins"
-GC_BINS_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.gc.head.bins"
-BINS_BED_PATH="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/1mb.bins.head.bed"
-
-
-cooler_eigen() {
-clone=${1::-13}
-cool_file=${clone_dir}/${clone}.bsorted.500kb.cool 
-cooltools eigs-cis -o test.eigs.100000 --view $BINS_BED_PATH --phasing-track $GC_BINS_PATH --n-eigs 1 $cool_file
-}
-#convert $BINS_BED_PATH to viewframe
-export -f cooler_eigen
-
-
-cooler_eigen clone_c4.bsorted.cool
 ```
+```python
+#from here: https://cooltools.readthedocs.io/en/latest/notebooks/insulation_and_boundaries.html
+# import standard python libraries
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import cooler
+import cooltools.lib.plotting
+from cooltools import insulation
+import itertools
+from matplotlib.ticker import EngFormatter
+from matplotlib.colors import LogNorm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import bioframe
+import os 
+os.chdir('/volumes/seq/projects/gccACT/230306_mdamb231_test/contacts')#wd 
+
+resolution=500000
+clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/contacts"
+clone="clone_c3"
+coolfile=clone_dir+"/"+clone+".bsorted.500kb.cool"
+c = cooler.Cooler(coolfile)
+windows = [1*resolution,3*resolution, 5*resolution, 10*resolution]
+insulation_table = insulation(c, windows, verbose=True)
+bp_formatter = EngFormatter('b')
+
+# Functions to help with plotting
+def pcolormesh_45deg(ax, matrix_c, start=0, resolution=1, *args, **kwargs):
+    start_pos_vector = [start+resolution*i for i in range(len(matrix_c)+1)]
+    n = matrix_c.shape[0]
+    t = np.array([[1, 0.5], [-1, 0.5]])
+    matrix_a = np.dot(np.array([(i[1], i[0])
+                                for i in itertools.product(start_pos_vector[::-1],
+                                                           start_pos_vector)]), t)
+    x = matrix_a[:, 1].reshape(n + 1, n + 1)
+    y = matrix_a[:, 0].reshape(n + 1, n + 1)
+    im = ax.pcolormesh(x, y, np.flipud(matrix_c), *args, **kwargs)
+    im.set_rasterized(True)
+    return im
+
+def format_ticks(ax, x=True, y=True, rotate=True):
+    if y:
+        ax.yaxis.set_major_formatter(bp_formatter)
+    if x:
+        ax.xaxis.set_major_formatter(bp_formatter)
+        ax.xaxis.tick_bottom()
+    if rotate:
+        ax.tick_params(axis='x',rotation=45)
 
 
+plt.rcParams['font.size'] = 12
+start = 1000000
+end = start+ 100*windows[0]
+region = ('chr4', start, end)
+norm = LogNorm(vmax=0.1, vmin=0.001)
+data = c.matrix(balance=True).fetch(region)
+f, ax = plt.subplots(figsize=(18, 6))
+im = pcolormesh_45deg(ax, data, start=region[1], resolution=resolution, norm=norm, cmap='fall')
+ax.set_aspect(0.5)
+ax.set_ylim(0, 10*windows[0])
+format_ticks(ax, rotate=False)
+ax.xaxis.set_visible(False)
+
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="1%", pad=0.1, aspect=6)
+plt.colorbar(im, cax=cax)
+
+insul_region = bioframe.select(insulation_table, region)
+
+ins_ax = divider.append_axes("bottom", size="50%", pad=0., sharex=ax)
+ins_ax.set_prop_cycle(plt.cycler("color", plt.cm.plasma(np.linspace(0,1,5))))
+ins_ax.plot(insul_region[['start', 'end']].mean(axis=1),
+            insul_region['log2_insulation_score_'+str(windows[0])],
+            label=f'Window {windows[0]} bp')
+
+ins_ax.legend(bbox_to_anchor=(0., -1), loc='lower left', ncol=4);
+
+format_ticks(ins_ax, y=False, rotate=False)
+ax.set_xlim(region[1], region[2])
+
+for res in windows[1:]:
+    ins_ax.plot(insul_region[['start', 'end']].mean(axis=1), insul_region[f'log2_insulation_score_{res}'], label=f'Window {res} bp')
+
+ins_ax.legend(bbox_to_anchor=(0., -1), loc='lower left', ncol=4);
+f
+plt.savefig("insulation_test.png", format='png',bbox_inches="tight")
+plt.close("all")
+
+
+f, ax = plt.subplots(figsize=(20, 10))
+im = pcolormesh_45deg(ax, data, start=region[1], resolution=resolution, norm=norm, cmap='fall')
+ax.set_aspect(0.5)
+ax.set_ylim(0, 10*windows[0])
+format_ticks(ax, rotate=False)
+ax.xaxis.set_visible(False)
+
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="1%", pad=0.1, aspect=6)
+plt.colorbar(im, cax=cax)
+
+insul_region = bioframe.select(insulation_table, region)
+
+ins_ax = divider.append_axes("bottom", size="50%", pad=0., sharex=ax)
+
+ins_ax.plot(insul_region[['start', 'end']].mean(axis=1),
+            insul_region[f'log2_insulation_score_{windows[0]}'], label=f'Window {windows[0]} bp')
+
+boundaries = insul_region[~np.isnan(insul_region[f'boundary_strength_{windows[0]}'])]
+weak_boundaries = boundaries[~boundaries[f'is_boundary_{windows[0]}']]
+strong_boundaries = boundaries[boundaries[f'is_boundary_{windows[0]}']]
+ins_ax.scatter(weak_boundaries[['start', 'end']].mean(axis=1),
+            weak_boundaries[f'log2_insulation_score_{windows[0]}'], label='Weak boundaries')
+ins_ax.scatter(strong_boundaries[['start', 'end']].mean(axis=1),
+            strong_boundaries[f'log2_insulation_score_{windows[0]}'], label='Strong boundaries')
+
+ins_ax.legend(bbox_to_anchor=(0., -1), loc='lower left', ncol=4);
+
+format_ticks(ins_ax, y=False, rotate=False)
+ax.set_xlim(region[1], region[2])
+
+plt.savefig("insulation_test.png", format='png',bbox_inches="tight")
+plt.close("all")
+
+histkwargs = dict(
+    bins=10**np.linspace(-4,1,200),
+    histtype='step',
+    lw=2,
+)
+
+f, axs = plt.subplots(len(windows),1, sharex=True, figsize=(6,6), constrained_layout=True)
+for i, (w, ax) in enumerate(zip(windows, axs)):
+    ax.hist(
+        insulation_table[f'boundary_strength_{w}'],
+        **histkwargs
+    )
+    ax.text(0.02, 0.9,
+             f'Window {w//1000}kb',
+             ha='left',
+             va='top',
+             transform=ax.transAxes)
+    ax.set(
+        xscale='log',
+        ylabel='# boundaries'
+    )
+
+axs[-1].set(xlabel='Boundary strength');
+plt.savefig("insulation_boundary_test.png", format='png',bbox_inches="tight")
+plt.close("all")
+
+
+from skimage.filters import threshold_li, threshold_otsu
+
+f, axs = plt.subplots(len(windows), 1, sharex=True, figsize=(6,6), constrained_layout=True)
+thresholds_li = {}
+thresholds_otsu = {}
+for i, (w, ax) in enumerate(zip(windows, axs)):
+    ax.hist(insulation_table[f'boundary_strength_{w}'],**histkwargs)
+    thresholds_li[w] = threshold_li(insulation_table[f'boundary_strength_{w}'].dropna().values)
+    thresholds_otsu[w] = threshold_otsu(insulation_table[f'boundary_strength_{w}'].dropna().values)
+    n_boundaries_li = (insulation_table[f'boundary_strength_{w}'].dropna()>=thresholds_li[w]).sum()
+    n_boundaries_otsu = (insulation_table[f'boundary_strength_{w}'].dropna()>=thresholds_otsu[w]).sum()
+    ax.axvline(thresholds_li[w], c='green')
+    ax.axvline(thresholds_otsu[w], c='magenta')
+    ax.text(0.01, 0.9, f'Window {w//1000}kb', ha='left', va='top', transform=ax.transAxes) 
+    ax.text(0.01, 0.7, f'{n_boundaries_otsu} boundaries (Otsu)', c='magenta', ha='left', va='top', transform=ax.transAxes)
+    ax.text(0.01, 0.5, f'{n_boundaries_li} boundaries (Li)', c='green', ha='left', va='top', transform=ax.transAxes)
+    ax.set(xscale='log', ylabel='# boundaries')
+axs[-1].set(xlabel='Boundary strength')
+plt.savefig("insulation_boundary_thresholding_test.png", format='png',bbox_inches="tight")
+plt.close("all")
+
+# Download CTCF bigwig file. The file size is 592 Mb, so the download might take a while:
+ctcf_fc_file = cooltools.download_data("HFF_CTCF_fc", cache=True, data_dir="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta")
+
+```
 
 ### Comparison with ACT-seq MDA-MB-231
 ```bash

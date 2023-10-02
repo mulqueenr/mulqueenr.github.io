@@ -115,7 +115,7 @@ I'm sure there are a ton that I'm missing. But I'm getting started with these.
 
 ```R
 install.packages(c("BiocManager","devtools")) 
-install.packages(c("Seurat","Signac","harmony")) #biocmanager install is necessary for signac
+install.packages(c("Seurat","Signac","harmony","vcfR")) #biocmanager install is necessary for signac
 BiocManager::install(c("cicero","ComplexHeatmap"))
 devtools::install_github('cole-trapnell-lab/monocle3')
 devtools::install_github("navinlabcode/copykit")

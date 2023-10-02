@@ -58,11 +58,9 @@ rsync -LPr mulqueen@10.132.80.157:/volumes/USR2/Ryan/wf-human-variation-master ~
 #my 10.132.80.157 references (used just for genome.fa of hg38 which i pulled from the 10x website for consistency)
 rsync -LPr mulqueen@10.132.80.157:/volumes/USR2/Ryan/ref ~/
 
-mkdir ~/singularity
-export NXF_SINGULARITY_CACHEDIR="~/singularity/"
-
 cd ~/singularity
 module load singularity/3.7.0
+export NXF_SINGULARITY_CACHEDIR="~/singularity/"
 
 #manual pull of singularity containers so i can run on gpu nodes (taking these from output log of test data ran on seadragon transfer node to see what docker containers it was pulling.) I'm not sure if this step is necessary anymore, since i set env variables to tell it not to pull these in the job submissions
 
@@ -82,6 +80,8 @@ singularity pull docker://ontresearch/wf-human-variation-methyl:sha44a13bcf48db3
 singularity pull  --name ontresearch-wf-human-variation-methyl-sha44a13bcf48db332b2277bb9f95b56d64e393a1d5.img.pulling.1695478159368 docker://ontresearch/wf-human-variation-methyl:sha44a13bcf48db332b2277bb9f95b56d64e393a1d5 > /dev/null
 
 #all together at once
+module load nextflow/23.04.3
+
 nextflow download /home/rmulqueen/wf-human-variation-master/main.nf --container singularity
 ```
 
@@ -150,7 +150,7 @@ export NXF_OFFLINE='TRUE' #https://nf-co.re/docs/usage/offline
 nextflow run /home/rmulqueen/wf-human-variation-master/main.nf \
     -w ${wd_out}/${output_name}/workspace \
     -profile singularity \
-    --snp --sv --cnv --methyl \
+    --snp --sv --cnv \
     --ref ${ref} \
     --bam ${wd_out}/${output_name}.sorted.bam \
     --dorado_ext pod5 \
@@ -162,9 +162,23 @@ nextflow run /home/rmulqueen/wf-human-variation-master/main.nf \
     -without-docker \
     -offline
 
+#add methyl in future
 #note sif files may need to be manually pulled (as above) for updates to wf-human-variation-master in the future
 ```
 
 ```bash
 bsub < 20230726_1239_2D_PAO38369_dde6ac95.nextflow.bsub
+```
+
+Transfer back to navin cluster with results.
+
+```bash
+ssh seadragon
+screen
+
+bsub -Is -W 4:00 -q transfer -n 1 -M 16 -R rusage[mem=16] /bin/bash #get interactive transfer node this has internet access for environment set up
+
+sftp mulqueen@10.132.80.157
+cd /volumes/seq/projects/gccACT/230808_mdamb231_ONT 
+put -R ~/projects/gccACT/230808_mdamb231_ONT
 ```
