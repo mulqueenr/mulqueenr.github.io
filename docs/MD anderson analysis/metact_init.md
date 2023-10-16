@@ -154,7 +154,55 @@ bam_in=`ls *bam`
 parallel --jobs 50 sort_and_markdup ::: $bam_in
 ```
 
+## Downsample ACT-seq cells to match metACT
+```bash
+dir="/volumes/seq/projects/metACT/230913_metACT_benchmark"
 
+subsample() {
+	dir="/volumes/seq/projects/metACT/230913_metACT_benchmark"
+	in=`echo $1 | tr -d '"'` #remove quotes
+	in_bam=`ls $dir/cells/${in}*rmdup.bam`
+	samtools view -bs 42.2 $in_bam > ${in_bam::-4}.subsamp2.bam
+	echo "Subsampling ${in_bam}..."
+}
+export -f subsample
+
+bam_in=`awk 'OFS="\t" {if($7="act") print $11}' $dir/230830_metACT_sequencing_indexes.tsv`
+
+parallel --jobs 50 subsample ::: $bam_in
+
+mkdir $dir/cells/subsamp
+mv $dir/cells/*subsamp2.bam $dir/cells/subsamp
+
+find $dir/cells/subsamp -size -10M -delete
+```
+
+## Run CopyKit for WGS portion (Subsampled)
+Analysis from 
+https://navinlabcode.github.io/CopyKit-UserGuide/quick-start.html
+
+```R
+library(copykit)
+library(BiocParallel)
+library(EnsDb.Hsapiens.v86)
+register(MulticoreParam(progressbar = T, workers = 50), default = T)
+BiocParallel::bpparam()
+setwd("/volumes/seq/projects/metACT/230913_metACT_benchmark/")
+
+tumor2 <- runVarbin("/volumes/seq/projects/metACT/230913_metACT_benchmark/cells/subsamp/",
+                 remove_Y = TRUE,
+                 genome="hg38",
+                 is_paired_end=TRUE,min_bincount=0)
+
+# kNN smooth profiles
+tumor <- knnSmooth(tumor2)
+
+# Plot a copy number heatmap with clustering annotation
+pdf("subclone.heatmap.subsamp.pdf")
+plotHeatmap(tumor, order='hclust')
+dev.off()
+
+```
 ## Project Library Complexity
 Using Picard Tools
 ```bash
@@ -313,4 +361,4 @@ dev.off()
 ```
 
 
--->
+

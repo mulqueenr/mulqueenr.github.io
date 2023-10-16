@@ -232,6 +232,9 @@ for (i in unique(clone_out$clone)){
 	tmp<-clone_out[clone_out$clone==i,]
 	write.table(tmp$bam,file=paste0("clone_",i,".bam_list.txt"),row.names=F,col.names=F,quote=F)
 }
+
+
+
 ```
 
 
@@ -418,10 +421,11 @@ bamlist_merge_to_pairs() {
 }
 export -f bamlist_merge_to_pairs
 
-bamlist_merge_to_pairs $dir $ref clone_c0.bam_list.txt 
-bamlist_merge_to_pairs $dir $ref clone_c1.bam_list.txt 
-bamlist_merge_to_pairs $dir $ref clone_c2.bam_list.txt 
-bamlist_merge_to_pairs $dir $ref clone_c3.bam_list.txt 
+cd $dir
+bamlist_merge_to_pairs $dir $ref clone_c1.bam_list.txt &
+bamlist_merge_to_pairs $dir $ref clone_c2.bam_list.txt &
+bamlist_merge_to_pairs $dir $ref clone_c3.bam_list.txt &
+bamlist_merge_to_pairs $dir $ref clone_c4.bam_list.txt &
 
 
 #set variable for bam list in function
@@ -586,6 +590,7 @@ wd_out="/volumes/seq/projects/gccACT/230306_mdamb231_test/"
 
 setwd(wd_out)
 tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
+unique(tumor$subclones)
 tumor <- calcInteger(tumor, method = 'scquantum', assay = 'smoothed_bincounts') #calculate ploidy
 tumor <- calcConsensus(tumor) #generate consensus
 
@@ -759,38 +764,6 @@ for(clone in clone_list){
 
 ```
 
-<!--
-### Detection of structural variants using Eagle C
-ICE normalized output at multiresolution
-```bash
-conda activate EagleC
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-cd $clone_dir
-
-eaglec_SV_detect_ICE() {
-clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/rm_archive/contacts/clones"
-clone=${1::-17}
-#run cooler balance on all cool matrices, using 20 cores
-cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.5kb.cool
-cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.10kb.cool
-cooler balance -p 20 --force ${clone_dir}/${clone}.bsorted.50kb.cool
-
-#now run predict sv
-
-predictSV --hic-5k ${clone_dir}/${clone}.bsorted.5kb.cool \
-            --hic-10k ${clone_dir}/${clone}.bsorted.10kb.cool \
-            --hic-50k ${clone_dir}/${clone}.bsorted.50kb.cool \
-            -O $clone -g hg38 --balance-type CNV --output-format full \
-            --prob-cutoff-5k 0.8 --prob-cutoff-10k 0.8 --prob-cutoff-50k 0.99999
-}
-export -f eaglec_SV_detect
-
-clones=`ls clone*pairs.gz`
-
-parallel --jobs 1 eaglec_SV_detect ::: $clones &
-```
--->
-
 CNV normalized output at single 500kb resolution.
 
 ```bash
@@ -800,24 +773,26 @@ conda activate EagleC
 ```bash
 
 eaglec_SV_CNV_neoout() {
+clone_in=$1
+cpus=$2
 clone_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test/contacts"
 bedgraph_dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
-clone=${1::-17}
+clone=${clone_in::-17}
 
 #balance through ICE first
 cooler balance \
-	--ignore-diags 5 \
+	--ignore-diags 3 \
 	--force \
-	--nproc $2 \
+	--nproc $cpus \
 	${clone_dir}/${clone}.bsorted.500kb.cool
 
 #now balance by CNV
 correct-cnv \
-	--ignore-diags 5 \
+	--ignore-diags 3 \
 	-H ${clone_dir}/${clone}.bsorted.500kb.cool \
 	--cnv-file ${bedgraph_dir}/${clone}.cnv.500kb.segmented.bedgraph \
-	-force \
-	--nproc $2 \
+	--force \
+	--nproc $cpus \
 	--logFile ${clone}.cnv.norm.log
 
 #predict SV breakpoints by cnv corrected data
@@ -838,7 +813,7 @@ assemble-complexSVs \
 	-B ${clone_dir}/${clone}.SV.cnv.neoloopfinder.tsv \
 	--balance-type CNV \
 	--protocol insitu \
-	--nproc $2 \
+	--nproc $cpus \
 	--region-size 1000000 \
 	--minimum-size 1000000 \
 	--logFile ${clone}.neoloop.log 
@@ -967,13 +942,14 @@ def all_by_all_plot(ont_dat_cis, ont_dat_trans,eaglec_dat_trans,eaglec_dat_cis,c
 	coolfile=in_file
 	print("Reading in "+infile_name)
 	c = cooler.Cooler(coolfile)
-	#cooler.coarsen_cooler(coolfile,in_name+"_5mb.cool",factor=2,chunksize=10000000) #coarsen to 5mb
+	#cooler.coarsen_cooler(coolfile,in_name+"_5mb.cool",factor=5,chunksize=5000000) #coarsen to 5mb
 	#c = cooler.Cooler(in_name+"_5mb.cool")
 	print("Balancing matrix.")
 	cooler.balance_cooler(c,store=True,rescale_marginals=True,ignore_diags=1)#balance matrix ignore_diags=10,
 	obs_mat = c.matrix()[:]
 	chr_list=list(c.bins()[:]["chrom"].unique())
 	out=''.join([in_name,'_all_by_all_log2_1Mb_obs.test.png'])
+	out_pdf=''.join([in_name,'_all_by_all_log2_1Mb_obs.test.pdf'])
 	#init subplot
 	chr_in=len(chr_list)
 	chr_sizes=pd.DataFrame(c.bins()[:]).groupby(["chrom"])["chrom"].count()
@@ -1032,6 +1008,7 @@ def all_by_all_plot(ont_dat_cis, ont_dat_trans,eaglec_dat_trans,eaglec_dat_cis,c
 					eaglec_dat_trans=eaglec_dat_trans,eaglec_dat_cis=eaglec_dat_cis)
 	plt.subplots_adjust(wspace=0.02, hspace=0.02)
 	plt.savefig(out, dpi=dpi, format='png',bbox_inches='tight')
+	plt.savefig(out_pdf, format='pdf',bbox_inches='tight')
 	plt.close("all")
 	return(insulation_table)
 
@@ -1156,19 +1133,16 @@ cnv_col_palette=["#053061","#4393c3","#f7f7f7","#fddbc7","#d6604d","#b2182b","#6
 
 #make all by all plot for all clones, set up looping list
 in_cool=[
-"clone_c0.bsorted.1mb.cool",
 "clone_c1.bsorted.1mb.cool",
 "clone_c2.bsorted.1mb.cool",
 "clone_c3.bsorted.1mb.cool"]
 
 in_eaglec=[
-"clone_c0.SV.cnv.neoloopfinder.tsv",
 "clone_c1.SV.cnv.neoloopfinder.tsv",
 "clone_c2.SV.cnv.neoloopfinder.tsv",
 "clone_c3.SV.cnv.neoloopfinder.tsv"]
 
 in_bedgraph=[
-"/volumes/seq/projects/gccACT/230306_mdamb231_test/clone_c0.cnv.1mb.segmented.bedgraph",
 "/volumes/seq/projects/gccACT/230306_mdamb231_test/clone_c1.cnv.1mb.segmented.bedgraph",
 "/volumes/seq/projects/gccACT/230306_mdamb231_test/clone_c2.cnv.1mb.segmented.bedgraph",
 "/volumes/seq/projects/gccACT/230306_mdamb231_test/clone_c3.cnv.1mb.segmented.bedgraph"]
@@ -1177,7 +1151,7 @@ for clone in range(0,len(in_cool)):
 	eaglec_dat=prepare_eaglec_file(eaglec_in=in_eaglec[clone])
 	cnv_dat=setup_cnv_bedgraph(in_bedgraph[clone],col=cnv_col_palette)
 	all_by_all_plot(infile_name=in_cool[clone],
-	chr_count=23,
+	chr_count=4,
 	ont_dat_cis=ont_dat[0],
 	ont_dat_trans=ont_dat[1],
 	eaglec_dat_cis=eaglec_dat[0],
@@ -1188,12 +1162,25 @@ for clone in range(0,len(in_cool)):
 
 
 
-eaglec_dat=prepare_eaglec_file(eaglec_in="clone_c3.SV.cnv.neoloopfinder.tsv")
-cnv_dat=setup_cnv_bedgraph("/volumes/seq/projects/gccACT/230306_mdamb231_test/clone_c3.cnv.500kb.segmented.bedgraph",
+eaglec_dat=prepare_eaglec_file(eaglec_in="clone_c1.SV.cnv.neoloopfinder.tsv")
+cnv_dat=setup_cnv_bedgraph("/volumes/seq/projects/gccACT/230306_mdamb231_test/clone_c1.cnv.1mb.segmented.bedgraph",
 	col=cnv_col_palette)
+tab=all_by_all_plot(infile_name="clone_c1.bsorted.1mb.cool",
+chr_count=4,
+ont_dat_cis=ont_dat[0],
+ont_dat_trans=ont_dat[1],
+eaglec_dat_cis=eaglec_dat[0],
+eaglec_dat_trans=eaglec_dat[1],
+cnv_dat=cnv_dat,
+zmin=-3.5,
+cmap="Blues")
 
-tab=all_by_all_plot(infile_name="clone_c3.bsorted.500kb.cool",
-chr_count=23,
+
+eaglec_dat=prepare_eaglec_file(eaglec_in="clone_c3.SV.cnv.neoloopfinder.tsv")
+cnv_dat=setup_cnv_bedgraph("/volumes/seq/projects/gccACT/230306_mdamb231_test/clone_c4.cnv.1mb.segmented.bedgraph",
+	col=cnv_col_palette)
+tab=all_by_all_plot(infile_name="clone_c4.bsorted.1mb.cool",
+chr_count=4,
 ont_dat_cis=ont_dat[0],
 ont_dat_trans=ont_dat[1],
 eaglec_dat_cis=eaglec_dat[0],
@@ -1201,8 +1188,9 @@ eaglec_dat_trans=eaglec_dat[1],
 cnv_dat=cnv_dat,
 zmin=-3.5,
 cmap="Reds")
-
-
+#additional cmap color pallets here
+#https://www.practicalpythonfordatascience.com/ap_seaborn_palette
+#some good ones! magma, mako, rocket, twilight, viridis, vlag
 ```
 
 ### Generate eigengenes for compartments across chromosomes
@@ -1443,64 +1431,73 @@ https://navinlabcode.github.io/CopyKit-UserGuide/quick-start.html
 library(copykit)
 library(BiocParallel)
 library(EnsDb.Hsapiens.v86)
-register(MulticoreParam(progressbar = T, workers = 50), default = T)
+register(MulticoreParam(progressbar = T, workers = 20), default = T)
 BiocParallel::bpparam()
-setwd("/volumes/seq/projects/gccACT/mdamb231_ACTseq/cells")
+setwd("/volumes/seq/projects/gccACT/mdamb231_ACTseq")
 
+#act set
 act <- runVarbin("/volumes/seq/projects/gccACT/mdamb231_ACTseq/cells",
                  remove_Y = TRUE,
                  genome="hg38",
                  is_paired_end=TRUE)
 
+colData(act)$info <- 'act'
+#gccact set
+gccact <- runVarbin("/volumes/seq/projects/gccACT/230306_mdamb231_test/cells",
+                 remove_Y = TRUE,
+                 genome="hg38",
+                 is_paired_end=TRUE)
+colData(gccact)$info <- 'gccact'
+#merged_copykit <- cbind(act, gccact)
+merged_copykit<-gccact
+
 # Mark euploid cells if they exist
-act <- findAneuploidCells(act)
+merged_copykit <- findAneuploidCells(merged_copykit)
 
 # Mark low-quality cells for filtering
-act <- findOutliers(act)
+merged_copykit <- findOutliers(merged_copykit)
 
 # Visualize cells labeled by filter and aneuploid status
 pdf("outlier_qc.heatmap.pdf")
-plotHeatmap(act, label = c('outlier', 'is_aneuploid'), row_split = 'outlier')
+plotHeatmap(merged_copykit, label = c('outlier', 'is_aneuploid'), row_split = 'outlier')
 dev.off()
 
 # Remove cells marked as low-quality and/or aneuploid from the copykit object
-act <- act[,SummarizedExperiment::colData(act)$outlier == FALSE]
-act <- act[,SummarizedExperiment::colData(act)$is_aneuploid == TRUE]
+merged_copykit <- merged_copykit[,SummarizedExperiment::colData(merged_copykit)$outlier == FALSE]
+merged_copykit <- merged_copykit[,SummarizedExperiment::colData(merged_copykit)$is_aneuploid == TRUE]
 
 
 # kNN smooth profiles
-act <- knnSmooth(act)
+merged_copykit <- knnSmooth(merged_copykit)
+merged_copykit <- runUmap(merged_copykit)
 
-
-k_clones<-findSuggestedK(act)
+k_clones<-findSuggestedK(merged_copykit)
 # Create a umap embedding 
-tumor <- runUmap(tumor)
 
 # Find clusters of similar copy number profiles and plot the results
 # If no k_subclones value is provided, automatically detect it from findSuggestedK()
-tumor  <- findClusters(tumor,k_subclones=17)#output from k_clones
+merged_copykit  <- findClusters(merged_copykit,k_subclones=21)#output from k_clones
 
 pdf("subclone.umap.pdf")
-plotUmap(tumor, label = 'subclones')
+plotUmap(merged_copykit, label = 'subclones')
 dev.off()
+
+#remove noise cluster
+merged_copykit2 <- merged_copykit[,SummarizedExperiment::colData(merged_copykit)$subclones != "c0"]
 
 # Calculate consensus profiles for each subclone, 
 # and order cells by cluster for visualization with plotHeatmap
-tumor <- calcConsensus(tumor)
-tumor <- runConsensusPhylo(tumor)
+merged_copykit2 <- calcConsensus(merged_copykit2)
+merged_copykit2<- runConsensusPhylo(merged_copykit2)
 
 # Plot a copy number heatmap with clustering annotation
 pdf("subclone.heatmap.pdf")
-plotHeatmap(tumor, label = 'subclones',order='hclust')
+plotHeatmap(merged_copykit2, row_split="subclones",label = 'subclones',order='consensus_tree',n_threads=10,use_raster=T)
 dev.off()
 
-saveRDS(tumor,file="/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
-tumor<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
-clone_out<-data.frame(bam=paste0(row.names(tumor@colData),".bam"),clone=tumor@colData$subclones)
-for (i in unique(clone_out$clone)){
-	tmp<-clone_out[clone_out$clone==i,]
-	write.table(tmp$bam,file=paste0("clone_",i,".bam_list.txt"),row.names=F,col.names=F,quote=F)
-}
+saveRDS(merged_copykit2,file="/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
+merged_copykit2<-readRDS("/volumes/seq/projects/gccACT/230306_mdamb231_test/scCNA.rds")
+
 ```
 
 ### Count of WGS and GCC Reads
@@ -1593,18 +1590,23 @@ dip-c color -C 20k.1.clean.3dg > C.color
 # color by chromosome number and visualize as mmCIF (viewable with pymol)
 dip-c color -n color/mm10.chr.txt 20k.1.clean.3dg | dip-c vis -c /dev/stdin 20k.1.clean.3dg > 20k.1.clean.n.cif
 ```
-```
-#correlate HiC to WGS output
-#Test for number of split reads compared to HiC data
-#Test for SVs?
+
+
+To ADD:
 
 <!--
-#Add compartments
-#Add SV detection by contact matrix
-#Use cooltools virtual4c for eccDNA interactions
-#Add 
--->
+Identification of cell cycling
+https://github.com/shahcompbio/scdna_replication_tools
+
+```bash
+conda activate r4.2
 ```
+```R
+install.packages("GGally")
+devtools::install_github("CL-CHEN-Lab/User_interface_for_Kronos_scRT", type = "source")
+
+```
+-->
 
 
 <!--
@@ -1614,8 +1616,16 @@ https://github.com/pk7zuva/Circle_finder/blob/master/circle_finder-pipeline-bwa-
 It says read length must be at least 75bp if not enriched. But I'm going to try anyway.
 
 ```bash
+#set up variables and directory
+ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
 dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
-bwa mem <idxbase> samp.r1.fq samp.r2.fq | samblaster -e -d samp.disc.sam -s samp.split.sam | samtools view -Sb - > samp.out.bam
+fq1="/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R1_001.barc.fastq.gz"
+fq2="/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R2_001.barc.fastq.gz"
+
+#Map reads with BWA Mem
+cd $dir
+bwa mem -t 20 $ref $fq1 $fq2  | samblaster -e -d samp.disc.sam -s samp.split.sam | samtools view -Sb - > samp.out.bam
+
 samtools -H $dir/230306_gccact.bam | samblaster -e --minNonOverlap 10 -d $6-$7\.disc.sam -s $6-$7\.split.sam -u $6-$7\.unmap.sam > $6-$7\.sam
 ```
 
@@ -1694,8 +1704,28 @@ awk 'BEGIN{FS=OFS="\t"} {gsub("M", " M ", $8)} 1' $6-$7\.concordant_freq3.2SPLIT
 #Step 11: Unique number of microDNA with number of split reads
 awk '$1==$11 && $1==$21 && $7==$17 && length($8)<=12 && length($18)<=12 && length($28)<=12'  $6-$7\.concordant_freq3.2SPLIT-1M.inoneline.txt | awk '($7=="+" && $27=="-") || ($7=="-" && $27=="+")' | awk '{if ($17=="+" && $19=="second" && $12<$2 && $22>=$12 && $23<=$3) {printf ("%s\t%d\t%d\n",$1,$12,$3)} else if ($7=="+" && $9=="second" && $2<$12 && $22>=$2 && $23<=$13) {printf ("%s\t%d\t%d\n",$1,$2,$13)} else if ($17=="-" && $19=="second" && $12<$2 && $22>=$12 && $23<=$3) {printf ("%s\t%d\t%d\n",$1,$12,$3)} else if ($7=="-" && $9=="second" && $2<$12 && $22>=$2 && $23<=$13) {printf ("%s\t%d\t%d\n",$1,$2,$13)} }' | sort | uniq -c | awk '{printf ("%s\t%d\t%d\t%d\n",$2,$3,$4,$1)}' > $6-$7\.microDNA-JT.txt
 
-rm *hg38.sam *hg38.bam
+#rm *hg38.sam *hg38.bam
 ```
+
+```bash
+cpu=50
+ref="/volumes/USR2/Ryan/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa"
+fq1="/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R1_001.barc.fastq.gz"
+fq2="/volumes/USR2/Ryan/fastq/230306_VH00219_371_AACJJFWM5/Undetermined_S0_L001_R2_001.barc.fastq.gz"
+dir="/volumes/seq/projects/gccACT/230306_mdamb231_test"
+minoverlap=10
+sampname="230306_mdamb231_test_circfinder"
+
+cd $dir
+bash ~/src/circle_finder-pipeline-bwa-mem-samblaster.sh $cpu \
+$ref \
+$fq1 \
+$fq2 \
+$minoverlap \
+$sampname hg38 &
+```
+
+-->
 
 ### HiC Data Analysis can be done with the DipC group's released hickit
 

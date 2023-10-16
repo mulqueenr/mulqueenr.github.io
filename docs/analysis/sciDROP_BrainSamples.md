@@ -11,14 +11,15 @@ category: alternative
 ![sciDROP Overview](/assets/images/sciDROP.png){:width="80%"}
 
 
-Note: sciDROP was renamed to txci-ATAC for final manuscript submission.
+Note: sciDROP was renamed to txci-ATAC for final manuscript submission. 
 
 
 This notebook details the processing of the "20K" and "70K" loaded mouse brain and human cortex samples. It begins with scitools wrapper functions for intial alignment to a concatenated mouse and human genome, following with splitting of reads and realignment to separate human and mouse genomes. It then follows the established scitools formation of a counts matrix and Signac processing.
+https://github.com/adeylab/scitools
 
 ```bash
 #libraries were generated as two separate lanes of a NovaSeq S4 flowcell.
-#bcl2fastq was run prior to the jibe transfer
+#bcl2fastq was run prior to the transfer
 FASTQ_DIR="/home/groups/oroaklab/fastq/201103_NovaSeq_sciDropATAC"
 #fastq files downloaded to $FASTQ_DIR
 
@@ -164,151 +165,151 @@ $dir_20k_10perc_demux/201007_NS500556_0428_AHGFMMAFX2.2.fq.gz > $sciDROP_20K_dem
 
 ```R
 #Processing of barnyard comparisons
-        library(ggplot2)
-        library(Biostrings)
-        #Read in index file to assign well position to indexes
-        index_file<-read.table("/home/groups/oroaklab/src/scitools/scitools-dev/SCI_stdchem_Indexes.txt")
+library(ggplot2)
+library(Biostrings)
+#Read in index file to assign well position to indexes
+index_file<-read.table("/home/groups/oroaklab/src/scitools/scitools-dev/SCI_stdchem_Indexes.txt")
 
-        idx_pcr<-index_file[index_file$V2==1,]
-        colnames(idx_pcr)<-c("i7_idx_name","i7_idx_cycle","i7_idx_sequence")
-        idx_tn5<-index_file[index_file$V2==3,]
-        colnames(idx_tn5)<-c("tn5_idx_name","tn5_idx_cycle","tn5_idx_sequence")
-        idx_tn5$tn5_column<-c(1:12)
-        idx_tn5$tn5_row<-rep(c("A","B","C","D","E","F","G","H"),c(rep(12,8)))
+idx_pcr<-index_file[index_file$V2==1,]
+colnames(idx_pcr)<-c("i7_idx_name","i7_idx_cycle","i7_idx_sequence")
+idx_tn5<-index_file[index_file$V2==3,]
+colnames(idx_tn5)<-c("tn5_idx_name","tn5_idx_cycle","tn5_idx_sequence")
+idx_tn5$tn5_column<-c(1:12)
+idx_tn5$tn5_row<-rep(c("A","B","C","D","E","F","G","H"),c(rep(12,8)))
 
-        #Processing of 70k samples
-        setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_70k")
-        dat<-read.table("sciDROP_70k.bbrd.q10.barnyard_cells.txt",header=F)
-        colnames(dat)<-c("cellID","total_reads_q20","hg38_count","mm10_count","percent_human","species_call")
+#Processing of 70k samples
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_70k")
+dat<-read.table("sciDROP_70k.bbrd.q10.barnyard_cells.txt",header=F)
+colnames(dat)<-c("cellID","total_reads_q20","hg38_count","mm10_count","percent_human","species_call")
 
-        compl<-read.table("sciDROP_70k.complexity.txt",header=F)
-        colnames(compl)<-c("row_carryover","cellID","total_reads_q10","uniq_reads_q10","perc_uniq")
-        compl<-compl[compl$uniq_reads_q10>=10000 & compl$perc_uniq <= 90,] #filter cells based on minimum read count and library complexity
-        
-        dat<-merge(dat,compl,by="cellID")
-        dat$pcr_idx<-substr(dat$cellID,1,8)
-        dat$gem_idx<-substr(dat$cellID,9,24)
-        dat$tn5_idx<-substr(dat$cellID,25,32)
-        
-        dat<-merge(dat,idx_pcr,by.x="pcr_idx",by.y="i7_idx_sequence") #add pcr i7 index, defining 10% or 90% pool
+compl<-read.table("sciDROP_70k.complexity.txt",header=F)
+colnames(compl)<-c("row_carryover","cellID","total_reads_q10","uniq_reads_q10","perc_uniq")
+compl<-compl[compl$uniq_reads_q10>=10000 & compl$perc_uniq <= 90,] #filter cells based on minimum read count and library complexity
 
-        table(dat$i7_idx_name)
-        #PCR_i7_P7.S707 PCR_i7_P7.S708
-        #  6460          54928
+dat<-merge(dat,compl,by="cellID")
+dat$pcr_idx<-substr(dat$cellID,1,8)
+dat$gem_idx<-substr(dat$cellID,9,24)
+dat$tn5_idx<-substr(dat$cellID,25,32)
 
-        dat<-merge(dat,idx_tn5,by.x="tn5_idx",by.y="tn5_idx_sequence")
+dat<-merge(dat,idx_pcr,by.x="pcr_idx",by.y="i7_idx_sequence") #add pcr i7 index, defining 10% or 90% pool
 
-        library(dplyr)
-        summary(as.data.frame(dat %>% group_by(tn5_column,tn5_row) %>% summarize(count=n()))$count) #cell count distribution per tn5 well
-        #   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
-        #  104.0   512.0   615.0   646.2   767.0  1171.0
+table(dat$i7_idx_name)
+#PCR_i7_P7.S707 PCR_i7_P7.S708
+#  6460          54928
 
-        nrow(dat)/length(unique(dat$gem_idx)) #count of cells within unique GEMs
-        #[1] 1.665256
-        gem_count<-unlist(lapply(unique(dat$gem_idx),function(x) nrow(dat[dat$gem_idx==x,])))
-            plt<-ggplot()+geom_histogram(aes(x=gem_count),binwidth=1)+theme_bw()+xlim(c(0,10))
-            ggsave(plt,file="70k.gem_count.pdf")
-            system("slack -F 70k.gem_count.pdf ryan_todo")
+dat<-merge(dat,idx_tn5,by.x="tn5_idx",by.y="tn5_idx_sequence")
 
-        dat$condition<-"Mix"
-        dat[dat$tn5_row %in% c("A","B"),]$condition<-"Human"
-        dat[dat$tn5_row %in% c("C","D"),]$condition<-"Mouse"
+library(dplyr)
+summary(as.data.frame(dat %>% group_by(tn5_column,tn5_row) %>% summarize(count=n()))$count) #cell count distribution per tn5 well
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+#  104.0   512.0   615.0   646.2   767.0  1171.0
 
-        ggplot(dat,aes(x=perc_uniq,y=log10(uniq_reads_q10),color=species_call))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,100))
-        ggsave("complexity.pdf")
-        system("slack -F complexity.pdf ryan_todo")
+nrow(dat)/length(unique(dat$gem_idx)) #count of cells within unique GEMs
+#[1] 1.665256
+gem_count<-unlist(lapply(unique(dat$gem_idx),function(x) nrow(dat[dat$gem_idx==x,])))
+    plt<-ggplot()+geom_histogram(aes(x=gem_count),binwidth=1)+theme_bw()+xlim(c(0,10))
+    ggsave(plt,file="70k.gem_count.pdf")
+    #system("slack -F 70k.gem_count.pdf ryan_todo")
 
-        library(patchwork)
-        plt_barnyard<-ggplot(dat[dat$condition=="Mix",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Barnyard")
-        plt_human<-ggplot(dat[dat$condition=="Human",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Human")
-        plt_mouse<-ggplot(dat[dat$condition=="Mouse",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Mouse")
-        plt<-plt_barnyard+plt_human+plt_mouse
-        ggsave(plt,file="barnyard.pdf",width=20)
-        system("slack -F barnyard.pdf ryan_todo")
+dat$condition<-"Mix"
+dat[dat$tn5_row %in% c("A","B"),]$condition<-"Human"
+dat[dat$tn5_row %in% c("C","D"),]$condition<-"Mouse"
 
-        #count of barnyard species calls
-        table(dat[dat$condition=="Mix",]$species_call)
-        #Human Mixed Mouse
-        #10040   170 18985
-        (table(dat[dat$condition=="Mix",]$species_call)[["Mixed"]]/nrow(dat))*2 #get estimated collision rate
-        #[1] 0.005538542 so 0.55%
-        write.table(dat,"70k_barnyard.summary.txt",quote=F,sep="\t",col.names=T,row.names=F)
+ggplot(dat,aes(x=perc_uniq,y=log10(uniq_reads_q10),color=species_call))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,100))
+ggsave("complexity.pdf")
+#system("slack -F complexity.pdf ryan_todo")
+
+library(patchwork)
+plt_barnyard<-ggplot(dat[dat$condition=="Mix",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Barnyard")
+plt_human<-ggplot(dat[dat$condition=="Human",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Human")
+plt_mouse<-ggplot(dat[dat$condition=="Mouse",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Mouse")
+plt<-plt_barnyard+plt_human+plt_mouse
+ggsave(plt,file="barnyard.pdf",width=20)
+#system("slack -F barnyard.pdf ryan_todo")
+
+#count of barnyard species calls
+table(dat[dat$condition=="Mix",]$species_call)
+#Human Mixed Mouse
+#10040   170 18985
+(table(dat[dat$condition=="Mix",]$species_call)[["Mixed"]]/nrow(dat))*2 #get estimated collision rate
+#[1] 0.005538542 so 0.55%
+write.table(dat,"70k_barnyard.summary.txt",quote=F,sep="\t",col.names=T,row.names=F)
 
 
-        #annot species
-        dat<-dat[(dat$condition=="Mouse" & dat$species_call=="Mouse") | (dat$condition=="Human" & dat$species_call=="Human") | dat$condition=="Mix", ]
-        table(paste(dat$condition,dat$species_call))
-        #Human Human   Mix Human   Mix Mixed   Mix Mouse Mouse Mouse
-        #12525       10040         170       18985       19526
-        annot<-dat[c("cellID","species_call")]
-        write.table(annot,"species.annot",quote=F,sep="\t",col.names=F,row.names=F)
+#annot species
+dat<-dat[(dat$condition=="Mouse" & dat$species_call=="Mouse") | (dat$condition=="Human" & dat$species_call=="Human") | dat$condition=="Mix", ]
+table(paste(dat$condition,dat$species_call))
+#Human Human   Mix Human   Mix Mixed   Mix Mouse Mouse Mouse
+#12525       10040         170       18985       19526
+annot<-dat[c("cellID","species_call")]
+write.table(annot,"species.annot",quote=F,sep="\t",col.names=F,row.names=F)
 
-    #Processing of 20k samples
-        setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_20K")
-        dat<-read.table("sciDROP_20k.bbrd.q10.barnyard_cells.merge.txt",header=F)
-        colnames(dat)<-c("cellID","total_reads_q20","hg38_count","mm10_count","percent_human","species_call")
+#Processing of 20k samples
+setwd("/home/groups/oroaklab/adey_lab/projects/sciDROP/201107_sciDROP_Barnyard/sciDROP_20K")
+dat<-read.table("sciDROP_20k.bbrd.q10.barnyard_cells.merge.txt",header=F)
+colnames(dat)<-c("cellID","total_reads_q20","hg38_count","mm10_count","percent_human","species_call")
 
-        compl<-read.table("sciDROP_20k.complexity.merge.txt",header=F)
-        colnames(compl)<-c("row_carryover","cellID","total_reads_q10","uniq_reads_q10","perc_uniq")
-        compl<-compl[compl$uniq_reads_q10>=10000 & compl$perc_uniq <= 90,]
+compl<-read.table("sciDROP_20k.complexity.merge.txt",header=F)
+colnames(compl)<-c("row_carryover","cellID","total_reads_q10","uniq_reads_q10","perc_uniq")
+compl<-compl[compl$uniq_reads_q10>=10000 & compl$perc_uniq <= 90,]
 
-        dat<-merge(dat,compl,by="cellID")
-        dat$pcr_idx<-substr(dat$cellID,1,8)
-        dat$gem_idx<-substr(dat$cellID,9,24)
-        dat$tn5_idx<-substr(dat$cellID,25,32)
-        
-        dat<-merge(dat,idx_pcr,by.x="pcr_idx",by.y="i7_idx_sequence") #add pcr i7 index, defining 10% or 90% pool
+dat<-merge(dat,compl,by="cellID")
+dat$pcr_idx<-substr(dat$cellID,1,8)
+dat$gem_idx<-substr(dat$cellID,9,24)
+dat$tn5_idx<-substr(dat$cellID,25,32)
 
-        table(dat$i7_idx_name)
-        #PCR_i7_P7.S701 PCR_i7_P7.S702
-        #  1848          17293
+dat<-merge(dat,idx_pcr,by.x="pcr_idx",by.y="i7_idx_sequence") #add pcr i7 index, defining 10% or 90% pool
 
-        dat<-merge(dat,idx_tn5,by.x="tn5_idx",by.y="tn5_idx_sequence")
+table(dat$i7_idx_name)
+#PCR_i7_P7.S701 PCR_i7_P7.S702
+#  1848          17293
 
-        library(dplyr)
-        summary(as.data.frame(dat %>% group_by(tn5_column,tn5_row) %>% summarize(count=n()))$count) #cell count distribution per tn5 well
-        # Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
-        #63.0   161.0   195.0   201.5   246.5   331.0   
-        nrow(dat)/length(unique(dat$gem_idx)) #count of cells within unique GEMs
-        #1.257456
-        gem_count<-unlist(lapply(unique(dat$gem_idx),function(x) nrow(dat[dat$gem_idx==x,])))
-        plt<-ggplot()+geom_histogram(aes(x=gem_count),binwidth=1)+theme_bw()+xlim(c(0,10))
-        ggsave(plt,file="20k.gem_count.pdf")
-        system("slack -F 20k.gem_count.pdf ryan_todo")
+dat<-merge(dat,idx_tn5,by.x="tn5_idx",by.y="tn5_idx_sequence")
 
-        dat$condition<-"Mix"
-        dat[dat$tn5_row %in% c("A","B"),]$condition<-"Human"
-        dat[dat$tn5_row %in% c("C","D"),]$condition<-"Mouse"
+library(dplyr)
+summary(as.data.frame(dat %>% group_by(tn5_column,tn5_row) %>% summarize(count=n()))$count) #cell count distribution per tn5 well
+# Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+#63.0   161.0   195.0   201.5   246.5   331.0   
+nrow(dat)/length(unique(dat$gem_idx)) #count of cells within unique GEMs
+#1.257456
+gem_count<-unlist(lapply(unique(dat$gem_idx),function(x) nrow(dat[dat$gem_idx==x,])))
+plt<-ggplot()+geom_histogram(aes(x=gem_count),binwidth=1)+theme_bw()+xlim(c(0,10))
+ggsave(plt,file="20k.gem_count.pdf")
+#system("slack -F 20k.gem_count.pdf ryan_todo")
 
-        ggplot(dat,aes(x=perc_uniq,y=log10(uniq_reads_q10),color=species_call))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,100))
-        ggsave("complexity.pdf")
-        system("slack -F complexity.pdf ryan_todo")
+dat$condition<-"Mix"
+dat[dat$tn5_row %in% c("A","B"),]$condition<-"Human"
+dat[dat$tn5_row %in% c("C","D"),]$condition<-"Mouse"
 
-        library(patchwork)
-        plt_barnyard<-ggplot(dat[dat$condition=="Mix",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Barnyard")
-        plt_human<-ggplot(dat[dat$condition=="Human",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Human")
-        plt_mouse<-ggplot(dat[dat$condition=="Mouse",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Mouse")
-        plt<-plt_barnyard+plt_human+plt_mouse
-        ggsave(plt,file="barnyard.pdf",width=20)
-        system("slack -F barnyard.pdf ryan_todo")
+ggplot(dat,aes(x=perc_uniq,y=log10(uniq_reads_q10),color=species_call))+geom_point()+theme_bw()+ylim(c(0,7))+xlim(c(0,100))
+ggsave("complexity.pdf")
+#system("slack -F complexity.pdf ryan_todo")
 
-        write.table(dat,"20k_barnyard.summary.txt",quote=F,sep="\t",col.names=T,row.names=F)
+library(patchwork)
+plt_barnyard<-ggplot(dat[dat$condition=="Mix",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Barnyard")
+plt_human<-ggplot(dat[dat$condition=="Human",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Human")
+plt_mouse<-ggplot(dat[dat$condition=="Mouse",],aes(x=hg38_count,y=mm10_count,color=species_call,alpha=0.1))+geom_point()+theme_bw()+ylim(c(0,200000))+xlim(c(0,200000))+ggtitle("Mouse")
+plt<-plt_barnyard+plt_human+plt_mouse
+ggsave(plt,file="barnyard.pdf",width=20)
+#system("slack -F barnyard.pdf ryan_todo")
 
-        #count of barnyard species calls
-        table(dat[dat$condition=="Mix",]$species_call)
-        #Human Mixed Mouse
-        #10040   170 18985
-        (table(dat[dat$condition=="Mix",]$species_call)[["Mixed"]]/nrow(dat))*2 #get estimated collision rate
-        #[1] 0.002660036 so 0.2% collision rate
+write.table(dat,"20k_barnyard.summary.txt",quote=F,sep="\t",col.names=T,row.names=F)
 
-        #Filter to data that matches apriori assumption or single cell
-        #annot species
-        dat<-dat[(dat$condition=="Mouse" & dat$species_call=="Mouse") | (dat$condition=="Human" & dat$species_call=="Human") | dat$condition=="Mix", ]
+#count of barnyard species calls
+table(dat[dat$condition=="Mix",]$species_call)
+#Human Mixed Mouse
+#10040   170 18985
+(table(dat[dat$condition=="Mix",]$species_call)[["Mixed"]]/nrow(dat))*2 #get estimated collision rate
+#[1] 0.002660036 so 0.2% collision rate
 
-        #Human Human   Mix Human   Mix Mixed   Mix Mouse Mouse Mouse
-        # 3687        3001          24        6572        5841
-        annot<-dat[c("cellID","species_call")]
-        write.table(annot,"species.annot",quote=F,sep="\t",col.names=F,row.names=F)
+#Filter to data that matches apriori assumption or single cell
+#annot species
+dat<-dat[(dat$condition=="Mouse" & dat$species_call=="Mouse") | (dat$condition=="Human" & dat$species_call=="Human") | dat$condition=="Mix", ]
+
+#Human Human   Mix Human   Mix Mixed   Mix Mouse Mouse Mouse
+# 3687        3001          24        6572        5841
+annot<-dat[c("cellID","species_call")]
+write.table(annot,"species.annot",quote=F,sep="\t",col.names=F,row.names=F)
 
 
 ```
@@ -612,7 +613,7 @@ plt2<-ggplot(hg38_atac@meta.data[hg38_atac@meta.data$predicted_doublets=="False"
   scale_y_continuous(expand = c(0, 0),limits=c(3,6)) +
   theme(legend.position='none')
 ggsave(plt1+plt2,file="mm10.hg38.complexity.2d.pdf")
-system("slack -F mm10.hg38.complexity.2d.pdf ryan_todo")
+#system("slack -F mm10.hg38.complexity.2d.pdf ryan_todo")
 
 #hard coded these numbers just because i had them for a meeting
 #cell_count_75k<-data.frame(count=c(10040,18985,170,12663-(141+19),19530-(484+50),141+19,484+50),names=c("by_h","by_m","by_mix","hum","mus","scrub_h","scrub_m"),loading=c("75k"))
@@ -620,7 +621,7 @@ system("slack -F mm10.hg38.complexity.2d.pdf ryan_todo")
 #cell_count<-rbind(cell_count_75k,cell_count_20k)
 #plt<-ggplot(cell_count,aes(x=loading,y=count,fill=factor(names,levels=rev(c("mus","hum","by_h","by_m","by_mix","scrub_h","scrub_m")))))+geom_bar(position="stack",stat="identity")
 #ggsave(plt,file="mm10.hg38.cellcount.pdf")
-#system("slack -F mm10.hg38.cellcount.pdf ryan_todo")
+##system("slack -F mm10.hg38.cellcount.pdf ryan_todo")
 
 ```
 
@@ -679,8 +680,8 @@ par(mfrow=c(3,3))
 mm10_atac_cistopic_models <- selectModel(mm10_atac_cistopic_models, type='derivative')
 dev.off()
 
-system("slack -F hg38_atac_model_selection.pdf ryan_todo")
-system("slack -F mm10_atac_model_selection.pdf ryan_todo")
+#system("slack -F hg38_atac_model_selection.pdf ryan_todo")
+#system("slack -F mm10_atac_model_selection.pdf ryan_todo")
 
 #set topics based on derivative
 #selected topics subject to change
@@ -801,19 +802,19 @@ saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
 plt<-DimPlot(hg38_atac,group.by=c('seurat_clusters','predicted_doublets',"pcr_idx"))
 ggsave(plt,file="hg38.umap.i7idx.pdf",width=10)
-system("slack -F hg38.umap.i7idx.pdf ryan_todo")
+#system("slack -F hg38.umap.i7idx.pdf ryan_todo")
 
 plt<-DimPlot(mm10_atac,group.by=c('seurat_clusters','predicted_doublets',"pcr_idx"))
 ggsave(plt,file="mm10.umap.i7idx.pdf",width=10)
-system("slack -F mm10.umap.i7idx.pdf ryan_todo")
+#system("slack -F mm10.umap.i7idx.pdf ryan_todo")
 
 plt<-FeaturePlot(hg38_atac,feature=c('doublet_scores'))
 ggsave(plt,file="hg38.umap.scrub.pdf")
-system("slack -F hg38.umap.scrub.pdf ryan_todo")
+#system("slack -F hg38.umap.scrub.pdf ryan_todo")
 
 plt<-FeaturePlot(mm10_atac,feature=c('doublet_scores'))
 ggsave(plt,file="mm10.umap.scrub.pdf")
-system("slack -F mm10.umap.scrub.pdf ryan_todo")
+#system("slack -F mm10.umap.scrub.pdf ryan_todo")
 
 
 ```
@@ -842,7 +843,7 @@ mm10_atac<-readRDS(file="mm10_SeuratObject.Rds")
 pdf("hg38.harmony.convergence.pdf")
 harm_mat<-HarmonyMatrix(hg38_atac@reductions$cistopic@cell.embeddings, hg38_atac@meta.data$pcr_idx,do_pca=FALSE,nclust=14,plot_convergence=T)
 dev.off()
-system("slack -F hg38.harmony.convergence.pdf ryan_todo")
+#system("slack -F hg38.harmony.convergence.pdf ryan_todo")
 hg38_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
 hg38_atac<-RunUMAP(hg38_atac, reduction = "harmony",dims=1:ncol(hg38_atac@reductions$harmony))
 hg38_atac <- FindNeighbors(object = hg38_atac,reduction = 'harmony')
@@ -850,7 +851,7 @@ hg38_atac <- FindClusters(object = hg38_atac,verbose = TRUE,resolution=0.05)
 
 plt<-DimPlot(hg38_atac,group.by=c("pcr_idx","seurat_clusters"))
 ggsave(plt,file="hg38.umap.i7idx.harm.pdf",width=15)
-system("slack -F hg38.umap.i7idx.harm.pdf ryan_todo")
+#system("slack -F hg38.umap.i7idx.harm.pdf ryan_todo")
 
 saveRDS(hg38_atac,file="hg38_SeuratObject.Rds")
 
@@ -866,13 +867,13 @@ mm10_atac <- FindClusters(object = mm10_atac,verbose = TRUE,resolution=0.075 )
 
 plt<-DimPlot(mm10_atac,group.by=c("pcr_idx","seurat_clusters"))
 ggsave(plt,file="mm10.umap.i7idx.harm.pdf",width=10)
-system("slack -F mm10.umap.i7idx.harm.pdf ryan_todo")
+#system("slack -F mm10.umap.i7idx.harm.pdf ryan_todo")
 
 plt1<-DimPlot(hg38_atac,group.by="seurat_clusters")
 plt2<-DimPlot(mm10_atac,group.by="seurat_clusters")
 plt<-plt1+plt2
 ggsave(plt,file="hg38_mm10_seurat.clusters.pdf")
-system("slack -F hg38_mm10_seurat.clusters.pdf ryan_todo")
+#system("slack -F hg38_mm10_seurat.clusters.pdf ryan_todo")
 
 saveRDS(mm10_atac,file="mm10_SeuratObject.Rds")
 
@@ -1225,7 +1226,7 @@ Human
 
     plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
     ggsave(plt,file="hg38_umap.subclus.pdf")
-    system("slack -F hg38_umap.subclus.pdf ryan_todo")
+    #system("slack -F hg38_umap.subclus.pdf ryan_todo")
 
 ```
 Mouse 
@@ -1318,7 +1319,7 @@ Mouse
 
     plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
     ggsave(plt,file="mm10_umap.subclus.pdf")
-    system("slack -F mm10_umap.subclus.pdf ryan_todo")
+    #system("slack -F mm10_umap.subclus.pdf ryan_todo")
 
 ```
 
@@ -1479,13 +1480,13 @@ brainspan <- ScaleData(brainspan, features = all.genes)
 brainspan <- RunPCA(brainspan, features = VariableFeatures(object = brainspan))
 plt<-ElbowPlot(brainspan)
 ggsave(plt,file="allen_brainspan_humancortex.elbowplot.pdf")
-system("slack -F allen_brainspan_humancortex.elbowplot.pdf ryan_todo")
+#system("slack -F allen_brainspan_humancortex.elbowplot.pdf ryan_todo")
 brainspan <- FindNeighbors(brainspan, dims = 1:14)
 brainspan <- FindClusters(brainspan, resolution = 0.5)
 brainspan <- RunUMAP(brainspan, dims = 1:14)
 plt<-DimPlot(brainspan, reduction = "umap",group.by=c("class_label","subclass_label"))
 ggsave(plt,file="allen_brainspan_humancortex.dimplot.pdf",width=30)
-system("slack -F allen_brainspan_humancortex.dimplot.pdf ryan_todo")
+#system("slack -F allen_brainspan_humancortex.dimplot.pdf ryan_todo")
 saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
 
 #Mouse
@@ -1502,13 +1503,13 @@ saveRDS(brainspan, file = "allen_brainspan_humancortex.rds")
  brainspan <- RunPCA(brainspan, features = VariableFeatures(object = brainspan))
  plt<-ElbowPlot(brainspan)
  ggsave(plt,file="allen_brainspan_mouse.elbowplot.pdf")
- system("slack -F allen_brainspan_mouse.elbowplot.pdf ryan_todo")
+ #system("slack -F allen_brainspan_mouse.elbowplot.pdf ryan_todo")
  brainspan <- FindNeighbors(brainspan, dims = 1:15)
  brainspan <- FindClusters(brainspan, resolution = 0.5)
  brainspan <- RunUMAP(brainspan, dims = 1:15)
  plt<-DimPlot(brainspan, reduction = "umap",group.by=c("class_label","subclass_label"))
  ggsave(plt,file="allen_brainspan_mouse.dimplot.pdf",width=30)
- system("slack -F allen_brainspan_mouse.dimplot.pdf ryan_todo")
+ #system("slack -F allen_brainspan_mouse.dimplot.pdf ryan_todo")
  saveRDS(brainspan, file = "allen_brainspan_mouse.rds")
 
 
@@ -2157,7 +2158,7 @@ plt1<-Heatmap(sum_ga_plot,
 pdf("hg38.geneactivity.heatmap.pdf",height=20,width=20)
 plt1
 dev.off()
-system("slack -F hg38.geneactivity.heatmap.pdf ryan_todo")
+#system("slack -F hg38.geneactivity.heatmap.pdf ryan_todo")
 
 ```
 
@@ -2272,7 +2273,7 @@ plt1<-Heatmap(sum_ga_sub,
 pdf("hg38.geneactivity.markers.heatmap.pdf",height=5)
 plt1
 dev.off()
-system("slack -F hg38.geneactivity.markers.heatmap.pdf ryan_todo")
+#system("slack -F hg38.geneactivity.markers.heatmap.pdf ryan_todo")
 
 
 
@@ -2337,7 +2338,7 @@ plt1<-draw(plt1)
 pdf("hg38.tf.heatmap.pdf",height=20,width=20)
 draw(plt1)
 dev.off()
-system("slack -F hg38.tf.heatmap.pdf ryan_todo")
+#system("slack -F hg38.tf.heatmap.pdf ryan_todo")
 
 #Plot motifs alongside chromvar plot
 library(ggplot2)
@@ -2347,7 +2348,7 @@ motif_order<-names(hg38_atac@assays$peaks@motifs@motif.names[match(colnames(sum_
 plt<-MotifPlot(object = hg38_atac,motifs = motif_order,ncol=1)+theme_void()+theme(strip.text = element_blank())
 
 ggsave(plt,file="hg38.tf.heatmap.motif.pdf",height=100,width=2,limitsize=F)
-system("slack -F hg38.tf.heatmap.motif.pdf ryan_todo")
+#system("slack -F hg38.tf.heatmap.motif.pdf ryan_todo")
 
 
 ```
@@ -2505,7 +2506,7 @@ plt1<-Heatmap(sum_ga_plot,
 pdf("mm10.geneactivity.heatmap.pdf",height=4,width=20)
 plt1
 dev.off()
-system("slack -F mm10.geneactivity.heatmap.pdf ryan_todo")
+#system("slack -F mm10.geneactivity.heatmap.pdf ryan_todo")
 ############################################################
 #Get gene activity scores data frame to summarize over subclusters (limit to handful of marker genes)############
 #genes from brain map and https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7918299/
@@ -2612,7 +2613,7 @@ plt1<-Heatmap(sum_ga_sub,
 pdf("mm10.geneactivity.markers.heatmap.pdf",height=5)
 plt1
 dev.off()
-system("slack -F mm10.geneactivity.markers.heatmap.pdf ryan_todo")
+#system("slack -F mm10.geneactivity.markers.heatmap.pdf ryan_todo")
 
 
 
@@ -2680,7 +2681,7 @@ plt1<-draw(plt1)
 pdf("mm10.tf.heatmap.pdf",height=20,width=20)
 draw(plt1)
 dev.off()
-system("slack -F mm10.tf.heatmap.pdf ryan_todo")
+#system("slack -F mm10.tf.heatmap.pdf ryan_todo")
 
 #Plot motifs alongside chromvar plot
 library(ggplot2)
@@ -2690,7 +2691,7 @@ motif_order<-names(mm10_atac@assays$peaks@motifs@motif.names[match(colnames(sum_
 plt<-MotifPlot(object = mm10_atac,motifs = motif_order,ncol=1)+theme_void()+theme(strip.text = element_blank())
 
 ggsave(plt,file="mm10.tf.heatmap.motif.pdf",height=100,width=2,limitsize=F)
-system("slack -F mm10.tf.heatmap.motif.pdf ryan_todo")
+#system("slack -F mm10.tf.heatmap.motif.pdf ryan_todo")
 
 ```
 
@@ -3173,7 +3174,7 @@ plot_markers<-function(obj=mm10_atac,gene_name="Gad1"){
     facet_wrap(facets=vars(seurat_clusters),ncol=2) + coord_cartesian(clip = "off") 
     plt<-plt1+plt_list+plot_layout(width=c(8,3)) 
     ggsave(plt,file="feat.png")
-    system("slack -F feat.png ryan_todo")   
+    #system("slack -F feat.png ryan_todo")   
 }
 
 mm10_atac<-readRDS(file="mm10_SeuratObject.PF.Rds")
@@ -3237,10 +3238,10 @@ hg38_atac<-readRDS("hg38_SeuratObject.PF.Rds")
 mm10_atac<-readRDS("mm10_SeuratObject.PF.Rds")
 
 write.table(as.data.frame(mm10_atac@meta.data),file="mm10_PF.metadata.tsv",sep="\t",quote=F,col.names=T,row.names=T)
-system("slack -F mm10_PF.metadata.tsv ryan_todo")
+#system("slack -F mm10_PF.metadata.tsv ryan_todo")
 
 write.table(as.data.frame(hg38_atac@meta.data),file="hg38_PF.metadata.tsv",sep="\t",quote=F,col.names=T,row.names=T)
-system("slack -F hg38_PF.metadata.tsv ryan_todo")
+#system("slack -F hg38_PF.metadata.tsv ryan_todo")
 ```
 
 ## Output Tab separated 3D clustering for Blender Plot
@@ -3261,7 +3262,7 @@ hg38_out<-cbind(hg38_atac$celltype,
     as.data.frame(hg38_atac@reductions$umap3d@cell.embeddings),
     hg38_atac$celltype_col)
 write.table(hg38_out,"hg38_3d.umap.tsv",sep="\t",col.names=F,row.names=F,quote=F)
-system("slack -F hg38_3d.umap.tsv ryan_todo")
+#system("slack -F hg38_3d.umap.tsv ryan_todo")
 
 
 mm10_out<-cbind(mm10_atac$celltype,
@@ -3269,7 +3270,7 @@ mm10_out<-cbind(mm10_atac$celltype,
     as.data.frame(mm10_atac@reductions$umap3d@cell.embeddings),
     mm10_atac$celltype_col)
 write.table(mm10_out,"mm10_3d.umap.tsv",sep="\t",col.names=F,row.names=F,quote=F)
-system("slack -F mm10_3d.umap.tsv ryan_todo")
+#system("slack -F mm10_3d.umap.tsv ryan_todo")
 
 ###Repeat with subcluster coloring
 hg38_out<-cbind(hg38_atac$cluster_ID,
@@ -3277,7 +3278,7 @@ hg38_out<-cbind(hg38_atac$cluster_ID,
     as.data.frame(hg38_atac@reductions$umap3d@cell.embeddings),
     hg38_atac$subcluster_col)
 write.table(hg38_out,"hg38_3d.subclus.umap.tsv",sep="\t",col.names=F,row.names=F,quote=F)
-system("slack -F hg38_3d.subclus.umap.tsv ryan_todo")
+#system("slack -F hg38_3d.subclus.umap.tsv ryan_todo")
 
 
 ###Repeat with subcluster coloring
@@ -3286,7 +3287,7 @@ mm10_out<-cbind(mm10_atac$cluster_ID,
     as.data.frame(mm10_atac@reductions$umap3d@cell.embeddings),
     mm10_atac$subcluster_col)
 write.table(mm10_out,"mm10_3d.subclus.umap.tsv",sep="\t",col.names=F,row.names=F,quote=F)
-system("slack -F mm10_3d.subclus.umap.tsv ryan_todo")
+#system("slack -F mm10_3d.subclus.umap.tsv ryan_todo")
 ```
 
 
@@ -4138,7 +4139,7 @@ library(harmony,lib.loc="/home/groups/oroaklab/src/R/R-4.0.0/lib_backup_210125")
 pdf("mm10.harmony.convergence.pdf")
 harm_mat<-HarmonyMatrix(mm10_atac@reductions$lsi@cell.embeddings, mm10_atac@meta.data$tech,do_pca=FALSE,nclust=14,plot_convergence=T)
 dev.off()
-system("slack -F mm10.harmony.convergence.pdf ryan_todo")
+#system("slack -F mm10.harmony.convergence.pdf ryan_todo")
 mm10_atac@reductions$harmony<-CreateDimReducObject(embeddings=as.matrix(harm_mat),assay="peaks",key="topic_")
 mm10_atac<-RunUMAP(mm10_atac, reduction = "harmony",dims=1:ncol(mm10_atac@reductions$harmony))
 mm10_atac <- FindNeighbors(object = mm10_atac,reduction = 'harmony')
@@ -4217,7 +4218,7 @@ out$read_effort <- factor(out$read_effort, levels=c(5000,10000,20000,50000,10000
 
 plt<-ggplot(out,aes(x=read_effort,color=tech,fill=tech,y=read_uniq))+geom_boxplot(alpha=0.8,fill="white",outlier.shape=NA)+scale_color_manual(values=tech_col)+theme_minimal()+scale_y_continuous(breaks=c(seq(0,120000,10000),c(5000,10000,20000,50000,100000)),limits=c(0,120000))
 ggsave(plt,file="complexity_tech.pdf")
-system("slack -F complexity_tech.pdf ryan_todo")
+#system("slack -F complexity_tech.pdf ryan_todo")
 
 
 #Adding projected read counts per cell to metadata
@@ -4266,7 +4267,7 @@ dat<-as.data.frame(mm10_atac@meta.data)
 dat$tech <- factor(dat$tech, levels=tech_order)
 plt<-ggplot(dat,aes(x=tech,y=FRIP,color=tech))+geom_boxplot(alpha=0.8,fill="white",outlier.shape=NA)+scale_color_manual(values=tech_col)+ylim(c(0,1))+theme_minimal() #+geom_jitter(alpha=0.1,size=0.1)
 ggsave(plt,file="frip_tech.pdf")
-system("slack -F frip_tech.pdf ryan_todo")
+#system("slack -F frip_tech.pdf ryan_todo")
 
 #TSS boxplot
 Idents(mm10_atac)<-"tech"
@@ -4274,7 +4275,7 @@ dat<-as.data.frame(mm10_atac@meta.data)
 dat$tech <- factor(dat$tech, levels=tech_order)
 plt<-ggplot(dat,aes(x=tech,y=TSSenrichment,color=tech))+geom_boxplot(alpha=0.8,fill="white",outlier.shape=NA)+ylim(c(0,25))+scale_color_manual(values=tech_col)+theme_minimal() #+geom_jitter(alpha=0.1,size=0.1)
 ggsave(plt,file="tss_tech.pdf")
-system("slack -F tss_tech.pdf ryan_todo")
+#system("slack -F tss_tech.pdf ryan_todo")
 
 #Stats
 library(dplyr)
@@ -4471,7 +4472,7 @@ pdf("technology_correlations.pdf")
 #corrplot(cor_out,type='upper',col = rev(COL2('RdBu', 100)))
 corrplot(cor_out,type='lower',method='number',col = rev(COL2('RdBu', 100)))
 dev.off()
-system("slack -F technology_correlations.pdf ryan_todo")
+#system("slack -F technology_correlations.pdf ryan_todo")
 ```
 
 Plotting on neuronal signal marker
@@ -4491,7 +4492,7 @@ Fragments(mm10_atac)<-CreateFragmentObject(path=mm10_fragment.path)
 #Slc17a7
 plt<-CoveragePlot(mm10_atac,group.by="tech",region="Slc17a7",extend.upstream=50000,extend.downstream=50000,tile=TRUE)
 ggsave(plt,file="all_methods_Slc17a7_covplot.pdf")
-system("slack -F all_methods_Slc17a7_covplot.pdf ryan_todo")
+#system("slack -F all_methods_Slc17a7_covplot.pdf ryan_todo")
 ```
 
 ## Modifying Batch Correction across mouse brain sets
@@ -4539,8 +4540,179 @@ mm10_atac.liger <- RunUMAP(object = mm10_atac.liger, reduction = 'iNMF', dims = 
 
 plt<-DimPlot(mm10_atac.liger,group.by=c("tech","txsciatac_celltype"))
 ggsave(plt,file="allmethods_merged_liger_umap.pdf",width=10)
-system("slack -F allmethods_merged_liger_umap.pdf ryan_todo")
+#system("slack -F allmethods_merged_liger_umap.pdf ryan_todo")
 
 write.table(mm10_atac@meta.data,file="mm10_brain_all_methods.metadata.tsv",sep="\t",col.names=T,row.names=T)
-system("slack -F mm10_brain_all_methods.metadata.tsv ryan_todo")
+#system("slack -F mm10_brain_all_methods.metadata.tsv ryan_todo")
+```
+
+
+Final R session information with all packages loaded.
+
+```R
+writeLines(capture.output(sessionInfo()), "sessionInfo.txt")
+```
+
+```R
+R version 4.0.3 (2020-10-10)
+Platform: x86_64-conda-linux-gnu (64-bit)
+Running under: CentOS Linux 7 (Core)
+
+Matrix products: default
+BLAS/LAPACK: /home/groups/CEDAR/mulqueen/src/miniconda3/lib/libopenblasp-r0.3.17.so
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+ [1] splines   grid      stats4    parallel  stats     graphics  grDevices
+ [8] utils     datasets  methods   base     
+
+other attached packages:
+ [1] corrplot_0.92                      rliger_1.0.0                      
+ [3] cowplot_1.1.1                      plyr_1.8.8                        
+ [5] R.utils_2.12.2                     R.oo_1.25.0                       
+ [7] R.methodsS3_1.8.2                  motifmatchr_1.12.0                
+ [9] chromVAR_1.12.0                    seriation_1.4.1                   
+[11] forcats_0.5.2                      stringr_1.5.0                     
+[13] purrr_1.0.1                        readr_2.1.3                       
+[15] tidyr_1.2.1                        tibble_3.1.8                      
+[17] tidyverse_1.3.2                    BSgenome.Mmusculus.UCSC.mm10_1.4.0
+[19] circlize_0.4.15                    reshape2_1.4.4                    
+[21] viridis_0.6.2                      viridisLite_0.4.1                 
+[23] dendextend_1.16.0                  ggdendro_0.1.23                   
+[25] palettetown_0.1.1.90000            RColorBrewer_1.1-3                
+[27] clustree_0.5.0                     ggraph_2.1.0                      
+[29] ggrepel_0.9.2                      dplyr_1.0.9                       
+[31] BSgenome.Hsapiens.UCSC.hg38_1.4.3  BSgenome_1.58.0                   
+[33] rtracklayer_1.50.0                 TFBSTools_1.28.0                  
+[35] JASPAR2020_0.99.10                 cicero_1.8.1                      
+[37] Gviz_1.34.1                        monocle_2.18.0                    
+[39] DDRTree_0.1.5                      irlba_2.3.5.1                     
+[41] VGAM_1.1-7                         SeuratWrappers_0.3.0              
+[43] harmony_1.0                        Rcpp_1.0.9                        
+[45] cisTopic_0.3.0                     ComplexHeatmap_2.6.2              
+[47] patchwork_1.1.2                    Matrix_1.5-3                      
+[49] EnsDb.Mmusculus.v79_2.99.0         EnsDb.Hsapiens.v86_2.99.0         
+[51] ensembldb_2.14.1                   AnnotationFilter_1.14.0           
+[53] GenomicFeatures_1.42.3             AnnotationDbi_1.52.0              
+[55] Biobase_2.50.0                     GenomicRanges_1.42.0              
+[57] GenomeInfoDb_1.26.7                SeuratObject_4.1.3                
+[59] Seurat_4.3.0                       Signac_1.5.0                      
+[61] Biostrings_2.58.0                  XVector_0.30.0                    
+[63] IRanges_2.24.1                     S4Vectors_0.28.1                  
+[65] BiocGenerics_0.36.1                ggplot2_3.4.0                  
+
+loaded via a namespace (and not attached):
+  [1] rsvd_1.0.5                  Hmisc_4.7-2                
+  [3] ica_1.0-3                   RcppRoll_0.3.0             
+  [5] Rsamtools_2.6.0             foreach_1.5.2              
+  [7] lmtest_0.9-40               crayon_1.5.2               
+  [9] MASS_7.3-58.1               nlme_3.1-161               
+ [11] backports_1.4.1             reprex_2.0.2               
+ [13] qlcMatrix_0.9.7             rlang_1.0.6                
+ [15] readxl_1.4.1                ROCR_1.0-11                
+ [17] ca_0.71.1                   limma_3.46.0               
+ [19] BiocParallel_1.24.1         rjson_0.2.21               
+ [21] CNEr_1.26.0                 bit64_4.0.5                
+ [23] glue_1.6.2                  pheatmap_1.0.12            
+ [25] poweRlaw_0.70.6             text2vec_0.6.3             
+ [27] sctransform_0.3.5           spatstat.sparse_3.0-0      
+ [29] spatstat.geom_3.0-3         haven_2.5.1                
+ [31] tidyselect_1.2.0            SummarizedExperiment_1.20.0
+ [33] fitdistrplus_1.1-8          XML_3.99-0.13              
+ [35] zoo_1.8-11                  GenomicAlignments_1.26.0   
+ [37] xtable_1.8-4                magrittr_2.0.3             
+ [39] cli_3.4.1                   zlibbioc_1.36.0            
+ [41] rstudioapi_0.14             miniUI_0.1.1.1             
+ [43] sp_1.6-0                    rpart_4.1.19               
+ [45] fastmatch_1.1-3             shiny_1.7.4                
+ [47] xfun_0.36                   askpass_1.1                
+ [49] clue_0.3-63                 cluster_2.1.4              
+ [51] caTools_1.18.2              TSP_1.2-1                  
+ [53] tidygraph_1.2.2             doSNOW_1.0.20              
+ [55] KEGGREST_1.30.1             biovizBase_1.38.0          
+ [57] listenv_0.9.0               TFMPvalue_0.0.9            
+ [59] lda_1.4.2                   png_0.1-8                  
+ [61] future_1.30.0               withr_2.5.0                
+ [63] lsa_0.73.3                  bitops_1.0-7               
+ [65] slam_0.1-50                 ggforce_0.4.1              
+ [67] cellranger_1.1.0            GSEABase_1.52.1            
+ [69] sparsesvd_0.2-2             pracma_2.4.2               
+ [71] pillar_1.8.1                GlobalOptions_0.1.2        
+ [73] cachem_1.0.6                fs_1.5.2                   
+ [75] hdf5r_1.3.8                 GetoptLong_1.0.5           
+ [77] vctrs_0.5.1                 ellipsis_0.3.2             
+ [79] generics_0.1.3              tools_4.0.3                
+ [81] foreign_0.8-84              feather_0.3.5              
+ [83] mlapi_0.1.1                 munsell_0.5.0              
+ [85] tweenr_2.0.2                DelayedArray_0.16.3        
+ [87] fastmap_1.1.0               compiler_4.0.3             
+ [89] HSMMSingleCell_1.10.0       abind_1.4-5                
+ [91] httpuv_1.6.8                plotly_4.10.1              
+ [93] GenomeInfoDbData_1.2.4      gridExtra_2.3              
+ [95] riverplot_0.10              lattice_0.20-45            
+ [97] deldir_1.0-6                snow_0.4-4                 
+ [99] utf8_1.2.2                  later_1.3.0                
+[101] BiocFileCache_1.14.0        jsonlite_1.8.4             
+[103] scales_1.2.1                docopt_0.7.1               
+[105] graph_1.68.0                pbapply_1.7-0              
+[107] lazyeval_0.2.2              promises_1.2.0.1           
+[109] doParallel_1.0.17           latticeExtra_0.6-30        
+[111] goftest_1.2-3               spatstat.utils_3.0-1       
+[113] reticulate_1.27             checkmate_2.1.0            
+[115] Rtsne_0.16                  dichromat_2.0-0.1          
+[117] uwot_0.1.14                 igraph_1.3.5               
+[119] survival_3.5-0              htmltools_0.5.4            
+[121] memoise_2.0.1               VariantAnnotation_1.36.0   
+[123] lgr_0.4.4                   graphlayouts_0.8.4         
+[125] arrow_5.0.0.2               digest_0.6.31              
+[127] assertthat_0.2.1            RhpcBLASctl_0.21-247.1     
+[129] mime_0.12                   rappdirs_0.3.3             
+[131] densityClust_0.3.2          registry_0.5-1             
+[133] RSQLite_2.2.20              future.apply_1.10.0        
+[135] remotes_2.4.2               data.table_1.14.6          
+[137] blob_1.2.3                  fastICA_1.2-3              
+[139] Formula_1.2-4               googledrive_2.0.0          
+[141] Cairo_1.5-12.2              ProtGenerics_1.22.0        
+[143] RCurl_1.98-1.9              broom_1.0.2                
+[145] hms_1.1.2                   modelr_0.1.10              
+[147] colorspace_2.0-3            base64enc_0.1-3            
+[149] BiocManager_1.30.19         shape_1.4.6                
+[151] nnet_7.3-18                 mclust_6.0.0               
+[153] RANN_2.6.1                  ggseqlogo_0.1              
+[155] fansi_1.0.3                 tzdb_0.3.0                 
+[157] parallelly_1.34.0           SnowballC_0.7.0            
+[159] R6_2.5.1                    ggridges_0.5.4             
+[161] lifecycle_1.0.3             googlesheets4_1.0.1        
+[163] curl_5.0.0                  leiden_0.4.3               
+[165] RcppAnnoy_0.0.20            iterators_1.0.14           
+[167] spatstat.explore_3.0-5      htmlwidgets_1.6.1          
+[169] polyclip_1.10-4             biomaRt_2.46.3             
+[171] timechange_0.2.0            seqLogo_1.56.0             
+[173] rvest_1.0.3                 globals_0.16.2             
+[175] rsparse_0.5.1               openssl_2.0.5              
+[177] htmlTable_2.4.1             spatstat.random_3.0-1      
+[179] progressr_0.13.0            lubridate_1.9.0            
+[181] codetools_0.2-18            matrixStats_0.63.0         
+[183] GO.db_3.12.1                FNN_1.1.3.1                
+[185] gtools_3.9.4                prettyunits_1.1.1          
+[187] dbplyr_2.2.1                gtable_0.3.1               
+[189] DBI_1.1.3                   tensor_1.5                 
+[191] httr_1.4.4                  KernSmooth_2.23-20         
+[193] RcisTarget_1.11.10          stringi_1.7.12             
+[195] progress_1.2.2              farver_2.1.1               
+[197] annotate_1.68.0             DT_0.27                    
+[199] xml2_1.3.3                  combinat_0.0-8             
+[201] AUCell_1.13.3               interp_1.1-3               
+[203] float_0.3-0                 scattermore_0.8            
+[205] bit_4.0.5                   jpeg_0.1-10                
+[207] MatrixGenerics_1.2.1        spatstat.data_3.0-0        
+[209] gargle_1.2.1                pkgconfig_2.0.3            
+[211] DirichletMultinomial_1.32.0 knitr_1.41                 
 ```

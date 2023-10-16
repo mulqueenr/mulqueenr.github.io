@@ -62,7 +62,6 @@ macs3
 ```bash
 #bcl2fastq2
 conda install -c bih-cubi bcl2fastq2
-
 #bwa
 cd ~/tools
 git clone https://github.com/lh3/bwa.git
@@ -84,6 +83,9 @@ conda install -c bioconda samtools
 
 #bedtools
 conda install -c bioconda bedtools
+
+#seqkit
+conda install -c bioconda seqkit
 
 #macs3
 pip install macs3
@@ -144,7 +146,14 @@ pip install pypairix
 pip install plotly seaborn
 ```
 
-
+Installing schicluster
+https://github.com/zhoujt1994/scHiCluster
+```bash
+conda create -n schicluster python==3.6.8
+conda activate schicluster
+pip install git+https://github.com/zhoujt1994/scHiCluster.git
+https://zhoujt1994.github.io/scHiCluster/intro.html
+```
 # Testing of SV detectors
 
 Installing EagleC
@@ -173,6 +182,7 @@ download-pretrained-models
 pip install pomegranate==0.14.4
 pip install -U neoloop TADLib
 pip install cooltools
+conda install sniffles=2.2 #for ONT data
 
 #quick start testing of eaglec
 cd ~/ref
@@ -330,6 +340,39 @@ bwa index ~/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta/genome.fa &
 bismark_genome_preparation ~/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/fasta &
 ```
 
+Installation of scDNA Replication tools
+https://github.com/shahcompbio/scdna_replication_tools/tree/main
+```bash
+git clone git@github.com:shahcompbio/scdna_replication_tools.git
+cd scdna_replication_tools-main
+conda create -n scdna_replication_tools python==3.7.4
+conda activate scdna_replication_tools
+python -m venv venv/
+source venv/bin/activate
+pip install numpy cython
+pip install -r requirements3.txt
+python setup.py develop
+
+https://luminousmen.com/post/resolve-cython-and-numpy-dependencies
+
+import numpy
+from Cython.Build import cythonize
+from setuptools import setup, Extension
+
+setup(
+    ...
+    setup_requires=[
+        'setuptools>=18.0',
+        'cython',
+    ],
+    ext_modules=[
+        Extension('package.cython_code1', sources=['package/cython_code1.pyx']),
+        Extension('package.cython_code2', sources=['package/cython_code2.pyx']),
+    ],
+    include_dirs=[numpy.get_include()],
+)
+```
+
 ## Installing Singularity, Nextflow and ONT Analysis Pipeline
 Necessary tools for ONT validation of structural variant calls
 
@@ -416,9 +459,6 @@ nextflow run epi2me-labs/wf-basecalling \
 
 
 ```
-
-
-
 trying Higashi for scHiC
 ```bash
 cd ~/tools 
