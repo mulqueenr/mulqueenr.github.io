@@ -187,7 +187,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 @media (min-width: 30em) {
   .sidebar {
-    font-size: 2rem; /* 14px */
+    font-size: 1rem; /* 14px */
   }
 }
 
@@ -195,10 +195,10 @@ h1, h2, h3, h4, h5, h6 {
 .sidebar a {
   font-weight: normal;
   color: var(--main-text-color);
-  font-size: 2rem;
+  font-size: 1rem;
 }
 .sidebar-item {
-  padding: 2rem;
+  padding: 1rem;
 }
 .sidebar-item p:last-child {
   margin-bottom: 0;
@@ -209,7 +209,7 @@ h1, h2, h3, h4, h5, h6 {
   border-bottom: 1px solid var(--highlight-color1);
 }
 .sidebar-nav-item {
-  font-size: 2rem;
+  font-size: 1rem;
   display: block;
   padding: .5rem 1rem;
   border-top: 0px solid var(--highlight-color1);
@@ -219,7 +219,7 @@ a.sidebar-nav-item:hover,
 a.sidebar-nav-item:focus {
   text-decoration: none;
   color: white;
-  font-size: 2rem;
+  font-size: 1rem;
   background-color: var(--highlight-color3);
 }
 
