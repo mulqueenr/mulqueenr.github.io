@@ -1,6 +1,6 @@
 ---
 title: Wedding Landing Page
-layout: front_page
+layout: wedding_front_page
 author: Ryan Mulqueen
 permalink: /wedding/
 ---
