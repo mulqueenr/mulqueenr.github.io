@@ -5,15 +5,15 @@
      <!-- Toggleable sidebar -->
      <div class="sidebar" id="sidebar_wedding">
        <div class="sidebar-item">
-         <p>{{ site.description }}</p>
+         <p>October 12th, 2025</p>
        </div>
      
        <nav class="sidebar-nav">
-         <a class="sidebar-nav-item{% if page.title == 'Wedding Landing Page' %} active{% endif %}" href="{{ '/' | absolute_url }}">Home</a>
+         <a class="sidebar-nav-item{% if page.title == 'Wedding Landing Page' %} active{% endif %}" href="{{ '/' | absolute_url }}">{{ node.title }}</a>
      
          {% comment %}
            The code below dynamically generates a sidebar nav of pages with
-           `layout: wedding_pages` or `layout: wedding_front_page` in the front-matter. See readme for usage.
+           `layout: wedding_pages` in the front-matter. See readme for usage.
          {% endcomment %}
      
          <button class="dropdown-btn">Wedding Pages
