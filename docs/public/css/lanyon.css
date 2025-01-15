@@ -49,7 +49,7 @@
 /* Prevent scroll on narrow devices */
 html,
 body {
-  font-size:16px;
+  font-size:1vw;
   background-color: var(--main-background-color);
   color: var(--main-text-color);
 }
@@ -540,7 +540,7 @@ main > nav {
 
 /* Sidebar Navigation */
 .section-nav {
-  margin-top: 2rem;
+  margin-top: 2;
   border-left: 0.2rem solid var(--highlight-color1);
   border-right: 0.2rem solid var(--highlight-color1);
   border-top: 0.2rem solid var(--highlight-color2);
