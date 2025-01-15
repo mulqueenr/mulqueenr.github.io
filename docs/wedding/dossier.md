@@ -6,4 +6,4 @@ permalink: /dossier/
 category: wedding
 ---
 
-<img src="/wedding/wedding_assets/dossier_friends.gif" width: 100% >
+![image 1]({{site.baseurl}}/wedding/wedding_assets/dossier_friends.gif "Dossier")
