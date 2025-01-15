@@ -4,8 +4,6 @@
   {% include head.html %}
   <body>
 
-    {% include sidebar.html %}
-
 <style>
 
 h1 {
@@ -22,7 +20,7 @@ h1 {
     width: max-content;
     background: white;
     font-size: 0.5em;
-    color: #355f08;
+    color: #a7a9a4;
     padding: 0.1em;
     border-radius: 0.125em;
     margin-bottom: 0.1em;
@@ -31,22 +29,6 @@ h1 {
     top: 80vh;
     left: 4vw;
   }
-}
-
-.background_img {
-  min-height: 120vh;
-  background-image: url("{{site.baseurl}}/assets/images/dna_background.png");
-  color: white;
-  display: flex;
-  isolation: isolate;
-  width: 100vw;
-
-  /* Create the parallax scrolling effect */
-  background-attachment: fixed;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-
 }
 
 .background_img2 {
@@ -65,13 +47,13 @@ h1 {
 
 }
 .hero-intro {
-  width: 100vw;
+  width: 100%;
   padding: 2em;
 }
 
 
 .container {
-  max-width: 100vw;
+  max-width: 100%;
   padding-left:  1rem;
   padding-right: 1rem;
   margin-left:  auto;
@@ -85,7 +67,7 @@ h1 {
 <style>
   video {
       height: 100vh;
-      width: 100%;
+      width: 110%;
       object-fit: fill; 
       position: top;
   }
