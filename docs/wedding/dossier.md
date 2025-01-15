@@ -6,4 +6,4 @@ permalink: /dossier/
 category: wedding
 ---
 
-<img src="/wedding/wedding_assets/dossier_friends.webp" width: 100% >
+<img src="/wedding/wedding_assets/dossier_friends.gif" width: 100% >
