@@ -6,14 +6,14 @@ permalink: /wedding/
 ---
 
 
-## Welcome!
+## Welcome loved ones!
 
-Ryan and Casey are getting married! Thank you so much for being in our lives! We wanted to celebrate our marriage with loved ones in a quiet part of Maine and you're invited! 
+Ryan and Casey are getting married! Thank you so much for being in our lives! We wanted to celebrate our marriage with you all in a quiet part of Maine and you're invited! 
 
 We're getting married on Oct 12th, 2025 at [The Hive Farmhouse & Barn](https://www.thehiveweddings.com/)
 
 Located at 264 Passaconaway Road, Waterford ME 04088. [Google Maps Link](https://maps.app.goo.gl/5GBNpqGNGGZMkQxH9)
 
-Its crazy but somehow our families haven't met yet! To facilitate this, we provided a [dossier]({{site.baseurl}}/dossier) to peruse at your leisure to get to know the other side (and our friends).
+Its crazy but somehow our families haven't met yet! To facilitate this, we provided a [dossier]({{site.baseurl}}/dossier) to peruse at your leisure to get to know other people invited to the party. (If you want some more fun photos included please send them to me!)
 
 I'm still putting together the website, but I'll be setting up more information and a form for RSVPing soon.
