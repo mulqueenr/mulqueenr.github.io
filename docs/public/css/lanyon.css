@@ -57,7 +57,7 @@ body {
 main {
   display: block;
   grid-template-columns: 1fr 15em;
-  width: 90%;
+  width: 100%;
   margin: 0 auto;
 }
 
@@ -179,7 +179,7 @@ h1, h2, h3, h4, h5, h6 {
   visibility: hidden;
   overflow-y: hidden;
   font-family: "PT Sans", Helvetica, Arial, sans-serif;
-  font-size: .65rem; /* 15px */ /*/ was .865*/
+  font-size: .75rem; /* 15px */ /*/ was .865*/
   color: var(--main-text-color);
   background-color: var(--code-box-color);
   -webkit-transition: all .3s ease-in-out;
@@ -195,10 +195,10 @@ h1, h2, h3, h4, h5, h6 {
 .sidebar a {
   font-weight: normal;
   color: var(--main-text-color);
-  font-size: 0.7rem;
+  font-size: .75rem;
 }
 .sidebar-item {
-  padding: 1rem;
+  padding: .75rem;
 }
 .sidebar-item p:last-child {
   margin-bottom: 0;
