@@ -566,7 +566,7 @@ main > nav {
   text-decoration: none;
   display: block;
   color: var(--color-highlight3);
-  transition: all 100ms ease-in-out; /* 💡 This small transition makes setting of the active state smooth */
+  transition: all 200ms ease-in-out; /* 💡 This small transition makes setting of the active state smooth */
 }
 
 .section-nav a:hover,
@@ -582,7 +582,7 @@ main > nav {
 }
 
 .section-nav a {
-    transition: all 100ms ease-in-out;
+    transition: all 200ms ease-in-out;
 }
 
 .section-nav ul, ol {
