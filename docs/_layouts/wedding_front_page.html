@@ -4,6 +4,8 @@
   {% include head.html %}
   <body>
 
+    {% include sidebar.html %}
+
 <style>
 
 h1 {
@@ -20,7 +22,7 @@ h1 {
     width: max-content;
     background: white;
     font-size: 0.5em;
-    color: #a7a9a4;
+    color: #767775;
     padding: 0.1em;
     border-radius: 0.125em;
     margin-bottom: 0.1em;
@@ -30,6 +32,7 @@ h1 {
     left: 4vw;
   }
 }
+
 
 .background_img2 {
   min-height: 120vh;
@@ -47,13 +50,13 @@ h1 {
 
 }
 .hero-intro {
-  width: 100%;
+  width: 100vw;
   padding: 2em;
 }
 
 
 .container {
-  max-width: 100%;
+  max-width: 100vw;
   padding-left:  1rem;
   padding-right: 1rem;
   margin-left:  auto;
@@ -67,9 +70,9 @@ h1 {
 <style>
   video {
       height: 100vh;
-      width: 110%;
-      object-fit: fill; 
-      position: top;
+      width: 100%;
+      object-fit: cover; 
+      position: absolute;
   }
 </style>
  Your browser does not support the video tag.
@@ -78,7 +81,13 @@ h1 {
     <h1><code style="font-weight: 2000; font-family: 'PT Sans'" >Ryan and Casey are getting married!</code></h1>
   </div>
 </div>
-
+    <!-- Wrap is the content to shift when toggling the sidebar. We wrap the
+         content to avoid any CSS collisions with our real content. -->
+    <div class="wrap">
+      <div col-lg-12 class="container content" style="padding-left:5rem">
+        {{ content }}
+      </div>
+    </div>
 
 <div class="background_img2">
 </div>
