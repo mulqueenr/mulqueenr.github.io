@@ -6,7 +6,7 @@ permalink: /wedding/
 ---
 
 
-## Welcome loved ones!
+# Welcome loved ones!
 
 Ryan and Casey are getting married! Thank you so much for being in our lives! We wanted to celebrate our marriage with you all in a quiet part of Maine and you're invited! 
 
