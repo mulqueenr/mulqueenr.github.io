@@ -6,9 +6,9 @@ permalink: /wedding/
 ---
 
 
-# Welcome loved ones!
+## Welcome loved ones!
 
-## Ryan and Casey are getting married! 
+### Ryan and Casey are getting married! 
 
 Thank you so much for being an important part of our lives and we want to celebrate our marriage with you!
 
