@@ -6,6 +6,8 @@ permalink: /location/
 category: wedding
 ---
 
+## Location
+
 We're getting married at [The Hive Farmhouse & Barn](Thehiveweddings.com)
 
 Located at 264 Passaconaway Road, Waterford ME 04088. 
@@ -15,7 +17,7 @@ This location is located about an hour to an hour and a half from Portland, Main
 
 And 30-40 minutes from Pleasant Mountain, Denmark ME, which has [plenty of airbnb options.](https://www.airbnb.com/s/Pleasant-Mountain--Denmark--ME/homes?refinement_paths%5B%5D=%2Fhomes&flexible_trip_lengths%5B%5D=one_week&monthly_start_date=2025-03-01&monthly_length=3&monthly_end_date=2025-06-01&price_filter_input_type=0&channel=EXPLORE&place_id=ChIJDexd83Grs0wRuY96rQ-Fs7o&location_bb=QjAj4cKNnKxCMBNywo2tEA%3D%3D&acp_id=6e83ac56-243d-4f49-ac7e-b2533844eac9&date_picker_type=calendar&checkin=2025-10-11&checkout=2025-10-13&source=structured_search_input_header&search_type=autocomplete_click)
 
-If you are looking for other accomodations we've also been recommended:
+If you are looking for other accommodations we've also been recommended:
 
 - Maine Escape - Sarah Mangiarelli  317hampshirerd@gmail.com
 - Airbnb - https://abnb.me/5465hfuteY                  
