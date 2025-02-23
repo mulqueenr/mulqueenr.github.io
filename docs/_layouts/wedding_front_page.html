@@ -34,6 +34,24 @@ h1 {
   }
 }
 
+body, html {
+  height: 100%;
+}
+
+.parallax {
+  /* The image used */
+  background-image: url("img_parallax.jpg");
+
+  /* Full height */
+  height: 100%;
+
+  /* Create the parallax scrolling effect */
+  background-attachment: fixed;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
 
 .background_img {
   min-height:100vh;
@@ -111,7 +129,7 @@ h1 {
 </style>
 
 
-<div class="background_img"> <style> img {background-image: url("{{site.baseurl}}/wedding/wedding_assets/proposal.jpg")};</style></div>
+<div class="parallax"> <style> img {background-image: url("{{site.baseurl}}/wedding/wedding_assets/proposal.jpg")};</style></div>
 <div class="background_img"><style> img {background-image: url("{{site.baseurl}}/wedding/wedding_assets/proposal1_2.jpg")};</style></div>
 <div class="background_img"><style> img {background-image: url("{{site.baseurl}}/wedding/wedding_assets/proposal1_3.jpg")};</style></div>
   <div class="hero-intro">
