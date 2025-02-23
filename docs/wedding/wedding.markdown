@@ -19,6 +19,8 @@ Located at 264 Passaconaway Road, Waterford ME 04088. [Google Maps Link](https:/
 
 You can find some more information about [accomodations here!]({{site.baseurl}}/location) Or just ask us and we can try to help!
 
+To make it as easy as we can, we provided an early version of the [schedule here.]({{site.baseurl}}/schedule)
+
 Its crazy but somehow our families haven't met yet! To facilitate this, we provided a [dossier]({{site.baseurl}}/dossier) to peruse at your leisure to get to know other people invited to the party. (If you want some more fun photos included please send them to me!)
 
 
