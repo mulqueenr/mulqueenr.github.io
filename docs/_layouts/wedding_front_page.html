@@ -37,7 +37,6 @@ h1 {
 
 .background_img {
   min-height:100vh;
-  background-image: url("{{site.baseurl}}/wedding/wedding_assets/proposal.jpg");
   color: white;
   display: flex;
   isolation: isolate;
@@ -112,22 +111,18 @@ h1 {
 </style>
 
 
- <div class="background_img">
-</div>
-<div class="background_img2">
-</div>
-<div class="background_img3">
-</div>
+<div class="background_img"> <style> img {background-image: url("{{site.baseurl}}/wedding/wedding_assets/proposal.jpg")};</style></div>
+<div class="background_img"><style> img {background-image: url("{{site.baseurl}}/wedding/wedding_assets/proposal1_2.jpg")};</style></div>
+<div class="background_img"><style> img {background-image: url("{{site.baseurl}}/wedding/wedding_assets/proposal1_3.jpg")};</style></div>
   <div class="hero-intro">
     <h1><code style="font-weight: 900; font-family: 'PT Sans'; font-size: xx-large; word-wrap: normal;width: 90%" >Ryan and Casey are getting married!</code></h1>
   </div>
 </div>
-        {{ content }}
 
-    <div class="background_img4">
-    </div>
-    <div class="background_img5">
-    </div>
+{{ content }}
+
+<div class="background_img4"></div>
+<div class="background_img5"></div>
 
     <video autoplay muted loop playsinline controls>
       <source src="/wedding/wedding_assets/astronautsoflove.mp4" type="video/mp4">
