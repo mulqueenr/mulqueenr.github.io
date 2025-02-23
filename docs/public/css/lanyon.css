@@ -49,7 +49,7 @@
 /* Prevent scroll on narrow devices */
 html,
 body {
-  font-size:1vw;
+  font-size:2vw;
   background-color: var(--main-background-color);
   color: var(--main-text-color);
 }
@@ -72,7 +72,7 @@ html {
 
 h1, h2, h3, h4, h5, h6 {
   font-family: "PT Sans", Helvetica, Arial, sans-serif;
-  font-weight: 400;
+  font-weight: 600;
   color: var(--main-text-color); 
   letter-spacing: -.025rem;
 }
@@ -88,7 +88,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .wrap {
   position: relative;
-  width: 100%;
+  width: 80%;
 }
 
 
@@ -99,7 +99,7 @@ h1, h2, h3, h4, h5, h6 {
  */
 
 .container {
-  max-width: 65rem;
+  max-width: 80%;
   display: block;
   padding-left: 1rem;
 }
