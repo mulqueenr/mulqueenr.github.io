@@ -1,5 +1,5 @@
 ---
-title: Schedule for the Day
+title: Schedule for the day
 layout: wedding_dossier
 author: Ryan Mulqueen
 permalink: /schedule/

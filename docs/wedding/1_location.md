@@ -1,5 +1,5 @@
 ---
-title: Location and Accomodations
+title: Location and accomodations
 layout: wedding_pages
 author: Ryan Mulqueen
 permalink: /location/
