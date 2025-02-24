@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  {% include head.html %}
+  <body>
+
+{% include sidebar_wedding.html %}
+
+<style>
+
+body, html {
+  height: 100%;
+}
+
+</style>
+
+{{ content }}
+
+    <video autoplay muted loop playsinline controls>
+      <source src="/wedding/wedding_assets/astronautsoflove.mp4" type="video/mp4">
+      <style>
+        video {
+            width: 100vw;
+            object-fit: cover; 
+            position: sticky;
+        }
+      </style>
+       Your browser does not support the video tag.
+      </video>
+
+
+    <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+    <script src='{{ site.baseurl }}/public/js/script.js'></script>
+  </body>
+</html>
