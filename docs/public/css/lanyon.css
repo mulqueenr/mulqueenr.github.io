@@ -195,7 +195,7 @@ h1, h2, h3, h4, h5, h6 {
 .sidebar a {
   font-weight: bold;
   color: var(--main-text-color);
-  font-size: medium;
+  font-size: small;
 }
 .sidebar-item {
   padding: 5%;
@@ -474,7 +474,7 @@ a.sidebar-nav-item:focus {
 .sidenav a, .dropdown-btn {
   padding: 6px 8px 6px 16px;
   text-decoration: none;
-  font-size: medium;
+  font-size: small;
   color: var(--main-text-color);
   display: block;
   border: none;
