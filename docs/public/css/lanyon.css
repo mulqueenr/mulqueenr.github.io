@@ -179,7 +179,7 @@ h1, h2, h3, h4, h5, h6 {
   visibility: hidden;
   overflow-y: hidden;
   font-family: "PT Sans", Helvetica, Arial, sans-serif;
-  font-size: medium; /* 15px */ /*/ was .865*/
+  font-size: small; /* 15px */ /*/ was .865*/
   color: var(--main-text-color);
   background-color: var(--code-box-color);
   -webkit-transition: all .6s ease-in-out;
@@ -187,7 +187,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 @media (min-width: 30em) {
   .sidebar {
-    font-size: medium; /* 14px */
+    font-size: small; /* 14px */
   }
 }
 
@@ -211,7 +211,7 @@ h1, h2, h3, h4, h5, h6 {
 
 }
 .sidebar-nav-item {
-  font-size: large;
+  font-size: small;
   display: block;
   padding: .5rem 1rem;
   border-top: 0.25rem solid var(--highlight-color1);
@@ -221,7 +221,7 @@ a.sidebar-nav-item:hover,
 a.sidebar-nav-item:focus {
   text-decoration: none;
   color: white;
-  font-size: medium;
+  font-size: small;
   background-color: var(--highlight-color3);
 }
 
