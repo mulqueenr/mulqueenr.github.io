@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+{% include head.html %}
+<body>
+
+  {% include sidebar_wedding.html %}
+
+  <style>
+
+    h1 {
+    text-transform: uppercase;
+    font-size: large;
+    line-height: 0.9;
+    margin: 0;
+    color: antiquewhite;
+    mix-blend-mode: hard-light;
+    position:absolute; left:5vw; top:5vh;
+
+    code {
+    display: block;
+    width: max-content;
+    background: white;
+    font-size: large;
+    color: #767775;
+    padding: 0.1em;
+    border-radius: 0.125em;
+    margin-bottom: 0.1em;
+    font-family: 'PT Sans';
+    font-weight: 1000;
+    top: 10vh;
+    left: 4vw;
+    }
+    }
+    
+    .hero-intro {
+    width: 80%;
+    padding: 2em;
+    }
+
+
+    .container {
+    max-width: 80%;
+    padding-left:  10%;
+    padding-right: 10%;
+    margin-left:  auto;
+    margin-right: auto;
+    }
+  </style>
+    {{ content }}
+  
+  <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+  <script src='{{ site.baseurl }}/public/js/script.js'></script>
+  </body>
+</html>
