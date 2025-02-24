@@ -1,6 +1,6 @@
 ---
 title: Dossier
-layout: wedding_pages
+layout: wedding_dossier
 author: Ryan Mulqueen
 permalink: /dossier/
 category: wedding
