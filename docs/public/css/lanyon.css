@@ -323,9 +323,9 @@ a.sidebar-nav-item:focus {
 #sidebar-checkbox:checked ~ .sidebar,
 #sidebar-checkbox:checked ~ .wrap,
 #sidebar-checkbox:checked ~ .sidebar-toggle {
-  -webkit-transform: translateX(14rem);
-      -ms-transform: translateX(14rem);
-          transform: translateX(14rem);
+  -webkit-transform: translateX(30%);
+      -ms-transform: translateX(30%);
+          transform: translateX(30%);
 }
 
 #sidebar-checkbox:checked ~ .sidebar-nav {
@@ -601,7 +601,7 @@ main > nav {
 }
 .section-nav li.visible > a {
   color: var(--color-highlight3);
-  transform: translateX(20rem);
+  transform: translateX(30%);
   transform: scale(1.03);
 }
 
