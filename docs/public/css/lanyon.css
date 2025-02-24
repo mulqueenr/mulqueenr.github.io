@@ -175,15 +175,15 @@ h1, h2, h3, h4, h5, h6 {
   top: 0;
   bottom: 0;
   left: -14rem;
-  width: 15rem; /*originally 14*/
+  width: 5%; /*originally 14*/
   visibility: hidden;
   overflow-y: hidden;
   font-family: "PT Sans", Helvetica, Arial, sans-serif;
   font-size: medium; /* 15px */ /*/ was .865*/
   color: var(--main-text-color);
   background-color: var(--code-box-color);
-  -webkit-transition: all .3s ease-in-out;
-          transition: all .3s ease-in-out;
+  -webkit-transition: all .8s ease-in-out;
+          transition: all .8s ease-in-out;
 }
 @media (min-width: 30em) {
   .sidebar {
