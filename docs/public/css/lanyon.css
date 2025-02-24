@@ -179,7 +179,7 @@ h1, h2, h3, h4, h5, h6 {
   visibility: hidden;
   overflow-y: hidden;
   font-family: "PT Sans", Helvetica, Arial, sans-serif;
-  font-size: 5%; /* 15px */ /*/ was .865*/
+  font-size: medium; /* 15px */ /*/ was .865*/
   color: var(--main-text-color);
   background-color: var(--code-box-color);
   -webkit-transition: all .3s ease-in-out;
@@ -193,12 +193,12 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Sidebar content */
 .sidebar a {
-  font-weight: normal;
+  font-weight: bold;
   color: var(--main-text-color);
-  font-size: 5%;
+  font-size: medium;
 }
 .sidebar-item {
-  padding: 1rem;
+  padding: 5%;
 }
 .sidebar-item p:last-child {
   margin-bottom: 0;
@@ -207,19 +207,21 @@ h1, h2, h3, h4, h5, h6 {
 /* Sidebar nav */
 .sidebar-nav {
   border-bottom: 0.25rem solid var(--highlight-color1);
+  border-top: 0.25rem solid var(--highlight-color1);
+
 }
 .sidebar-nav-item {
   font-size: large;
   display: block;
   padding: .5rem 1rem;
-  border-top: 0.25px solid var(--highlight-color1);
+  border-top: 0.25rem solid var(--highlight-color1);
 }
 .sidebar-nav-item.active,
 a.sidebar-nav-item:hover,
 a.sidebar-nav-item:focus {
   text-decoration: none;
   color: white;
-  font-size: large;
+  font-size: medium;
   background-color: var(--highlight-color3);
 }
 
