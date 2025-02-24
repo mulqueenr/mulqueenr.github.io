@@ -267,7 +267,9 @@ a.sidebar-nav-item:focus {
 #sidebar-checkbox:checked ~ .sidebar-toggle {
   color: var(--highlight-color2);
   background-color: var(--highlight-color2);
-  translate: 800%;
+  -webkit-transform: translateX(50%);
+      -ms-transform: translateX(50%);
+          transform: translateX(50%);
 }
 
 .sidebar-toggle:active:before,
@@ -311,8 +313,8 @@ a.sidebar-nav-item:focus {
 }
 .wrap,
 .sidebar-toggle {
-  -webkit-transition: -webkit-transform .3s ease-in-out;
-          transition: transform .3s ease-in-out;
+  -webkit-transition: -webkit-transform .6s ease-in-out;
+          transition: transform .6s ease-in-out;
           transition: visibility .5s ease-in-out;
 
 }
