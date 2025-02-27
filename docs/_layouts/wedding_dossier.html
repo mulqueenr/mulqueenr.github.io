@@ -39,38 +39,19 @@ body, html {
   height: 100%;
 }
 
-.parallax_1 {
-    /* The image used */
-    background-image: url("{{site.baseurl}}/wedding/wedding_assets/dossier_friends.jpg");
-    /* Full height */
-    height: 600%;
-    min-width: 120%;
-    /* Create the parallax scrolling effect */
-    background-attachment: fixed;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-size: cover;
-    }
-
-.hero-intro {
-  width: 80vw;
-  padding: 2em;
-}
-
 .container {
-  max-width: 100vw;
-  padding-left:  1rem;
-  padding-right: 1rem;
-  margin-left:  auto;
-  margin-right: auto;
-}
+            width: 100%;
+    }
+img {
+    src: url("{{site.baseurl}}/wedding/wedding_assets/proposal1_2.jpg");  
+    width: 100%;
+     object-fit: cover;
+    }
 </style>
 
 
-<div class="parallax_1"></div>
-  <div class="hero-intro">
-    <h1><code style="font-weight: 900; font-family: 'PT Sans'; font-size: xx-large; word-wrap: normal;width: 90%" >Friends and Family!</code></h1>
-  </div>
+<div class="container">
+    <img alt="Friends and Fam!">
 </div>
 {{ content }}
 
