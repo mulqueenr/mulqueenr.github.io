@@ -2,13 +2,43 @@
 <html lang="en-us">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<body>
+  {% include head.html %}
+  <body>
 
-  {% include sidebar_wedding.html %}
+    {% include sidebar_wedding.html %}
 
-  <style>
+<style>
 
-    .parallax_1 {
+h1 {
+  text-transform: uppercase;
+  line-height: 0.9;
+  margin: 0;
+  color: antiquewhite;
+  mix-blend-mode: hard-light;
+  position:absolute; left:5%; top:80%;
+
+  code {
+    display: block;
+    width: max-content;
+    background: white;
+    font-size: 0.5em;
+    color: #767775;
+    padding: 0.1em;
+    border-radius: 0.125em;
+    margin-bottom: 0.1em;
+    font-family: 'PT Sans';
+    font-weight: 1000;
+    word-wrap: normal;
+    top: 60vh;
+    left: 4vw;
+  }
+}
+
+body, html {
+  height: 100%;
+}
+
+.parallax_1 {
     /* The image used */
     background-image: url("{{site.baseurl}}/wedding/wedding_assets/dossier_friends.jpg");
     /* Full height */
@@ -20,13 +50,33 @@
     background-size: cover;
     }
 
-    .container {
-  max-width: 100%;
+.hero-intro {
+  width: 80vw;
+  padding: 2em;
+}
+
+
+.container {
+  max-width: 100vw;
+  padding-left:  1rem;
+  padding-right: 1rem;
+  margin-left:  auto;
+  margin-right: auto;
 }
 </style>
-  <div class="parallax_1"></div>  
-  {{ content }}
-  <label for="sidebar-checkbox" class="sidebar-toggle"></label>
-  <script src='{{ site.baseurl }}/public/js/script.js'></script>
+
+
+<div class="parallax_1"></div>
+
+{{ content }}
+
+<div class="parallax_2"></div>
+<div class="parallax_3"></div>
+
+
+
+    <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+    <script src='{{ site.baseurl }}/public/js/script.js'></script>
   </body>
 </html>
+
