@@ -40,6 +40,20 @@
     }
 
 
+    .parallax_1 {
+    /* The image used */
+    background-image: url("{{site.baseurl}}/wedding/wedding_assets/dossier_friends.jpg");
+
+    /* Full height */
+    height: 100%;
+
+    /* Create the parallax scrolling effect */
+    background-attachment: fixed;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    }
+
     .container {
     max-width: 80%;
     padding-left:  10%;
@@ -48,8 +62,7 @@
     margin-right: auto;
     }
   </style>
-    {{ content }}
-  
+  <div class="parallax_2"></div>  
   <label for="sidebar-checkbox" class="sidebar-toggle"></label>
   <script src='{{ site.baseurl }}/public/js/script.js'></script>
   </body>
