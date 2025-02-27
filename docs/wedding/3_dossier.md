@@ -6,4 +6,3 @@ permalink: /dossier/
 category: wedding
 ---
 
-## And intro to our Friends and Family!
