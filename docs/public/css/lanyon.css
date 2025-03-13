@@ -36,15 +36,15 @@
 
  /* Set color variables*/
 
-:root {
-  --main-text-color: #616161;
-  --main-background-color: #FFFFFF;
-  --code-box-color: #EDF6FF;
-  --highlight-color1: #cee0f3;
-  --highlight-color2: #437FC7;
-  --highlight-color3: #ac9f92;
-  --highlight-color4: #C589E8;
- }
+ :root {
+  --main-text-color: #5F5B46;
+  --main-background-color: #e1e1e1;
+  --code-box-color: #bcc5c4;
+  --highlight-color1: #6c9190;
+  --highlight-color2: #bcc5c4;
+  --highlight-color3: #6c9190;
+  --highlight-color4: #7ec6f8;
+}
 
 /* Prevent scroll on narrow devices */
 html,
