@@ -1,6 +1,6 @@
 ---
 title: Schedule for the day
-layout: wedding_dossier
+layout: wedding_pages_backup
 author: Ryan Mulqueen
 permalink: /schedule/
 category: wedding
