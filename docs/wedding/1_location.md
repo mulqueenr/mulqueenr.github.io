@@ -8,6 +8,8 @@ category: wedding
 
 ## Location
 
+(It's not as remote as the Dingle Penninsula)
+
 We're getting married at [The Hive Farmhouse & Barn](Thehiveweddings.com)
 
 Located at 264 Passaconaway Road, Waterford ME 04088. 
