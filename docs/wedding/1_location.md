@@ -23,13 +23,20 @@ And 30-40 minutes from Pleasant Mountain, Denmark ME, which has [plenty of airbn
 
 If you are looking for other accommodations we've also been recommended:
 
-- Maine Escape - Sarah Mangiarelli  317hampshirerd@gmail.com
-- Airbnb - https://abnb.me/5465hfuteY                  
-- Foothills Farm, Kevin & Theresa Early stay@foothillsfarmguesthouse.com, foothillsfarmguesthouse.com, not on Airbnb, sleeps 4
-- White Mountain Grand Hotel, No Conway, NH
-- Main Street B&B, Fryeburg, ME Margaret 207 935 7171
-- Admiral Peary Inn, Fryeburg, ME, 4 star 207 935 1269
-- Old Saco Inn. Fryeburg, ME, 4 star - Stone Mountain House/Apt, Brownfield, ME, Rebecca
+ Maine Escape - Sarah Mangiarelli  317hampshirerd@gmail.com
+
+ Airbnb - https://abnb.me/5465hfuteY                  
+
+ Foothills Farm, Kevin & Theresa Early stay@foothillsfarmguesthouse.com, foothillsfarmguesthouse.com, not on Airbnb, sleeps 4
+
+ White Mountain Grand Hotel, No Conway, NH
+
+ Main Street B&B, Fryeburg, ME Margaret 207 935 7171
+
+ Admiral Peary Inn, Fryeburg, ME, 4 star 207 935 1269
+
+ Old Saco Inn. Fryeburg, ME, 4 star - Stone Mountain House/Apt, Brownfield, ME, Rebecca
+ 
 
 
 
