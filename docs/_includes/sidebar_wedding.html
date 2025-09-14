@@ -16,10 +16,12 @@
            `layout: wedding_pages` in the front-matter. See readme for usage.
          {% endcomment %}
      
+        <!-- Remove Button
          <button class="dropdown-btn"> Wedding Pages
            <i class="fa fa-caret-down"></i>
          </button>
          <div class="dropdown-container">
+        Remove Button -->
          {% assign pages_list = site.pages | sort:"order" %}
          {% for node in pages_list %}
            {% if node.title != null %}
@@ -28,7 +30,7 @@
              {% endif %}
            {% endif %}
          {% endfor %}
-         </div>
+        <!-- Remove Button </div> Remove Button -->
      
      
          <!---<a class="sidebar-nav-item" href="{{ site.github.repo }}/archive/v{{ site.version }}.zip">Download</a>--->
