@@ -10,9 +10,9 @@ category: wedding
 
 (It's not as remote as the Dingle Penninsula)
 
-We're getting married at [The Hive Farmhouse & Barn](thehiveweddings.com)
-<img src="/wedding/wedding_assets/the_hive_barnyard.jpg" alt="The Hive Barnyard">
+We're getting married at [The Hive Farmhouse & Barn](https://thehiveweddings.com)
 
+<img src="/wedding/wedding_assets/the_hive_barnyard.jpg" alt="The Hive Barnyard">
 
 Located at 264 Passaconaway Road, Waterford ME 04088. 
 [Google Maps Link](https://maps.app.goo.gl/5GBNpqGNGGZMkQxH9)
