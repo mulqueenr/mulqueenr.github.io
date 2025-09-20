@@ -8,7 +8,10 @@ category: wedding
 
 ## Schedule for the day
 
-To help with planning your travel we have a putative schedule for the day. It's subject to change, but at least its a start!
+To help with planning your travel we have included the schedule for the day here. 
 
-<img src="/wedding/wedding_assets/schedule.png" alt="Putative Schedule">
+
+
+
+<img src="/wedding/wedding_assets/schedule.jpg" alt="Putative Schedule">
 
