@@ -1,6 +1,6 @@
 ---
 title: Wedding Landing Page
-layout: wedding_pages_backup
+layout: wedding_front_page
 author: Ryan Mulqueen
 permalink: /wedding/
 ---
@@ -13,6 +13,7 @@ permalink: /wedding/
 Thank you so much for being an important part of our lives and we want to celebrate our marriage with you!
 
 We're getting married on Oct 12th, 2025 at [The Hive Farmhouse & Barn](https://www.thehiveweddings.com/)
+
 located at 264 Passaconaway Road, Waterford ME 04088. [Google Maps Link](https://maps.app.goo.gl/5GBNpqGNGGZMkQxH9)
 
 The schedule of the day can be [found here.]({{site.baseurl}}/schedule)
