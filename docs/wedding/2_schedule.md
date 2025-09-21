@@ -12,6 +12,5 @@ To help with planning your travel we have included the schedule for the day here
 
 
 
-
-<img src="/wedding/wedding_assets/schedule.jpg" alt="Putative Schedule">
+<img src="/wedding/wedding_assets/schedule.png" alt="Putative Schedule">
 

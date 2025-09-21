@@ -1,12 +1,12 @@
 ---
-title: Registry
+title: Registry & Gifts
 layout: wedding_pages_registry
 author: Ryan Mulqueen
 permalink: /registry/
 category: wedding
 ---
 
-## Registry and Gifts
+## Registry & Gifts
 
 We are so grateful that you've all traveled so far to celebrate with us. Please don't feel obligated to get us anything - we made you drive to the woods. 
 
