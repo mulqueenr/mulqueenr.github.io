@@ -1,6 +1,6 @@
 ---
 title: Seating Chart
-layout: wedding_dossier
+layout: wedding_pages_backup
 author: Ryan Mulqueen
 permalink: /seating/
 category: wedding
