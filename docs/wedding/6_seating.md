@@ -6,8 +6,6 @@ permalink: /seating/
 category: wedding
 ---
 
-## Seating Chart
-
-Seating chart coming in hot!
+<img src="/wedding/wedding_assets/seating_chart.jpg">
 
 <div style="padding-bottom: 100px;"></div>
